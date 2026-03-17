@@ -18,6 +18,7 @@ import MeetingMinutes from "@/pages/MeetingMinutes";
 import SheetsHome from "@/pages/SheetsHome";
 import Sheets from "@/pages/Sheets";
 import Presentation from "@/pages/Presentation";
+import Design2D from "@/pages/Design2D";
 import Drawings from "@/pages/Drawings";
 import Design3D from "@/pages/Design3D";
 import Gallery from "@/pages/Gallery";
@@ -60,6 +61,7 @@ function ProtectedRoutes() {
       <Route path="/viewer-options" component={ViewerOptions} />
       <Route path="/viewer-options/mechanical" component={MechanicalViewer} />
       <Route path="/presentation" component={Presentation} />
+      <Route path="/design-2d" component={Design2D} />
       <Route path="/drawings/mechanical" component={Drawings} />
       <Route path="/drawings/electrical" component={Drawings} />
       <Route path="/drawings/civil" component={Drawings} />
