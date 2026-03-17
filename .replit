@@ -31,3 +31,6 @@ timeoutMs = 20000
 ERPNEXT_URL = "https://erp.wttint.com"
 ERPNEXT_API_KEY = "bcbc298244f56a7"
 ERPNEXT_API_SECRET = "b15c3b49acdfef5"
+
+[nix]
+channel = "stable-25_05"
