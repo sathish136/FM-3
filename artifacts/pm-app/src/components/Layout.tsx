@@ -7,7 +7,28 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth, type AuthUser } from "@/hooks/useAuth";
+
+function UserAvatar({ user, size = "sm" }: { user: AuthUser | null; size?: "sm" | "md" }) {
+  const dim = size === "md" ? "w-9 h-9" : "w-8 h-8";
+  const text = size === "md" ? "text-sm" : "text-xs";
+  const initials = user?.full_name?.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase() ?? "??";
+  if (user?.photo) {
+    return (
+      <img
+        src={user.photo}
+        alt={user.full_name}
+        className={cn(dim, "rounded-full object-cover ring-2 ring-white/20 shrink-0")}
+        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+      />
+    );
+  }
+  return (
+    <div className={cn(dim, "rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-bold shrink-0", text)}>
+      {initials}
+    </div>
+  );
+}
 
 interface NavItem {
   path: string;
@@ -128,9 +149,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       <div className="p-3 border-t border-white/10 space-y-1">
         <Link href="/profile" className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-white/10 transition-colors cursor-pointer">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
-            {user?.full_name?.slice(0, 2).toUpperCase() ?? "??"}
-          </div>
+          <UserAvatar user={user} size="sm" />
           <div className="flex-1 min-w-0">
             <p className="text-white text-xs font-semibold truncate">{user?.full_name ?? "User"}</p>
             <p className="text-slate-400 text-[10px] truncate">{user?.email ?? ""}</p>
@@ -201,8 +220,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Footer: avatar + expand */}
       <div className="flex flex-col items-center gap-1.5 pt-2 border-t border-white/10 w-full px-2 shrink-0">
-        <Link href="/profile" className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold ring-2 ring-white/10 hover:ring-white/30 transition-all cursor-pointer">
-          AD
+        <Link href="/profile" className="block hover:ring-2 hover:ring-white/30 rounded-full transition-all cursor-pointer">
+          <UserAvatar user={user} size="md" />
         </Link>
         <button
           onClick={() => setCollapsed(false)}
@@ -246,11 +265,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </button>
             <span className="text-sm font-semibold text-gray-800">WTT Project Management</span>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">
-              Welcome, <span className="font-semibold text-gray-800">administrator</span>
-            </span>
-            <button className="p-1.5 rounded hover:bg-gray-100 text-gray-500 transition-colors" title="Logout">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
+              <UserAvatar user={user} size="sm" />
+              <div className="hidden sm:block">
+                <p className="text-xs font-semibold text-gray-800 leading-tight">{user?.full_name ?? "User"}</p>
+                <p className="text-[10px] text-gray-400 leading-tight truncate max-w-[140px]">{user?.email ?? ""}</p>
+              </div>
+            </div>
+            <div className="w-px h-5 bg-gray-200" />
+            <button
+              onClick={logout}
+              className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+              title="Sign out"
+            >
               <LogOut className="w-4 h-4" />
             </button>
           </div>

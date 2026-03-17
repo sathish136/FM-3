@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { Box, Eye, EyeOff, Loader2, User, Lock, LogIn, Info } from "lucide-react";
+import { Box, Eye, EyeOff, Loader2, User, Lock, LogIn } from "lucide-react";
 
 export default function Login() {
   const { login } = useAuth();
@@ -40,7 +40,7 @@ export default function Login() {
             <Box className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-gray-900 text-2xl font-bold tracking-tight">WTT Project Management</h1>
-          <p className="text-gray-500 text-sm mt-1.5">Sign in with your ERPNext account</p>
+          <p className="text-gray-500 text-sm mt-1.5">Sign in to your account</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-xl p-8">
@@ -64,7 +64,7 @@ export default function Login() {
                   type="text"
                   value={usr}
                   onChange={(e) => setUsr(e.target.value)}
-                  placeholder="gokul"
+                  placeholder="Enter your username"
                   required
                   autoComplete="username"
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-800 placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all"
@@ -137,20 +137,10 @@ export default function Login() {
               )}
             </button>
           </form>
-
-          <div className="mt-5 p-4 rounded-xl bg-blue-50 border border-blue-100 flex gap-3">
-            <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-blue-700 text-sm font-semibold mb-0.5">ERPNext Authentication</p>
-              <p className="text-blue-600 text-xs leading-relaxed">
-                Use your ERPNext username or email address and password to access the project management system.
-              </p>
-            </div>
-          </div>
         </div>
 
         <p className="text-center text-gray-400 text-xs mt-6">
-          Secure login powered by ERPNext
+          Secure · {new Date().getFullYear()} WTT International
         </p>
       </div>
     </div>

@@ -3,6 +3,7 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from "
 export interface AuthUser {
   email: string;
   full_name: string;
+  photo: string | null;
 }
 
 interface AuthContextType {
@@ -37,7 +38,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Login failed");
-    const authUser: AuthUser = { email: data.email, full_name: data.full_name };
+    const authUser: AuthUser = {
+      email: data.email,
+      full_name: data.full_name,
+      photo: data.photo ?? null,
+    };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(authUser));
     setUser(authUser);
   };

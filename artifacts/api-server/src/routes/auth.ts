@@ -3,6 +3,8 @@ import { Router } from "express";
 const authRouter = Router();
 
 const ERP_URL = process.env.ERPNEXT_URL || "https://erp.wttint.com";
+const API_KEY = process.env.ERPNEXT_API_KEY || "";
+const API_SECRET = process.env.ERPNEXT_API_SECRET || "";
 
 authRouter.post("/auth/login", async (req, res) => {
   const { usr, pwd } = req.body;
@@ -23,30 +25,44 @@ authRouter.post("/auth/login", async (req, res) => {
       return res.status(401).json({ error: typeof msg === "string" ? msg : "Invalid credentials" });
     }
 
-    const userRes = await fetch(`${ERP_URL}/api/method/frappe.auth.get_logged_user`, {
-      headers: {
-        "Accept": "application/json",
-        "Cookie": response.headers.get("set-cookie") || "",
-      },
-    });
+    const loginFullName = (data as any)?.full_name || usr;
 
-    let fullName = (data as any)?.full_name || usr;
+    // Fetch detailed user profile using system token
+    let fullName = loginFullName;
     let email = usr;
+    let photo: string | null = null;
 
-    if (userRes.ok) {
-      const userData = await userRes.json() as any;
-      const userName = userData?.message;
-      if (userName) email = userName;
+    try {
+      const profileRes = await fetch(`${ERP_URL}/api/resource/User/${encodeURIComponent(usr)}`, {
+        headers: {
+          "Accept": "application/json",
+          "Authorization": `token ${API_KEY}:${API_SECRET}`,
+        },
+      });
+      if (profileRes.ok) {
+        const profile = await profileRes.json() as any;
+        const d = profile?.data;
+        if (d) {
+          if (d.full_name) fullName = d.full_name;
+          if (d.email) email = d.email;
+          if (d.user_image) {
+            photo = d.user_image.startsWith("http") ? d.user_image : `${ERP_URL}${d.user_image}`;
+          }
+        }
+      }
+    } catch (profileErr) {
+      console.warn("Could not fetch user profile:", profileErr);
     }
 
     return res.json({
       message: "Logged In",
       full_name: fullName,
       email,
+      photo,
     });
   } catch (err: any) {
-    console.error("ERPNext login error:", err);
-    return res.status(500).json({ error: "Failed to connect to ERPNext" });
+    console.error("Login error:", err);
+    return res.status(500).json({ error: "Failed to connect to authentication server" });
   }
 });
 
