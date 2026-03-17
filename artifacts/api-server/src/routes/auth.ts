@@ -6,6 +6,16 @@ const ERP_URL = process.env.ERPNEXT_URL || "https://erp.wttint.com";
 const API_KEY = process.env.ERPNEXT_API_KEY || "";
 const API_SECRET = process.env.ERPNEXT_API_SECRET || "";
 
+async function safeJson(response: Response): Promise<Record<string, unknown>> {
+  try {
+    const text = await response.text();
+    if (!text || !text.trim()) return {};
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
+}
+
 authRouter.post("/auth/login", async (req, res) => {
   const { usr, pwd } = req.body;
   if (!usr || !pwd) {
@@ -18,35 +28,46 @@ authRouter.post("/auth/login", async (req, res) => {
       body: JSON.stringify({ usr, pwd }),
     });
 
-    const data = await response.json() as Record<string, unknown>;
+    const data = await safeJson(response);
 
     if (!response.ok) {
-      const msg = (data as any)?.message || (data as any)?._server_messages || "Invalid credentials";
-      return res.status(401).json({ error: typeof msg === "string" ? msg : "Invalid credentials" });
+      let msg: string = "Invalid credentials";
+      if (typeof data?.message === "string") msg = data.message;
+      else if (typeof data?._server_messages === "string") {
+        try {
+          const parsed = JSON.parse(data._server_messages as string);
+          const inner = Array.isArray(parsed) ? JSON.parse(parsed[0]) : parsed;
+          msg = inner?.message || msg;
+        } catch {}
+      }
+      return res.status(401).json({ error: msg });
     }
 
     const loginFullName = (data as any)?.full_name || usr;
-
-    // Fetch detailed user profile using system token
     let fullName = loginFullName;
-    let email = usr;
+    let email = typeof usr === "string" ? usr : String(usr);
     let photo: string | null = null;
 
     try {
-      const profileRes = await fetch(`${ERP_URL}/api/resource/User/${encodeURIComponent(usr)}`, {
-        headers: {
-          "Accept": "application/json",
-          "Authorization": `token ${API_KEY}:${API_SECRET}`,
-        },
-      });
+      const profileRes = await fetch(
+        `${ERP_URL}/api/resource/User/${encodeURIComponent(email)}`,
+        {
+          headers: {
+            Accept: "application/json",
+            Authorization: `token ${API_KEY}:${API_SECRET}`,
+          },
+        }
+      );
       if (profileRes.ok) {
-        const profile = await profileRes.json() as any;
-        const d = profile?.data;
+        const profile = await safeJson(profileRes);
+        const d = (profile as any)?.data;
         if (d) {
           if (d.full_name) fullName = d.full_name;
           if (d.email) email = d.email;
           if (d.user_image) {
-            photo = d.user_image.startsWith("http") ? d.user_image : `${ERP_URL}${d.user_image}`;
+            photo = String(d.user_image).startsWith("http")
+              ? d.user_image
+              : `${ERP_URL}${d.user_image}`;
           }
         }
       }
@@ -54,12 +75,7 @@ authRouter.post("/auth/login", async (req, res) => {
       console.warn("Could not fetch user profile:", profileErr);
     }
 
-    return res.json({
-      message: "Logged In",
-      full_name: fullName,
-      email,
-      photo,
-    });
+    return res.json({ message: "Logged In", full_name: fullName, email, photo });
   } catch (err: any) {
     console.error("Login error:", err);
     return res.status(500).json({ error: "Failed to connect to authentication server" });

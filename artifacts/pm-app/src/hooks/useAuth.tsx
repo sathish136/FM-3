@@ -31,17 +31,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (usr: string, pwd: string) => {
-    const res = await fetch(`${BASE}/api/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ usr, pwd }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Login failed");
+    let res: Response;
+    try {
+      res = await fetch(`${BASE}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ usr, pwd }),
+      });
+    } catch {
+      throw new Error("Unable to reach the server. Please check your connection.");
+    }
+
+    let data: Record<string, unknown> = {};
+    try {
+      const text = await res.text();
+      if (text && text.trim()) data = JSON.parse(text);
+    } catch {
+      throw new Error("Unexpected server response. Please try again.");
+    }
+
+    if (!res.ok) {
+      throw new Error((data.error as string) || "Invalid credentials");
+    }
+
     const authUser: AuthUser = {
-      email: data.email,
-      full_name: data.full_name,
-      photo: data.photo ?? null,
+      email: (data.email as string) || usr,
+      full_name: (data.full_name as string) || usr,
+      photo: (data.photo as string | null) ?? null,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(authUser));
     setUser(authUser);

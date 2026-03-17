@@ -67,6 +67,11 @@ export default defineConfig({
         target: "http://localhost:8080",
         changeOrigin: true,
       },
+      "/pm-app/api": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+        rewrite: (path: string) => path.replace(/^\/pm-app/, ""),
+      },
     },
     fs: {
       strict: true,
