@@ -20,7 +20,7 @@ type Meeting = {
   createdAt: string;
 };
 
-const BASE = `${import.meta.env.BASE_URL}api`.replace(/\/+/g, "/").replace(/\/$/, "");
+const BASE = "/api";
 
 async function fetchMeetings(): Promise<Meeting[]> {
   const r = await fetch(`${BASE}/meeting-minutes`);
