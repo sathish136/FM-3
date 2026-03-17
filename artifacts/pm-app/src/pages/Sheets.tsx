@@ -1,9 +1,10 @@
 import { Layout } from "@/components/Layout";
 import {
   Plus, Trash2, FileSpreadsheet, Download,
-  ChevronDown, Loader2, Pencil, Check, X, Upload, Share2, Mail,
+  ChevronDown, Loader2, Pencil, Check, X, Upload, Share2, Mail, ArrowLeft,
 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback, Fragment, useMemo } from "react";
+import { useParams, useLocation } from "wouter";
 import * as XLSX from "xlsx";
 import HyperFormula from "hyperformula";
 
@@ -593,13 +594,15 @@ function TabBar({ tabs, activeId, onSelect, onAdd, onRename, onDelete }: {
 
 // ─── Main Page ───────────────────────────────────────────────────────────────
 export default function Sheets() {
-  const [spreadsheets, setSpreadsheets] = useState<Spreadsheet[]>([]);
-  const [activeId, setActiveId] = useState<number | null>(null);
+  const params = useParams<{ id: string }>();
+  const [, navigate] = useLocation();
+  const spreadsheetId = params.id ? Number(params.id) : null;
+
+  const [spreadsheet, setSpreadsheet] = useState<Spreadsheet | null>(null);
   const [spData, setSpData] = useState<SpreadsheetData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [creating, setCreating] = useState(false);
   const [renamingSp, setRenamingSp] = useState(false);
   const [spNameVal, setSpNameVal] = useState("");
   const [showShare, setShowShare] = useState(false);
@@ -607,32 +610,30 @@ export default function Sheets() {
   const importRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (!spreadsheetId) { navigate("/sheets"); return; }
     (async () => {
       setLoading(true);
-      const list: Spreadsheet[] = await apiFetch("/spreadsheets").then(r => r.json());
-      setSpreadsheets(list);
-      if (list.length > 0) { setActiveId(list[0].id); setSpData(parseData(list[0].data)); }
+      try {
+        const sp: Spreadsheet = await apiFetch(`/spreadsheets/${spreadsheetId}`).then(r => r.json());
+        setSpreadsheet(sp);
+        setSpData(parseData(sp.data));
+      } catch { navigate("/sheets"); }
       setLoading(false);
     })();
-  }, []);
-
-  const loadSpreadsheet = async (id: number) => {
-    const sp: Spreadsheet = await apiFetch(`/spreadsheets/${id}`).then(r => r.json());
-    setActiveId(sp.id); setSpData(parseData(sp.data));
-  };
+  }, [spreadsheetId]);
 
   const saveDataFn = useCallback(async (data: SpreadsheetData) => {
-    if (!activeId) return;
+    if (!spreadsheetId) return;
     setSaving(true); setSaved(false);
     try {
-      await apiFetch(`/spreadsheets/${activeId}`, {
+      await apiFetch(`/spreadsheets/${spreadsheetId}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ data: JSON.stringify(data) }),
       });
       setSaved(true); setTimeout(() => setSaved(false), 2000);
     } catch {}
     setSaving(false);
-  }, [activeId]);
+  }, [spreadsheetId]);
 
   const scheduleSave = useCallback((data: SpreadsheetData) => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -645,7 +646,6 @@ export default function Sheets() {
     setSpData(updated); scheduleSave(updated);
   };
 
-  const activeSpreadsheet = spreadsheets.find(s => s.id === activeId);
   const activeTab = spData?.tabs.find(t => t.id === spData.activeTab);
 
   const handleCellChange = (cells: CellData) => updateTab(t => ({ ...t, cells }));
@@ -668,22 +668,10 @@ export default function Sheets() {
     const updated = { tabs: remaining, activeTab: spData.activeTab === id ? remaining[0].id : spData.activeTab };
     setSpData(updated); scheduleSave(updated);
   };
-  const createSpreadsheet = async () => {
-    setCreating(true);
-    const sp: Spreadsheet = await apiFetch("/spreadsheets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Untitled Spreadsheet" }) }).then(r => r.json());
-    setSpreadsheets(prev => [...prev, sp]); setActiveId(sp.id); setSpData(parseData(sp.data)); setCreating(false);
-  };
-  const deleteSpreadsheet = async (id: number) => {
-    if (!confirm("Delete this spreadsheet?")) return;
-    await apiFetch(`/spreadsheets/${id}`, { method: "DELETE" });
-    const remaining = spreadsheets.filter(s => s.id !== id);
-    setSpreadsheets(remaining);
-    if (activeId === id) { if (remaining.length > 0) { setActiveId(remaining[0].id); setSpData(parseData(remaining[0].data)); } else { setActiveId(null); setSpData(null); } }
-  };
   const renameSpreadsheet = async () => {
-    if (!activeId || !spNameVal.trim()) { setRenamingSp(false); return; }
-    await apiFetch(`/spreadsheets/${activeId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: spNameVal.trim() }) });
-    setSpreadsheets(prev => prev.map(s => s.id === activeId ? { ...s, name: spNameVal.trim() } : s));
+    if (!spreadsheetId || !spNameVal.trim()) { setRenamingSp(false); return; }
+    await apiFetch(`/spreadsheets/${spreadsheetId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: spNameVal.trim() }) });
+    setSpreadsheet(prev => prev ? { ...prev, name: spNameVal.trim() } : prev);
     setRenamingSp(false);
   };
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -699,86 +687,63 @@ export default function Sheets() {
 
   return (
     <Layout>
-      {showShare && activeSpreadsheet && (
-        <ShareModal name={activeSpreadsheet.name} onClose={() => setShowShare(false)} />
+      {showShare && spreadsheet && (
+        <ShareModal name={spreadsheet.name} onClose={() => setShowShare(false)} />
       )}
       <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden">
         {/* Top bar */}
-        <div className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-200 bg-white shrink-0 flex-wrap">
-          <FileSpreadsheet className="w-5 h-5 text-green-600 shrink-0" />
-          <div className="flex items-center gap-1.5 min-w-0">
-            {renamingSp ? (
-              <div className="flex items-center gap-1">
-                <input className="text-sm font-semibold border border-blue-400 rounded px-2 py-0.5 outline-none" value={spNameVal} autoFocus onChange={e => setSpNameVal(e.target.value)} onKeyDown={e => { if (e.key === "Enter") renameSpreadsheet(); if (e.key === "Escape") setRenamingSp(false); }} />
-                <button onClick={renameSpreadsheet} className="p-1 hover:bg-green-50 text-green-600 rounded"><Check className="w-3.5 h-3.5" /></button>
-                <button onClick={() => setRenamingSp(false)} className="p-1 hover:bg-red-50 text-red-500 rounded"><X className="w-3.5 h-3.5" /></button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-0.5">
-                <span className="text-sm font-semibold text-gray-800 truncate max-w-48">{activeSpreadsheet?.name ?? "No spreadsheet"}</span>
-                {activeSpreadsheet && <button onClick={() => { setRenamingSp(true); setSpNameVal(activeSpreadsheet.name); }} className="p-1 hover:bg-gray-100 text-gray-400 rounded"><Pencil className="w-3 h-3" /></button>}
-              </div>
-            )}
-          </div>
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 bg-white shrink-0 flex-wrap">
+          {/* Back button */}
+          <button onClick={() => navigate("/sheets")}
+            className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-gray-700 transition-colors" title="Back to Sheets">
+            <ArrowLeft className="w-4 h-4" />
+          </button>
 
-          <div className="relative group">
-            <button className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 px-2 py-1 rounded transition-colors">Files <ChevronDown className="w-3 h-3" /></button>
-            <div className="absolute left-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 hidden group-hover:block">
-              {spreadsheets.map(sp => (
-                <button key={sp.id} onClick={() => loadSpreadsheet(sp.id)} className={`w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 hover:bg-gray-50 ${sp.id === activeId ? "text-blue-600 font-medium" : "text-gray-700"}`}>
-                  <FileSpreadsheet className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{sp.name}</span>{sp.id === activeId && <Check className="w-3 h-3 ml-auto" />}
-                </button>
-              ))}
-              {spreadsheets.length > 0 && <div className="border-t border-gray-100 my-1" />}
-              {spreadsheets.map(sp => (
-                <button key={`del-${sp.id}`} onClick={() => deleteSpreadsheet(sp.id)} className="w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 text-red-500 hover:bg-red-50">
-                  <Trash2 className="w-3 h-3" />Delete "{sp.name}"
-                </button>
-              ))}
+          <div className="w-px h-5 bg-gray-200" />
+          <FileSpreadsheet className="w-5 h-5 text-green-600 shrink-0" />
+
+          {/* Spreadsheet name */}
+          {renamingSp ? (
+            <div className="flex items-center gap-1">
+              <input className="text-sm font-semibold border border-blue-400 rounded px-2 py-0.5 outline-none" value={spNameVal} autoFocus onChange={e => setSpNameVal(e.target.value)} onKeyDown={e => { if (e.key === "Enter") renameSpreadsheet(); if (e.key === "Escape") setRenamingSp(false); }} />
+              <button onClick={renameSpreadsheet} className="p-1 hover:bg-green-50 text-green-600 rounded"><Check className="w-3.5 h-3.5" /></button>
+              <button onClick={() => setRenamingSp(false)} className="p-1 hover:bg-red-50 text-red-500 rounded"><X className="w-3.5 h-3.5" /></button>
             </div>
-          </div>
+          ) : (
+            <div className="flex items-center gap-0.5">
+              <span className="text-sm font-semibold text-gray-800 truncate max-w-56">{spreadsheet?.name ?? "Spreadsheet"}</span>
+              <button onClick={() => { setRenamingSp(true); setSpNameVal(spreadsheet?.name ?? ""); }} className="p-1 hover:bg-gray-100 text-gray-400 rounded"><Pencil className="w-3 h-3" /></button>
+            </div>
+          )}
 
           <div className="ml-auto flex items-center gap-2 flex-wrap">
             {saving && <span className="text-xs text-gray-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />Saving…</span>}
             {saved && !saving && <span className="text-xs text-green-500 flex items-center gap-1"><Check className="w-3 h-3" />Saved</span>}
-            {activeId && (
-              <>
-                <input ref={importRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImport} />
-                <button onClick={() => importRef.current?.click()} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors">
-                  <Upload className="w-3.5 h-3.5" />Import
-                </button>
-              </>
-            )}
-            {activeId && spData && (
-              <button onClick={() => exportExcel(spData.tabs, activeSpreadsheet?.name ?? "spreadsheet")} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors">
-                <Download className="w-3.5 h-3.5" />Download Excel
+            <input ref={importRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImport} />
+            <button onClick={() => importRef.current?.click()} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors">
+              <Upload className="w-3.5 h-3.5" />Import
+            </button>
+            {spData && (
+              <button onClick={() => exportExcel(spData.tabs, spreadsheet?.name ?? "spreadsheet")} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors">
+                <Download className="w-3.5 h-3.5" />Download
               </button>
             )}
-            {activeId && (
-              <button onClick={() => setShowShare(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors">
-                <Share2 className="w-3.5 h-3.5" />Share
-              </button>
-            )}
-            <button onClick={createSpreadsheet} disabled={creating} className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors">
-              {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}New Spreadsheet
+            <button onClick={() => setShowShare(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors">
+              <Share2 className="w-3.5 h-3.5" />Share
             </button>
           </div>
         </div>
 
-        {!activeId || !spData ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-4 text-gray-400">
-            <FileSpreadsheet className="w-12 h-12 opacity-30" />
-            <p className="text-sm">No spreadsheets yet</p>
-            <button onClick={createSpreadsheet} disabled={creating} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium shadow-sm">
-              {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}Create your first spreadsheet
-            </button>
+        {!spData || !activeTab ? (
+          <div className="flex-1 flex items-center justify-center text-gray-400">
+            <Loader2 className="w-6 h-6 animate-spin" />
           </div>
-        ) : activeTab ? (
+        ) : (
           <div className="flex-1 flex flex-col overflow-hidden">
             <SpreadsheetGrid tab={activeTab} onChange={handleCellChange} onFormatChange={handleFormatChange} />
             <TabBar tabs={spData.tabs} activeId={spData.activeTab} onSelect={handleTabSelect} onAdd={handleTabAdd} onRename={handleTabRename} onDelete={handleTabDelete} />
           </div>
-        ) : null}
+        )}
       </div>
     </Layout>
   );
