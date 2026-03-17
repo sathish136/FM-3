@@ -54,6 +54,11 @@ const StepViewer3D = forwardRef<ViewerRef, StepViewer3DProps>(function StepViewe
   // Map: mesh index → Three.js Group for that part
   const partGroupsRef = useRef<Map<number, THREE.Group>>(new Map());
 
+  // Selection / highlight
+  const selectedPartIdxRef = useRef<number | null>(null);
+  // Store original emissive colors per mesh uuid so we can restore them
+  const origEmissiveRef = useRef<Map<string, THREE.Color>>(new Map());
+
   // Measure
   const measurePtsRef = useRef<THREE.Vector3[]>([]);
   const measureGrpRef = useRef<THREE.Group | null>(null);
@@ -203,7 +208,53 @@ const StepViewer3D = forwardRef<ViewerRef, StepViewer3DProps>(function StepViewe
     };
   }, []);
 
-  // Measure click
+  // Helpers: apply / clear highlight on a part group
+  const applyHighlight = (partIdx: number) => {
+    const grp = partGroupsRef.current.get(partIdx);
+    if (!grp) return;
+    grp.traverse((o) => {
+      if (o instanceof THREE.Mesh) {
+        const mat = o.material as THREE.MeshPhongMaterial | THREE.MeshLambertMaterial | THREE.MeshBasicMaterial;
+        if ("emissive" in mat) {
+          if (!origEmissiveRef.current.has(o.uuid)) {
+            origEmissiveRef.current.set(o.uuid, (mat as THREE.MeshPhongMaterial).emissive.clone());
+          }
+          (mat as THREE.MeshPhongMaterial).emissive.setHex(0xff6600);
+          (mat as THREE.MeshPhongMaterial).emissiveIntensity = 0.6;
+        } else {
+          // MeshBasicMaterial (wireframe) — tint color
+          if (!origEmissiveRef.current.has(o.uuid)) {
+            origEmissiveRef.current.set(o.uuid, (mat as THREE.MeshBasicMaterial).color.clone());
+          }
+          (mat as THREE.MeshBasicMaterial).color.setHex(0xff6600);
+        }
+        mat.needsUpdate = true;
+      }
+    });
+  };
+
+  const clearHighlight = (partIdx: number) => {
+    const grp = partGroupsRef.current.get(partIdx);
+    if (!grp) return;
+    grp.traverse((o) => {
+      if (o instanceof THREE.Mesh) {
+        const mat = o.material as THREE.MeshPhongMaterial | THREE.MeshLambertMaterial | THREE.MeshBasicMaterial;
+        const orig = origEmissiveRef.current.get(o.uuid);
+        if (orig) {
+          if ("emissive" in mat) {
+            (mat as THREE.MeshPhongMaterial).emissive.copy(orig);
+            (mat as THREE.MeshPhongMaterial).emissiveIntensity = 1;
+          } else {
+            (mat as THREE.MeshBasicMaterial).color.copy(orig);
+          }
+          mat.needsUpdate = true;
+          origEmissiveRef.current.delete(o.uuid);
+        }
+      }
+    });
+  };
+
+  // Measure click + selection click
   useEffect(() => {
     const renderer = rendererRef.current;
     const camera = cameraRef.current;
@@ -212,7 +263,7 @@ const StepViewer3D = forwardRef<ViewerRef, StepViewer3DProps>(function StepViewe
 
     const raycaster = new THREE.Raycaster();
     const onClick = (e: MouseEvent) => {
-      if (!measureModeRef.current || !mountRef.current) return;
+      if (!mountRef.current) return;
       const rect = mountRef.current.getBoundingClientRect();
       const mouse = new THREE.Vector2(
         ((e.clientX - rect.left) / rect.width) * 2 - 1,
@@ -224,37 +275,74 @@ const StepViewer3D = forwardRef<ViewerRef, StepViewer3DProps>(function StepViewe
       meshGroupRef.current?.traverse((o) => { if (o instanceof THREE.Mesh) targets.push(o); });
 
       const hits = raycaster.intersectObjects(targets, false);
-      if (!hits.length) return;
 
-      const pt = hits[0].point.clone();
-      measurePtsRef.current.push(pt);
+      // ── Measure mode ──
+      if (measureModeRef.current) {
+        if (!hits.length) return;
+        const pt = hits[0].point.clone();
+        measurePtsRef.current.push(pt);
 
-      if (!measureGrpRef.current) {
-        measureGrpRef.current = new THREE.Group();
-        scene.add(measureGrpRef.current);
-      }
+        if (!measureGrpRef.current) {
+          measureGrpRef.current = new THREE.Group();
+          scene.add(measureGrpRef.current);
+        }
 
-      const mk = new THREE.Mesh(
-        new THREE.SphereGeometry(modelSizeRef.current * 0.015, 12, 12),
-        new THREE.MeshBasicMaterial({ color: 0xffcc00 })
-      );
-      mk.position.copy(pt);
-      measureGrpRef.current.add(mk);
-
-      if (measurePtsRef.current.length >= 2) {
-        const [p1, p2] = [measurePtsRef.current[0], measurePtsRef.current[1]];
-        const line = new THREE.Line(
-          new THREE.BufferGeometry().setFromPoints([p1, p2]),
-          new THREE.LineBasicMaterial({ color: 0xffcc00 })
+        const mk = new THREE.Mesh(
+          new THREE.SphereGeometry(modelSizeRef.current * 0.015, 12, 12),
+          new THREE.MeshBasicMaterial({ color: 0xffcc00 })
         );
-        measureGrpRef.current.add(line);
-        onMeasureResult(p1.distanceTo(p2), p1, p2);
-        measurePtsRef.current = [];
+        mk.position.copy(pt);
+        measureGrpRef.current.add(mk);
+
+        if (measurePtsRef.current.length >= 2) {
+          const [p1, p2] = [measurePtsRef.current[0], measurePtsRef.current[1]];
+          const line = new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints([p1, p2]),
+            new THREE.LineBasicMaterial({ color: 0xffcc00 })
+          );
+          measureGrpRef.current.add(line);
+          onMeasureResult(p1.distanceTo(p2), p1, p2);
+          measurePtsRef.current = [];
+        }
+        return;
       }
+
+      // ── Selection / highlight mode ──
+      if (!hits.length) {
+        // Clicked empty space — deselect
+        if (selectedPartIdxRef.current !== null) {
+          clearHighlight(selectedPartIdxRef.current);
+          selectedPartIdxRef.current = null;
+        }
+        return;
+      }
+
+      // Find which part index the hit mesh belongs to
+      const hitMesh = hits[0].object as THREE.Mesh;
+      let clickedPartIdx: number | null = null;
+      partGroupsRef.current.forEach((grp, idx) => {
+        grp.traverse((o) => { if (o === hitMesh) clickedPartIdx = idx; });
+      });
+      if (clickedPartIdx === null) return;
+
+      // Same part → deselect
+      if (selectedPartIdxRef.current === clickedPartIdx) {
+        clearHighlight(clickedPartIdx);
+        selectedPartIdxRef.current = null;
+        return;
+      }
+
+      // New part → clear previous, highlight new
+      if (selectedPartIdxRef.current !== null) {
+        clearHighlight(selectedPartIdxRef.current);
+      }
+      selectedPartIdxRef.current = clickedPartIdx;
+      applyHighlight(clickedPartIdx);
     };
 
     renderer.domElement.addEventListener("click", onClick);
     return () => renderer.domElement.removeEventListener("click", onClick);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onMeasureResult]);
 
   // Rebuild meshes
@@ -274,6 +362,8 @@ const StepViewer3D = forwardRef<ViewerRef, StepViewer3DProps>(function StepViewe
       meshGroupRef.current = null;
     }
     partGroupsRef.current.clear();
+    selectedPartIdxRef.current = null;
+    origEmissiveRef.current.clear();
 
     if (!meshes.length) return;
 
@@ -378,6 +468,29 @@ const StepViewer3D = forwardRef<ViewerRef, StepViewer3DProps>(function StepViewe
   useEffect(() => {
     if (sceneRef.current) sceneRef.current.background = new THREE.Color(BG_COLORS[bgColor]);
   }, [bgColor]);
+
+  // Hover cursor effect
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    const camera = cameraRef.current;
+    if (!renderer || !camera) return;
+    const raycaster = new THREE.Raycaster();
+    const onMove = (e: MouseEvent) => {
+      if (measureMode || !mountRef.current) return;
+      const rect = mountRef.current.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+      raycaster.setFromCamera(mouse, camera);
+      const targets: THREE.Object3D[] = [];
+      meshGroupRef.current?.traverse((o) => { if (o instanceof THREE.Mesh) targets.push(o); });
+      const hits = raycaster.intersectObjects(targets, false);
+      renderer.domElement.style.cursor = hits.length > 0 ? "pointer" : "default";
+    };
+    renderer.domElement.addEventListener("mousemove", onMove);
+    return () => renderer.domElement.removeEventListener("mousemove", onMove);
+  }, [measureMode]);
 
   return (
     <div
