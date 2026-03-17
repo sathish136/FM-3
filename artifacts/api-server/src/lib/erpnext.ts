@@ -20,6 +20,7 @@ function hashName(name: string): number {
 
 function mapStatus(erpStatus: string): string {
   switch (erpStatus) {
+    case "On going":   return "active";
     case "Open":       return "active";
     case "Completed":  return "completed";
     case "Cancelled":  return "on_hold";
@@ -55,7 +56,9 @@ export async function fetchErpNextProjects(): Promise<ErpProject[]> {
     "percent_complete", "expected_end_date", "notes",
     "creation"
   ]);
-  const url = `${ERPNEXT_URL}/api/resource/Project?fields=${encodeURIComponent(fields)}&limit_page_length=500&order_by=creation+desc`;
+
+  const filters = JSON.stringify([["Project", "status", "=", "On going"]]);
+  const url = `${ERPNEXT_URL}/api/resource/Project?fields=${encodeURIComponent(fields)}&filters=${encodeURIComponent(filters)}&limit_page_length=500&order_by=modified+desc`;
 
   const res = await fetch(url, {
     headers: {
