@@ -5,6 +5,14 @@ import {
   Search, RefreshCw, Loader2, X, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
+import { Document, Page, pdfjs } from "react-pdf";
+import "react-pdf/dist/Page/AnnotationLayer.css";
+import "react-pdf/dist/Page/TextLayer.css";
+
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url
+).toString();
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -62,6 +70,65 @@ function formatDate(iso: string) {
 
 function proxyUrl(attach: string) {
   return `${BASE}/api/file-proxy?url=${encodeURIComponent(attach)}`;
+}
+
+function PdfViewer({ src }: { src: string }) {
+  const [numPages, setNumPages] = useState<number | null>(null);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pdfError, setPdfError] = useState(false);
+
+  return (
+    <div className="h-full flex flex-col">
+      {numPages && numPages > 1 && (
+        <div className="flex items-center justify-center gap-3 py-2 bg-gray-900 border-b border-gray-800 flex-shrink-0">
+          <button
+            onClick={() => setPageNumber(p => Math.max(1, p - 1))}
+            disabled={pageNumber <= 1}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <span className="text-xs text-gray-400">
+            Page {pageNumber} of {numPages}
+          </span>
+          <button
+            onClick={() => setPageNumber(p => Math.min(numPages, p + 1))}
+            disabled={pageNumber >= numPages}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+      <div className="flex-1 overflow-auto flex items-start justify-center p-4">
+        {pdfError ? (
+          <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3">
+            <FileText className="w-12 h-12 opacity-30" />
+            <p className="text-sm">Unable to render this PDF.</p>
+          </div>
+        ) : (
+          <Document
+            file={src}
+            onLoadSuccess={({ numPages }) => { setNumPages(numPages); setPageNumber(1); }}
+            onLoadError={() => setPdfError(true)}
+            loading={
+              <div className="flex items-center gap-2 text-gray-400 mt-20">
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span className="text-sm">Loading PDF…</span>
+              </div>
+            }
+          >
+            <Page
+              pageNumber={pageNumber}
+              renderTextLayer={true}
+              renderAnnotationLayer={false}
+              className="shadow-2xl"
+            />
+          </Document>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function FileViewer({
@@ -155,42 +222,12 @@ function FileViewer({
             />
           </div>
         ) : isPdf ? (
-          <object
-            key={src}
-            data={src}
-            type="application/pdf"
-            className="w-full h-full border-0"
-          >
-            <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-4">
-              <FileText className="w-12 h-12 opacity-30" />
-              <p className="text-sm">Your browser cannot display this PDF inline.</p>
-              <a
-                href={src}
-                download
-                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
-              >
-                Download File
-              </a>
-            </div>
-          </object>
+          <PdfViewer key={src} src={src} />
         ) : (
-          <object
-            key={src}
-            data={src}
-            className="w-full h-full border-0"
-          >
-            <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-4">
-              <FileText className="w-12 h-12 opacity-30" />
-              <p className="text-sm">Cannot preview this file type.</p>
-              <a
-                href={src}
-                download
-                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
-              >
-                Download File
-              </a>
-            </div>
-          </object>
+          <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-3">
+            <FileText className="w-12 h-12 opacity-30" />
+            <p className="text-sm">Cannot preview this file type.</p>
+          </div>
         )}
       </div>
     </div>
