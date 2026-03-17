@@ -55,7 +55,8 @@ export async function fetchErpNextProjects(): Promise<ErpProject[]> {
     "percent_complete", "expected_end_date", "notes",
     "creation"
   ]);
-  const url = `${ERPNEXT_URL}/api/resource/Project?fields=${encodeURIComponent(fields)}&limit_page_length=500&order_by=creation+desc`;
+  const filters = JSON.stringify([["Project", "status", "=", "Open"]]);
+  const url = `${ERPNEXT_URL}/api/resource/Project?fields=${encodeURIComponent(fields)}&filters=${encodeURIComponent(filters)}&limit_page_length=500&order_by=creation+desc`;
 
   const res = await fetch(url, {
     headers: {
