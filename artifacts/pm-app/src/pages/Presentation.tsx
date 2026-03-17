@@ -19,7 +19,7 @@ interface Presentation {
   project: string;
   project_name: string;
   presentation_name: string;
-  attach: string | null;
+  file_upload: string | null;
   modified: string;
 }
 
@@ -162,10 +162,10 @@ function PdfViewer({ src, pres }: { src: string; pres: Presentation }) {
                       )}
                     </div>
                   )}
-                  {pres.attach && (
+                  {pres.file_upload && (
                     <div>
                       <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-1">File</p>
-                      <p className="text-xs text-gray-400 break-all">{fileName(pres.attach)}</p>
+                      <p className="text-xs text-gray-400 break-all">{fileName(pres.file_upload)}</p>
                     </div>
                   )}
                   {pres.modified && (
@@ -236,8 +236,8 @@ function FileViewer({
   pres: Presentation; filtered: Presentation[]; currentIndex: number;
   onClose: () => void; onNavigate: (idx: number) => void;
 }) {
-  const src = pres.attach ? proxyUrl(pres.attach) : null;
-  const ext = pres.attach ? fileExt(pres.attach) : "";
+  const src = pres.file_upload ? proxyUrl(pres.file_upload) : null;
+  const ext = pres.file_upload ? fileExt(pres.file_upload) : "";
   const isPdf = ext === "pdf";
 
   useEffect(() => {
@@ -260,7 +260,7 @@ function FileViewer({
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-white truncate">{pres.presentation_name || pres.name}</p>
           <p className="text-xs text-gray-400 truncate">
-            {pres.project_name || pres.project}{pres.attach ? ` · ${fileName(pres.attach)}` : ""}
+            {pres.project_name || pres.project}{pres.file_upload ? ` · ${fileName(pres.file_upload)}` : ""}
           </p>
         </div>
         {filtered.length > 1 && (
@@ -287,7 +287,7 @@ function FileViewer({
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-3">
             <FileText className="w-12 h-12 opacity-30" />
-            <p className="text-sm font-medium text-gray-300">{fileName(pres.attach!)}</p>
+            <p className="text-sm font-medium text-gray-300">{fileName(pres.file_upload!)}</p>
             <p className="text-xs text-gray-500">Preview not available for .{ext} files</p>
           </div>
         )}
@@ -430,7 +430,7 @@ export default function PresentationPage() {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {filtered.map((r, idx) => {
-                    const ext = r.attach ? fileExt(r.attach) : "";
+                    const ext = r.file_upload ? fileExt(r.file_upload) : "";
                     return (
                       <div key={r.name} onClick={() => openViewer(idx)} className="group bg-white border border-gray-200 rounded-xl p-5 hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer">
                         <div className="flex items-start justify-between mb-4">
@@ -452,8 +452,8 @@ export default function PresentationPage() {
                             <Clock className="w-3 h-3" />
                             {r.modified ? formatDate(r.modified) : "—"}
                           </div>
-                          <span className={`text-xs font-medium px-2.5 py-1 rounded-lg transition-colors ${r.attach ? "text-indigo-600 bg-indigo-50 border border-indigo-200 group-hover:bg-indigo-600 group-hover:text-white group-hover:border-indigo-600" : "text-gray-300"}`}>
-                            {r.attach ? "Open" : "No file"}
+                          <span className={`text-xs font-medium px-2.5 py-1 rounded-lg transition-colors ${r.file_upload ? "text-indigo-600 bg-indigo-50 border border-indigo-200 group-hover:bg-indigo-600 group-hover:text-white group-hover:border-indigo-600" : "text-gray-300"}`}>
+                            {r.file_upload ? "Open" : "No file"}
                           </span>
                         </div>
                       </div>

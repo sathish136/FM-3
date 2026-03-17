@@ -111,13 +111,13 @@ export interface ErpPresentation {
   project: string;
   project_name: string;
   presentation_name: string;
-  attach: string | null;
+  file_upload: string | null;
   modified: string;
 }
 
 export async function fetchErpNextPresentations(): Promise<ErpPresentation[]> {
   const fields = JSON.stringify([
-    "name", "project", "project_name", "presentation_name", "attach", "modified",
+    "name", "project", "project_name", "presentation_name", "file_upload", "modified",
   ]);
 
   const params = new URLSearchParams({
