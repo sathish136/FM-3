@@ -1,7 +1,8 @@
 import { Layout } from "@/components/Layout";
 import { useLocation } from "wouter";
-import { Cog, Zap, Building2, Upload, FolderOpen, FileText, Search } from "lucide-react";
-import { useState } from "react";
+import { Cog, Zap, Building2, Upload, FolderOpen, FileText, Search, ChevronDown, X, Briefcase } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { useListProjects } from "@workspace/api-client-react";
 
 const TYPES = {
   mechanical: {
@@ -10,7 +11,7 @@ const TYPES = {
     color: "text-blue-600",
     bg: "bg-blue-50",
     border: "border-blue-200",
-    accent: "bg-blue-600",
+    accentCls: "bg-blue-600",
     description: "Mechanical engineering drawings, P&ID diagrams, equipment layouts and process designs.",
     categories: ["P&ID Diagrams", "Equipment Layout", "Piping Isometrics", "General Arrangement", "Fabrication Drawings"],
   },
@@ -20,7 +21,7 @@ const TYPES = {
     color: "text-amber-600",
     bg: "bg-amber-50",
     border: "border-amber-200",
-    accent: "bg-amber-500",
+    accentCls: "bg-amber-500",
     description: "Electrical single line diagrams, panel layouts, cable schedules and control schematics.",
     categories: ["Single Line Diagrams", "Panel Layouts", "Cable Schedules", "Control Schematics", "Earthing Layouts"],
   },
@@ -30,7 +31,7 @@ const TYPES = {
     color: "text-emerald-600",
     bg: "bg-emerald-50",
     border: "border-emerald-200",
-    accent: "bg-emerald-600",
+    accentCls: "bg-emerald-600",
     description: "Civil and structural drawings, foundation plans, site layouts and architectural designs.",
     categories: ["Foundation Plans", "Structural Details", "Site Layout", "Architectural Drawings", "RCC Details"],
   },
@@ -44,10 +45,97 @@ const SAMPLE_FILES = [
   { name: "As-Built Drawing", rev: "Rev 0", date: "Dec 2025", size: "1.2 MB" },
 ];
 
+function ProjectDropdown({
+  selectedProject,
+  onSelect,
+}: {
+  selectedProject: { id: number; name: string; erpnextName: string } | null;
+  onSelect: (p: { id: number; name: string; erpnextName: string } | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+  const { data: projects = [], isLoading } = useListProjects();
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const filtered = projects.filter(p =>
+    p.name.toLowerCase().includes(search.toLowerCase()) ||
+    ((p as any).erpnextName || "").toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm shadow-sm hover:border-gray-300 transition-all min-w-[220px] max-w-[280px]"
+      >
+        <Briefcase className="w-4 h-4 text-gray-400 flex-shrink-0" />
+        <span className={`flex-1 truncate text-left ${selectedProject ? "text-gray-900 font-medium" : "text-gray-400"}`}>
+          {selectedProject ? selectedProject.name : "Filter by Project"}
+        </span>
+        {selectedProject ? (
+          <X
+            className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600 flex-shrink-0"
+            onClick={e => { e.stopPropagation(); onSelect(null); setOpen(false); }}
+          />
+        ) : (
+          <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 mt-1.5 z-50 w-80 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+          <div className="p-2 border-b border-gray-100">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <input
+                autoFocus
+                type="text"
+                placeholder="Search projects..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <div className="max-h-60 overflow-y-auto">
+            {isLoading ? (
+              <div className="px-4 py-3 text-sm text-gray-400">Loading projects...</div>
+            ) : filtered.length === 0 ? (
+              <div className="px-4 py-3 text-sm text-gray-400">No projects found</div>
+            ) : (
+              filtered.map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => { onSelect({ id: p.id, name: p.name, erpnextName: (p as any).erpnextName || "" }); setOpen(false); setSearch(""); }}
+                  className={`w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors flex items-center gap-2.5 ${selectedProject?.id === p.id ? "bg-blue-50" : ""}`}
+                >
+                  <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded font-mono flex-shrink-0">
+                    {(p as any).erpnextName || "—"}
+                  </span>
+                  <span className="text-sm text-gray-800 truncate">{p.name}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Drawings() {
   const [location] = useLocation();
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [selectedProject, setSelectedProject] = useState<{ id: number; name: string; erpnextName: string } | null>(null);
 
   const type = location.endsWith("electrical")
     ? "electrical"
@@ -82,13 +170,19 @@ export default function Drawings() {
           </button>
         </div>
 
-        {/* Category filters */}
-        <div className="flex items-center gap-2 flex-wrap">
+        {/* Project filter + category filters */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Project dropdown */}
+          <ProjectDropdown selectedProject={selectedProject} onSelect={setSelectedProject} />
+
+          <div className="h-6 w-px bg-gray-200" />
+
+          {/* Category pills */}
           <button
             onClick={() => setActiveCategory(null)}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
               activeCategory === null
-                ? `${cfg.accent} text-white border-transparent`
+                ? `${cfg.accentCls} text-white border-transparent`
                 : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
             }`}
           >
@@ -100,7 +194,7 @@ export default function Drawings() {
               onClick={() => setActiveCategory(cat === activeCategory ? null : cat)}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
                 activeCategory === cat
-                  ? `${cfg.accent} text-white border-transparent`
+                  ? `${cfg.accentCls} text-white border-transparent`
                   : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
               }`}
             >
@@ -108,6 +202,22 @@ export default function Drawings() {
             </button>
           ))}
         </div>
+
+        {/* Active project banner */}
+        {selectedProject && (
+          <div className="flex items-center gap-2.5 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+            <Briefcase className="w-4 h-4 text-blue-500 flex-shrink-0" />
+            <span className="text-blue-800">Showing drawings for:</span>
+            <span className="font-bold text-blue-700 font-mono text-xs bg-white border border-blue-200 px-1.5 py-0.5 rounded">{selectedProject.erpnextName}</span>
+            <span className="font-semibold text-blue-900 truncate">{selectedProject.name}</span>
+            <button
+              onClick={() => setSelectedProject(null)}
+              className="ml-auto text-blue-500 hover:text-blue-700 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Search + file list */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
