@@ -138,49 +138,50 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 
   const MiniSidebar = () => (
-    <div className="flex flex-col h-full items-center">
-      <div className="py-4 border-b border-white/10 w-full flex justify-center">
-        <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center ring-1 ring-white/20">
-          <Box className="w-4 h-4 text-white" />
-        </div>
+    <div className="flex flex-col h-full items-center py-3 gap-1">
+      {/* Logo */}
+      <div className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center ring-1 ring-white/20 mb-2 shrink-0">
+        <Box className="w-4 h-4 text-white" />
       </div>
 
-      <nav className="flex-1 overflow-y-auto py-3 space-y-1 w-full flex flex-col items-center">
+      {/* Nav icons — no scroll, all items fit */}
+      <nav className="flex flex-col items-center gap-0.5 w-full px-2 flex-1">
         {navItems.map((item) => {
-          const isActive = location === item.path;
+          const isActive = location === item.path || item.children?.some(c => c.path === location);
           const Icon = item.icon;
           const hasChildren = item.children && item.children.length > 0;
 
           return (
-            <div key={`mini-${item.path}-${item.label}`} className="w-full flex justify-center relative group/tooltip">
+            <div key={`mini-${item.path}-${item.label}`} className="w-full relative group/tooltip">
               {!hasChildren ? (
                 <Link href={item.path}>
                   <div className={cn(
-                    "w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer",
+                    "w-full h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer",
                     isActive
-                      ? "bg-white/20 text-white ring-1 ring-white/30"
+                      ? "bg-white/20 text-white ring-1 ring-white/25 shadow-sm"
                       : "text-slate-400 hover:bg-white/10 hover:text-white"
                   )}>
-                    <Icon className="w-5 h-5" />
+                    <Icon className="w-4.5 h-4.5" style={{ width: 18, height: 18 }} />
                   </div>
                 </Link>
               ) : (
                 <div
                   className={cn(
-                    "w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer",
+                    "w-full h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer",
                     isActive
-                      ? "bg-white/20 text-white ring-1 ring-white/30"
+                      ? "bg-white/20 text-white ring-1 ring-white/25 shadow-sm"
                       : "text-slate-400 hover:bg-white/10 hover:text-white"
                   )}
                   onClick={() => toggleExpand(item.path)}
                 >
-                  <Icon className="w-5 h-5" />
+                  <Icon style={{ width: 18, height: 18 }} />
                 </div>
               )}
-              <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 z-50 pointer-events-none opacity-0 group-hover/tooltip:opacity-100 transition-opacity">
-                <div className="bg-gray-900 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-xl">
+              {/* Tooltip */}
+              <div className="absolute left-full ml-2.5 top-1/2 -translate-y-1/2 z-50 pointer-events-none opacity-0 group-hover/tooltip:opacity-100 transition-opacity delay-75">
+                <div className="bg-[#1e293b] border border-white/10 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-xl">
                   {item.label}
-                  <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
+                  <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-[#1e293b]" />
                 </div>
               </div>
             </div>
@@ -188,19 +189,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
         })}
       </nav>
 
-      <div className="pb-3 border-t border-white/10 pt-3 w-full flex justify-center">
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold cursor-pointer">
+      {/* Footer: avatar + expand */}
+      <div className="flex flex-col items-center gap-1.5 pt-2 border-t border-white/10 w-full px-2 shrink-0">
+        <Link href="/profile" className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold ring-2 ring-white/10 hover:ring-white/30 transition-all cursor-pointer">
           AD
-        </div>
-      </div>
-
-      <div className="pb-3 w-full flex justify-center">
+        </Link>
         <button
           onClick={() => setCollapsed(false)}
-          className="w-10 h-10 rounded-xl flex items-center justify-center text-slate-400 hover:bg-white/10 hover:text-white transition-all"
+          className="w-full h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-white/10 hover:text-white transition-all"
           title="Expand sidebar"
         >
-          <ChevronRightIcon className="w-4 h-4" />
+          <ChevronRightIcon className="w-3.5 h-3.5" />
         </button>
       </div>
     </div>
