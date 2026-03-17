@@ -154,13 +154,43 @@ function FileViewer({
               className="max-w-full max-h-full object-contain rounded shadow-2xl"
             />
           </div>
-        ) : (
-          <iframe
+        ) : isPdf ? (
+          <object
             key={src}
-            src={src}
+            data={src}
+            type="application/pdf"
             className="w-full h-full border-0"
-            title={drawing.name}
-          />
+          >
+            <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-4">
+              <FileText className="w-12 h-12 opacity-30" />
+              <p className="text-sm">Your browser cannot display this PDF inline.</p>
+              <a
+                href={src}
+                download
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+              >
+                Download File
+              </a>
+            </div>
+          </object>
+        ) : (
+          <object
+            key={src}
+            data={src}
+            className="w-full h-full border-0"
+          >
+            <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-4">
+              <FileText className="w-12 h-12 opacity-30" />
+              <p className="text-sm">Cannot preview this file type.</p>
+              <a
+                href={src}
+                download
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+              >
+                Download File
+              </a>
+            </div>
+          </object>
         )}
       </div>
     </div>

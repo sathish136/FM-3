@@ -125,12 +125,12 @@ authRouter.get("/file-proxy", async (req, res) => {
     if (!fileRes.ok) return res.status(fileRes.status).send("File not found");
 
     const contentType = fileRes.headers.get("content-type") || "application/octet-stream";
-    const contentDisposition = fileRes.headers.get("content-disposition");
 
+    // Strip headers that would block in-app display, force inline rendering
     res.setHeader("Content-Type", contentType);
     res.setHeader("Cache-Control", "private, max-age=3600");
-    res.setHeader("X-Frame-Options", "SAMEORIGIN");
-    if (contentDisposition) res.setHeader("Content-Disposition", contentDisposition);
+    res.setHeader("Content-Disposition", "inline");
+    // Do NOT forward X-Frame-Options or CSP from ERPNext — they block iframe embedding
 
     const buf = await fileRes.arrayBuffer();
     res.send(Buffer.from(buf));
