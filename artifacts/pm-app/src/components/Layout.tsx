@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, Box, PenTool, GitBranch,
-  Briefcase, FolderOpen, Users, Settings, ChevronDown,
+  Briefcase, Users, ChevronDown,
   ChevronRight, LogOut, ChevronLeft, ChevronRight as ChevronRightIcon, Menu,
   MonitorPlay,
 } from "lucide-react";
@@ -29,9 +29,7 @@ const navItems: NavItem[] = [
   { path: "/presentation", label: "Presentation", icon: MonitorPlay },
   { path: "/tasks", label: "P&ID Process", icon: GitBranch },
   { path: "/projects", label: "Projects", icon: Briefcase },
-  { path: "/gallery", label: "Files", icon: FolderOpen },
   { path: "/team", label: "Team", icon: Users },
-  { path: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
