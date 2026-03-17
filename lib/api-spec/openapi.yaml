@@ -1,22 +1,30 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Marketing & Project Management API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: projects
+    description: Project management
+  - name: tasks
+    description: Task management
+  - name: campaigns
+    description: Marketing campaigns
+  - name: leads
+    description: Lead management
+  - name: team
+    description: Team members
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +32,749 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /projects:
+    get:
+      operationId: listProjects
+      tags: [projects]
+      summary: List all projects
+      responses:
+        "200":
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Project"
+    post:
+      operationId: createProject
+      tags: [projects]
+      summary: Create a project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectInput"
+      responses:
+        "201":
+          description: Created project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+
+  /projects/{id}:
+    get:
+      operationId: getProject
+      tags: [projects]
+      summary: Get a project by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+    patch:
+      operationId: updateProject
+      tags: [projects]
+      summary: Update a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectInput"
+      responses:
+        "200":
+          description: Updated project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+    delete:
+      operationId: deleteProject
+      tags: [projects]
+      summary: Delete a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /tasks:
+    get:
+      operationId: listTasks
+      tags: [tasks]
+      summary: List all tasks
+      parameters:
+        - name: projectId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+    post:
+      operationId: createTask
+      tags: [tasks]
+      summary: Create a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskInput"
+      responses:
+        "201":
+          description: Created task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+
+  /tasks/{id}:
+    patch:
+      operationId: updateTask
+      tags: [tasks]
+      summary: Update a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTaskInput"
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+    delete:
+      operationId: deleteTask
+      tags: [tasks]
+      summary: Delete a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /campaigns:
+    get:
+      operationId: listCampaigns
+      tags: [campaigns]
+      summary: List all campaigns
+      responses:
+        "200":
+          description: List of campaigns
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Campaign"
+    post:
+      operationId: createCampaign
+      tags: [campaigns]
+      summary: Create a campaign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCampaignInput"
+      responses:
+        "201":
+          description: Created campaign
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+
+  /campaigns/{id}:
+    patch:
+      operationId: updateCampaign
+      tags: [campaigns]
+      summary: Update a campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCampaignInput"
+      responses:
+        "200":
+          description: Updated campaign
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+    delete:
+      operationId: deleteCampaign
+      tags: [campaigns]
+      summary: Delete a campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /leads:
+    get:
+      operationId: listLeads
+      tags: [leads]
+      summary: List all leads
+      parameters:
+        - name: campaignId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of leads
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Lead"
+    post:
+      operationId: createLead
+      tags: [leads]
+      summary: Create a lead
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLeadInput"
+      responses:
+        "201":
+          description: Created lead
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+
+  /leads/{id}:
+    patch:
+      operationId: updateLead
+      tags: [leads]
+      summary: Update a lead
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateLeadInput"
+      responses:
+        "200":
+          description: Updated lead
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+    delete:
+      operationId: deleteLead
+      tags: [leads]
+      summary: Delete a lead
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /team:
+    get:
+      operationId: listTeamMembers
+      tags: [team]
+      summary: List all team members
+      responses:
+        "200":
+          description: List of team members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TeamMember"
+    post:
+      operationId: createTeamMember
+      tags: [team]
+      summary: Create a team member
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTeamMemberInput"
+      responses:
+        "201":
+          description: Created team member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamMember"
+
+  /analytics/summary:
+    get:
+      operationId: getAnalyticsSummary
+      tags: [campaigns]
+      summary: Get analytics summary
+      responses:
+        "200":
+          description: Analytics summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsSummary"
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
+    Project:
+      type: object
+      required: [id, name, status, progress, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [planning, active, on_hold, completed]
+        priority:
+          type: string
+          enum: [low, medium, high]
+          nullable: true
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        dueDate:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+
+    CreateProjectInput:
+      type: object
+      required: [name, status]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [planning, active, on_hold, completed]
+        priority:
+          type: string
+          enum: [low, medium, high]
+          nullable: true
+        dueDate:
+          type: string
+          nullable: true
+
+    UpdateProjectInput:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [planning, active, on_hold, completed]
+        priority:
+          type: string
+          enum: [low, medium, high]
+          nullable: true
+        progress:
+          type: integer
+        dueDate:
+          type: string
+          nullable: true
+
+    Task:
+      type: object
+      required: [id, title, status, priority, createdAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        projectId:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [todo, in_progress, review, done]
+        priority:
+          type: string
+          enum: [low, medium, high]
+        assignee:
+          type: string
+          nullable: true
+        dueDate:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+
+    CreateTaskInput:
+      type: object
+      required: [title, status, priority]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        projectId:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [todo, in_progress, review, done]
+        priority:
+          type: string
+          enum: [low, medium, high]
+        assignee:
+          type: string
+          nullable: true
+        dueDate:
+          type: string
+          nullable: true
+
+    UpdateTaskInput:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        projectId:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [todo, in_progress, review, done]
+        priority:
+          type: string
+          enum: [low, medium, high]
+        assignee:
+          type: string
+          nullable: true
+        dueDate:
+          type: string
+          nullable: true
+
+    Campaign:
+      type: object
+      required: [id, name, status, type, budget, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [draft, active, paused, completed]
+        type:
+          type: string
+          enum: [email, social, ppc, content, seo, event]
+        budget:
+          type: number
+        spent:
+          type: number
+          nullable: true
+        leads:
+          type: integer
+          nullable: true
+        conversions:
+          type: integer
+          nullable: true
+        startDate:
+          type: string
+          nullable: true
+        endDate:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+
+    CreateCampaignInput:
+      type: object
+      required: [name, status, type, budget]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [draft, active, paused, completed]
+        type:
+          type: string
+          enum: [email, social, ppc, content, seo, event]
+        budget:
+          type: number
+        startDate:
+          type: string
+          nullable: true
+        endDate:
+          type: string
+          nullable: true
+
+    UpdateCampaignInput:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [draft, active, paused, completed]
+        type:
+          type: string
+          enum: [email, social, ppc, content, seo, event]
+        budget:
+          type: number
+        spent:
+          type: number
+          nullable: true
+        leads:
+          type: integer
+          nullable: true
+        conversions:
+          type: integer
+          nullable: true
+        startDate:
+          type: string
+          nullable: true
+        endDate:
+          type: string
+          nullable: true
+
+    Lead:
+      type: object
+      required: [id, name, email, status, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        company:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [new, contacted, qualified, converted, lost]
+        campaignId:
+          type: integer
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+
+    CreateLeadInput:
+      type: object
+      required: [name, email, status]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        company:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [new, contacted, qualified, converted, lost]
+        campaignId:
+          type: integer
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+
+    UpdateLeadInput:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        company:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [new, contacted, qualified, converted, lost]
+        campaignId:
+          type: integer
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+
+    TeamMember:
+      type: object
+      required: [id, name, email, role, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+        department:
+          type: string
+          nullable: true
+        avatar:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+
+    CreateTeamMemberInput:
+      type: object
+      required: [name, email, role]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+        department:
+          type: string
+          nullable: true
+
+    AnalyticsSummary:
+      type: object
+      required: [totalLeads, totalConversions, totalBudget, totalSpent, activeCampaigns, activeProjects, completedTasks, pendingTasks]
+      properties:
+        totalLeads:
+          type: integer
+        totalConversions:
+          type: integer
+        totalBudget:
+          type: number
+        totalSpent:
+          type: number
+        activeCampaigns:
+          type: integer
+        activeProjects:
+          type: integer
+        completedTasks:
+          type: integer
+        pendingTasks:
+          type: integer
+        conversionRate:
+          type: number
+          nullable: true
+        monthlyLeads:
+          type: array
+          items:
+            type: object
+            properties:
+              month:
+                type: string
+              count:
+                type: integer

@@ -1,0 +1,103 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: 'Inter', sans-serif;
+  --font-display: 'Plus Jakarta Sans', sans-serif;
+
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+}
+
+:root {
+  /* Forced Dark Theme Palette */
+  --background: 240 10% 4%;     /* #09090b - Zinc 950 */
+  --foreground: 0 0% 98%;       /* #fafafa - Zinc 50 */
+  
+  --card: 240 10% 6%;           /* #0f0f11 */
+  --card-foreground: 0 0% 98%;
+  
+  --popover: 240 10% 6%;
+  --popover-foreground: 0 0% 98%;
+  
+  --primary: 252 100% 66%;      /* #818cf8 - Indigo 500 */
+  --primary-foreground: 0 0% 100%;
+  
+  --secondary: 240 4% 16%;      /* #27272a - Zinc 800 */
+  --secondary-foreground: 0 0% 98%;
+  
+  --muted: 240 5% 16%;
+  --muted-foreground: 240 5% 65%; /* #a1a1aa - Zinc 400 */
+  
+  --accent: 252 100% 66%;
+  --accent-foreground: 0 0% 98%;
+  
+  --destructive: 0 84% 60%;     /* #ef4444 - Red 500 */
+  --destructive-foreground: 0 0% 98%;
+  
+  --border: 240 5% 16%;         /* #27272a - Zinc 800 */
+  --input: 240 5% 16%;
+  --ring: 252 100% 66%;
+
+  --radius: 0.75rem;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground font-sans antialiased selection:bg-primary/30 selection:text-primary-foreground;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display tracking-tight;
+  }
+
+  /* Custom Scrollbar for dark theme */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-white/10 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-white/20;
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply bg-white/5 backdrop-blur-md border border-white/10 shadow-xl;
+  }
+  .glass-input {
+    @apply bg-black/20 border border-white/10 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all;
+  }
+  .btn-primary {
+    @apply bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 text-white shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all hover:-translate-y-0.5 active:translate-y-0 font-medium px-4 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none;
+  }
+  .btn-secondary {
+    @apply bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-all hover:-translate-y-0.5 active:translate-y-0 font-medium px-4 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none;
+  }
+  .btn-danger {
+    @apply bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/20 transition-all hover:-translate-y-0.5 active:translate-y-0 font-medium px-4 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none;
+  }
+}
