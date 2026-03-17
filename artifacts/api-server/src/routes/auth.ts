@@ -86,4 +86,30 @@ authRouter.post("/auth/logout", (_req, res) => {
   res.json({ ok: true });
 });
 
+// Proxy ERPNext user images so browser doesn't need direct access
+authRouter.get("/auth/photo", async (req, res) => {
+  const url = req.query.url as string;
+  if (!url) return res.status(400).send("Missing url");
+
+  try {
+    const target = url.startsWith("http") ? url : `${ERP_URL}${url}`;
+    const imgRes = await fetch(target, {
+      headers: {
+        Authorization: `token ${API_KEY}:${API_SECRET}`,
+      },
+    });
+    if (!imgRes.ok) return res.status(imgRes.status).send("Not found");
+
+    const contentType = imgRes.headers.get("content-type") || "image/jpeg";
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "public, max-age=86400");
+
+    const buf = await imgRes.arrayBuffer();
+    res.send(Buffer.from(buf));
+  } catch (err) {
+    console.error("Photo proxy error:", err);
+    res.status(500).send("Failed to fetch photo");
+  }
+});
+
 export default authRouter;

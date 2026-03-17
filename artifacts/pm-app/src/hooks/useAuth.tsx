@@ -54,10 +54,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error((data.error as string) || "Invalid credentials");
     }
 
+    const rawPhoto = (data.photo as string | null) ?? null;
+    const proxyPhoto = rawPhoto
+      ? `${BASE}/api/auth/photo?url=${encodeURIComponent(rawPhoto)}`
+      : null;
+
     const authUser: AuthUser = {
       email: (data.email as string) || usr,
       full_name: (data.full_name as string) || usr,
-      photo: (data.photo as string | null) ?? null,
+      photo: proxyPhoto,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(authUser));
     setUser(authUser);

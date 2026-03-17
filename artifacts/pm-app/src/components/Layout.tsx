@@ -10,16 +10,18 @@ import { cn } from "@/lib/utils";
 import { useAuth, type AuthUser } from "@/hooks/useAuth";
 
 function UserAvatar({ user, size = "sm" }: { user: AuthUser | null; size?: "sm" | "md" }) {
+  const [imgError, setImgError] = useState(false);
   const dim = size === "md" ? "w-9 h-9" : "w-8 h-8";
   const text = size === "md" ? "text-sm" : "text-xs";
   const initials = user?.full_name?.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase() ?? "??";
-  if (user?.photo) {
+
+  if (user?.photo && !imgError) {
     return (
       <img
         src={user.photo}
         alt={user.full_name}
         className={cn(dim, "rounded-full object-cover ring-2 ring-white/20 shrink-0")}
-        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+        onError={() => setImgError(true)}
       />
     );
   }
