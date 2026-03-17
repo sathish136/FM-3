@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, Box, PenTool, GitBranch,
-  Briefcase, Users, ChevronDown,
+  Briefcase, Users, ChevronDown, FileText,
   ChevronRight, LogOut, ChevronLeft, ChevronRight as ChevronRightIcon, Menu,
   MonitorPlay,
 } from "lucide-react";
@@ -29,6 +29,7 @@ const navItems: NavItem[] = [
   { path: "/presentation", label: "Presentation", icon: MonitorPlay },
   { path: "/tasks", label: "P&ID Process", icon: GitBranch },
   { path: "/projects", label: "Projects", icon: Briefcase },
+  { path: "/meeting-minutes", label: "Meeting Minutes", icon: FileText },
   { path: "/team", label: "Team", icon: Users },
 ];
 

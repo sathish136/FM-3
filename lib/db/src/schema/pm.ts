@@ -81,3 +81,20 @@ export const teamMembersTable = pgTable("team_members", {
 export const insertTeamMemberSchema = createInsertSchema(teamMembersTable).omit({ id: true, createdAt: true });
 export type InsertTeamMember = z.infer<typeof insertTeamMemberSchema>;
 export type TeamMember = typeof teamMembersTable.$inferSelect;
+
+export const meetingMinutesTable = pgTable("meeting_minutes", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  projectId: integer("project_id").references(() => projectsTable.id, { onDelete: "set null" }),
+  attendees: text("attendees"),
+  date: text("date").notNull(),
+  rawNotes: text("raw_notes"),
+  aiSummary: text("ai_summary"),
+  actionItems: text("action_items"),
+  status: text("status").notNull().default("draft"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertMeetingMinutesSchema = createInsertSchema(meetingMinutesTable).omit({ id: true, createdAt: true });
+export type InsertMeetingMinutes = z.infer<typeof insertMeetingMinutesSchema>;
+export type MeetingMinutes = typeof meetingMinutesTable.$inferSelect;
