@@ -1,7 +1,7 @@
 import { Layout } from "@/components/Layout";
 import {
   Plus, Trash2, FileSpreadsheet, Download,
-  ChevronDown, Loader2, Pencil, Check, X, Upload,
+  ChevronDown, Loader2, Pencil, Check, X, Upload, Share2, Mail,
 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback, Fragment, useMemo } from "react";
 import * as XLSX from "xlsx";
@@ -11,11 +11,14 @@ const BASE = "/api";
 
 type CellKey = string;
 type CellData = Record<CellKey, string>;
+type CellFormat = { bold?: boolean; textColor?: string; bgColor?: string };
+type CellFormats = Record<CellKey, CellFormat>;
 
 interface Tab {
   id: string;
   name: string;
   cells: CellData;
+  formats: CellFormats;
   rows: number;
   cols: number;
 }
@@ -36,6 +39,10 @@ interface Spreadsheet {
 
 const DEFAULT_ROWS = 100;
 const DEFAULT_COLS = 26;
+const COL_W = 100;
+const ROW_H = 24;
+const ROW_HDR = 40;
+const COL_HDR = 24;
 
 function colLetter(n: number): string {
   let s = "";
@@ -61,13 +68,17 @@ function parseData(raw: string): SpreadsheetData {
         tabs: d.tabs.map((t: Tab) => ({
           ...t,
           cells: t.cells ?? {},
+          formats: t.formats ?? {},
           rows: t.rows ?? DEFAULT_ROWS,
           cols: t.cols ?? DEFAULT_COLS,
         })),
       };
     }
   } catch {}
-  return { tabs: [{ id: "tab_1", name: "Sheet 1", cells: {}, rows: DEFAULT_ROWS, cols: DEFAULT_COLS }], activeTab: "tab_1" };
+  return {
+    tabs: [{ id: "tab_1", name: "Sheet 1", cells: {}, formats: {}, rows: DEFAULT_ROWS, cols: DEFAULT_COLS }],
+    activeTab: "tab_1",
+  };
 }
 
 async function apiFetch(path: string, opts?: RequestInit) {
@@ -76,44 +87,49 @@ async function apiFetch(path: string, opts?: RequestInit) {
   return r;
 }
 
-function buildSheet2D(cells: CellData, rows: number, cols: number): (string | number | boolean | null)[][] {
-  const grid: (string | number | boolean | null)[][] = [];
-  for (let r = 0; r < rows; r++) {
-    const row: (string | number | boolean | null)[] = [];
-    for (let c = 0; c < cols; c++) {
-      const val = cells[cellKey(r, c)] ?? null;
-      if (val === null || val === "") {
-        row.push(null);
-      } else {
-        row.push(val);
-      }
-    }
-    grid.push(row);
-  }
-  return grid;
+function selectionRange(selStart: { r: number; c: number } | null, selEnd: { r: number; c: number } | null) {
+  if (!selStart) return null;
+  const end = selEnd ?? selStart;
+  return {
+    rMin: Math.min(selStart.r, end.r),
+    rMax: Math.max(selStart.r, end.r),
+    cMin: Math.min(selStart.c, end.c),
+    cMax: Math.max(selStart.c, end.c),
+  };
+}
+
+function isCellInRange(r: number, c: number, range: ReturnType<typeof selectionRange>) {
+  if (!range) return false;
+  return r >= range.rMin && r <= range.rMax && c >= range.cMin && c <= range.cMax;
 }
 
 function useFormulaEngine(cells: CellData, rows: number, cols: number) {
   return useMemo(() => {
-    const sheet = buildSheet2D(cells, rows, cols);
+    const grid: (string | number | boolean | null)[][] = [];
+    for (let r = 0; r < rows; r++) {
+      const row: (string | number | boolean | null)[] = [];
+      for (let c = 0; c < cols; c++) {
+        row.push(cells[cellKey(r, c)] ?? null);
+      }
+      grid.push(row);
+    }
     try {
-      const hf = HyperFormula.buildFromArray(sheet, { licenseKey: "gpl-v3" });
-      const getCellDisplayValue = (r: number, c: number): string => {
-        const raw = cells[cellKey(r, c)];
-        if (!raw) return "";
-        if (raw.startsWith("=")) {
-          const val = hf.getCellValue({ row: r, col: c, sheet: 0 });
-          if (val instanceof Error) return `#ERR`;
-          if (val === null || val === undefined) return "";
-          return String(val);
-        }
-        return raw;
-      };
-      return { getCellDisplayValue };
-    } catch {
+      const hf = HyperFormula.buildFromArray(grid, { licenseKey: "gpl-v3" });
       return {
-        getCellDisplayValue: (r: number, c: number) => cells[cellKey(r, c)] ?? "",
+        getCellDisplayValue: (r: number, c: number): string => {
+          const raw = cells[cellKey(r, c)];
+          if (!raw) return "";
+          if (raw.startsWith("=")) {
+            const val = hf.getCellValue({ row: r, col: c, sheet: 0 });
+            if (val instanceof Error) return `#ERR`;
+            if (val === null || val === undefined) return "";
+            return String(val);
+          }
+          return raw;
+        },
       };
+    } catch {
+      return { getCellDisplayValue: (r: number, c: number) => cells[cellKey(r, c)] ?? "" };
     }
   }, [cells, rows, cols]);
 }
@@ -139,32 +155,21 @@ function exportExcel(tabs: Tab[], filename: string) {
   XLSX.writeFile(wb, `${filename}.xlsx`);
 }
 
-function importFile(
-  file: File,
-  onImport: (tabs: Tab[]) => void
-) {
+function importFile(file: File, onImport: (tabs: Tab[]) => void) {
   const reader = new FileReader();
   reader.onload = (e) => {
     const data = new Uint8Array(e.target?.result as ArrayBuffer);
-    const wb = XLSX.read(data, { type: "array", cellFormula: true, cellText: true });
+    const wb = XLSX.read(data, { type: "array", cellFormula: true });
     const tabs: Tab[] = wb.SheetNames.map((name, idx) => {
       const ws = wb.Sheets[name];
       const aoa = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(ws, { header: 1, defval: null });
       const cells: CellData = {};
-      let maxRow = 0;
-      let maxCol = 0;
+      let maxRow = 0, maxCol = 0;
       aoa.forEach((row, ri) => {
         (row as (string | number | boolean | null)[]).forEach((val, ci) => {
           if (val !== null && val !== undefined && val !== "") {
-            const cellAddr = XLSX.utils.encode_cell({ r: ri, c: ci });
-            const wsCell = ws[cellAddr];
-            let cellVal: string;
-            if (wsCell?.f) {
-              cellVal = `=${wsCell.f}`;
-            } else {
-              cellVal = String(val);
-            }
-            cells[cellKey(ri, ci)] = cellVal;
+            const wsCell = ws[XLSX.utils.encode_cell({ r: ri, c: ci })];
+            cells[cellKey(ri, ci)] = wsCell?.f ? `=${wsCell.f}` : String(val);
             maxRow = Math.max(maxRow, ri + 1);
             maxCol = Math.max(maxCol, ci + 1);
           }
@@ -174,6 +179,7 @@ function importFile(
         id: `tab_import_${idx}_${Date.now()}`,
         name,
         cells,
+        formats: {},
         rows: Math.max(maxRow + 10, DEFAULT_ROWS),
         cols: Math.max(maxCol + 5, DEFAULT_COLS),
       };
@@ -183,35 +189,183 @@ function importFile(
   reader.readAsArrayBuffer(file);
 }
 
+// ─── Formatting Toolbar ─────────────────────────────────────────────────────
+const TEXT_COLORS = ["#000000", "#dc2626", "#16a34a", "#2563eb", "#9333ea", "#ea580c", "#0891b2", "#ffffff"];
+const BG_COLORS = ["transparent", "#fef08a", "#bbf7d0", "#bfdbfe", "#e9d5ff", "#fed7aa", "#fecaca", "#f1f5f9"];
+
+function FormattingToolbar({
+  selRange,
+  formats,
+  onFormat,
+}: {
+  selRange: ReturnType<typeof selectionRange>;
+  formats: CellFormats;
+  onFormat: (update: Partial<CellFormat>) => void;
+}) {
+  const [showTextColors, setShowTextColors] = useState(false);
+  const [showBgColors, setShowBgColors] = useState(false);
+
+  const activeFormat: CellFormat = useMemo(() => {
+    if (!selRange) return {};
+    const key = cellKey(selRange.rMin, selRange.cMin);
+    return formats[key] ?? {};
+  }, [selRange, formats]);
+
+  return (
+    <div className="flex items-center gap-1 px-3 py-1 border-b border-gray-200 bg-white shrink-0">
+      {/* Bold */}
+      <button
+        title="Bold (Ctrl+B)"
+        onClick={() => onFormat({ bold: !activeFormat.bold })}
+        className={`w-7 h-7 flex items-center justify-center rounded text-sm font-bold transition-colors
+          ${activeFormat.bold ? "bg-blue-100 text-blue-700 border border-blue-300" : "hover:bg-gray-100 text-gray-600 border border-transparent"}`}>
+        B
+      </button>
+
+      <div className="w-px h-5 bg-gray-200 mx-0.5" />
+
+      {/* Text color */}
+      <div className="relative">
+        <button
+          title="Text color"
+          onClick={() => { setShowTextColors(p => !p); setShowBgColors(false); }}
+          className="flex flex-col items-center gap-0 w-7 h-7 justify-center rounded hover:bg-gray-100 border border-transparent transition-colors">
+          <span className="text-xs font-bold leading-none" style={{ color: activeFormat.textColor ?? "#000" }}>A</span>
+          <div className="w-4 h-1 rounded-sm mt-0.5" style={{ backgroundColor: activeFormat.textColor ?? "#000" }} />
+        </button>
+        {showTextColors && (
+          <div className="absolute left-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2 flex flex-wrap gap-1 w-28">
+            {TEXT_COLORS.map(c => (
+              <button key={c} title={c}
+                onClick={() => { onFormat({ textColor: c }); setShowTextColors(false); }}
+                className="w-6 h-6 rounded border border-gray-300 hover:scale-110 transition-transform"
+                style={{ backgroundColor: c === "#ffffff" ? "#f9f9f9" : c, outline: activeFormat.textColor === c ? "2px solid #3b82f6" : undefined }} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Background color */}
+      <div className="relative">
+        <button
+          title="Background color"
+          onClick={() => { setShowBgColors(p => !p); setShowTextColors(false); }}
+          className="flex flex-col items-center gap-0 w-7 h-7 justify-center rounded hover:bg-gray-100 border border-transparent transition-colors">
+          <span className="text-xs font-bold leading-none text-gray-700">H</span>
+          <div className="w-4 h-1 rounded-sm mt-0.5 border border-gray-300" style={{ backgroundColor: activeFormat.bgColor === "transparent" || !activeFormat.bgColor ? "#fff" : activeFormat.bgColor }} />
+        </button>
+        {showBgColors && (
+          <div className="absolute left-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2 flex flex-wrap gap-1 w-28">
+            {BG_COLORS.map(c => (
+              <button key={c} title={c === "transparent" ? "None" : c}
+                onClick={() => { onFormat({ bgColor: c }); setShowBgColors(false); }}
+                className="w-6 h-6 rounded border border-gray-300 hover:scale-110 transition-transform"
+                style={{ backgroundColor: c === "transparent" ? "#fff" : c, backgroundImage: c === "transparent" ? "linear-gradient(45deg,#ccc 25%,transparent 25%,transparent 75%,#ccc 75%),linear-gradient(45deg,#ccc 25%,transparent 25%,transparent 75%,#ccc 75%)" : undefined, backgroundSize: c === "transparent" ? "8px 8px" : undefined, backgroundPosition: c === "transparent" ? "0 0,4px 4px" : undefined, outline: activeFormat.bgColor === c ? "2px solid #3b82f6" : undefined }} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="w-px h-5 bg-gray-200 mx-0.5" />
+
+      {/* Selection info */}
+      {selRange && (
+        <span className="text-xs text-gray-400 font-mono px-1">
+          {selRange.rMax - selRange.rMin + 1}R × {selRange.cMax - selRange.cMin + 1}C
+        </span>
+      )}
+
+    </div>
+  );
+}
+
+// ─── Share Modal ─────────────────────────────────────────────────────────────
+function ShareModal({ name, onClose }: { name: string; onClose: () => void }) {
+  const url = window.location.href;
+  const text = `Check out this spreadsheet: ${name}\n${url}`;
+  const waUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
+  const mailUrl = `mailto:?subject=${encodeURIComponent(`Spreadsheet: ${name}`)}&body=${encodeURIComponent(text)}`;
+  const [copied, setCopied] = useState(false);
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100]" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-80 p-5" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-gray-800">Share Spreadsheet</h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded text-gray-400"><X className="w-4 h-4" /></button>
+        </div>
+
+        <p className="text-xs text-gray-500 mb-3 truncate">{name}</p>
+
+        <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mb-4">
+          <span className="text-xs text-gray-500 flex-1 truncate">{url}</span>
+          <button onClick={copyLink} className="text-xs font-medium text-blue-600 hover:text-blue-700 shrink-0">
+            {copied ? "Copied!" : "Copy"}
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <a href={mailUrl}
+            className="flex items-center gap-3 px-4 py-2.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+            <Mail className="w-5 h-5 text-blue-500" />
+            <div>
+              <p className="text-sm font-medium text-gray-800">Share via Email</p>
+              <p className="text-xs text-gray-400">Opens your email client</p>
+            </div>
+          </a>
+          <a href={waUrl} target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-3 px-4 py-2.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" /></svg>
+            <div>
+              <p className="text-sm font-medium text-gray-800">Share via WhatsApp</p>
+              <p className="text-xs text-gray-400">Opens WhatsApp Web</p>
+            </div>
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Spreadsheet Grid ───────────────────────────────────────────────────────
-function SpreadsheetGrid({ tab, onChange }: { tab: Tab; onChange: (cells: CellData) => void }) {
-  const [selected, setSelected] = useState<{ r: number; c: number } | null>(null);
+function SpreadsheetGrid({ tab, onChange, onFormatChange }: {
+  tab: Tab;
+  onChange: (cells: CellData) => void;
+  onFormatChange: (formats: CellFormats) => void;
+}) {
+  const [selStart, setSelStart] = useState<{ r: number; c: number } | null>(null);
+  const [selEnd, setSelEnd] = useState<{ r: number; c: number } | null>(null);
   const [editing, setEditing] = useState(false);
   const [editVal, setEditVal] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const cells = tab.cells;
-  const rows = tab.rows;
-  const cols = tab.cols;
+  const { cells, formats, rows, cols } = tab;
 
   const { getCellDisplayValue } = useFormulaEngine(cells, rows, cols);
 
+  const range = selectionRange(selStart, selEnd);
+  const anchor = selStart;
+
   const getRawVal = (r: number, c: number) => cells[cellKey(r, c)] ?? "";
+  const getFmt = (r: number, c: number): CellFormat => formats[cellKey(r, c)] ?? {};
 
   const commitEdit = useCallback((r: number, c: number, val: string) => {
     const key = cellKey(r, c);
     const updated = { ...cells };
-    if (val === "") {
-      delete updated[key];
-    } else {
-      updated[key] = val;
-    }
+    if (val === "") delete updated[key];
+    else updated[key] = val;
     onChange(updated);
     setEditing(false);
   }, [cells, onChange]);
 
   const startEdit = (r: number, c: number, initial?: string) => {
-    setSelected({ r, c });
+    setSelStart({ r, c });
+    setSelEnd(null);
     setEditing(true);
     setEditVal(initial !== undefined ? initial : getRawVal(r, c));
     setTimeout(() => {
@@ -220,126 +374,150 @@ function SpreadsheetGrid({ tab, onChange }: { tab: Tab; onChange: (cells: CellDa
     }, 0);
   };
 
-  const handleCellMouseDown = (r: number, c: number, e: React.MouseEvent) => {
-    if (editing && selected) {
-      commitEdit(selected.r, selected.c, editVal);
+  const applyFormat = useCallback((update: Partial<CellFormat>) => {
+    if (!range) return;
+    const updated = { ...formats };
+    for (let r = range.rMin; r <= range.rMax; r++) {
+      for (let c = range.cMin; c <= range.cMax; c++) {
+        const key = cellKey(r, c);
+        updated[key] = { ...(updated[key] ?? {}), ...update };
+        if (!updated[key].bold && !updated[key].textColor && !updated[key].bgColor) delete updated[key];
+      }
     }
-    setSelected({ r, c });
+    onFormatChange(updated);
+  }, [range, formats, onFormatChange]);
+
+  const handleCellMouseDown = (r: number, c: number, e: React.MouseEvent) => {
+    if (editing && anchor) commitEdit(anchor.r, anchor.c, editVal);
+    if (e.shiftKey && selStart) {
+      setSelEnd({ r, c });
+      return;
+    }
+    setSelStart({ r, c });
+    setSelEnd(null);
     setEditing(false);
-    e.currentTarget.focus();
+    setIsDragging(true);
   };
 
+  const handleCellMouseEnter = (r: number, c: number) => {
+    if (isDragging) setSelEnd({ r, c });
+  };
+
+  useEffect(() => {
+    const up = () => setIsDragging(false);
+    window.addEventListener("mouseup", up);
+    return () => window.removeEventListener("mouseup", up);
+  }, []);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (!selected) return;
-    const { r, c } = selected;
+    if (!anchor) return;
+    const { r, c } = anchor;
+
+    if (e.ctrlKey || e.metaKey) {
+      if (e.key === "b" || e.key === "B") {
+        e.preventDefault();
+        const curFmt = formats[cellKey(r, c)] ?? {};
+        applyFormat({ bold: !curFmt.bold });
+        return;
+      }
+    }
 
     if (editing) {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        commitEdit(r, c, editVal);
-        setSelected({ r: Math.min(r + 1, rows - 1), c });
-      } else if (e.key === "Tab") {
-        e.preventDefault();
-        commitEdit(r, c, editVal);
-        setSelected({ r, c: e.shiftKey ? Math.max(c - 1, 0) : Math.min(c + 1, cols - 1) });
-      } else if (e.key === "Escape") {
-        setEditing(false);
-        setEditVal(getRawVal(r, c));
-      }
+      if (e.key === "Enter") { e.preventDefault(); commitEdit(r, c, editVal); setSelStart({ r: Math.min(r + 1, rows - 1), c }); setSelEnd(null); }
+      else if (e.key === "Tab") { e.preventDefault(); commitEdit(r, c, editVal); setSelStart({ r, c: e.shiftKey ? Math.max(c - 1, 0) : Math.min(c + 1, cols - 1) }); setSelEnd(null); }
+      else if (e.key === "Escape") { setEditing(false); setEditVal(getRawVal(r, c)); }
       return;
     }
 
     if (e.key === "Enter" || e.key === "F2") { e.preventDefault(); startEdit(r, c); }
     else if (e.key === "Delete" || e.key === "Backspace") { commitEdit(r, c, ""); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); setSelected({ r: Math.max(r - 1, 0), c }); }
-    else if (e.key === "ArrowDown") { e.preventDefault(); setSelected({ r: Math.min(r + 1, rows - 1), c }); }
-    else if (e.key === "ArrowLeft") { e.preventDefault(); setSelected({ r, c: Math.max(c - 1, 0) }); }
-    else if (e.key === "ArrowRight") { e.preventDefault(); setSelected({ r, c: Math.min(c + 1, cols - 1) }); }
-    else if (e.key === "Tab") { e.preventDefault(); setSelected({ r, c: e.shiftKey ? Math.max(c - 1, 0) : Math.min(c + 1, cols - 1) }); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); const nr = Math.max(r - 1, 0); if (e.shiftKey) { setSelEnd({ r: nr, c: selEnd?.c ?? c }); } else { setSelStart({ r: nr, c }); setSelEnd(null); } }
+    else if (e.key === "ArrowDown") { e.preventDefault(); const nr = Math.min(r + 1, rows - 1); if (e.shiftKey) { setSelEnd({ r: nr, c: selEnd?.c ?? c }); } else { setSelStart({ r: nr, c }); setSelEnd(null); } }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); const nc = Math.max(c - 1, 0); if (e.shiftKey) { setSelEnd({ r: selEnd?.r ?? r, c: nc }); } else { setSelStart({ r, c: nc }); setSelEnd(null); } }
+    else if (e.key === "ArrowRight") { e.preventDefault(); const nc = Math.min(c + 1, cols - 1); if (e.shiftKey) { setSelEnd({ r: selEnd?.r ?? r, c: nc }); } else { setSelStart({ r, c: nc }); setSelEnd(null); } }
+    else if (e.key === "Tab") { e.preventDefault(); setSelStart({ r, c: e.shiftKey ? Math.max(c - 1, 0) : Math.min(c + 1, cols - 1) }); setSelEnd(null); }
     else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) { startEdit(r, c, e.key); }
   };
 
-  const formulaBarVal = selected
-    ? (editing ? editVal : getRawVal(selected.r, selected.c))
+  const formulaBarVal = anchor ? (editing ? editVal : getRawVal(anchor.r, anchor.c)) : "";
+
+  const rangeLabel = anchor
+    ? range && (range.rMax > range.rMin || range.cMax > range.cMin)
+      ? `${colLetter(range.cMin)}${range.rMin + 1}:${colLetter(range.cMax)}${range.rMax + 1}`
+      : `${colLetter(anchor.c)}${anchor.r + 1}`
     : "";
 
-  const COL_W = 100;
-  const ROW_H = 24;
-  const ROW_HDR = 40;
-  const COL_HDR = 24;
-
   return (
-    <div className="flex flex-col h-full">
+    <>
       {/* Formula bar */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 bg-gray-50">
-        <div className="w-16 text-center text-xs font-mono bg-white border border-gray-200 rounded px-2 py-0.5 text-gray-600">
-          {selected ? `${colLetter(selected.c)}${selected.r + 1}` : ""}
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 bg-gray-50 shrink-0">
+        <div className="w-24 text-center text-xs font-mono bg-white border border-gray-200 rounded px-2 py-0.5 text-gray-600">
+          {rangeLabel}
         </div>
         <div className="h-4 w-px bg-gray-300" />
         <span className="text-gray-400 text-sm font-bold select-none">fx</span>
         <input
           className="flex-1 text-sm font-mono bg-white border border-gray-200 rounded px-2 py-0.5 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
           value={formulaBarVal}
-          onChange={e => {
-            if (selected) {
-              if (!editing) {
-                setEditing(true);
-              }
-              setEditVal(e.target.value);
-            }
-          }}
-          onFocus={() => { if (selected && !editing) { setEditing(true); setEditVal(getRawVal(selected.r, selected.c)); } }}
-          onBlur={() => { if (editing && selected) commitEdit(selected.r, selected.c, editVal); }}
+          onChange={e => { if (anchor) { if (!editing) setEditing(true); setEditVal(e.target.value); } }}
+          onFocus={() => { if (anchor && !editing) { setEditing(true); setEditVal(getRawVal(anchor.r, anchor.c)); } }}
+          onBlur={() => { if (editing && anchor) commitEdit(anchor.r, anchor.c, editVal); }}
           onKeyDown={e => {
-            if (!selected) return;
-            if (e.key === "Enter") { e.preventDefault(); commitEdit(selected.r, selected.c, editVal); }
-            else if (e.key === "Escape") { setEditing(false); setEditVal(getRawVal(selected.r, selected.c)); }
+            if (!anchor) return;
+            if (e.key === "Enter") { e.preventDefault(); commitEdit(anchor.r, anchor.c, editVal); }
+            else if (e.key === "Escape") { setEditing(false); setEditVal(getRawVal(anchor.r, anchor.c)); }
           }}
           placeholder="Select a cell or type a formula (e.g. =SUM(A1:A10))"
         />
       </div>
 
+      <FormattingToolbar selRange={range} formats={formats} onFormat={applyFormat} />
+
       {/* Grid */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-auto outline-none"
+        className="flex-1 overflow-auto outline-none select-none"
         tabIndex={0}
         onKeyDown={handleKeyDown}
       >
         <div style={{ display: "grid", gridTemplateColumns: `${ROW_HDR}px repeat(${cols}, ${COL_W}px)`, width: ROW_HDR + cols * COL_W }}>
-          {/* Corner */}
           <div style={{ height: COL_HDR }} className="sticky top-0 left-0 z-20 bg-gray-100 border-b border-r border-gray-300" />
-          {/* Column headers */}
           {Array.from({ length: cols }, (_, ci) => (
             <div key={ci} style={{ height: COL_HDR }}
-              className={`sticky top-0 z-10 flex items-center justify-center text-xs font-semibold text-gray-500 border-b border-r border-gray-200 select-none
-                ${selected?.c === ci ? "bg-blue-100 text-blue-700" : "bg-gray-100"}`}>
+              className={`sticky top-0 z-10 flex items-center justify-center text-xs font-semibold border-b border-r border-gray-200 select-none
+                ${range && ci >= range.cMin && ci <= range.cMax ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"}`}>
               {colLetter(ci)}
             </div>
           ))}
 
-          {/* Rows */}
           {Array.from({ length: rows }, (_, ri) => (
             <Fragment key={ri}>
               <div style={{ height: ROW_H }}
-                className={`sticky left-0 z-10 flex items-center justify-center text-xs font-medium text-gray-400 border-b border-r border-gray-200 select-none
-                  ${selected?.r === ri ? "bg-blue-100 text-blue-700" : "bg-gray-100"}`}>
+                className={`sticky left-0 z-10 flex items-center justify-center text-xs font-medium border-b border-r border-gray-200 select-none
+                  ${range && ri >= range.rMin && ri <= range.rMax ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-400"}`}>
                 {ri + 1}
               </div>
               {Array.from({ length: cols }, (_, ci) => {
-                const isSel = selected?.r === ri && selected?.c === ci;
-                const isEditing = isSel && editing;
+                const isAnchor = anchor?.r === ri && anchor?.c === ci;
+                const isEditing = isAnchor && editing;
+                const inSel = isCellInRange(ri, ci, range);
                 const rawVal = getRawVal(ri, ci);
                 const displayVal = getCellDisplayValue(ri, ci);
-                const isFormula = rawVal.startsWith("=");
-                const isError = displayVal === "#ERR";
+                const fmt = getFmt(ri, ci);
+                const isNumeric = displayVal !== "" && !isNaN(Number(displayVal));
+
                 return (
                   <div
                     key={`${ri}-${ci}`}
-                    style={{ height: ROW_H }}
-                    className={`relative border-b border-r border-gray-200 text-sm overflow-hidden bg-white
-                      ${isSel ? "ring-2 ring-inset ring-blue-500 z-10" : "hover:bg-blue-50/20"}`}
+                    style={{
+                      height: ROW_H,
+                      backgroundColor: fmt.bgColor && fmt.bgColor !== "transparent" ? fmt.bgColor : undefined,
+                    }}
+                    className={`relative border-b border-r border-gray-200 text-sm overflow-hidden
+                      ${isAnchor ? "ring-2 ring-inset ring-blue-500 z-10" : ""}
+                      ${inSel && !isAnchor ? "bg-blue-50" : (!fmt.bgColor || fmt.bgColor === "transparent") ? "bg-white hover:bg-blue-50/20" : ""}`}
                     onMouseDown={(e) => handleCellMouseDown(ri, ci, e)}
+                    onMouseEnter={() => handleCellMouseEnter(ri, ci)}
                     onDoubleClick={() => startEdit(ri, ci)}
                     tabIndex={-1}
                   >
@@ -351,16 +529,15 @@ function SpreadsheetGrid({ tab, onChange }: { tab: Tab; onChange: (cells: CellDa
                         onChange={e => setEditVal(e.target.value)}
                         onBlur={() => commitEdit(ri, ci, editVal)}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter") { e.preventDefault(); commitEdit(ri, ci, editVal); setSelected({ r: Math.min(ri + 1, rows - 1), c: ci }); }
-                          else if (e.key === "Tab") { e.preventDefault(); commitEdit(ri, ci, editVal); setSelected({ r: ri, c: e.shiftKey ? Math.max(ci - 1, 0) : Math.min(ci + 1, cols - 1) }); }
+                          if (e.key === "Enter") { e.preventDefault(); commitEdit(ri, ci, editVal); setSelStart({ r: Math.min(ri + 1, rows - 1), c: ci }); setSelEnd(null); }
+                          else if (e.key === "Tab") { e.preventDefault(); commitEdit(ri, ci, editVal); setSelStart({ r: ri, c: e.shiftKey ? Math.max(ci - 1, 0) : Math.min(ci + 1, cols - 1) }); setSelEnd(null); }
                           else if (e.key === "Escape") { setEditing(false); setEditVal(rawVal); }
                         }}
                       />
                     ) : (
-                      <span className={`px-1.5 truncate block leading-[24px]
-                        ${isError ? "text-red-500 font-mono text-xs" : ""}
-                        ${isFormula && !isError ? "text-gray-800" : "text-gray-800"}
-                        ${typeof displayVal === "string" && !isNaN(Number(displayVal)) && displayVal !== "" ? "text-right" : "text-left"}`}>
+                      <span
+                        style={{ color: fmt.textColor, fontWeight: fmt.bold ? "bold" : undefined }}
+                        className={`px-1.5 truncate block leading-[24px] ${isNumeric ? "text-right" : "text-left"}`}>
                         {displayVal}
                       </span>
                     )}
@@ -371,7 +548,7 @@ function SpreadsheetGrid({ tab, onChange }: { tab: Tab; onChange: (cells: CellDa
           ))}
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -383,30 +560,21 @@ function TabBar({ tabs, activeId, onSelect, onAdd, onRename, onDelete }: {
 }) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameVal, setRenameVal] = useState("");
-
   const startRename = (tab: Tab) => { setRenamingId(tab.id); setRenameVal(tab.name); };
-  const commitRename = () => {
-    if (renamingId && renameVal.trim()) onRename(renamingId, renameVal.trim());
-    setRenamingId(null);
-  };
-
+  const commitRename = () => { if (renamingId && renameVal.trim()) onRename(renamingId, renameVal.trim()); setRenamingId(null); };
   return (
-    <div className="flex items-center gap-px border-t border-gray-200 bg-gray-50 px-2 py-1 overflow-x-auto">
+    <div className="flex items-center gap-px border-t border-gray-200 bg-gray-50 px-2 py-1 overflow-x-auto shrink-0">
       {tabs.map(tab => (
         <div key={tab.id}
           className={`group flex items-center gap-1 px-3 py-1 rounded-t text-xs font-medium cursor-pointer select-none border border-b-0 transition-colors
             ${tab.id === activeId ? "bg-white border-gray-300 text-gray-800 shadow-sm" : "bg-gray-100 border-transparent text-gray-500 hover:bg-gray-200"}`}
-          onClick={() => onSelect(tab.id)}
-          onDoubleClick={() => startRename(tab)}>
+          onClick={() => onSelect(tab.id)} onDoubleClick={() => startRename(tab)}>
           {renamingId === tab.id ? (
-            <input
-              className="w-20 text-xs outline-none bg-transparent border-b border-blue-400"
-              value={renameVal} autoFocus
-              onChange={e => setRenameVal(e.target.value)}
+            <input className="w-20 text-xs outline-none bg-transparent border-b border-blue-400"
+              value={renameVal} autoFocus onChange={e => setRenameVal(e.target.value)}
               onBlur={commitRename}
               onKeyDown={e => { if (e.key === "Enter") commitRename(); if (e.key === "Escape") setRenamingId(null); }}
-              onClick={e => e.stopPropagation()}
-            />
+              onClick={e => e.stopPropagation()} />
           ) : <span>{tab.name}</span>}
           {tabs.length > 1 && (
             <button className="opacity-0 group-hover:opacity-100 ml-0.5 hover:text-red-500 transition-opacity"
@@ -423,7 +591,7 @@ function TabBar({ tabs, activeId, onSelect, onAdd, onRename, onDelete }: {
   );
 }
 
-// ─── Main Sheets Page ────────────────────────────────────────────────────────
+// ─── Main Page ───────────────────────────────────────────────────────────────
 export default function Sheets() {
   const [spreadsheets, setSpreadsheets] = useState<Spreadsheet[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
@@ -434,6 +602,7 @@ export default function Sheets() {
   const [creating, setCreating] = useState(false);
   const [renamingSp, setRenamingSp] = useState(false);
   const [spNameVal, setSpNameVal] = useState("");
+  const [showShare, setShowShare] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
 
@@ -452,13 +621,12 @@ export default function Sheets() {
     setActiveId(sp.id); setSpData(parseData(sp.data));
   };
 
-  const saveData = useCallback(async (data: SpreadsheetData) => {
+  const saveDataFn = useCallback(async (data: SpreadsheetData) => {
     if (!activeId) return;
     setSaving(true); setSaved(false);
     try {
       await apiFetch(`/spreadsheets/${activeId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ data: JSON.stringify(data) }),
       });
       setSaved(true); setTimeout(() => setSaved(false), 2000);
@@ -468,154 +636,102 @@ export default function Sheets() {
 
   const scheduleSave = useCallback((data: SpreadsheetData) => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => saveData(data), 1500);
-  }, [saveData]);
+    saveTimerRef.current = setTimeout(() => saveDataFn(data), 1500);
+  }, [saveDataFn]);
+
+  const updateTab = (updater: (t: Tab) => Tab) => {
+    if (!spData) return;
+    const updated: SpreadsheetData = { ...spData, tabs: spData.tabs.map(t => t.id === spData.activeTab ? updater(t) : t) };
+    setSpData(updated); scheduleSave(updated);
+  };
 
   const activeSpreadsheet = spreadsheets.find(s => s.id === activeId);
   const activeTab = spData?.tabs.find(t => t.id === spData.activeTab);
 
-  const handleCellChange = (cells: CellData) => {
-    if (!spData || !activeTab) return;
-    const updated: SpreadsheetData = { ...spData, tabs: spData.tabs.map(t => t.id === spData.activeTab ? { ...t, cells } : t) };
-    setSpData(updated); scheduleSave(updated);
-  };
-
-  const handleTabSelect = (id: string) => {
-    if (!spData) return;
-    setSpData({ ...spData, activeTab: id });
-  };
-
+  const handleCellChange = (cells: CellData) => updateTab(t => ({ ...t, cells }));
+  const handleFormatChange = (formats: CellFormats) => updateTab(t => ({ ...t, formats }));
+  const handleTabSelect = (id: string) => { if (spData) setSpData({ ...spData, activeTab: id }); };
   const handleTabAdd = () => {
     if (!spData) return;
     const newId = `tab_${Date.now()}`;
-    const updated: SpreadsheetData = {
-      ...spData,
-      tabs: [...spData.tabs, { id: newId, name: `Sheet ${spData.tabs.length + 1}`, cells: {}, rows: DEFAULT_ROWS, cols: DEFAULT_COLS }],
-      activeTab: newId,
-    };
+    const updated: SpreadsheetData = { ...spData, tabs: [...spData.tabs, { id: newId, name: `Sheet ${spData.tabs.length + 1}`, cells: {}, formats: {}, rows: DEFAULT_ROWS, cols: DEFAULT_COLS }], activeTab: newId };
     setSpData(updated); scheduleSave(updated);
   };
-
   const handleTabRename = (id: string, name: string) => {
     if (!spData) return;
-    const updated: SpreadsheetData = { ...spData, tabs: spData.tabs.map(t => t.id === id ? { ...t, name } : t) };
+    const updated = { ...spData, tabs: spData.tabs.map(t => t.id === id ? { ...t, name } : t) };
     setSpData(updated); scheduleSave(updated);
   };
-
   const handleTabDelete = (id: string) => {
     if (!spData || spData.tabs.length <= 1) return;
     const remaining = spData.tabs.filter(t => t.id !== id);
-    const updated: SpreadsheetData = { tabs: remaining, activeTab: spData.activeTab === id ? remaining[0].id : spData.activeTab };
+    const updated = { tabs: remaining, activeTab: spData.activeTab === id ? remaining[0].id : spData.activeTab };
     setSpData(updated); scheduleSave(updated);
   };
-
   const createSpreadsheet = async () => {
     setCreating(true);
-    const sp: Spreadsheet = await apiFetch("/spreadsheets", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Untitled Spreadsheet" }),
-    }).then(r => r.json());
-    setSpreadsheets(prev => [...prev, sp]);
-    setActiveId(sp.id); setSpData(parseData(sp.data)); setCreating(false);
+    const sp: Spreadsheet = await apiFetch("/spreadsheets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Untitled Spreadsheet" }) }).then(r => r.json());
+    setSpreadsheets(prev => [...prev, sp]); setActiveId(sp.id); setSpData(parseData(sp.data)); setCreating(false);
   };
-
   const deleteSpreadsheet = async (id: number) => {
     if (!confirm("Delete this spreadsheet?")) return;
     await apiFetch(`/spreadsheets/${id}`, { method: "DELETE" });
     const remaining = spreadsheets.filter(s => s.id !== id);
     setSpreadsheets(remaining);
-    if (activeId === id) {
-      if (remaining.length > 0) { setActiveId(remaining[0].id); setSpData(parseData(remaining[0].data)); }
-      else { setActiveId(null); setSpData(null); }
-    }
+    if (activeId === id) { if (remaining.length > 0) { setActiveId(remaining[0].id); setSpData(parseData(remaining[0].data)); } else { setActiveId(null); setSpData(null); } }
   };
-
   const renameSpreadsheet = async () => {
     if (!activeId || !spNameVal.trim()) { setRenamingSp(false); return; }
-    await apiFetch(`/spreadsheets/${activeId}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: spNameVal.trim() }),
-    });
+    await apiFetch(`/spreadsheets/${activeId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: spNameVal.trim() }) });
     setSpreadsheets(prev => prev.map(s => s.id === activeId ? { ...s, name: spNameVal.trim() } : s));
     setRenamingSp(false);
   };
-
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !spData) return;
-    importFile(file, (importedTabs) => {
-      const updated: SpreadsheetData = {
-        tabs: importedTabs,
-        activeTab: importedTabs[0].id,
-      };
-      setSpData(updated);
-      scheduleSave(updated);
-    });
+    importFile(file, (importedTabs) => { const updated: SpreadsheetData = { tabs: importedTabs, activeTab: importedTabs[0].id }; setSpData(updated); scheduleSave(updated); });
     e.target.value = "";
   };
 
   if (loading) {
-    return (
-      <Layout>
-        <div className="flex items-center justify-center h-96">
-          <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-        </div>
-      </Layout>
-    );
+    return <Layout><div className="flex items-center justify-center h-96"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div></Layout>;
   }
 
   return (
     <Layout>
+      {showShare && activeSpreadsheet && (
+        <ShareModal name={activeSpreadsheet.name} onClose={() => setShowShare(false)} />
+      )}
       <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden">
         {/* Top bar */}
         <div className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-200 bg-white shrink-0 flex-wrap">
           <FileSpreadsheet className="w-5 h-5 text-green-600 shrink-0" />
-
-          {/* Spreadsheet name */}
           <div className="flex items-center gap-1.5 min-w-0">
             {renamingSp ? (
               <div className="flex items-center gap-1">
-                <input
-                  className="text-sm font-semibold border border-blue-400 rounded px-2 py-0.5 outline-none focus:ring-1 focus:ring-blue-200"
-                  value={spNameVal} autoFocus
-                  onChange={e => setSpNameVal(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter") renameSpreadsheet(); if (e.key === "Escape") setRenamingSp(false); }}
-                />
+                <input className="text-sm font-semibold border border-blue-400 rounded px-2 py-0.5 outline-none" value={spNameVal} autoFocus onChange={e => setSpNameVal(e.target.value)} onKeyDown={e => { if (e.key === "Enter") renameSpreadsheet(); if (e.key === "Escape") setRenamingSp(false); }} />
                 <button onClick={renameSpreadsheet} className="p-1 hover:bg-green-50 text-green-600 rounded"><Check className="w-3.5 h-3.5" /></button>
                 <button onClick={() => setRenamingSp(false)} className="p-1 hover:bg-red-50 text-red-500 rounded"><X className="w-3.5 h-3.5" /></button>
               </div>
             ) : (
               <div className="flex items-center gap-0.5">
                 <span className="text-sm font-semibold text-gray-800 truncate max-w-48">{activeSpreadsheet?.name ?? "No spreadsheet"}</span>
-                {activeSpreadsheet && (
-                  <button onClick={() => { setRenamingSp(true); setSpNameVal(activeSpreadsheet.name); }}
-                    className="p-1 hover:bg-gray-100 text-gray-400 hover:text-gray-600 rounded transition-colors">
-                    <Pencil className="w-3 h-3" />
-                  </button>
-                )}
+                {activeSpreadsheet && <button onClick={() => { setRenamingSp(true); setSpNameVal(activeSpreadsheet.name); }} className="p-1 hover:bg-gray-100 text-gray-400 rounded"><Pencil className="w-3 h-3" /></button>}
               </div>
             )}
           </div>
 
-          {/* Files dropdown */}
           <div className="relative group">
-            <button className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 px-2 py-1 rounded transition-colors">
-              Files <ChevronDown className="w-3 h-3" />
-            </button>
+            <button className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 px-2 py-1 rounded transition-colors">Files <ChevronDown className="w-3 h-3" /></button>
             <div className="absolute left-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 hidden group-hover:block">
               {spreadsheets.map(sp => (
-                <button key={sp.id} onClick={() => loadSpreadsheet(sp.id)}
-                  className={`w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 hover:bg-gray-50 transition-colors
-                    ${sp.id === activeId ? "text-blue-600 font-medium" : "text-gray-700"}`}>
-                  <FileSpreadsheet className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate">{sp.name}</span>
-                  {sp.id === activeId && <Check className="w-3 h-3 ml-auto shrink-0" />}
+                <button key={sp.id} onClick={() => loadSpreadsheet(sp.id)} className={`w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 hover:bg-gray-50 ${sp.id === activeId ? "text-blue-600 font-medium" : "text-gray-700"}`}>
+                  <FileSpreadsheet className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{sp.name}</span>{sp.id === activeId && <Check className="w-3 h-3 ml-auto" />}
                 </button>
               ))}
               {spreadsheets.length > 0 && <div className="border-t border-gray-100 my-1" />}
               {spreadsheets.map(sp => (
-                <button key={`del-${sp.id}`} onClick={() => deleteSpreadsheet(sp.id)}
-                  className="w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 text-red-500 hover:bg-red-50 transition-colors">
+                <button key={`del-${sp.id}`} onClick={() => deleteSpreadsheet(sp.id)} className="w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 text-red-500 hover:bg-red-50">
                   <Trash2 className="w-3 h-3" />Delete "{sp.name}"
                 </button>
               ))}
@@ -625,64 +741,42 @@ export default function Sheets() {
           <div className="ml-auto flex items-center gap-2 flex-wrap">
             {saving && <span className="text-xs text-gray-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />Saving…</span>}
             {saved && !saving && <span className="text-xs text-green-500 flex items-center gap-1"><Check className="w-3 h-3" />Saved</span>}
-
-            {/* Import */}
             {activeId && (
               <>
-                <input
-                  ref={importRef}
-                  type="file"
-                  accept=".xlsx,.xls,.csv"
-                  className="hidden"
-                  onChange={handleImport}
-                />
-                <button
-                  onClick={() => importRef.current?.click()}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors">
+                <input ref={importRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImport} />
+                <button onClick={() => importRef.current?.click()} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors">
                   <Upload className="w-3.5 h-3.5" />Import
                 </button>
               </>
             )}
-
-            {/* Download Excel */}
             {activeId && spData && (
-              <button
-                onClick={() => exportExcel(spData.tabs, activeSpreadsheet?.name ?? "spreadsheet")}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors">
+              <button onClick={() => exportExcel(spData.tabs, activeSpreadsheet?.name ?? "spreadsheet")} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors">
                 <Download className="w-3.5 h-3.5" />Download Excel
               </button>
             )}
-
-            <button onClick={createSpreadsheet} disabled={creating}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors">
-              {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-              New Spreadsheet
+            {activeId && (
+              <button onClick={() => setShowShare(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors">
+                <Share2 className="w-3.5 h-3.5" />Share
+              </button>
+            )}
+            <button onClick={createSpreadsheet} disabled={creating} className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors">
+              {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}New Spreadsheet
             </button>
           </div>
         </div>
 
-        {/* Empty state */}
         {!activeId || !spData ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-4 text-gray-400">
             <FileSpreadsheet className="w-12 h-12 opacity-30" />
             <p className="text-sm">No spreadsheets yet</p>
-            <button onClick={createSpreadsheet} disabled={creating}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium shadow-sm transition-colors">
-              {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-              Create your first spreadsheet
+            <button onClick={createSpreadsheet} disabled={creating} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium shadow-sm">
+              {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}Create your first spreadsheet
             </button>
           </div>
         ) : activeTab ? (
           <div className="flex-1 flex flex-col overflow-hidden">
-            <SpreadsheetGrid tab={activeTab} onChange={handleCellChange} />
-            <TabBar
-              tabs={spData.tabs}
-              activeId={spData.activeTab}
-              onSelect={handleTabSelect}
-              onAdd={handleTabAdd}
-              onRename={handleTabRename}
-              onDelete={handleTabDelete}
-            />
+            <SpreadsheetGrid tab={activeTab} onChange={handleCellChange} onFormatChange={handleFormatChange} />
+            <TabBar tabs={spData.tabs} activeId={spData.activeTab} onSelect={handleTabSelect} onAdd={handleTabAdd} onRename={handleTabRename} onDelete={handleTabDelete} />
           </div>
         ) : null}
       </div>
