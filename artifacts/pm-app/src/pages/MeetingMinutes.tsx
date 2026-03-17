@@ -91,19 +91,24 @@ declare global {
   interface Window { SpeechRecognition: any; webkitSpeechRecognition: any; }
 }
 
+const CHUNK_INTERVAL_MS = 8000;
+
 function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: Meeting) => void }) {
   const [recording, setRecording] = useState(false);
-  const [micStatus, setMicStatus] = useState<"idle" | "requesting" | "active" | "error">("idle");
+  const [micStatus, setMicStatus] = useState<"idle" | "requesting" | "active" | "transcribing" | "error">("idle");
   const [micError, setMicError] = useState("");
   const [duration, setDuration] = useState(0);
   const [generating, setGenerating] = useState(false);
   const [streamText, setStreamText] = useState("");
-  const [interimText, setInterimText] = useState("");
   const [finalText, setFinalText] = useState(meeting.rawNotes || "");
-  const recordingRef = useRef(false);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const chunkTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const transcriptBoxRef = useRef<HTMLDivElement>(null);
+  const recordingRef = useRef(false);
   const finalTextRef = useRef(finalText);
+  const transcriptBoxRef = useRef<HTMLDivElement>(null);
   finalTextRef.current = finalText;
 
   useEffect(() => { setFinalText(meeting.rawNotes || ""); }, [meeting.id]);
@@ -112,97 +117,89 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
     if (transcriptBoxRef.current) {
       transcriptBoxRef.current.scrollTop = transcriptBoxRef.current.scrollHeight;
     }
-  }, [finalText, interimText]);
+  }, [finalText]);
 
-  const createAndStartRecognition = () => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return null;
-    const sr = new SR();
-    sr.continuous = true;
-    sr.interimResults = true;
-    sr.lang = "en-US";
-    sr.maxAlternatives = 1;
-
-    sr.onstart = () => { setMicStatus("active"); };
-
-    sr.onresult = (e: any) => {
-      let interim = "";
-      let newFinal = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) newFinal += t + " ";
-        else interim += t;
+  const transcribeChunk = async (blob: Blob) => {
+    if (blob.size < 1000) return;
+    setMicStatus("transcribing");
+    try {
+      const fd = new FormData();
+      fd.append("audio", blob, "chunk.webm");
+      const res = await fetch(`${BASE}/transcribe`, { method: "POST", body: fd });
+      const data = await res.json();
+      if (data.transcript && data.transcript.trim()) {
+        setFinalText(prev => prev ? prev + " " + data.transcript.trim() : data.transcript.trim());
       }
-      if (newFinal) setFinalText(prev => prev + newFinal);
-      setInterimText(interim);
-    };
-
-    sr.onerror = (e: any) => {
-      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-        setMicError("Microphone access denied. Please allow microphone access in your browser and try again.");
-        setMicStatus("error");
-        recordingRef.current = false;
-        setRecording(false);
-        if (timerRef.current) clearInterval(timerRef.current);
-      } else if (e.error === "no-speech") {
-        // Expected timeout — will restart via onend
-      } else if (e.error !== "aborted") {
-        setMicError(`Microphone error: ${e.error}`);
-      }
-    };
-
-    sr.onend = () => {
-      if (recordingRef.current) {
-        // Always create a fresh instance on restart to avoid stale state
-        setTimeout(() => {
-          if (recordingRef.current) {
-            const newSr = createAndStartRecognition();
-            if (newSr) {
-              try { newSr.start(); } catch {}
-            }
-          }
-        }, 150);
-      } else {
-        setMicStatus("idle");
-      }
-    };
-
-    return sr;
+    } catch (e) {
+      console.error("Transcription chunk error:", e);
+    }
+    if (recordingRef.current) setMicStatus("active");
   };
 
-  const startRecording = () => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
-      setMicError("Speech Recognition is not supported. Please use Google Chrome.");
-      setMicStatus("error");
-      return;
-    }
+  const flushChunk = () => {
+    if (!recorderRef.current || recorderRef.current.state !== "recording") return;
+    recorderRef.current.requestData();
+  };
+
+  const startRecording = async () => {
     setMicError("");
     setMicStatus("requesting");
-    recordingRef.current = true;
-    setRecording(true);
-    setDuration(0);
-    timerRef.current = setInterval(() => setDuration(d => d + 1), 1000);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
 
-    const sr = createAndStartRecognition();
-    if (sr) {
-      try { sr.start(); } catch (err) {
-        setMicError("Could not start microphone. Please check browser permissions.");
-        setMicStatus("error");
-        recordingRef.current = false;
-        setRecording(false);
-        if (timerRef.current) clearInterval(timerRef.current);
-      }
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : "audio/ogg";
+
+      const recorder = new MediaRecorder(stream, { mimeType });
+      recorderRef.current = recorder;
+      chunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          chunksRef.current.push(e.data);
+          const blob = new Blob(chunksRef.current, { type: mimeType });
+          chunksRef.current = [];
+          transcribeChunk(blob);
+        }
+      };
+
+      recorder.start();
+      recordingRef.current = true;
+      setRecording(true);
+      setMicStatus("active");
+      setDuration(0);
+      timerRef.current = setInterval(() => setDuration(d => d + 1), 1000);
+      chunkTimerRef.current = setInterval(flushChunk, CHUNK_INTERVAL_MS);
+    } catch (err: any) {
+      const msg = err?.name === "NotAllowedError"
+        ? "Microphone access denied. Please allow microphone in your browser settings."
+        : `Could not access microphone: ${err?.message || err}`;
+      setMicError(msg);
+      setMicStatus("error");
     }
   };
 
   const stopRecording = async () => {
     recordingRef.current = false;
+    if (chunkTimerRef.current) clearInterval(chunkTimerRef.current);
     if (timerRef.current) clearInterval(timerRef.current);
+
+    if (recorderRef.current && recorderRef.current.state !== "inactive") {
+      recorderRef.current.requestData();
+      recorderRef.current.stop();
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
     setRecording(false);
     setMicStatus("idle");
-    setInterimText("");
 
+    await new Promise(r => setTimeout(r, 600));
     const text = finalTextRef.current.trim();
     if (!text) return;
     const updated = await apiFetch(`/meeting-minutes/${meeting.id}`, {
@@ -220,6 +217,13 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
 
   const fmt = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
+  const statusLabel = () => {
+    if (!recording) return null;
+    if (micStatus === "requesting") return <span className="ml-auto text-[10px] text-amber-500 font-semibold">Requesting mic…</span>;
+    if (micStatus === "transcribing") return <span className="ml-auto flex items-center gap-1 text-[10px] text-violet-500 font-semibold"><Loader2 className="w-2.5 h-2.5 animate-spin" />Transcribing…</span>;
+    return <span className="ml-auto flex items-center gap-1 text-[10px] text-red-500 font-semibold"><span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />Listening…</span>;
+  };
+
   return (
     <div className="space-y-4">
       {/* Controls */}
@@ -227,15 +231,14 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
         {recording ? (
           <div className="flex items-center gap-2 text-red-600 font-semibold text-sm">
             <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
-            {micStatus === "requesting" ? "Requesting microphone…" : `Recording — ${fmt(duration)}`}
+            Recording — {fmt(duration)}
           </div>
         ) : micStatus === "error" ? (
-          <p className="text-sm text-orange-600 text-center">{micError}</p>
+          <p className="text-sm text-orange-600 text-center max-w-xs">{micError}</p>
         ) : (
           <p className="text-sm text-gray-400">Press the button to start recording your meeting</p>
         )}
 
-        {/* Big mic visual when recording */}
         {recording && (
           <div className="relative flex items-center justify-center w-16 h-16">
             <span className="absolute w-16 h-16 rounded-full bg-red-200 animate-ping opacity-50" />
@@ -265,28 +268,27 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
             </button>
           )}
         </div>
+
+        {recording && (
+          <p className="text-[11px] text-gray-400">Transcript updates every ~8 seconds as you speak</p>
+        )}
       </div>
 
       {/* Live transcript box — always visible in voice/record mode */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2">
-          <Radio className={`w-3 h-3 ${recording && micStatus === "active" ? "text-red-500" : "text-blue-500"}`} />
+          <Radio className={`w-3 h-3 ${recording ? "text-red-500" : "text-blue-500"}`} />
           <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Live Transcript</span>
-          {recording && micStatus === "active"
-            ? <span className="ml-auto flex items-center gap-1 text-[10px] text-red-500 font-semibold"><span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />Listening…</span>
-            : recording && micStatus === "requesting"
-            ? <span className="ml-auto text-[10px] text-amber-500 font-semibold">Requesting mic…</span>
-            : !finalText && <span className="ml-auto text-[10px] text-gray-400">Press Start Recording to begin</span>
-          }
+          {statusLabel()}
+          {!recording && !finalText && <span className="ml-auto text-[10px] text-gray-400">Press Start Recording to begin</span>}
         </div>
         <div ref={transcriptBoxRef} className="px-4 py-3 min-h-[120px] max-h-64 overflow-y-auto text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-          {!finalText && !interimText && (
+          {!finalText && (
             <span className="text-gray-300 italic">
-              {recording ? "Start speaking — words will appear here in real time…" : "Your transcribed speech will appear here as you speak…"}
+              {recording ? "Speak now — transcript will appear after each 8-second segment…" : "Your transcribed speech will appear here as you speak…"}
             </span>
           )}
           {finalText}
-          {interimText && <span className="text-gray-400 italic">{interimText}</span>}
         </div>
       </div>
 
