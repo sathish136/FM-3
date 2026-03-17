@@ -45,16 +45,6 @@ export default defineConfig({
           ),
         ]
       : []),
-    {
-      name: "configure-response-headers",
-      configureServer(server) {
-        server.middlewares.use((_req, res, next) => {
-          res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-          res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
-          next();
-        });
-      },
-    },
   ],
   resolve: {
     alias: {
@@ -72,10 +62,6 @@ export default defineConfig({
     port,
     host: "0.0.0.0",
     allowedHosts: true,
-    headers: {
-      "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Embedder-Policy": "require-corp",
-    },
     fs: {
       strict: false,
       deny: ["**/.*"],
@@ -85,16 +71,8 @@ export default defineConfig({
     port,
     host: "0.0.0.0",
     allowedHosts: true,
-    headers: {
-      "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Embedder-Policy": "require-corp",
-    },
   },
-  assetsInclude: ["**/*.wasm"],
   optimizeDeps: {
     exclude: ["occt-import-js"],
-  },
-  worker: {
-    format: "es",
   },
 });

@@ -1,15 +1,8 @@
 import { useState, useCallback, useRef } from "react";
 import { lazy, Suspense } from "react";
+import { loadStepFile, type MeshData } from "@/lib/stepLoader";
 
 const StepViewer3D = lazy(() => import("@/components/StepViewer3D"));
-
-interface MeshData {
-  positions: number[];
-  normals: number[];
-  indices: number[];
-  color: [number, number, number] | null;
-  name: string;
-}
 
 type Status = "idle" | "loading" | "loaded" | "error";
 
@@ -37,9 +30,8 @@ export default function App() {
   const [fileName, setFileName] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const workerRef = useRef<Worker | null>(null);
 
-  const processFile = useCallback((file: File) => {
+  const processFile = useCallback(async (file: File) => {
     const name = file.name;
     const ext = name.split(".").pop()?.toLowerCase();
     if (ext !== "step" && ext !== "stp") {
@@ -54,48 +46,17 @@ export default function App() {
     setProgress("Reading file...");
     setMeshes([]);
 
-    if (workerRef.current) {
-      workerRef.current.terminate();
-    }
-
-    const worker = new Worker(new URL("./workers/stepWorker.ts", import.meta.url), {
-      type: "module",
-    });
-    workerRef.current = worker;
-
-    worker.onmessage = (e: MessageEvent) => {
-      const data = e.data;
-      if (data.type === "progress") {
-        setProgress(data.message);
-      } else if (data.type === "result") {
-        setMeshes(data.meshes);
-        setStatus("loaded");
-        setProgress("");
-        worker.terminate();
-        workerRef.current = null;
-      } else if (data.type === "error") {
-        setError(data.message);
-        setStatus("error");
-        setProgress("");
-        worker.terminate();
-        workerRef.current = null;
-      }
-    };
-
-    worker.onerror = (e) => {
-      setError(`Worker error: ${e.message}`);
+    try {
+      const buffer = await file.arrayBuffer();
+      const result = await loadStepFile(buffer, (msg) => setProgress(msg));
+      setMeshes(result);
+      setStatus("loaded");
+      setProgress("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error occurred while processing file.");
       setStatus("error");
       setProgress("");
-      worker.terminate();
-      workerRef.current = null;
-    };
-
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const buffer = ev.target?.result as ArrayBuffer;
-      worker.postMessage({ fileBuffer: buffer, fileName: name }, [buffer]);
-    };
-    reader.readAsArrayBuffer(file);
+    }
   }, []);
 
   const handleDrop = useCallback(
@@ -122,10 +83,6 @@ export default function App() {
     setError("");
     setFileName("");
     if (fileInputRef.current) fileInputRef.current.value = "";
-    if (workerRef.current) {
-      workerRef.current.terminate();
-      workerRef.current = null;
-    }
   };
 
   return (
@@ -144,29 +101,31 @@ export default function App() {
           <div className="flex items-center gap-3">
             <span className="text-xs text-gray-400 truncate max-w-[200px]">{fileName}</span>
 
-            <label className="flex items-center gap-1.5 text-xs text-gray-300 cursor-pointer select-none">
-              <div
-                className={`relative w-9 h-5 rounded-full transition-colors ${wireframe ? "bg-blue-600" : "bg-gray-600"}`}
-                onClick={() => setWireframe((v) => !v)}
-              >
-                <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${wireframe ? "translate-x-4" : ""}`} />
-              </div>
+            <button
+              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border transition-colors ${
+                wireframe
+                  ? "bg-blue-600 border-blue-500 text-white"
+                  : "bg-[#2a2a4a] border-[#3a3a6a] text-gray-300 hover:border-blue-500/50"
+              }`}
+              onClick={() => setWireframe((v) => !v)}
+            >
               Wireframe
-            </label>
+            </button>
 
-            <label className="flex items-center gap-1.5 text-xs text-gray-300 cursor-pointer select-none">
-              <div
-                className={`relative w-9 h-5 rounded-full transition-colors ${showEdges ? "bg-blue-600" : "bg-gray-600"}`}
-                onClick={() => setShowEdges((v) => !v)}
-              >
-                <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${showEdges ? "translate-x-4" : ""}`} />
-              </div>
+            <button
+              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border transition-colors ${
+                showEdges
+                  ? "bg-blue-600 border-blue-500 text-white"
+                  : "bg-[#2a2a4a] border-[#3a3a6a] text-gray-300 hover:border-blue-500/50"
+              }`}
+              onClick={() => setShowEdges((v) => !v)}
+            >
               Edges
-            </label>
+            </button>
 
             <button
               onClick={resetViewer}
-              className="px-3 py-1.5 text-xs bg-[#2a2a4a] hover:bg-[#3a3a5a] border border-[#3a3a6a] rounded-md transition-colors"
+              className="px-3 py-1.5 text-xs bg-[#2a2a4a] hover:bg-[#3a3a5a] border border-[#3a3a6a] rounded-md transition-colors text-gray-300"
             >
               Open New File
             </button>
