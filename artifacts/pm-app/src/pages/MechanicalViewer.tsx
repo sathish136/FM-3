@@ -1,6 +1,6 @@
 import { Layout } from "@/components/Layout";
 import {
-  Box, Search, Droplets, ChevronDown, FilterX, Upload, X, ArrowLeft,
+  Box, Search, Droplets, ChevronDown, FilterX, Upload, X, ArrowLeft, ExternalLink,
 } from "lucide-react";
 import { useState, useMemo, useCallback, useRef, lazy, Suspense } from "react";
 import { useListProjects } from "@workspace/api-client-react";
@@ -555,12 +555,18 @@ export default function MechanicalViewer() {
                     {entry.label}
                   </span>
                 </div>
-                <button
-                  onClick={() => setOpenEntry(entry)}
-                  className="w-full flex items-center justify-center gap-2 mt-2 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-xs font-semibold text-blue-700 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all"
-                >
-                  <Upload className="w-3.5 h-3.5" /> Upload & View 3D Model
-                </button>
+                <div className="flex gap-2 mt-2">
+                  <button className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-xs font-medium text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-all">
+                    <ExternalLink className="w-3.5 h-3.5" /> Open 3D Model
+                  </button>
+                  <button
+                    onClick={() => setOpenEntry(entry)}
+                    title="Upload STEP file"
+                    className="flex items-center justify-center w-9 h-9 rounded-lg bg-gray-50 border border-gray-200 text-gray-500 hover:bg-blue-600 hover:border-blue-600 hover:text-white transition-all flex-shrink-0"
+                  >
+                    <Upload className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
