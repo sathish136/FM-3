@@ -2,7 +2,7 @@ import { Layout } from "@/components/Layout";
 import {
   PenLine, FolderOpen, Search, RefreshCw, Loader2, X,
   ChevronLeft, ChevronRight, AlertCircle, ZoomIn, ZoomOut,
-  RotateCcw, PanelRight, FileText, Tag, Layers, Building2,
+  PanelRight, FileText, Layers, Building2,
   Calendar, Info,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
@@ -44,6 +44,185 @@ function deptColor(dept: string) {
   return { bg: "bg-purple-50", text: "text-purple-700", dot: "bg-purple-500" };
 }
 
+// ── Toolbar primitives (matches 3D viewer style) ──────────────────────────────
+type BgPreset = "dark" | "navy" | "light" | "white";
+type ViewMode = "normal" | "invert";
+
+interface ToolBtnProps {
+  active?: boolean;
+  title: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}
+function ToolBtn({ active, title, onClick, children }: ToolBtnProps) {
+  return (
+    <button
+      title={title}
+      onClick={onClick}
+      className={`w-9 h-9 flex items-center justify-center rounded-md text-xs transition-colors border
+        ${active
+          ? "bg-blue-600 border-blue-500 text-white"
+          : "bg-transparent border-transparent text-gray-400 hover:bg-white/10 hover:text-white hover:border-white/10"
+        }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function TbDivider() {
+  return <div className="w-full h-px bg-white/10 my-1" />;
+}
+
+function TbSection({ label }: { label: string }) {
+  return <div className="text-[9px] text-gray-500 uppercase tracking-widest px-1 mt-2 mb-0.5 select-none w-full text-center">{label}</div>;
+}
+
+const BG_CLASSES: Record<BgPreset, string> = {
+  dark: "bg-gray-950",
+  navy: "bg-[#1a1a2e]",
+  light: "bg-[#dde3ee]",
+  white: "bg-white",
+};
+
+// ── Left Sidebar (shared by PDF and Image viewer) ────────────────────────────
+interface ViewerSidebarProps {
+  viewMode: ViewMode;
+  setViewMode: (v: ViewMode) => void;
+  bgPreset: BgPreset;
+  setBgPreset: (v: BgPreset) => void;
+  scale?: number;
+  setScale?: (fn: (s: number) => number) => void;
+  rotate?: number;
+  setRotate?: (fn: (r: number) => number) => void;
+  showPanel?: boolean;
+  setShowPanel?: (fn: (v: boolean) => boolean) => void;
+  numPages?: number | null;
+  page?: number;
+  setPage?: (fn: (p: number) => number) => void;
+}
+
+function ViewerSidebar({
+  viewMode, setViewMode,
+  bgPreset, setBgPreset,
+  scale, setScale,
+  rotate, setRotate,
+  showPanel, setShowPanel,
+  numPages, page, setPage,
+}: ViewerSidebarProps) {
+  return (
+    <aside className="w-12 bg-[#16162a] border-r border-white/10 flex flex-col items-center py-2 gap-0.5 flex-shrink-0 overflow-y-auto">
+
+      <TbSection label="View" />
+
+      <ToolBtn title="Normal view" active={viewMode === "normal"} onClick={() => setViewMode("normal")}>
+        <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor">
+          <circle cx="10" cy="10" r="7" />
+        </svg>
+      </ToolBtn>
+
+      <ToolBtn title="Invert colors" active={viewMode === "invert"} onClick={() => setViewMode("invert")}>
+        <svg viewBox="0 0 20 20" className="w-5 h-5">
+          <path fill="currentColor" d="M10 3a7 7 0 1 1 0 14V3z" />
+          <path fill="none" stroke="currentColor" strokeWidth="1.5" d="M10 3a7 7 0 1 0 0 14" />
+        </svg>
+      </ToolBtn>
+
+      <TbDivider />
+      <TbSection label="BG" />
+
+      <ToolBtn title="Dark background" active={bgPreset === "dark"} onClick={() => setBgPreset("dark")}>
+        <div className="w-5 h-5 rounded-full bg-[#0f0f1a] border border-white/30" />
+      </ToolBtn>
+      <ToolBtn title="Navy background" active={bgPreset === "navy"} onClick={() => setBgPreset("navy")}>
+        <div className="w-5 h-5 rounded-full bg-[#1a1a2e] border border-white/30" />
+      </ToolBtn>
+      <ToolBtn title="Light background" active={bgPreset === "light"} onClick={() => setBgPreset("light")}>
+        <div className="w-5 h-5 rounded-full bg-[#dde3ee] border border-black/20" />
+      </ToolBtn>
+      <ToolBtn title="White background" active={bgPreset === "white"} onClick={() => setBgPreset("white")}>
+        <div className="w-5 h-5 rounded-full bg-white border border-black/20" />
+      </ToolBtn>
+
+      {setScale && (
+        <>
+          <TbDivider />
+          <TbSection label="Zoom" />
+
+          <ToolBtn title="Zoom in" onClick={() => setScale(s => Math.min(4, parseFloat((s + 0.2).toFixed(1))))}>
+            <ZoomIn className="w-4 h-4" />
+          </ToolBtn>
+
+          <ToolBtn title="Fit (reset zoom)" onClick={() => setScale(() => 1.2)}>
+            <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.4">
+              <rect x="3" y="3" width="14" height="14" rx="1" />
+              <polyline points="7,3 3,3 3,7" />
+              <polyline points="13,3 17,3 17,7" />
+              <polyline points="3,13 3,17 7,17" />
+              <polyline points="17,13 17,17 13,17" />
+            </svg>
+          </ToolBtn>
+
+          <ToolBtn title="Zoom out" onClick={() => setScale(s => Math.max(0.4, parseFloat((s - 0.2).toFixed(1))))}>
+            <ZoomOut className="w-4 h-4" />
+          </ToolBtn>
+        </>
+      )}
+
+      {setRotate && (
+        <>
+          <TbDivider />
+          <TbSection label="Rotate" />
+
+          <ToolBtn title="Rotate counter-clockwise" onClick={() => setRotate(r => (r - 90 + 360) % 360)}>
+            <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M4.5 10a5.5 5.5 0 1 0 1.2-3.4" />
+              <polyline points="2,4 4.5,6.5 7,4" />
+            </svg>
+          </ToolBtn>
+
+          <ToolBtn title="Rotate clockwise" onClick={() => setRotate(r => (r + 90) % 360)}>
+            <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M15.5 10a5.5 5.5 0 1 1-1.2-3.4" />
+              <polyline points="18,4 15.5,6.5 13,4" />
+            </svg>
+          </ToolBtn>
+        </>
+      )}
+
+      {numPages != null && setPage && page != null && (
+        <>
+          <TbDivider />
+          <TbSection label="Pages" />
+
+          <ToolBtn title="Previous page" onClick={() => setPage(p => Math.max(1, p - 1))}>
+            <ChevronLeft className="w-4 h-4" />
+          </ToolBtn>
+
+          <div className="text-[9px] text-gray-400 tabular-nums text-center leading-tight py-0.5 select-none">
+            {page}<br /><span className="text-gray-600">/{numPages}</span>
+          </div>
+
+          <ToolBtn title="Next page" onClick={() => setPage(p => Math.min(numPages!, p + 1))}>
+            <ChevronRight className="w-4 h-4" />
+          </ToolBtn>
+        </>
+      )}
+
+      {setShowPanel && showPanel != null && (
+        <>
+          <TbDivider />
+          <TbSection label="Info" />
+
+          <ToolBtn title="Toggle info panel" active={showPanel} onClick={() => setShowPanel(v => !v)}>
+            <PanelRight className="w-4 h-4" />
+          </ToolBtn>
+        </>
+      )}
+    </aside>
+  );
+}
+
 // ── PDF Fullscreen Viewer ─────────────────────────────────────────────────────
 function PdfViewer({
   src, record, onClose,
@@ -51,8 +230,11 @@ function PdfViewer({
   const [numPages, setNumPages] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const [scale, setScale] = useState(1.2);
+  const [rotate, setRotate] = useState(0);
   const [showPanel, setShowPanel] = useState(true);
   const [pdfErr, setPdfErr] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("normal");
+  const [bgPreset, setBgPreset] = useState<BgPreset>("dark");
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -64,79 +246,74 @@ function PdfViewer({
     return () => window.removeEventListener("keydown", h);
   }, [onClose, page, numPages]);
 
+  const bgClass = BG_CLASSES[bgPreset];
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gray-950">
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-800 flex-shrink-0">
+      <div className="flex items-center gap-3 px-4 py-3 bg-[#16162a] border-b border-white/10 flex-shrink-0">
         <button onClick={onClose}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors">
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
           <X className="w-4 h-4" /> Close
         </button>
-        <div className="h-5 w-px bg-gray-700" />
+        <div className="h-5 w-px bg-white/10" />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-white truncate">{record.name}</p>
           <p className="text-xs text-gray-400 truncate">{record.project_name || record.project}</p>
         </div>
-        <div className="flex items-center gap-0.5 bg-gray-800 rounded-lg px-0.5">
-          <button onClick={() => setScale(s => Math.max(0.4, parseFloat((s - 0.2).toFixed(1))))}
-            className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 transition-colors">
-            <ZoomOut className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={() => setScale(1.2)}
-            className="px-2 text-xs text-gray-300 w-12 text-center">
-            {Math.round(scale * 100)}%
-          </button>
-          <button onClick={() => setScale(s => Math.min(4, parseFloat((s + 0.2).toFixed(1))))}
-            className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 transition-colors">
-            <ZoomIn className="w-3.5 h-3.5" />
-          </button>
+        {/* Zoom indicator in header */}
+        <div className="flex items-center gap-0.5 bg-white/5 rounded-lg px-2 py-1">
+          <span className="text-xs text-gray-400 tabular-nums w-10 text-center">{Math.round(scale * 100)}%</span>
         </div>
-        <button onClick={() => setScale(1.2)}
-          className="flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-400 hover:text-white hover:bg-gray-700 transition-colors">
-          <RotateCcw className="w-3 h-3" /> Fit
-        </button>
+        {/* Page indicator in header */}
         {numPages && (
-          <div className="flex items-center gap-0.5">
-            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
-              className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-colors">
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="text-xs text-gray-400 w-24 text-center tabular-nums">{page} / {numPages}</span>
-            <button onClick={() => setPage(p => Math.min(numPages!, p + 1))} disabled={page >= numPages}
-              className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-colors">
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
+          <span className="text-xs text-gray-400 tabular-nums">{page} / {numPages}</span>
         )}
-        <button onClick={() => setShowPanel(s => !s)}
-          className={`p-1.5 rounded transition-colors ${showPanel ? "bg-gray-700 text-white" : "text-gray-400 hover:text-white hover:bg-gray-700"}`}>
-          <PanelRight className="w-4 h-4" />
-        </button>
       </div>
 
       {/* Body */}
       <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 overflow-auto bg-gray-900 flex items-start justify-center p-6">
+        {/* Left Toolbar */}
+        <ViewerSidebar
+          viewMode={viewMode} setViewMode={setViewMode}
+          bgPreset={bgPreset} setBgPreset={setBgPreset}
+          scale={scale} setScale={setScale}
+          rotate={rotate} setRotate={setRotate}
+          showPanel={showPanel} setShowPanel={setShowPanel}
+          numPages={numPages} page={page} setPage={setPage}
+        />
+
+        {/* Document area */}
+        <div className={`flex-1 overflow-auto flex items-start justify-center p-6 transition-colors ${bgClass}`}>
           {pdfErr ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3 pt-20">
               <FileText className="w-12 h-12 opacity-30" />
               <p className="text-sm">Unable to render this file.</p>
             </div>
           ) : (
-            <Document
-              file={src}
-              onLoadSuccess={({ numPages }) => { setNumPages(numPages); setPage(1); }}
-              onLoadError={() => setPdfErr(true)}
-              loading={<div className="flex items-center gap-2 text-gray-400 mt-20"><Loader2 className="w-5 h-5 animate-spin" /><span className="text-sm">Loading…</span></div>}
-            >
-              <Page pageNumber={page} scale={scale} renderTextLayer renderAnnotationLayer={false} className="shadow-2xl" />
-            </Document>
+            <div style={{ filter: viewMode === "invert" ? "invert(1) hue-rotate(180deg)" : undefined }}>
+              <Document
+                file={src}
+                onLoadSuccess={({ numPages }) => { setNumPages(numPages); setPage(1); }}
+                onLoadError={() => setPdfErr(true)}
+                loading={<div className="flex items-center gap-2 text-gray-400 mt-20"><Loader2 className="w-5 h-5 animate-spin" /><span className="text-sm">Loading…</span></div>}
+              >
+                <Page
+                  pageNumber={page}
+                  scale={scale}
+                  rotate={rotate}
+                  renderTextLayer
+                  renderAnnotationLayer={false}
+                  className="shadow-2xl"
+                />
+              </Document>
+            </div>
           )}
         </div>
 
         {/* Info panel */}
         {showPanel && (
-          <div className="w-60 bg-gray-950 border-l border-gray-800 p-4 space-y-4 flex-shrink-0 overflow-auto">
+          <div className="w-60 bg-[#16162a] border-l border-white/10 p-4 space-y-4 flex-shrink-0 overflow-auto">
             <div className="flex items-center gap-2">
               <Info className="w-3.5 h-3.5 text-gray-500" />
               <span className="text-[10px] text-gray-500 uppercase tracking-widest">Record Info</span>
@@ -324,6 +501,17 @@ export default function Design2DPage() {
     ? ["png", "jpg", "jpeg", "gif", "svg"].includes(fileExt(viewer.attach))
     : false;
 
+  // Image viewer state
+  const [imgViewMode, setImgViewMode] = useState<ViewMode>("normal");
+  const [imgBgPreset, setImgBgPreset] = useState<BgPreset>("dark");
+  const [imgRotate, setImgRotate] = useState(0);
+
+  const resetImageState = () => {
+    setImgViewMode("normal");
+    setImgBgPreset("dark");
+    setImgRotate(0);
+  };
+
   return (
     <>
       {/* PDF Fullscreen viewer */}
@@ -337,22 +525,40 @@ export default function Design2DPage() {
 
       {/* Image fullscreen viewer */}
       {viewer && isImage && (
-        <div className="fixed inset-0 z-50 bg-gray-950 flex flex-col">
-          <div className="flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-800 flex-shrink-0">
-            <button onClick={() => setViewer(null)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors">
+        <div className="fixed inset-0 z-50 flex flex-col bg-gray-950">
+          {/* Header */}
+          <div className="flex items-center gap-3 px-4 py-3 bg-[#16162a] border-b border-white/10 flex-shrink-0">
+            <button onClick={() => { setViewer(null); resetImageState(); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
               <X className="w-4 h-4" /> Close
             </button>
-            <div className="h-5 w-px bg-gray-700" />
+            <div className="h-5 w-px bg-white/10" />
             <p className="text-sm font-semibold text-white truncate flex-1">{viewer.name}</p>
             <p className="text-xs text-gray-400">{viewer.project_name || viewer.project}</p>
           </div>
-          <div className="flex-1 overflow-auto flex items-center justify-center p-6">
-            <img
-              src={proxyUrl(viewer.attach!)}
-              alt={viewer.name}
-              className="max-w-full max-h-full object-contain shadow-2xl rounded"
+
+          {/* Body */}
+          <div className="flex-1 flex overflow-hidden">
+            {/* Left Toolbar */}
+            <ViewerSidebar
+              viewMode={imgViewMode} setViewMode={setImgViewMode}
+              bgPreset={imgBgPreset} setBgPreset={setImgBgPreset}
+              rotate={imgRotate} setRotate={setImgRotate}
             />
+
+            {/* Image area */}
+            <div className={`flex-1 overflow-auto flex items-center justify-center p-6 transition-colors ${BG_CLASSES[imgBgPreset]}`}>
+              <img
+                src={proxyUrl(viewer.attach!)}
+                alt={viewer.name}
+                style={{
+                  transform: `rotate(${imgRotate}deg)`,
+                  filter: imgViewMode === "invert" ? "invert(1) hue-rotate(180deg)" : undefined,
+                  transition: "transform 0.25s ease",
+                }}
+                className="max-w-full max-h-full object-contain shadow-2xl rounded"
+              />
+            </div>
           </div>
         </div>
       )}
