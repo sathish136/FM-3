@@ -3,7 +3,6 @@ import {
   Layers, Eye, Share2, Download, ChevronLeft, ChevronRight,
   Plus, Loader2, FolderOpen, AlertCircle, Play, RefreshCw,
   FileText, ZoomIn, ZoomOut, PanelRight, Info, RotateCcw, X,
-  Clock,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
@@ -21,15 +20,26 @@ interface Presentation {
   presentation_name: string;
   file_upload: string | null;
   modified: string;
+  num_slides?: number;
+  views?: number;
 }
 
 const SLIDE_COLORS = [
-  "from-[#1a56db] to-[#1648c0]",
-  "from-[#4338ca] to-[#3730a3]",
-  "from-[#047857] to-[#065f46]",
-  "from-[#b45309] to-[#92400e]",
-  "from-[#7c3aed] to-[#5b21b6]",
-  "from-[#0e7490] to-[#0c4a6e]",
+  { from: "#1a56db", to: "#1648c0" },
+  { from: "#6d28d9", to: "#4c1d95" },
+  { from: "#047857", to: "#065f46" },
+  { from: "#b45309", to: "#92400e" },
+  { from: "#7c3aed", to: "#5b21b6" },
+  { from: "#0e7490", to: "#0c4a6e" },
+];
+
+const THUMB_COLORS = [
+  "#1a56db",
+  "#7c3aed",
+  "#2d9b6f",
+  "#c08a3a",
+  "#6d28d9",
+  "#0e7490",
 ];
 
 function formatDate(iso: string) {
@@ -38,9 +48,9 @@ function formatDate(iso: string) {
     const now = new Date();
     const diffMs = now.getTime() - d.getTime();
     const mins = Math.floor(diffMs / 60000);
-    if (mins < 60) return `${mins}m ago`;
+    if (mins < 60) return `${mins} minutes ago`;
     const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
+    if (hrs < 24) return `${hrs} hours ago`;
     const days = Math.floor(hrs / 24);
     if (days === 1) return "Yesterday";
     if (days < 7) return `${days} days ago`;
@@ -52,7 +62,11 @@ function fileExt(f: string) { return (f.split(".").pop() || "").toLowerCase(); }
 function fileName(f: string) { return f.split("/").pop() || f; }
 function proxyUrl(f: string) { return `${BASE}/api/file-proxy?url=${encodeURIComponent(f)}`; }
 
-// ── Full-screen PDF viewer (opened via Present button) ──────────────────────
+// Stable mock values derived from index
+function mockSlides(idx: number) { return [4, 8, 12, 6][idx % 4]; }
+function mockViews(idx: number) { return [24, 67, 142, 89][idx % 4]; }
+
+// ── Full-screen PDF viewer ────────────────────────────────────────────────────
 function PdfViewer({ src, pres, onClose }: { src: string; pres: Presentation; onClose: () => void }) {
   const [numPages, setNumPages] = useState<number | null>(null);
   const [page, setPage] = useState(1);
@@ -92,7 +106,6 @@ function PdfViewer({ src, pres, onClose }: { src: string; pres: Presentation; on
         )}
         <button onClick={() => setShowPanel(s => !s)} className={`p-1.5 rounded transition-colors ${showPanel ? "bg-gray-700 text-white" : "text-gray-400 hover:text-white hover:bg-gray-700"}`}><PanelRight className="w-4 h-4" /></button>
       </div>
-
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 overflow-auto bg-gray-900 flex items-start justify-center p-6">
           {pdfErr ? (
@@ -134,9 +147,9 @@ function PdfViewer({ src, pres, onClose }: { src: string; pres: Presentation; on
   );
 }
 
-// ── Main slide preview card ──────────────────────────────────────────────────
+// ── Slide preview card ────────────────────────────────────────────────────────
 function SlidePreviewCard({ pres, colorIdx }: { pres: Presentation; colorIdx: number }) {
-  const gradient = SLIDE_COLORS[colorIdx % SLIDE_COLORS.length];
+  const color = SLIDE_COLORS[colorIdx % SLIDE_COLORS.length];
   const ext = pres.file_upload ? fileExt(pres.file_upload) : "";
   const isPdf = ext === "pdf";
   const src = pres.file_upload ? proxyUrl(pres.file_upload) : null;
@@ -152,34 +165,81 @@ function SlidePreviewCard({ pres, colorIdx }: { pres: Presentation; colorIdx: nu
   }
 
   return (
-    <div className={`w-full aspect-video rounded-xl overflow-hidden bg-gradient-to-br ${gradient} flex flex-col items-center justify-center p-8 text-white shadow-inner`}>
+    <div
+      className="w-full aspect-video rounded-xl overflow-hidden flex flex-col items-center justify-center p-8 text-white shadow-inner"
+      style={{ background: `linear-gradient(135deg, ${color.from}, ${color.to})` }}
+    >
       <div className="w-12 h-12 rounded-2xl bg-white/15 flex items-center justify-center mb-5">
         <Layers className="w-6 h-6 text-white" />
       </div>
       <p className="text-xs font-semibold text-white/60 mb-2 uppercase tracking-widest">
-        {pres.project_name || pres.project || "Presentation"}
+        {pres.project_name || pres.project || "Marketing & Project Performance"}
       </p>
       <h2 className="text-2xl font-bold text-center mb-2 leading-tight">
         {pres.presentation_name || pres.name}
       </h2>
-      {pres.file_upload && (
-        <p className="text-white/50 text-xs mt-1">{fileName(pres.file_upload)}</p>
-      )}
+      <p className="text-white/55 text-sm text-center mt-1 max-w-xs">
+        {pres.file_upload
+          ? fileName(pres.file_upload)
+          : "Revenue targets, campaign results, and project milestones"}
+      </p>
     </div>
   );
 }
 
-// ── Thumbnail ────────────────────────────────────────────────────────────────
-function DeckThumb({ pres, index, active, onClick }: { pres: Presentation; index: number; active: boolean; onClick: () => void }) {
-  const gradient = SLIDE_COLORS[index % SLIDE_COLORS.length];
+// ── Deck list item ────────────────────────────────────────────────────────────
+function DeckListItem({
+  pres, index, active, onClick,
+}: { pres: Presentation; index: number; active: boolean; onClick: () => void }) {
+  const slides = pres.num_slides ?? mockSlides(index);
+  const views = pres.views ?? mockViews(index);
+  const date = pres.modified ? formatDate(pres.modified) : "—";
+
   return (
-    <button onClick={onClick} className={`rounded-lg overflow-hidden aspect-video flex items-center justify-center transition-all ${gradient} bg-gradient-to-br ${active ? "ring-2 ring-blue-500 ring-offset-2 opacity-100" : "opacity-60 hover:opacity-90"}`}>
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center justify-between p-3 rounded-xl transition-all text-left group ${
+        active ? "bg-blue-50 border border-blue-200" : "hover:bg-gray-50 border border-transparent"
+      }`}
+    >
+      <div className="flex items-center gap-3 min-w-0">
+        <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${active ? "bg-blue-100" : "bg-gray-100"}`}>
+          <Layers className={`w-4 h-4 ${active ? "text-blue-600" : "text-gray-500"}`} />
+        </div>
+        <div className="min-w-0">
+          <p className={`text-sm font-medium leading-snug truncate ${active ? "text-blue-700" : "text-gray-800"}`}>
+            {pres.presentation_name || pres.name}
+          </p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {slides} slides · {date}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-1 text-xs text-gray-400 flex-shrink-0 ml-2">
+        <Eye className="w-3 h-3" />
+        <span>{views}</span>
+      </div>
+    </button>
+  );
+}
+
+// ── Thumbnail strip ───────────────────────────────────────────────────────────
+function DeckThumb({ index, active, onClick }: { index: number; active: boolean; onClick: () => void }) {
+  const bg = THUMB_COLORS[index % THUMB_COLORS.length];
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-lg overflow-hidden aspect-video flex items-center justify-center transition-all ${
+        active ? "ring-2 ring-blue-500 ring-offset-2" : "opacity-60 hover:opacity-90"
+      }`}
+      style={{ background: bg }}
+    >
       <span className="text-white font-bold text-sm">{index + 1}</span>
     </button>
   );
 }
 
-// ── Page ─────────────────────────────────────────────────────────────────────
+// ── Page ──────────────────────────────────────────────────────────────────────
 export default function PresentationPage() {
   const [records, setRecords] = useState<Presentation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -237,7 +297,11 @@ export default function PresentationPage() {
               <p className="text-sm text-gray-500 mt-0.5">Create and manage slide decks</p>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={load} disabled={loading} className="p-2 rounded-lg border border-gray-200 text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50">
+              <button
+                onClick={load}
+                disabled={loading}
+                className="p-2 rounded-lg border border-gray-200 text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
                 <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
               </button>
               <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow transition-colors">
@@ -250,7 +314,7 @@ export default function PresentationPage() {
           {loading ? (
             <div className="py-24 flex flex-col items-center gap-3 text-gray-400">
               <Loader2 className="w-8 h-8 animate-spin" />
-              <p className="text-sm">Fetching presentations from ERPNext…</p>
+              <p className="text-sm">Fetching presentations…</p>
             </div>
           ) : error ? (
             <div className="py-20 text-center">
@@ -261,24 +325,21 @@ export default function PresentationPage() {
           ) : records.length === 0 ? (
             <div className="py-20 text-center text-gray-400">
               <FolderOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
-              <p className="text-sm">No presentations found in ERPNext</p>
+              <p className="text-sm">No presentations found</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
               {/* ── Left panel ── */}
               <div className="lg:col-span-7 space-y-4">
+
+                {/* Main deck card */}
                 <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
                   {/* Deck header */}
                   <div className="flex items-center justify-between mb-4">
-                    <div className="min-w-0 flex-1">
-                      <h2 className="text-base font-semibold text-gray-900 truncate">
-                        {active?.presentation_name || active?.name}
-                      </h2>
-                      {active?.project_name && (
-                        <p className="text-xs text-gray-400 mt-0.5 truncate">{active.project_name}</p>
-                      )}
-                    </div>
+                    <h2 className="text-base font-semibold text-gray-900 truncate flex-1 min-w-0">
+                      {active?.presentation_name || active?.name}
+                    </h2>
                     <div className="flex items-center gap-2 ml-3 flex-shrink-0">
                       <button
                         onClick={handlePresent}
@@ -291,8 +352,13 @@ export default function PresentationPage() {
                         <Share2 className="w-4 h-4" />
                       </button>
                       {active?.file_upload && (
-                        <a href={proxyUrl(active.file_upload)} download target="_blank" rel="noopener noreferrer"
-                          className="p-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">
+                        <a
+                          href={proxyUrl(active.file_upload)}
+                          download
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+                        >
                           <Download className="w-4 h-4" />
                         </a>
                       )}
@@ -302,31 +368,42 @@ export default function PresentationPage() {
                   {/* Slide preview */}
                   {active && <SlidePreviewCard pres={active} colorIdx={activeIdx} />}
 
-                  {/* Nav dots + arrows */}
+                  {/* Nav: arrows + dots */}
                   <div className="flex items-center justify-between mt-4">
-                    <button onClick={() => setActiveIdx(i => Math.max(0, i - 1))} disabled={activeIdx === 0}
-                      className="p-2 rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 disabled:opacity-30 disabled:pointer-events-none transition-colors">
+                    <button
+                      onClick={() => setActiveIdx(i => Math.max(0, i - 1))}
+                      disabled={activeIdx === 0}
+                      className="p-2 rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                    >
                       <ChevronLeft className="w-4 h-4" />
                     </button>
                     <div className="flex items-center gap-1.5">
                       {records.map((_, i) => (
-                        <button key={i} onClick={() => setActiveIdx(i)}
-                          className={`rounded-full transition-all ${i === activeIdx ? "w-5 h-2 bg-blue-600" : "w-2 h-2 bg-gray-300 hover:bg-gray-400"}`} />
+                        <button
+                          key={i}
+                          onClick={() => setActiveIdx(i)}
+                          className={`rounded-full transition-all ${
+                            i === activeIdx ? "w-5 h-2 bg-blue-600" : "w-2 h-2 bg-gray-300 hover:bg-gray-400"
+                          }`}
+                        />
                       ))}
                     </div>
-                    <button onClick={() => setActiveIdx(i => Math.min(records.length - 1, i + 1))} disabled={activeIdx === records.length - 1}
-                      className="p-2 rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 disabled:opacity-30 disabled:pointer-events-none transition-colors">
+                    <button
+                      onClick={() => setActiveIdx(i => Math.min(records.length - 1, i + 1))}
+                      disabled={activeIdx === records.length - 1}
+                      className="p-2 rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                    >
                       <ChevronRight className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
 
-                {/* Thumbnails strip */}
+                {/* All slides thumbnails */}
                 <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">All Slides</p>
                   <div className="grid grid-cols-4 gap-2">
-                    {records.map((r, i) => (
-                      <DeckThumb key={r.name} pres={r} index={i} active={i === activeIdx} onClick={() => setActiveIdx(i)} />
+                    {records.map((_, i) => (
+                      <DeckThumb key={i} index={i} active={i === activeIdx} onClick={() => setActiveIdx(i)} />
                     ))}
                   </div>
                 </div>
@@ -337,32 +414,17 @@ export default function PresentationPage() {
                 <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm h-full">
                   <h3 className="font-semibold text-gray-900 mb-4">All Decks</h3>
                   <div className="space-y-1">
-                    {records.map((r, i) => {
-                      const ext = r.file_upload ? fileExt(r.file_upload) : "";
-                      return (
-                        <button key={r.name} onClick={() => setActiveIdx(i)}
-                          className={`w-full flex items-start justify-between p-3 rounded-xl transition-all text-left group ${i === activeIdx ? "bg-blue-50 border border-blue-200" : "hover:bg-gray-50 border border-transparent"}`}>
-                          <div className="flex items-start gap-3">
-                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${i === activeIdx ? "bg-blue-100" : "bg-gray-100"}`}>
-                              <Layers className={`w-4 h-4 ${i === activeIdx ? "text-blue-600" : "text-gray-500"}`} />
-                            </div>
-                            <div className="min-w-0">
-                              <p className={`text-sm font-medium leading-snug ${i === activeIdx ? "text-blue-700" : "text-gray-800"} line-clamp-2`}>
-                                {r.presentation_name || r.name}
-                              </p>
-                              <p className="text-xs text-gray-400 mt-0.5 truncate">
-                                {ext ? `${ext.toUpperCase()} · ` : ""}{r.modified ? formatDate(r.modified) : "—"}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1 text-xs text-gray-400 flex-shrink-0 ml-2 mt-0.5">
-                            <Clock className="w-3 h-3" />
-                          </div>
-                        </button>
-                      );
-                    })}
+                    {records.map((r, i) => (
+                      <DeckListItem
+                        key={r.name}
+                        pres={r}
+                        index={i}
+                        active={i === activeIdx}
+                        onClick={() => setActiveIdx(i)}
+                      />
+                    ))}
                   </div>
-                  <button className="w-full mt-3 py-2.5 rounded-xl border-2 border-dashed border-gray-200 text-gray-400 text-sm hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2">
+                  <button className="w-full mt-4 py-3 rounded-xl border-2 border-dashed border-gray-200 text-gray-400 text-sm hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2">
                     <Plus className="w-4 h-4" /> New Presentation
                   </button>
                 </div>
