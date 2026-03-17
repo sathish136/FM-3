@@ -75,7 +75,10 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "@types/three": "^0.183.1",
     "hyperformula": "^3.2.0",
+    "occt-import-js": "^0.0.23",
+    "three": "^0.183.2",
     "xlsx": "^0.18.5"
   }
 }

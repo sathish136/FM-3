@@ -404,9 +404,18 @@ importers:
 
   artifacts/pm-app:
     dependencies:
+      '@types/three':
+        specifier: ^0.183.1
+        version: 0.183.1
       hyperformula:
         specifier: ^3.2.0
         version: 3.2.0
+      occt-import-js:
+        specifier: ^0.0.23
+        version: 0.0.23
+      three:
+        specifier: ^0.183.2
+        version: 0.183.2
       xlsx:
         specifier: ^0.18.5
         version: 0.18.5
