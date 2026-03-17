@@ -1,8 +1,9 @@
 import { useState, useCallback, useRef } from "react";
 import { lazy, Suspense } from "react";
 import * as THREE from "three";
-import { loadStepFile, type MeshData } from "@/lib/stepLoader";
+import { loadStepFile, type MeshData, type TreeNode } from "@/lib/stepLoader";
 import type { ViewMode, BgColor, ViewerRef } from "@/components/StepViewer3D";
+import MeshesPanel from "@/components/MeshesPanel";
 
 const StepViewer3D = lazy(() => import("@/components/StepViewer3D"));
 
@@ -60,6 +61,8 @@ function Section({ label }: { label: string }) {
 
 export default function App() {
   const [meshes, setMeshes] = useState<MeshData[]>([]);
+  const [treeRoot, setTreeRoot] = useState<TreeNode | null>(null);
+  const [hiddenMeshes, setHiddenMeshes] = useState<Set<number>>(new Set());
   const [status, setStatus] = useState<Status>("idle");
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
@@ -93,10 +96,13 @@ export default function App() {
     setError("");
     setProgress("Reading file...");
     setMeshes([]);
+    setTreeRoot(null);
+    setHiddenMeshes(new Set());
     try {
       const buffer = await file.arrayBuffer();
       const result = await loadStepFile(buffer, (msg) => setProgress(msg));
-      setMeshes(result);
+      setMeshes(result.meshes);
+      setTreeRoot(result.root);
       setStatus("loaded");
       setProgress("");
     } catch (err) {
@@ -120,6 +126,8 @@ export default function App() {
 
   const resetViewer = () => {
     setMeshes([]);
+    setTreeRoot(null);
+    setHiddenMeshes(new Set());
     setStatus("idle");
     setError("");
     setFileName("");
@@ -127,6 +135,22 @@ export default function App() {
     setMeasureResult(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
+
+  const handleToggleMesh = useCallback((indices: number[], hide: boolean) => {
+    setHiddenMeshes((prev) => {
+      const next = new Set(prev);
+      if (hide) {
+        indices.forEach((i) => next.add(i));
+      } else {
+        indices.forEach((i) => next.delete(i));
+      }
+      return next;
+    });
+  }, []);
+
+  const handleFitToPart = useCallback((indices: number[]) => {
+    viewerRef.current?.fitToPart(indices);
+  }, []);
 
   const handleMeasureResult = useCallback(
     (dist: number | null, p1: THREE.Vector3 | null, p2: THREE.Vector3 | null) => {
@@ -410,6 +434,7 @@ export default function App() {
                 showGrid={showGrid}
                 showAxes={showAxes}
                 bgColor={bgColor}
+                hiddenMeshes={hiddenMeshes}
                 measureMode={measureMode}
                 onMeasureResult={handleMeasureResult}
               />
@@ -461,17 +486,18 @@ export default function App() {
             </div>
           )}
 
-          {/* Parts count */}
-          {status === "loaded" && (
-            <div
-              className={`absolute bottom-3 right-3 rounded-lg px-3 py-1.5 text-[10px] ${
-                isDark ? "bg-black/40 text-gray-400" : "bg-black/15 text-gray-600"
-              }`}
-            >
-              Parts: <span className="text-white font-medium">{meshes.length}</span>
-            </div>
-          )}
         </main>
+
+        {/* ─── Right Meshes Panel ─── */}
+        {status === "loaded" && (
+          <MeshesPanel
+            root={treeRoot}
+            totalMeshes={meshes.length}
+            hiddenMeshes={hiddenMeshes}
+            onToggleMesh={handleToggleMesh}
+            onFitToPart={handleFitToPart}
+          />
+        )}
       </div>
     </div>
   );
