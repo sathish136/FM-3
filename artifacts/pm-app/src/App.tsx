@@ -11,6 +11,7 @@ import Campaigns from "@/pages/Campaigns";
 import Leads from "@/pages/Leads";
 import Team from "@/pages/Team";
 import ViewerOptions from "@/pages/ViewerOptions";
+import MechanicalViewer from "@/pages/MechanicalViewer";
 import Presentation from "@/pages/Presentation";
 import Drawings from "@/pages/Drawings";
 import Gallery from "@/pages/Gallery";
@@ -36,6 +37,7 @@ function Router() {
       <Route path="/leads" component={Leads} />
       <Route path="/team" component={Team} />
       <Route path="/viewer-options" component={ViewerOptions} />
+      <Route path="/viewer-options/mechanical" component={MechanicalViewer} />
       <Route path="/presentation" component={Presentation} />
       <Route path="/drawings/mechanical" component={Drawings} />
       <Route path="/drawings/electrical" component={Drawings} />

@@ -19,7 +19,7 @@ const navItems: NavItem[] = [
   { path: "/", label: "Dashboard", icon: LayoutDashboard },
   {
     path: "/viewer-options", label: "3D Viewer", icon: Box,
-    children: [{ path: "/", label: "3D Design Files" }],
+    children: [{ path: "/viewer-options/mechanical", label: "Mechanical 3D View" }],
   },
   {
     path: "/drawings", label: "Drawings", icon: PenTool,
