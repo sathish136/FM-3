@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { 
-  useListProjects, 
-  useCreateProject, 
+import {
+  useListProjects,
+  useCreateProject,
   useUpdateProject,
   useDeleteProject,
   getListProjectsQueryKey,
@@ -13,7 +13,29 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/Layout";
 import { Modal } from "@/components/Modal";
 import { formatDate } from "@/lib/utils";
-import { Plus, MoreVertical, Calendar, CheckCircle2, Circle, Clock, Trash2, Edit2 } from "lucide-react";
+import {
+  Plus, Calendar, CheckCircle2, Circle, Clock,
+  Trash2, Edit2, Briefcase, AlertCircle
+} from "lucide-react";
+
+const getStatusConfig = (status: string) => {
+  switch (status) {
+    case "active":    return { badge: "bg-blue-50 text-blue-700 border border-blue-200",    icon: Circle,       bar: "bg-blue-500",   label: "Active" };
+    case "completed": return { badge: "bg-emerald-50 text-emerald-700 border border-emerald-200", icon: CheckCircle2, bar: "bg-emerald-500", label: "Completed" };
+    case "on_hold":   return { badge: "bg-amber-50 text-amber-700 border border-amber-200", icon: Clock,        bar: "bg-amber-400",  label: "On Hold" };
+    case "planning":  return { badge: "bg-violet-50 text-violet-700 border border-violet-200", icon: AlertCircle, bar: "bg-violet-500", label: "Planning" };
+    default:          return { badge: "bg-gray-100 text-gray-600 border border-gray-200",   icon: Circle,       bar: "bg-gray-400",   label: status };
+  }
+};
+
+const getPriorityConfig = (priority: string) => {
+  switch (priority) {
+    case "high":   return "bg-red-50 text-red-700 border border-red-200";
+    case "medium": return "bg-amber-50 text-amber-700 border border-amber-200";
+    case "low":    return "bg-gray-50 text-gray-600 border border-gray-200";
+    default:       return "bg-gray-50 text-gray-500 border border-gray-200";
+  }
+};
 
 export default function Projects() {
   const queryClient = useQueryClient();
@@ -67,200 +89,209 @@ export default function Projects() {
   };
 
   const handleDelete = (id: number) => {
-    if (confirm("Are you sure you want to delete this project?")) {
+    if (confirm("Delete this project?")) {
       deleteProject.mutate({ id }, {
         onSuccess: () => queryClient.invalidateQueries({ queryKey: getListProjectsQueryKey() })
       });
     }
   };
 
-  const getStatusConfig = (status: string) => {
-    switch (status) {
-      case 'active': return { color: 'text-blue-400 bg-blue-400/10 border-blue-400/20', icon: Circle };
-      case 'completed': return { color: 'text-green-400 bg-green-400/10 border-green-400/20', icon: CheckCircle2 };
-      case 'on_hold': return { color: 'text-amber-400 bg-amber-400/10 border-amber-400/20', icon: Clock };
-      default: return { color: 'text-gray-400 bg-gray-400/10 border-gray-400/20', icon: Circle };
-    }
-  };
-
   return (
     <Layout>
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl font-display font-bold text-white">Projects</h1>
-          <p className="text-muted-foreground mt-1">Manage and track your team's ongoing initiatives.</p>
+      <div className="p-6 space-y-5 max-w-6xl">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
+            <p className="text-sm text-gray-500 mt-0.5">Manage and track your team's ongoing initiatives</p>
+          </div>
+          <button onClick={() => setIsCreateModalOpen(true)} className="btn-primary">
+            <Plus className="w-4 h-4" /> New Project
+          </button>
         </div>
-        <button onClick={() => setIsCreateModalOpen(true)} className="btn-primary flex items-center gap-2">
-          <Plus className="w-4 h-4" /> New Project
-        </button>
-      </div>
 
-      {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {[1,2,3].map(i => <div key={i} className="h-48 bg-card rounded-2xl animate-pulse"></div>)}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {projects?.map(project => {
-            const StatusIcon = getStatusConfig(project.status).icon;
-            return (
-              <div key={project.id} className="bg-card border border-border rounded-2xl p-6 hover:border-white/10 transition-all hover:shadow-xl hover:shadow-black/50 group">
-                <div className="flex justify-between items-start mb-4">
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusConfig(project.status).color}`}>
-                    <StatusIcon className="w-3 h-3" />
-                    {project.status.replace('_', ' ')}
-                  </span>
-                  
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => setEditingProject(project)} className="p-1.5 text-muted-foreground hover:text-white hover:bg-white/10 rounded-md">
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => handleDelete(project.id)} className="p-1.5 text-destructive hover:text-red-400 hover:bg-destructive/10 rounded-md">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-                
-                <h3 className="text-xl font-display font-bold text-white mb-2 line-clamp-1">{project.name}</h3>
-                <p className="text-sm text-muted-foreground line-clamp-2 mb-6 min-h-[40px]">
-                  {project.description || "No description provided."}
-                </p>
-                
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between text-xs mb-1.5">
-                      <span className="text-muted-foreground">Progress</span>
-                      <span className="text-white font-medium">{project.progress}%</span>
-                    </div>
-                    <div className="h-1.5 w-full bg-black/40 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-gradient-to-r from-primary to-purple-500 rounded-full"
-                        style={{ width: `${project.progress}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center justify-between pt-4 border-t border-white/5">
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Calendar className="w-3.5 h-3.5" />
-                      {formatDate(project.dueDate)}
-                    </div>
-                    {project.priority && (
-                      <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-sm ${
-                        project.priority === 'high' ? 'bg-destructive/20 text-red-400' :
-                        project.priority === 'medium' ? 'bg-amber-500/20 text-amber-400' :
-                        'bg-white/10 text-gray-300'
-                      }`}>
-                        {project.priority}
-                      </span>
-                    )}
-                  </div>
-                </div>
+        {/* Summary row */}
+        {!isLoading && projects && (
+          <div className="grid grid-cols-4 gap-3">
+            {[
+              { label: "Total", value: projects.length, color: "text-gray-900" },
+              { label: "Active", value: projects.filter(p => p.status === "active").length, color: "text-blue-700" },
+              { label: "Completed", value: projects.filter(p => p.status === "completed").length, color: "text-emerald-700" },
+              { label: "On Hold", value: projects.filter(p => p.status === "on_hold").length, color: "text-amber-700" },
+            ].map((s) => (
+              <div key={s.label} className="bg-white border border-gray-200 rounded-lg p-3 text-center shadow-sm">
+                <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
               </div>
-            );
-          })}
-          {projects?.length === 0 && (
-            <div className="col-span-full py-12 text-center text-muted-foreground bg-card/50 rounded-2xl border border-dashed border-border">
-              <Briefcase className="w-12 h-12 mx-auto mb-3 opacity-20" />
-              <p>No projects found. Create one to get started.</p>
-            </div>
-          )}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
 
-      {/* Create Modal */}
-      <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="Create Project">
-        <form onSubmit={handleCreate} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-white mb-1.5">Project Name</label>
-            <input name="name" required className="glass-input w-full" placeholder="e.g. Website Redesign" />
+        {/* Project Cards */}
+        {isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {[1,2,3].map(i => <div key={i} className="h-48 bg-white border border-gray-200 rounded-lg animate-pulse" />)}
           </div>
-          <div>
-            <label className="block text-sm font-medium text-white mb-1.5">Description</label>
-            <textarea name="description" rows={3} className="glass-input w-full resize-none" placeholder="Brief details about the project..." />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-white mb-1.5">Status</label>
-              <select name="status" className="glass-input w-full appearance-none">
-                {Object.values(ProjectStatus).map(s => (
-                  <option key={s} value={s} className="bg-card text-white">{s.replace('_', ' ')}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-white mb-1.5">Priority</label>
-              <select name="priority" className="glass-input w-full appearance-none">
-                <option value="" className="bg-card text-white">None</option>
-                {Object.values(ProjectPriority).map(p => (
-                  <option key={p} value={p || ''} className="bg-card text-white">{p}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-white mb-1.5">Due Date</label>
-            <input type="date" name="dueDate" className="glass-input w-full color-scheme-dark" />
-          </div>
-          <div className="pt-4 flex justify-end gap-3">
-            <button type="button" onClick={() => setIsCreateModalOpen(false)} className="btn-secondary">Cancel</button>
-            <button type="submit" disabled={createProject.isPending} className="btn-primary">
-              {createProject.isPending ? "Creating..." : "Create Project"}
-            </button>
-          </div>
-        </form>
-      </Modal>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {projects?.map(project => {
+              const cfg = getStatusConfig(project.status);
+              const StatusIcon = cfg.icon;
+              return (
+                <div key={project.id} className="bg-white border border-gray-200 rounded-lg p-5 shadow-sm hover:shadow-md transition-shadow group">
+                  <div className="flex justify-between items-start mb-3">
+                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium ${cfg.badge}`}>
+                      <StatusIcon className="w-3 h-3" />
+                      {cfg.label}
+                    </span>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => setEditingProject(project)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors">
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => handleDelete(project.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
 
-      {/* Edit Modal */}
-      <Modal isOpen={!!editingProject} onClose={() => setEditingProject(null)} title="Edit Project">
-        {editingProject && (
-          <form onSubmit={handleEdit} className="space-y-4">
+                  <h3 className="font-semibold text-gray-900 mb-1.5 line-clamp-1">{project.name}</h3>
+                  <p className="text-xs text-gray-500 line-clamp-2 mb-4 min-h-[32px]">
+                    {project.description || "No description provided."}
+                  </p>
+
+                  <div className="space-y-3">
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-gray-500">Progress</span>
+                        <span className="font-semibold text-gray-700">{project.progress}%</span>
+                      </div>
+                      <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full ${cfg.bar} rounded-full transition-all`}
+                          style={{ width: `${project.progress}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                      <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                        <Calendar className="w-3.5 h-3.5" />
+                        {formatDate(project.dueDate)}
+                      </div>
+                      {project.priority && (
+                        <span className={`text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded ${getPriorityConfig(project.priority)}`}>
+                          {project.priority}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {projects?.length === 0 && (
+              <div className="col-span-full py-12 text-center text-gray-400 bg-white rounded-lg border-2 border-dashed border-gray-200">
+                <Briefcase className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p className="text-sm">No projects yet. Create one to get started.</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Create Modal */}
+        <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="Create Project">
+          <form onSubmit={handleCreate} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-white mb-1.5">Project Name</label>
-              <input name="name" defaultValue={editingProject.name} required className="glass-input w-full" />
+              <label className="form-label">Project Name</label>
+              <input name="name" required className="glass-input" placeholder="e.g. Website Redesign" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-white mb-1.5">Description</label>
-              <textarea name="description" defaultValue={editingProject.description || ""} rows={3} className="glass-input w-full resize-none" />
+              <label className="form-label">Description</label>
+              <textarea name="description" rows={3} className="glass-input resize-none" placeholder="Brief details about the project..." />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-white mb-1.5">Status</label>
-                <select name="status" defaultValue={editingProject.status} className="glass-input w-full appearance-none">
+                <label className="form-label">Status</label>
+                <select name="status" className="glass-input">
                   {Object.values(ProjectStatus).map(s => (
-                    <option key={s} value={s} className="bg-card text-white">{s.replace('_', ' ')}</option>
+                    <option key={s} value={s}>{s.replace("_", " ")}</option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-white mb-1.5">Priority</label>
-                <select name="priority" defaultValue={editingProject.priority || ""} className="glass-input w-full appearance-none">
-                  <option value="" className="bg-card text-white">None</option>
+                <label className="form-label">Priority</label>
+                <select name="priority" className="glass-input">
+                  <option value="">None</option>
                   {Object.values(ProjectPriority).map(p => (
-                    <option key={p} value={p || ''} className="bg-card text-white">{p}</option>
+                    <option key={p} value={p ?? ""}>{p}</option>
                   ))}
                 </select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-white mb-1.5">Progress (%)</label>
-                <input type="number" min="0" max="100" name="progress" defaultValue={editingProject.progress} required className="glass-input w-full" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-white mb-1.5">Due Date</label>
-                <input type="date" name="dueDate" defaultValue={editingProject.dueDate ? editingProject.dueDate.split('T')[0] : ""} className="glass-input w-full color-scheme-dark" />
-              </div>
+            <div>
+              <label className="form-label">Due Date</label>
+              <input type="date" name="dueDate" className="glass-input" />
             </div>
-            <div className="pt-4 flex justify-end gap-3">
-              <button type="button" onClick={() => setEditingProject(null)} className="btn-secondary">Cancel</button>
-              <button type="submit" disabled={updateProject.isPending} className="btn-primary">
-                {updateProject.isPending ? "Saving..." : "Save Changes"}
+            <div className="pt-2 flex justify-end gap-2">
+              <button type="button" onClick={() => setIsCreateModalOpen(false)} className="btn-secondary">Cancel</button>
+              <button type="submit" disabled={createProject.isPending} className="btn-primary">
+                {createProject.isPending ? "Creating..." : "Create Project"}
               </button>
             </div>
           </form>
-        )}
-      </Modal>
+        </Modal>
+
+        {/* Edit Modal */}
+        <Modal isOpen={!!editingProject} onClose={() => setEditingProject(null)} title="Edit Project">
+          {editingProject && (
+            <form onSubmit={handleEdit} className="space-y-4">
+              <div>
+                <label className="form-label">Project Name</label>
+                <input name="name" defaultValue={editingProject.name} required className="glass-input" />
+              </div>
+              <div>
+                <label className="form-label">Description</label>
+                <textarea name="description" defaultValue={editingProject.description || ""} rows={3} className="glass-input resize-none" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="form-label">Status</label>
+                  <select name="status" defaultValue={editingProject.status} className="glass-input">
+                    {Object.values(ProjectStatus).map(s => (
+                      <option key={s} value={s}>{s.replace("_", " ")}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="form-label">Priority</label>
+                  <select name="priority" defaultValue={editingProject.priority || ""} className="glass-input">
+                    <option value="">None</option>
+                    {Object.values(ProjectPriority).map(p => (
+                      <option key={p} value={p ?? ""}>{p}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="form-label">Progress (%)</label>
+                  <input type="number" min="0" max="100" name="progress" defaultValue={editingProject.progress} required className="glass-input" />
+                </div>
+                <div>
+                  <label className="form-label">Due Date</label>
+                  <input type="date" name="dueDate" defaultValue={editingProject.dueDate ? editingProject.dueDate.split("T")[0] : ""} className="glass-input" />
+                </div>
+              </div>
+              <div className="pt-2 flex justify-end gap-2">
+                <button type="button" onClick={() => setEditingProject(null)} className="btn-secondary">Cancel</button>
+                <button type="submit" disabled={updateProject.isPending} className="btn-primary">
+                  {updateProject.isPending ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          )}
+        </Modal>
+      </div>
     </Layout>
   );
 }
