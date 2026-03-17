@@ -1,10 +1,10 @@
 import { Layout } from "@/components/Layout";
 import {
   FileText, Plus, Trash2, Sparkles, Calendar, Users,
-  X, Save, Loader2, CheckCircle, Clock, Mic, MicOff,
-  Square, Play, Type, Radio, ChevronDown,
+  X, Save, Loader2, CheckCircle, Clock, Mic,
+  Square, Type, Radio,
 } from "lucide-react";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useListProjects } from "@workspace/api-client-react";
 
 type Meeting = {
@@ -22,10 +22,16 @@ async function apiFetch(path: string, opts?: RequestInit) {
   return r;
 }
 
-function statusBadge(status: string) {
-  if (status === "completed")
-    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-50 border border-green-200 text-green-700 text-[10px] font-semibold"><CheckCircle className="w-2.5 h-2.5" />Completed</span>;
-  return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-semibold"><Clock className="w-2.5 h-2.5" />Draft</span>;
+function ModeBadge({ mode }: { mode: string }) {
+  return mode === "record"
+    ? <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[9px] font-bold tracking-wide text-red-600 bg-red-50 border border-red-200"><Mic className="w-2 h-2" />REC</span>
+    : <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[9px] font-bold tracking-wide text-blue-600 bg-blue-50 border border-blue-200"><Type className="w-2 h-2" />MANUAL</span>;
+}
+
+function StatusBadge({ status }: { status: string }) {
+  return status === "completed"
+    ? <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[9px] font-bold text-green-700 bg-green-50 border border-green-200"><CheckCircle className="w-2 h-2" />Done</span>
+    : <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200"><Clock className="w-2 h-2" />Draft</span>;
 }
 
 function MarkdownBlock({ text }: { text: string }) {
@@ -35,7 +41,12 @@ function MarkdownBlock({ text }: { text: string }) {
         if (line.startsWith("## ")) return <p key={i} className="font-bold text-gray-900 mt-3 mb-1 text-sm">{line.slice(3)}</p>;
         if (line.startsWith("- [ ] ") || line.startsWith("- [x] ")) {
           const done = line.startsWith("- [x]");
-          return <p key={i} className="pl-3 flex items-start gap-2"><span className={`mt-0.5 w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center ${done ? "bg-green-500 border-green-500 text-white" : "border-gray-300"}`}>{done && "✓"}</span><span>{line.slice(6)}</span></p>;
+          return (
+            <p key={i} className="pl-3 flex items-start gap-2">
+              <span className={`mt-0.5 w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center text-[9px] ${done ? "bg-green-500 border-green-500 text-white" : "border-gray-300"}`}>{done && "✓"}</span>
+              <span>{line.slice(6)}</span>
+            </p>
+          );
         }
         if (line.startsWith("- ")) return <p key={i} className="pl-3 flex items-start gap-1.5"><span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" /><span>{line.slice(2)}</span></p>;
         if (line.trim() === "") return <div key={i} className="h-1" />;
@@ -45,85 +56,120 @@ function MarkdownBlock({ text }: { text: string }) {
   );
 }
 
+// ─── Streaming AI helper ────────────────────────────────────────────────────
+async function streamGenerate(
+  id: number,
+  onChunk: (text: string) => void,
+  onDone: (meeting: Meeting) => void,
+) {
+  const res = await fetch(`${BASE}/meeting-minutes/${id}/generate`, { method: "POST" });
+  if (!res.body) return;
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "", full = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const parts = buf.split("\n\n"); buf = parts.pop() || "";
+    for (const p of parts) {
+      if (!p.startsWith("data: ")) continue;
+      try {
+        const j = JSON.parse(p.slice(6));
+        if (j.content) { full += j.content; onChunk(full); }
+        if (j.done) {
+          const refreshed = await apiFetch(`/meeting-minutes/${id}`).then(r => r.json());
+          onDone(refreshed);
+        }
+      } catch {}
+    }
+  }
+}
+
 // ─── Live Recording Mode ────────────────────────────────────────────────────
+declare global {
+  interface Window { SpeechRecognition: any; webkitSpeechRecognition: any; }
+}
+
 function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: Meeting) => void }) {
   const [recording, setRecording] = useState(false);
   const [duration, setDuration] = useState(0);
-  const [transcribing, setTranscribing] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [streamText, setStreamText] = useState("");
-  const [liveTranscript, setLiveTranscript] = useState(meeting.rawNotes || "");
-  const mediaRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  const [interimText, setInterimText] = useState("");
+  const [finalText, setFinalText] = useState(meeting.rawNotes || "");
+  const recognitionRef = useRef<any>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const transcriptBoxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setFinalText(meeting.rawNotes || ""); }, [meeting.id]);
 
   useEffect(() => {
-    setLiveTranscript(meeting.rawNotes || "");
-  }, [meeting.rawNotes]);
+    if (transcriptBoxRef.current) {
+      transcriptBoxRef.current.scrollTop = transcriptBoxRef.current.scrollHeight;
+    }
+  }, [finalText, interimText]);
 
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4" });
-      chunksRef.current = [];
-      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-      mr.start(1000);
-      mediaRef.current = mr;
-      setRecording(true);
-      setDuration(0);
-      timerRef.current = setInterval(() => setDuration(d => d + 1), 1000);
-    } catch { alert("Microphone access denied. Please allow microphone access."); }
+  const startRecording = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { alert("Your browser does not support Speech Recognition. Please use Chrome."); return; }
+
+    const sr = new SR();
+    sr.continuous = true;
+    sr.interimResults = true;
+    sr.lang = "en-US";
+
+    sr.onresult = (e: any) => {
+      let interim = "";
+      let newFinal = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) newFinal += t + " ";
+        else interim += t;
+      }
+      if (newFinal) setFinalText(prev => prev + newFinal);
+      setInterimText(interim);
+    };
+
+    sr.onerror = (e: any) => {
+      if (e.error !== "aborted") console.error("Speech error:", e.error);
+    };
+
+    sr.onend = () => {
+      if (recognitionRef.current === sr && recording) {
+        try { sr.start(); } catch {}
+      }
+    };
+
+    sr.start();
+    recognitionRef.current = sr;
+    setRecording(true);
+    setDuration(0);
+    timerRef.current = setInterval(() => setDuration(d => d + 1), 1000);
   };
 
-  const stopAndTranscribe = async () => {
-    if (!mediaRef.current) return;
-    mediaRef.current.stop();
-    mediaRef.current.stream.getTracks().forEach(t => t.stop());
+  const stopRecording = async () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.onend = null;
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
     if (timerRef.current) clearInterval(timerRef.current);
     setRecording(false);
+    setInterimText("");
 
-    await new Promise<void>(res => { if (mediaRef.current) mediaRef.current.onstop = () => res(); else res(); });
-
-    const blob = new Blob(chunksRef.current, { type: chunksRef.current[0]?.type || "audio/webm" });
-    if (blob.size < 1000) return;
-
-    setTranscribing(true);
-    try {
-      const fd = new FormData();
-      fd.append("audio", blob, "recording.webm");
-      const r = await fetch(`${BASE}/meeting-minutes/${meeting.id}/transcribe`, { method: "POST", body: fd });
-      const data = await r.json();
-      if (data.meeting) { onUpdate(data.meeting); setLiveTranscript(data.meeting.rawNotes || ""); }
-    } catch (e) { console.error(e); }
-    setTranscribing(false);
+    const text = finalText.trim();
+    if (!text) return;
+    const updated = await apiFetch(`/meeting-minutes/${meeting.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rawNotes: text }),
+    }).then(r => r.json());
+    onUpdate(updated);
   };
 
   const handleGenerate = async () => {
-    setGenerating(true);
-    setStreamText("");
-    const res = await fetch(`${BASE}/meeting-minutes/${meeting.id}/generate`, { method: "POST" });
-    if (!res.body) { setGenerating(false); return; }
-    const reader = res.body.getReader();
-    const dec = new TextDecoder();
-    let buf = "", full = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      const parts = buf.split("\n\n"); buf = parts.pop() || "";
-      for (const p of parts) {
-        if (p.startsWith("data: ")) {
-          try {
-            const j = JSON.parse(p.slice(6));
-            if (j.content) { full += j.content; setStreamText(full); }
-            if (j.done) {
-              const refreshed = await apiFetch(`/meeting-minutes/${meeting.id}`).then(r => r.json());
-              onUpdate(refreshed);
-            }
-          } catch {}
-        }
-      }
-    }
+    setGenerating(true); setStreamText("");
+    await streamGenerate(meeting.id, setStreamText, m => { onUpdate(m); setGenerating(false); });
     setGenerating(false);
   };
 
@@ -131,62 +177,73 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
 
   return (
     <div className="space-y-4">
-      {/* Recording controls */}
-      <div className={`rounded-2xl border-2 p-6 flex flex-col items-center gap-4 transition-all ${recording ? "border-red-300 bg-red-50" : "border-gray-200 bg-white"}`}>
-        <div className="flex items-center gap-3">
-          {recording
-            ? <span className="flex items-center gap-2 text-red-600 font-semibold text-sm"><span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />Recording — {fmt(duration)}</span>
-            : <span className="text-sm text-gray-500 font-medium">Press the button to start recording your meeting</span>}
-        </div>
-        <div className="flex items-center gap-3">
+      {/* Controls */}
+      <div className={`rounded-2xl border-2 p-5 flex flex-col items-center gap-3 transition-all ${recording ? "border-red-300 bg-red-50" : "border-gray-200 bg-white"}`}>
+        {recording ? (
+          <div className="flex items-center gap-2 text-red-600 font-semibold text-sm">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+            Recording — {fmt(duration)}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400">Press the button to start recording your meeting</p>
+        )}
+
+        {/* Big mic visual when recording */}
+        {recording && (
+          <div className="relative flex items-center justify-center w-16 h-16">
+            <span className="absolute w-16 h-16 rounded-full bg-red-200 animate-ping opacity-50" />
+            <div className="relative w-12 h-12 rounded-full bg-red-500 flex items-center justify-center shadow-md">
+              <Mic className="w-5 h-5 text-white" />
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2.5">
           {!recording ? (
             <button onClick={startRecording}
-              className="flex items-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold shadow-sm transition-all text-sm">
+              className="flex items-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold shadow-sm text-sm transition-colors">
               <Mic className="w-4 h-4" /> Start Recording
             </button>
           ) : (
-            <button onClick={stopAndTranscribe} disabled={transcribing}
-              className="flex items-center gap-2 px-6 py-3 bg-gray-800 hover:bg-gray-900 text-white rounded-xl font-semibold shadow-sm transition-all text-sm">
-              <Square className="w-4 h-4" /> Stop & Transcribe
+            <button onClick={stopRecording}
+              className="flex items-center gap-2 px-5 py-2.5 bg-gray-800 hover:bg-gray-900 text-white rounded-xl font-semibold shadow-sm text-sm transition-colors">
+              <Square className="w-3.5 h-3.5" /> Stop
             </button>
           )}
-          {!recording && liveTranscript && (
+          {!recording && finalText.trim() && (
             <button onClick={handleGenerate} disabled={generating}
-              className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-violet-600 to-blue-600 hover:opacity-90 disabled:opacity-60 text-white rounded-xl font-semibold shadow-sm transition-all text-sm">
+              className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-600 to-blue-600 hover:opacity-90 disabled:opacity-60 text-white rounded-xl font-semibold shadow-sm text-sm transition-all">
               {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              Analyse Meeting
+              Analyse
             </button>
           )}
         </div>
-        {transcribing && (
-          <div className="flex items-center gap-2 text-sm text-blue-600">
-            <Loader2 className="w-4 h-4 animate-spin" /> Transcribing audio…
-          </div>
-        )}
       </div>
 
-      {/* Live transcript */}
-      {liveTranscript && (
+      {/* Live transcript box */}
+      {(finalText || interimText) && (
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
-            <Radio className="w-3.5 h-3.5 text-blue-500" />
-            <span className="text-sm font-semibold text-gray-700">Live Transcript</span>
+          <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2">
+            <Radio className="w-3 h-3 text-blue-500" />
+            <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Live Transcript</span>
+            {recording && <span className="ml-auto flex items-center gap-1 text-[10px] text-red-500 font-semibold"><span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />Live</span>}
           </div>
-          <div className="px-5 py-4 max-h-48 overflow-y-auto">
-            <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{liveTranscript}</p>
+          <div ref={transcriptBoxRef} className="px-4 py-3 max-h-52 overflow-y-auto text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+            {finalText}
+            {interimText && <span className="text-gray-400 italic">{interimText}</span>}
           </div>
         </div>
       )}
 
-      {/* AI Output */}
+      {/* AI Summary */}
       {(generating || meeting.aiSummary) && (
         <div className="bg-white rounded-2xl border border-violet-200 shadow-sm overflow-hidden">
-          <div className="px-5 py-3 border-b border-violet-100 bg-gradient-to-r from-violet-50 to-blue-50 flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-violet-600" />
-            <span className="text-sm font-semibold text-violet-800">AI Meeting Summary</span>
-            {generating && <Loader2 className="w-3.5 h-3.5 text-violet-400 animate-spin ml-auto" />}
+          <div className="px-4 py-2.5 border-b border-violet-100 bg-gradient-to-r from-violet-50 to-blue-50 flex items-center gap-2">
+            <Sparkles className="w-3.5 h-3.5 text-violet-600" />
+            <span className="text-xs font-semibold text-violet-800 uppercase tracking-wide">AI Summary</span>
+            {generating && <Loader2 className="w-3 h-3 text-violet-400 animate-spin ml-auto" />}
           </div>
-          <div className="px-5 py-4">
+          <div className="px-4 py-4">
             <MarkdownBlock text={generating ? streamText : `${meeting.aiSummary || ""}${meeting.actionItems ? "\n## Action Items\n" + meeting.actionItems : ""}`} />
           </div>
         </div>
@@ -202,6 +259,8 @@ function ManualView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: Mee
   const [generating, setGenerating] = useState(false);
   const [streamText, setStreamText] = useState("");
 
+  useEffect(() => { setNotes(meeting.rawNotes || ""); }, [meeting.id]);
+
   const handleSave = async () => {
     setSaving(true);
     const updated = await apiFetch(`/meeting-minutes/${meeting.id}`, {
@@ -215,44 +274,24 @@ function ManualView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: Mee
   const handleGenerate = async () => {
     await handleSave();
     setGenerating(true); setStreamText("");
-    const res = await fetch(`${BASE}/meeting-minutes/${meeting.id}/generate`, { method: "POST" });
-    if (!res.body) { setGenerating(false); return; }
-    const reader = res.body.getReader();
-    const dec = new TextDecoder();
-    let buf = "", full = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      const parts = buf.split("\n\n"); buf = parts.pop() || "";
-      for (const p of parts) {
-        if (p.startsWith("data: ")) {
-          try {
-            const j = JSON.parse(p.slice(6));
-            if (j.content) { full += j.content; setStreamText(full); }
-            if (j.done) { const r = await apiFetch(`/meeting-minutes/${meeting.id}`).then(r => r.json()); onUpdate(r); }
-          } catch {}
-        }
-      }
-    }
+    await streamGenerate(meeting.id, setStreamText, m => { onUpdate(m); setGenerating(false); });
     setGenerating(false);
   };
 
   return (
     <div className="space-y-4">
-      {/* Notes editor */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-          <span className="text-sm font-semibold text-gray-700">Meeting Notes</span>
-          <div className="flex items-center gap-2">
+        <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
+          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Meeting Notes</span>
+          <div className="flex items-center gap-1.5">
             <button onClick={handleSave} disabled={saving}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50">
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50">
               {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Save
             </button>
             <button onClick={handleGenerate} disabled={generating || !notes.trim()}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-violet-600 to-blue-600 hover:opacity-90 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition-all">
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-gradient-to-r from-violet-600 to-blue-600 hover:opacity-90 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition-all">
               {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-              Analyse & Generate
+              Analyse
             </button>
           </div>
         </div>
@@ -260,20 +299,19 @@ function ManualView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: Mee
           value={notes}
           onChange={e => setNotes(e.target.value)}
           rows={10}
-          placeholder="Type your meeting notes here…&#10;&#10;Include:&#10;• What was discussed&#10;• Decisions made&#10;• Who said what&#10;&#10;AI will generate a structured summary with action items."
-          className="w-full px-5 py-4 text-sm text-gray-700 focus:outline-none resize-none bg-white"
+          placeholder={"Type your meeting notes here…\n\nInclude:\n• What was discussed\n• Decisions made\n• Who said what\n\nAI will generate a structured summary with action items."}
+          className="w-full px-4 py-3 text-sm text-gray-700 focus:outline-none resize-none bg-white"
         />
       </div>
 
-      {/* AI Output */}
       {(generating || meeting.aiSummary) && (
         <div className="bg-white rounded-2xl border border-violet-200 shadow-sm overflow-hidden">
-          <div className="px-5 py-3 border-b border-violet-100 bg-gradient-to-r from-violet-50 to-blue-50 flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-violet-600" />
-            <span className="text-sm font-semibold text-violet-800">AI Meeting Summary</span>
-            {generating && <Loader2 className="w-3.5 h-3.5 text-violet-400 animate-spin ml-auto" />}
+          <div className="px-4 py-2.5 border-b border-violet-100 bg-gradient-to-r from-violet-50 to-blue-50 flex items-center gap-2">
+            <Sparkles className="w-3.5 h-3.5 text-violet-600" />
+            <span className="text-xs font-semibold text-violet-800 uppercase tracking-wide">AI Summary</span>
+            {generating && <Loader2 className="w-3 h-3 text-violet-400 animate-spin ml-auto" />}
           </div>
-          <div className="px-5 py-4">
+          <div className="px-4 py-4">
             <MarkdownBlock text={generating ? streamText : `${meeting.aiSummary || ""}${meeting.actionItems ? "\n## Action Items\n" + meeting.actionItems : ""}`} />
           </div>
         </div>
@@ -295,7 +333,9 @@ export default function MeetingMinutes() {
   useEffect(() => {
     if (meetings === null && !loading) {
       setLoading(true);
-      fetch(`${BASE}/meeting-minutes`).then(r => r.json()).then(data => { setMeetings(data); setLoading(false); }).catch(() => { setMeetings([]); setLoading(false); });
+      fetch(`${BASE}/meeting-minutes`).then(r => r.json())
+        .then(data => { setMeetings(data); setLoading(false); })
+        .catch(() => { setMeetings([]); setLoading(false); });
     }
   }, []);
 
@@ -328,16 +368,17 @@ export default function MeetingMinutes() {
   return (
     <Layout>
       <div className="flex h-[calc(100vh-48px)]">
-        {/* ── Left panel ── */}
+
+        {/* ── Left list panel ── */}
         <div className="w-72 flex-shrink-0 border-r border-gray-200 bg-white flex flex-col">
-          <div className="px-4 py-3.5 border-b border-gray-100 flex items-center justify-between">
+          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <FileText className="w-4 h-4 text-blue-600" />
               <span className="font-semibold text-gray-800 text-sm">Meeting Minutes</span>
             </div>
             <button onClick={() => { setShowNew(true); setSelected(null); }}
               className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors">
-              <Plus className="w-3.5 h-3.5" /> New
+              <Plus className="w-3 h-3" /> New
             </button>
           </div>
 
@@ -346,7 +387,7 @@ export default function MeetingMinutes() {
             {!loading && meetings?.length === 0 && (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <FileText className="w-8 h-8 text-gray-200 mb-2" />
-                <p className="text-sm text-gray-400">No meetings yet</p>
+                <p className="text-xs text-gray-400">No meetings yet</p>
               </div>
             )}
             {meetings?.map(m => (
@@ -354,17 +395,15 @@ export default function MeetingMinutes() {
                 className={`w-full text-left px-3 py-2.5 rounded-xl mb-1 transition-all group ${selected?.id === m.id ? "bg-blue-50 ring-1 ring-blue-200" : "hover:bg-gray-50"}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      {modeOf(m) === "record"
-                        ? <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-full"><Mic className="w-2.5 h-2.5" />REC</span>
-                        : <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-full"><Type className="w-2.5 h-2.5" />MANUAL</span>}
-                      {statusBadge(m.status)}
+                    <div className="flex items-center gap-1 mb-0.5">
+                      <ModeBadge mode={modeOf(m)} />
+                      <StatusBadge status={m.status} />
                     </div>
-                    <p className="text-sm font-semibold text-gray-800 truncate">{m.title}</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1"><Calendar className="w-3 h-3" />{m.date}</p>
+                    <p className="text-sm font-semibold text-gray-800 truncate mt-0.5">{m.title}</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1"><Calendar className="w-2.5 h-2.5" />{m.date}</p>
                   </div>
-                  <button onClick={e => handleDelete(m.id, e)} className="opacity-0 group-hover:opacity-100 p-1 rounded text-gray-300 hover:text-red-500 transition-all flex-shrink-0">
-                    <Trash2 className="w-3.5 h-3.5" />
+                  <button onClick={e => handleDelete(m.id, e)} className="opacity-0 group-hover:opacity-100 p-1 rounded text-gray-300 hover:text-red-500 transition-all flex-shrink-0 mt-0.5">
+                    <Trash2 className="w-3 h-3" />
                   </button>
                 </div>
               </button>
@@ -372,7 +411,7 @@ export default function MeetingMinutes() {
           </div>
         </div>
 
-        {/* ── Right panel ── */}
+        {/* ── Right content panel ── */}
         <div className="flex-1 flex flex-col overflow-y-auto bg-[#f8fafc]">
 
           {/* NEW MEETING FORM */}
@@ -383,31 +422,29 @@ export default function MeetingMinutes() {
                 <h2 className="text-xl font-bold text-gray-900">New Meeting</h2>
               </div>
 
-              {/* Mode selector */}
               <div className="grid grid-cols-2 gap-3">
                 <button onClick={() => setNewMode("record")}
                   className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all ${newMode === "record" ? "border-red-400 bg-red-50" : "border-gray-200 bg-white hover:border-gray-300"}`}>
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${newMode === "record" ? "bg-red-100" : "bg-gray-100"}`}>
-                    <Mic className={`w-5 h-5 ${newMode === "record" ? "text-red-600" : "text-gray-500"}`} />
+                    <Mic className={`w-5 h-5 ${newMode === "record" ? "text-red-600" : "text-gray-400"}`} />
                   </div>
                   <div className="text-center">
                     <p className={`text-sm font-bold ${newMode === "record" ? "text-red-700" : "text-gray-700"}`}>Auto Record</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">Live mic recording + AI transcription</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">Real-time speech transcription</p>
                   </div>
                 </button>
                 <button onClick={() => setNewMode("manual")}
                   className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all ${newMode === "manual" ? "border-blue-400 bg-blue-50" : "border-gray-200 bg-white hover:border-gray-300"}`}>
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${newMode === "manual" ? "bg-blue-100" : "bg-gray-100"}`}>
-                    <Type className={`w-5 h-5 ${newMode === "manual" ? "text-blue-600" : "text-gray-500"}`} />
+                    <Type className={`w-5 h-5 ${newMode === "manual" ? "text-blue-600" : "text-gray-400"}`} />
                   </div>
                   <div className="text-center">
                     <p className={`text-sm font-bold ${newMode === "manual" ? "text-blue-700" : "text-gray-700"}`}>Manual Notes</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">Type notes, then AI analyses</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">Type notes, AI analyses</p>
                   </div>
                 </button>
               </div>
 
-              {/* Form fields */}
               <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-3.5 shadow-sm">
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Meeting Title *</label>
@@ -448,20 +485,17 @@ export default function MeetingMinutes() {
             </div>
           )}
 
-          {/* DETAIL VIEW */}
+          {/* MEETING DETAIL */}
           {selected && !showNew && (
             <div className="max-w-3xl mx-auto w-full p-6 space-y-4">
-              {/* Header */}
-              <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap mb-1">
-                    {modeOf(selected) === "record"
-                      ? <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full"><Mic className="w-2.5 h-2.5" />Auto Record</span>
-                      : <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full"><Type className="w-2.5 h-2.5" />Manual Notes</span>}
-                    {statusBadge(selected.status)}
+                  <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                    <ModeBadge mode={modeOf(selected)} />
+                    <StatusBadge status={selected.status} />
                   </div>
-                  <h1 className="text-xl font-bold text-gray-900 truncate">{selected.title}</h1>
-                  <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-gray-500">
+                  <h1 className="text-xl font-bold text-gray-900">{selected.title}</h1>
+                  <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-gray-400">
                     <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{selected.date}</span>
                     {selected.attendees && <span className="flex items-center gap-1"><Users className="w-3 h-3" />{selected.attendees}</span>}
                   </div>
@@ -481,7 +515,7 @@ export default function MeetingMinutes() {
                 <FileText className="w-8 h-8 text-blue-400" />
               </div>
               <h2 className="text-lg font-bold text-gray-800">Meeting Minutes</h2>
-              <p className="text-sm text-gray-400 mt-1 max-w-xs">Choose auto-recording for live meetings or manual notes for typed input — AI analyses both.</p>
+              <p className="text-sm text-gray-400 mt-1 max-w-xs">Auto-record with live transcription, or type notes manually — AI analyses both.</p>
               <button onClick={() => setShowNew(true)}
                 className="mt-5 flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold shadow-sm transition-colors">
                 <Plus className="w-4 h-4" /> Create First Meeting
