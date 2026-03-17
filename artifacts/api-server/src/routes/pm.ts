@@ -4,7 +4,7 @@ import {
   projectsTable, tasksTable, campaignsTable, leadsTable, teamMembersTable,
 } from "@workspace/db/schema";
 import { eq, sql } from "drizzle-orm";
-import { isErpNextConfigured, fetchErpNextProjects } from "../lib/erpnext";
+import { isErpNextConfigured, fetchErpNextProjects, fetchErpNextDrawings } from "../lib/erpnext";
 
 const router = Router();
 
@@ -217,6 +217,19 @@ router.get("/analytics/summary", async (_req, res) => {
       monthlyLeads: [],
     });
   } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// ─── Drawings ────────────────────────────────────────────────────────────────
+
+router.get("/drawings", async (req, res) => {
+  try {
+    const { department } = req.query as { department?: string };
+    const drawings = await fetchErpNextDrawings(department);
+    res.json(drawings);
+  } catch (e) {
+    console.error("Drawings fetch error:", e);
+    res.status(500).json({ error: String(e) });
+  }
 });
 
 export default router;

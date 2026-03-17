@@ -50,6 +50,50 @@ export interface ErpProject {
   createdAt: string;
 }
 
+export interface ErpDrawing {
+  name: string;
+  project: string;
+  project_name: string;
+  department: string;
+  revision: string;
+  tag: string;
+  attach: string | null;
+  modified: string;
+}
+
+export async function fetchErpNextDrawings(department?: string): Promise<ErpDrawing[]> {
+  const fields = JSON.stringify([
+    "name", "project", "project_name", "department",
+    "revision", "tag", "attach", "modified",
+  ]);
+
+  const filters: any[] = [];
+  if (department) {
+    filters.push(["Drawings", "department", "like", `%${department}%`]);
+  }
+
+  const params = new URLSearchParams({
+    fields,
+    limit_page_length: "500",
+    order_by: "modified desc",
+  });
+  if (filters.length) params.set("filters", JSON.stringify(filters));
+
+  const url = `${ERPNEXT_URL}/api/resource/Drawings?${params.toString()}`;
+
+  const res = await fetch(url, {
+    headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`ERPNext Drawings API error ${res.status}: ${body}`);
+  }
+
+  const json = await res.json();
+  return (json.data || []) as ErpDrawing[];
+}
+
 export async function fetchErpNextProjects(): Promise<ErpProject[]> {
   const fields = JSON.stringify([
     "name", "project_name", "status", "priority",
