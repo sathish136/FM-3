@@ -112,4 +112,32 @@ authRouter.get("/auth/photo", async (req, res) => {
   }
 });
 
+// Proxy ERPNext file attachments so they open in-app without needing direct ERP access
+authRouter.get("/file-proxy", async (req, res) => {
+  const url = req.query.url as string;
+  if (!url) return res.status(400).send("Missing url");
+
+  try {
+    const target = url.startsWith("http") ? url : `${ERP_URL}${url}`;
+    const fileRes = await fetch(target, {
+      headers: { Authorization: `token ${API_KEY}:${API_SECRET}` },
+    });
+    if (!fileRes.ok) return res.status(fileRes.status).send("File not found");
+
+    const contentType = fileRes.headers.get("content-type") || "application/octet-stream";
+    const contentDisposition = fileRes.headers.get("content-disposition");
+
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
+    if (contentDisposition) res.setHeader("Content-Disposition", contentDisposition);
+
+    const buf = await fileRes.arrayBuffer();
+    res.send(Buffer.from(buf));
+  } catch (err) {
+    console.error("File proxy error:", err);
+    res.status(500).send("Failed to fetch file");
+  }
+});
+
 export default authRouter;
