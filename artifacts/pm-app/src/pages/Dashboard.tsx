@@ -1,157 +1,188 @@
-import { useGetAnalyticsSummary } from "@workspace/api-client-react";
-import { formatCurrency } from "@/lib/utils";
+import { useListProjects, useGetAnalyticsSummary } from "@workspace/api-client-react";
 import { Layout } from "@/components/Layout";
-import { Users, Target, Briefcase, Zap, AlertCircle, TrendingUp } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from "recharts";
+import { Link } from "wouter";
+import {
+  FolderOpen, Loader2, CheckCircle2, AlertCircle,
+  RefreshCw, Box, RotateCcw, Maximize, Upload,
+  ExternalLink,
+} from "lucide-react";
+
+const statusColors: Record<string, string> = {
+  active:    "bg-blue-50 text-blue-700 border border-blue-200",
+  planning:  "bg-amber-50 text-amber-700 border border-amber-200",
+  on_hold:   "bg-orange-50 text-orange-700 border border-orange-200",
+  completed: "bg-green-50 text-green-700 border border-green-200",
+};
+
+const statusLabel: Record<string, string> = {
+  active:    "On going",
+  planning:  "Open",
+  on_hold:   "On Hold",
+  completed: "Completed",
+};
 
 export default function Dashboard() {
-  const { data: summary, isLoading, error } = useGetAnalyticsSummary();
+  const { data: projects, isLoading: projectsLoading, refetch } = useListProjects();
+  const { data: summary, isLoading: summaryLoading } = useGetAnalyticsSummary();
 
-  if (isLoading) {
-    return (
-      <Layout>
-        <div className="animate-pulse space-y-6">
-          <div className="h-36 bg-card rounded-2xl border border-border" />
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-            {[1,2,3,4].map(i => <div key={i} className="h-32 bg-card rounded-2xl border border-border" />)}
-          </div>
-          <div className="h-80 bg-card rounded-2xl border border-border" />
-        </div>
-      </Layout>
-    );
-  }
+  const isLoading = projectsLoading || summaryLoading;
 
-  if (error || !summary) {
-    return (
-      <Layout>
-        <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-          <AlertCircle className="w-12 h-12 mb-4 text-destructive/50" />
-          <p>Failed to load analytics dashboard.</p>
-        </div>
-      </Layout>
-    );
-  }
+  const totalProjects = projects?.length ?? 0;
+  const ongoing = projects?.filter(p => p.status === "active").length ?? 0;
+  const inProgress = projects?.filter(p => p.status === "planning").length ?? 0;
+  const completed = projects?.filter(p => p.status === "completed").length ?? 0;
+
+  const recentOngoing = projects?.filter(p => p.status === "active" || p.status === "planning").slice(0, 5) ?? [];
 
   const statCards = [
-    { label: "Total Leads", value: summary.totalLeads, icon: Users, color: "text-blue-600", bg: "bg-blue-50" },
-    { label: "Conversions", value: summary.totalConversions, icon: Target, color: "text-emerald-600", bg: "bg-emerald-50" },
-    { label: "Active Projects", value: summary.activeProjects, icon: Briefcase, color: "text-violet-600", bg: "bg-violet-50" },
-    { label: "Total Spent", value: formatCurrency(summary.totalSpent), icon: Zap, color: "text-amber-600", bg: "bg-amber-50" },
+    {
+      label: "Total Projects",
+      value: totalProjects,
+      icon: FolderOpen,
+      iconBg: "bg-blue-100",
+      iconColor: "text-blue-600",
+    },
+    {
+      label: "Ongoing Projects",
+      value: ongoing,
+      icon: Loader2,
+      iconBg: "bg-orange-100",
+      iconColor: "text-orange-500",
+    },
+    {
+      label: "In Progress",
+      value: inProgress,
+      icon: RefreshCw,
+      iconBg: "bg-blue-50",
+      iconColor: "text-blue-400",
+    },
+    {
+      label: "Completed",
+      value: completed,
+      icon: CheckCircle2,
+      iconBg: "bg-green-100",
+      iconColor: "text-green-500",
+    },
   ];
-
-  const budgetPercent = Math.min(100, (summary.totalSpent / Math.max(1, summary.totalBudget)) * 100);
 
   return (
     <Layout>
-      <div className="space-y-6">
-        {/* Hero Section */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary to-violet-600 shadow-lg">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.15),transparent)]" />
-          <div className="relative z-10 p-8 sm:p-10">
-            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">Welcome back, Team. 👋</h1>
-            <p className="text-white/80 max-w-lg text-sm">
-              Here's what's happening with your projects and marketing campaigns today.{" "}
-              {summary.pendingTasks > 0 && (
-                <strong className="text-white">{summary.pendingTasks} pending tasks</strong>
-              )}{" "}
-              {summary.pendingTasks > 0 && "requiring attention."}
+      <div className="p-6 space-y-5 max-w-6xl">
+        {/* Page Header */}
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Dashboard Overview</h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              WTT-Project Management System – Real-time project data
             </p>
           </div>
+          <button
+            onClick={() => refetch()}
+            className="flex items-center gap-1.5 px-4 py-2 bg-[#1a56db] hover:bg-[#1648c0] text-white text-sm font-medium rounded transition-colors shadow-sm"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Refresh
+          </button>
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {statCards.map((stat, i) => (
-            <div key={i} className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow group">
-              <div className="flex items-center justify-between mb-4">
-                <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${stat.bg} group-hover:scale-105 transition-transform`}>
-                  <stat.icon className={`w-5 h-5 ${stat.color}`} />
+        {/* Stat Cards */}
+        {isLoading ? (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {[1,2,3,4].map(i => (
+              <div key={i} className="bg-white rounded-lg border border-gray-200 p-4 h-24 animate-pulse" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {statCards.map((card) => (
+              <div key={card.label} className="bg-white rounded-lg border border-gray-200 p-4 flex items-center justify-between shadow-sm hover:shadow-md transition-shadow">
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">{card.label}</p>
+                  <p className="text-3xl font-bold text-gray-900">{card.value}</p>
                 </div>
-                <TrendingUp className="w-4 h-4 text-emerald-500" />
+                <div className={`w-12 h-12 rounded-lg ${card.iconBg} flex items-center justify-center`}>
+                  <card.icon className={`w-6 h-6 ${card.iconColor}`} />
+                </div>
               </div>
-              <p className="text-sm text-muted-foreground">{stat.label}</p>
-              <h3 className="text-2xl font-bold text-foreground mt-1">{stat.value}</h3>
+            ))}
+          </div>
+        )}
+
+        {/* Recent Ongoing Projects */}
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+          <div className="px-5 py-4 border-b border-gray-100">
+            <h2 className="text-base font-semibold text-gray-800">Recent Ongoing Projects</h2>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {isLoading ? (
+              <div className="px-5 py-8 text-center text-gray-400 text-sm">Loading projects...</div>
+            ) : recentOngoing.length === 0 ? (
+              <div className="px-5 py-8 text-center text-gray-400 text-sm">No ongoing projects</div>
+            ) : (
+              recentOngoing.map((project) => (
+                <div key={project.id} className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors">
+                  <span className="text-sm text-gray-800 font-medium truncate max-w-xs">{project.name}</span>
+                  <div className="flex items-center gap-4 shrink-0">
+                    <span className="text-sm text-gray-500 font-medium w-10 text-right">{project.progress}%</span>
+                    <span className={`text-xs px-2.5 py-1 rounded font-medium ${statusColors[project.status] ?? "bg-gray-100 text-gray-600"}`}>
+                      {statusLabel[project.status] ?? project.status}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          {!isLoading && projects && projects.length > 5 && (
+            <div className="px-5 py-3 border-t border-gray-100">
+              <Link href="/projects" className="text-sm text-[#1a56db] hover:underline font-medium">
+                View all {projects.length} ongoing projects →
+              </Link>
             </div>
-          ))}
+          )}
         </div>
 
-        {/* Charts Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          <div className="lg:col-span-2 bg-card border border-border rounded-2xl p-6 shadow-sm">
-            <h3 className="text-base font-semibold text-foreground mb-5">Monthly Leads Growth</h3>
-            <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={summary.monthlyLeads?.length ? summary.monthlyLeads : [
-                  { month: "Jan", count: 42 }, { month: "Feb", count: 58 }, { month: "Mar", count: 91 },
-                  { month: "Apr", count: 76 }, { month: "May", count: 115 }, { month: "Jun", count: 134 },
-                ]} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(221 83% 53%)" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="hsl(221 83% 53%)" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(214 32% 91%)" vertical={false} />
-                  <XAxis dataKey="month" stroke="hsl(215 16% 60%)" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="hsl(215 16% 60%)" fontSize={12} tickLine={false} axisLine={false} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#fff', borderColor: 'hsl(214 32% 88%)', borderRadius: '10px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
-                    itemStyle={{ color: 'hsl(222 47% 11%)' }}
-                  />
-                  <Area type="monotone" dataKey="count" stroke="hsl(221 83% 53%)" strokeWidth={2.5} fillOpacity={1} fill="url(#colorCount)" />
-                </AreaChart>
-              </ResponsiveContainer>
+        {/* 3D Model Viewer Section */}
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+          <div className="px-5 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-[#1a56db] flex items-center justify-center">
+                <Box className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-800">3D Model Viewer</p>
+                <p className="text-xs text-gray-500">Upload and visualize your 3D models</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+                <RotateCcw className="w-3.5 h-3.5" /> Reset View
+              </button>
+              <button className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+                <Maximize className="w-3.5 h-3.5" /> Fullscreen
+              </button>
+              <a
+                href="/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1a56db] hover:bg-[#1648c0] text-white rounded text-sm font-medium transition-colors"
+              >
+                <Upload className="w-3.5 h-3.5" /> Browse Files
+              </a>
             </div>
           </div>
 
-          <div className="bg-card border border-border rounded-2xl p-6 shadow-sm flex flex-col">
-            <h3 className="text-base font-semibold text-foreground mb-5">Budget Overview</h3>
-            <div className="flex-1 flex flex-col justify-center gap-5">
-              <div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-muted-foreground">Total Budget</span>
-                  <span className="font-semibold text-foreground">{formatCurrency(summary.totalBudget)}</span>
-                </div>
-                <div className="h-2.5 bg-muted rounded-full overflow-hidden">
-                  <div className="h-full bg-primary/30 w-full rounded-full" />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-muted-foreground">Amount Spent</span>
-                  <span className="font-semibold text-foreground">{formatCurrency(summary.totalSpent)}</span>
-                </div>
-                <div className="h-2.5 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-amber-500 to-orange-500 rounded-full transition-all"
-                    style={{ width: `${budgetPercent}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between p-4 rounded-xl bg-primary/8 border border-primary/15">
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground">Conversion Rate</p>
-                  <p className="text-2xl font-bold text-primary mt-0.5">
-                    {summary.conversionRate ? `${(summary.conversionRate).toFixed(1)}%` : "—"}
-                  </p>
-                </div>
-                <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center">
-                  <Target className="w-5 h-5 text-primary" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 bg-muted/50 rounded-xl text-center">
-                  <p className="text-lg font-bold text-foreground">{summary.completedTasks}</p>
-                  <p className="text-xs text-muted-foreground">Done Tasks</p>
-                </div>
-                <div className="p-3 bg-muted/50 rounded-xl text-center">
-                  <p className="text-lg font-bold text-foreground">{summary.activeCampaigns}</p>
-                  <p className="text-xs text-muted-foreground">Campaigns</p>
-                </div>
-              </div>
+          {/* Embedded viewer preview */}
+          <div className="mx-5 mb-5 rounded-lg border border-gray-200 overflow-hidden bg-[#0f0f1a] h-56 flex items-center justify-center relative">
+            <div className="text-center text-gray-400">
+              <Box className="w-12 h-12 mx-auto mb-3 opacity-30" />
+              <p className="text-sm opacity-60">Open the 3D viewer to load a STEP file</p>
+              <a
+                href="/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 bg-[#1a56db] text-white rounded text-xs font-medium hover:bg-[#1648c0] transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5" /> Launch 3D Viewer
+              </a>
             </div>
           </div>
         </div>
