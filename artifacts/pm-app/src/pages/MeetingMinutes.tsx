@@ -343,7 +343,7 @@ export default function MeetingMinutes() {
     if (meetings === null && !loading) {
       setLoading(true);
       fetch(`${BASE}/meeting-minutes`).then(r => r.json())
-        .then(data => { setMeetings(data); setLoading(false); })
+        .then(data => { setMeetings(Array.isArray(data) ? data : []); setLoading(false); })
         .catch(() => { setMeetings([]); setLoading(false); });
     }
   }, []);

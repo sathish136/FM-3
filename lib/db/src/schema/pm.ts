@@ -92,6 +92,7 @@ export const meetingMinutesTable = pgTable("meeting_minutes", {
   aiSummary: text("ai_summary"),
   actionItems: text("action_items"),
   status: text("status").notNull().default("draft"),
+  mode: text("mode").notNull().default("manual"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
