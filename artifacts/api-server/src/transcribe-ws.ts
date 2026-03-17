@@ -31,20 +31,18 @@ export function setupTranscribeWS(httpServer: Server) {
     );
 
     openaiWs.on("open", () => {
-      // Configure session: transcription only, server VAD, no audio output
+      console.log("[WS] Connected to OpenAI Realtime API");
       openaiWs.send(JSON.stringify({
         type: "session.update",
         session: {
           modalities: ["text"],
           input_audio_format: "pcm16",
-          input_audio_transcription: {
-            model: "whisper-1",
-          },
+          input_audio_transcription: { model: "whisper-1" },
           turn_detection: {
             type: "server_vad",
-            threshold: 0.5,
+            threshold: 0.4,
             prefix_padding_ms: 300,
-            silence_duration_ms: 600,
+            silence_duration_ms: 800,
           },
         },
       }));
@@ -55,6 +53,7 @@ export function setupTranscribeWS(httpServer: Server) {
       try {
         const event = JSON.parse(raw.toString());
         const t = event.type;
+        console.log("[WS] OpenAI event:", t, JSON.stringify(event).slice(0, 200));
 
         if (t === "conversation.item.input_audio_transcription.delta") {
           clientWs.send(JSON.stringify({ type: "delta", text: event.delta }));
@@ -65,18 +64,19 @@ export function setupTranscribeWS(httpServer: Server) {
         } else if (t === "input_audio_buffer.speech_stopped") {
           clientWs.send(JSON.stringify({ type: "speech_stopped" }));
         } else if (t === "error") {
-          console.error("OpenAI realtime error:", event.error);
+          console.error("[WS] OpenAI error event:", event.error);
           clientWs.send(JSON.stringify({ type: "error", message: event.error?.message || "OpenAI error" }));
         }
       } catch {}
     });
 
     openaiWs.on("error", (err) => {
-      console.error("OpenAI WS error:", err.message);
+      console.error("[WS] OpenAI WS error:", err.message);
       clientWs.send(JSON.stringify({ type: "error", message: err.message }));
     });
 
-    openaiWs.on("close", () => {
+    openaiWs.on("close", (code, reason) => {
+      console.log("[WS] OpenAI closed:", code, reason.toString());
       if (clientWs.readyState === WebSocket.OPEN) clientWs.close();
     });
 
@@ -90,6 +90,7 @@ export function setupTranscribeWS(httpServer: Server) {
     });
 
     clientWs.on("close", () => {
+      console.log("[WS] Client disconnected");
       if (openaiWs.readyState === WebSocket.OPEN) openaiWs.close();
     });
   });

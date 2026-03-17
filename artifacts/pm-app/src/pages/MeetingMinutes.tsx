@@ -87,142 +87,97 @@ async function streamGenerate(
 }
 
 // ─── Live Recording Mode ────────────────────────────────────────────────────
-declare global {
-  interface Window { SpeechRecognition: any; webkitSpeechRecognition: any; }
-}
-
-function float32ToPCM16Base64(float32Array: Float32Array): string {
-  const buf = new Int16Array(float32Array.length);
-  for (let i = 0; i < float32Array.length; i++) {
-    const s = Math.max(-1, Math.min(1, float32Array[i]));
-    buf[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-  }
-  const bytes = new Uint8Array(buf.buffer);
-  let bin = "";
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-  return btoa(bin);
-}
-
 function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: Meeting) => void }) {
   const [recording, setRecording] = useState(false);
-  const [micStatus, setMicStatus] = useState<"idle" | "requesting" | "connecting" | "active" | "error">("idle");
+  const [transcribing, setTranscribing] = useState(false);
   const [micError, setMicError] = useState("");
   const [duration, setDuration] = useState(0);
   const [generating, setGenerating] = useState(false);
   const [streamText, setStreamText] = useState("");
-  const [committedText, setCommittedText] = useState(meeting.rawNotes || "");
-  const [interimText, setInterimText] = useState("");
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const [transcript, setTranscript] = useState(meeting.rawNotes || "");
+  const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const committedRef = useRef(committedText);
+  const chunksRef = useRef<Blob[]>([]);
+  const chunkTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const activeRef = useRef(false);
+  const mimeRef = useRef("audio/webm");
+  const transcriptRef = useRef(transcript);
   const transcriptBoxRef = useRef<HTMLDivElement>(null);
-  committedRef.current = committedText;
+  transcriptRef.current = transcript;
 
-  useEffect(() => { setCommittedText(meeting.rawNotes || ""); }, [meeting.id]);
-
+  useEffect(() => { setTranscript(meeting.rawNotes || ""); }, [meeting.id]);
   useEffect(() => {
-    if (transcriptBoxRef.current) {
-      transcriptBoxRef.current.scrollTop = transcriptBoxRef.current.scrollHeight;
-    }
-  }, [committedText, interimText]);
+    if (transcriptBoxRef.current) transcriptBoxRef.current.scrollTop = transcriptBoxRef.current.scrollHeight;
+  }, [transcript]);
 
-  const stopAll = () => {
-    if (processorRef.current) { processorRef.current.disconnect(); processorRef.current = null; }
-    if (audioCtxRef.current) { audioCtxRef.current.close(); audioCtxRef.current = null; }
-    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
-    if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+  const sendChunk = async () => {
+    if (chunksRef.current.length === 0) return;
+    const blob = new Blob(chunksRef.current, { type: mimeRef.current });
+    chunksRef.current = [];
+    if (blob.size < 3000) return;
+    setTranscribing(true);
+    try {
+      const fd = new FormData();
+      fd.append("audio", blob, `chunk.${mimeRef.current.includes("ogg") ? "ogg" : "webm"}`);
+      const res = await fetch(`${BASE}/transcribe`, { method: "POST", body: fd });
+      const data = await res.json();
+      if (data.transcript?.trim()) {
+        setTranscript(prev => prev ? `${prev} ${data.transcript.trim()}` : data.transcript.trim());
+      }
+    } catch (e) {
+      console.error("Transcription error:", e);
+    }
+    setTranscribing(false);
   };
 
   const startRecording = async () => {
     setMicError("");
-    setMicStatus("requesting");
-    let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 24000, channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
+
+      const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm"
+        : MediaRecorder.isTypeSupported("audio/ogg") ? "audio/ogg" : "";
+      mimeRef.current = mime || "audio/webm";
+
+      const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      recorderRef.current = recorder;
+      chunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data?.size > 0) chunksRef.current.push(e.data);
+      };
+
+      recorder.start(500);
+      activeRef.current = true;
+      setRecording(true);
+      setDuration(0);
+      timerRef.current = setInterval(() => setDuration(d => d + 1), 1000);
+      chunkTimerRef.current = setInterval(sendChunk, 4000);
     } catch (err: any) {
-      setMicError(err?.name === "NotAllowedError" ? "Microphone access denied. Please allow microphone access." : `Mic error: ${err?.message}`);
-      setMicStatus("error");
-      return;
+      setMicError(err?.name === "NotAllowedError"
+        ? "Microphone access denied. Please allow microphone access in your browser."
+        : `Could not start microphone: ${err?.message}`);
     }
-
-    setMicStatus("connecting");
-
-    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${proto}//${window.location.host}/api/transcribe-ws`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data);
-        if (msg.type === "ready") {
-          setMicStatus("active");
-          setRecording(true);
-          setDuration(0);
-          timerRef.current = setInterval(() => setDuration(d => d + 1), 1000);
-
-          const audioCtx = new AudioContext({ sampleRate: 24000 });
-          audioCtxRef.current = audioCtx;
-          const src = audioCtx.createMediaStreamSource(stream);
-          const processor = audioCtx.createScriptProcessor(4096, 1, 1);
-          processorRef.current = processor;
-
-          processor.onaudioprocess = (ev) => {
-            if (ws.readyState !== WebSocket.OPEN) return;
-            const pcm = float32ToPCM16Base64(ev.inputBuffer.getChannelData(0));
-            ws.send(pcm);
-          };
-
-          src.connect(processor);
-          processor.connect(audioCtx.destination);
-        } else if (msg.type === "delta") {
-          setInterimText(t => t + msg.text);
-        } else if (msg.type === "final") {
-          setCommittedText(prev => prev ? prev + " " + msg.text : msg.text);
-          setInterimText("");
-        } else if (msg.type === "speech_started") {
-          setInterimText("");
-        } else if (msg.type === "error") {
-          setMicError(`Transcription error: ${msg.message}`);
-          setMicStatus("error");
-          stopAll();
-          setRecording(false);
-        }
-      } catch {}
-    };
-
-    ws.onerror = () => {
-      setMicError("Connection failed. Please try again.");
-      setMicStatus("error");
-      stopAll();
-      setRecording(false);
-    };
-
-    ws.onclose = () => {
-      if (recording) {
-        setRecording(false);
-        setMicStatus("idle");
-      }
-    };
   };
 
   const stopRecording = async () => {
-    stopAll();
+    activeRef.current = false;
+    if (chunkTimerRef.current) { clearInterval(chunkTimerRef.current); chunkTimerRef.current = null; }
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (recorderRef.current?.state !== "inactive") recorderRef.current?.stop();
+    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
     setRecording(false);
-    setMicStatus("idle");
-    setInterimText("");
 
-    const full = (committedRef.current + (interimText ? " " + interimText : "")).trim();
-    if (!full) return;
-    setCommittedText(full);
+    await new Promise(r => setTimeout(r, 400));
+    await sendChunk();
+
+    const text = transcriptRef.current.trim();
+    if (!text) return;
     const updated = await apiFetch(`/meeting-minutes/${meeting.id}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rawNotes: full }),
+      body: JSON.stringify({ rawNotes: text }),
     }).then(r => r.json());
     onUpdate(updated);
   };
@@ -235,24 +190,16 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
 
   const fmt = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
-  const statusBadge = () => {
-    if (!recording) return null;
-    if (micStatus === "connecting") return <span className="ml-auto text-[10px] text-amber-500 font-semibold">Connecting…</span>;
-    return <span className="ml-auto flex items-center gap-1 text-[10px] text-red-500 font-semibold"><span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />Listening…</span>;
-  };
-
-  const hasText = committedText || interimText;
-
   return (
     <div className="space-y-4">
       {/* Controls */}
-      <div className={`rounded-2xl border-2 p-5 flex flex-col items-center gap-3 transition-all ${recording ? "border-red-300 bg-red-50" : micStatus === "error" ? "border-orange-200 bg-orange-50" : "border-gray-200 bg-white"}`}>
+      <div className={`rounded-2xl border-2 p-5 flex flex-col items-center gap-3 transition-all ${recording ? "border-red-300 bg-red-50" : micError ? "border-orange-200 bg-orange-50" : "border-gray-200 bg-white"}`}>
         {recording ? (
           <div className="flex items-center gap-2 text-red-600 font-semibold text-sm">
             <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
             Recording — {fmt(duration)}
           </div>
-        ) : micStatus === "error" ? (
+        ) : micError ? (
           <p className="text-sm text-orange-600 text-center max-w-xs">{micError}</p>
         ) : (
           <p className="text-sm text-gray-400">Press the button to start recording your meeting</p>
@@ -279,7 +226,7 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
               <Square className="w-3.5 h-3.5" /> Stop
             </button>
           )}
-          {!recording && committedText.trim() && (
+          {!recording && transcript.trim() && (
             <button onClick={handleGenerate} disabled={generating}
               className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-600 to-blue-600 hover:opacity-90 disabled:opacity-60 text-white rounded-xl font-semibold shadow-sm text-sm transition-all">
               {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
@@ -294,17 +241,20 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
         <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2">
           <Radio className={`w-3 h-3 ${recording ? "text-red-500" : "text-blue-500"}`} />
           <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Live Transcript</span>
-          {statusBadge()}
-          {!recording && !hasText && <span className="ml-auto text-[10px] text-gray-400">Press Start Recording to begin</span>}
+          {transcribing
+            ? <span className="ml-auto flex items-center gap-1 text-[10px] text-violet-500 font-semibold"><Loader2 className="w-2.5 h-2.5 animate-spin" />Transcribing…</span>
+            : recording
+            ? <span className="ml-auto flex items-center gap-1 text-[10px] text-red-500 font-semibold"><span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />Listening…</span>
+            : !transcript && <span className="ml-auto text-[10px] text-gray-400">Press Start Recording to begin</span>
+          }
         </div>
         <div ref={transcriptBoxRef} className="px-4 py-3 min-h-[120px] max-h-64 overflow-y-auto text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-          {!hasText && (
+          {!transcript && (
             <span className="text-gray-300 italic">
-              {recording ? "Start speaking — text appears in real time as you talk…" : "Your transcribed speech will appear here as you speak…"}
+              {recording ? "Speak now — text will appear every few seconds…" : "Your transcribed speech will appear here as you speak…"}
             </span>
           )}
-          <span>{committedText}</span>
-          {interimText && <span className="text-gray-400 italic">{committedText ? " " : ""}{interimText}</span>}
+          {transcript}
         </div>
       </div>
 

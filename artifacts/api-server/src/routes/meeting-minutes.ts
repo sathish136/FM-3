@@ -52,11 +52,13 @@ router.delete("/meeting-minutes/:id", async (req, res) => {
 router.post("/transcribe", upload.single("audio"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No audio file" });
-    const ext = req.file.mimetype.includes("webm") ? "webm"
-      : req.file.mimetype.includes("mp4") ? "mp4"
-      : req.file.mimetype.includes("ogg") ? "ogg"
-      : "wav";
-    const audioFile = await toFile(req.file.buffer, `audio.${ext}`, { type: req.file.mimetype });
+    const baseMime = req.file.mimetype.split(";")[0].trim();
+    const ext = baseMime.includes("webm") ? "webm"
+      : baseMime.includes("mp4") ? "mp4"
+      : baseMime.includes("ogg") ? "ogg"
+      : baseMime.includes("wav") ? "wav"
+      : "webm";
+    const audioFile = await toFile(req.file.buffer, `audio.${ext}`, { type: baseMime });
     const result = await openai.audio.transcriptions.create({ model: "whisper-1", file: audioFile, response_format: "json" });
     res.json({ transcript: result.text });
   } catch (e) {
