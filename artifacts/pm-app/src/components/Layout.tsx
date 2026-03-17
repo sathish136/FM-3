@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Box, PenTool, GitBranch,
   Briefcase, Users, ChevronDown, FileText,
   ChevronRight, LogOut, ChevronLeft, ChevronRight as ChevronRightIcon, Menu,
-  MonitorPlay,
+  MonitorPlay, Table2,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -30,6 +30,7 @@ const navItems: NavItem[] = [
   { path: "/tasks", label: "P&ID Process", icon: GitBranch },
   { path: "/projects", label: "Projects", icon: Briefcase },
   { path: "/meeting-minutes", label: "Meeting Minutes", icon: FileText },
+  { path: "/sheets", label: "Sheets", icon: Table2 },
   { path: "/team", label: "Team", icon: Users },
 ];
 

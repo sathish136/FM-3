@@ -13,6 +13,7 @@ import Team from "@/pages/Team";
 import ViewerOptions from "@/pages/ViewerOptions";
 import MechanicalViewer from "@/pages/MechanicalViewer";
 import MeetingMinutes from "@/pages/MeetingMinutes";
+import Sheets from "@/pages/Sheets";
 import Presentation from "@/pages/Presentation";
 import Drawings from "@/pages/Drawings";
 import Gallery from "@/pages/Gallery";
@@ -37,6 +38,7 @@ function Router() {
       <Route path="/campaigns" component={Campaigns} />
       <Route path="/leads" component={Leads} />
       <Route path="/meeting-minutes" component={MeetingMinutes} />
+      <Route path="/sheets" component={Sheets} />
       <Route path="/team" component={Team} />
       <Route path="/viewer-options" component={ViewerOptions} />
       <Route path="/viewer-options/mechanical" component={MechanicalViewer} />
