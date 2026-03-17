@@ -17,10 +17,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { path: "/", label: "Dashboard", icon: LayoutDashboard },
-  {
-    path: "/viewer-options", label: "3D Viewer", icon: Box,
-    children: [{ path: "/viewer-options/mechanical", label: "Mechanical 3D View" }],
-  },
+  { path: "/viewer-options/mechanical", label: "3D Viewer", icon: Box },
   {
     path: "/drawings", label: "Drawings", icon: PenTool,
     children: [
@@ -39,7 +36,7 @@ const navItems: NavItem[] = [
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
-  const [expandedItems, setExpandedItems] = useState<string[]>(["/viewer-options", "/drawings"]);
+  const [expandedItems, setExpandedItems] = useState<string[]>(["/drawings"]);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
