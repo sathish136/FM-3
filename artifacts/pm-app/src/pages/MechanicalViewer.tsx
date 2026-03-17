@@ -421,6 +421,13 @@ export default function MechanicalViewer() {
             <h1 className="text-2xl font-bold text-gray-900">Mechanical 3D View</h1>
             <p className="text-sm text-gray-500">Filter by project and system to view 3D models</p>
           </div>
+          <button
+            onClick={() => setOpenEntry({ id: "manual", projectId: 0, projectName: "", erpnextName: "Manual Upload", system: "manual", label: "Manual Upload" })}
+            title="Upload STEP file"
+            className="ml-auto flex items-center justify-center w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all"
+          >
+            <Upload className="w-5 h-5" />
+          </button>
         </div>
 
         {/* Filters row */}
@@ -555,18 +562,9 @@ export default function MechanicalViewer() {
                     {entry.label}
                   </span>
                 </div>
-                <div className="flex gap-2 mt-2">
-                  <button className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-xs font-medium text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-all">
-                    <ExternalLink className="w-3.5 h-3.5" /> Open 3D Model
-                  </button>
-                  <button
-                    onClick={() => setOpenEntry(entry)}
-                    title="Upload STEP file"
-                    className="flex items-center justify-center w-9 h-9 rounded-lg bg-gray-50 border border-gray-200 text-gray-500 hover:bg-blue-600 hover:border-blue-600 hover:text-white transition-all flex-shrink-0"
-                  >
-                    <Upload className="w-4 h-4" />
-                  </button>
-                </div>
+                <button className="w-full flex items-center justify-center gap-2 mt-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-xs font-medium text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-all">
+                  <ExternalLink className="w-3.5 h-3.5" /> Open 3D Model
+                </button>
               </div>
             ))}
           </div>
