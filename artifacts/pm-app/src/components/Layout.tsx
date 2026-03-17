@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import {
-  LayoutDashboard, Box, PenTool, GitBranch, Wrench,
+  LayoutDashboard, Box, PenTool, GitBranch,
   Briefcase, FolderOpen, Users, Settings, ChevronDown,
   ChevronRight, LogOut, ChevronLeft, ChevronRight as ChevronRightIcon, Menu,
   MonitorPlay,
@@ -31,7 +31,6 @@ const navItems: NavItem[] = [
   },
   { path: "/presentation", label: "Presentation", icon: MonitorPlay },
   { path: "/tasks", label: "P&ID Process", icon: GitBranch },
-  { path: "/gallery", label: "Spare Parts", icon: Wrench },
   { path: "/projects", label: "Projects", icon: Briefcase },
   { path: "/gallery", label: "Files", icon: FolderOpen },
   { path: "/team", label: "Team", icon: Users },
