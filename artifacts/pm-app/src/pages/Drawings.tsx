@@ -3,8 +3,10 @@ import { useLocation } from "wouter";
 import {
   Cog, Zap, Building2, FolderOpen, FileText,
   Search, RefreshCw, Loader2, X, ChevronLeft, ChevronRight,
+  ZoomIn, ZoomOut, Highlighter, PanelRight, Eye, Info, Layers,
+  Clock, RotateCcw,
 } from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -57,9 +59,38 @@ interface Drawing {
   modified: string;
 }
 
+interface ViewEntry {
+  time: string;
+}
+
 function formatDate(iso: string) {
   try {
     return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  } catch {
+    return iso;
+  }
+}
+
+function formatViewTime(iso: string) {
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHrs = Math.floor(diffMins / 60);
+  if (diffHrs < 24) return `${diffHrs}h ago`;
+  const diffDays = Math.floor(diffHrs / 24);
+  if (diffDays === 1) return "Yesterday";
+  return `${diffDays}d ago`;
+}
+
+function formatViewFull(iso: string) {
+  try {
+    return new Date(iso).toLocaleString("en-GB", {
+      day: "2-digit", month: "short", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    });
   } catch {
     return iso;
   }
@@ -69,59 +100,344 @@ function proxyUrl(attach: string) {
   return `${BASE}/api/file-proxy?url=${encodeURIComponent(attach)}`;
 }
 
-function PdfViewer({ src }: { src: string }) {
+type PanelTab = "info" | "views" | "pages";
+
+function PdfViewer({ src, drawing }: { src: string; drawing: Drawing }) {
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [pdfError, setPdfError] = useState(false);
+  const [scale, setScale] = useState(1.2);
+  const [highlightMode, setHighlightMode] = useState(false);
+  const [showPanel, setShowPanel] = useState(true);
+  const [activeTab, setActiveTab] = useState<PanelTab>("info");
+  const [views, setViews] = useState<ViewEntry[]>([]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const key = `doc-views-${drawing.name}`;
+    const existing: ViewEntry[] = JSON.parse(localStorage.getItem(key) || "[]");
+    const newView: ViewEntry = { time: new Date().toISOString() };
+    const updated = [newView, ...existing].slice(0, 100);
+    localStorage.setItem(key, JSON.stringify(updated));
+    setViews(updated);
+  }, [drawing.name]);
+
+  function zoomIn() { setScale(s => Math.min(3, parseFloat((s + 0.2).toFixed(1)))); }
+  function zoomOut() { setScale(s => Math.max(0.4, parseFloat((s - 0.2).toFixed(1)))); }
+  function resetZoom() { setScale(1.2); }
+
+  const tabs: { key: PanelTab; label: string; icon: React.ElementType }[] = [
+    { key: "info", label: "Info", icon: Info },
+    { key: "views", label: "Views", icon: Eye },
+    { key: "pages", label: "Pages", icon: Layers },
+  ];
 
   return (
-    <div className="h-full flex flex-col">
-      {numPages && numPages > 1 && (
-        <div className="flex items-center justify-center gap-3 py-2 bg-gray-900 border-b border-gray-800 flex-shrink-0">
+    <div className="h-full flex flex-col bg-gray-950">
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 px-3 py-2 bg-gray-900 border-b border-gray-800 flex-shrink-0 flex-wrap">
+        {/* Zoom */}
+        <div className="flex items-center gap-0.5 bg-gray-800 rounded-lg px-0.5">
           <button
-            onClick={() => setPageNumber(p => Math.max(1, p - 1))}
-            disabled={pageNumber <= 1}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            onClick={zoomOut}
+            className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+            title="Zoom out"
           >
-            <ChevronLeft className="w-4 h-4" />
+            <ZoomOut className="w-3.5 h-3.5" />
           </button>
-          <span className="text-xs text-gray-400">
-            Page {pageNumber} of {numPages}
-          </span>
           <button
-            onClick={() => setPageNumber(p => Math.min(numPages, p + 1))}
-            disabled={pageNumber >= numPages}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            onClick={resetZoom}
+            className="px-2 text-xs text-gray-300 hover:text-white tabular-nums w-12 text-center"
+            title="Reset zoom"
           >
-            <ChevronRight className="w-4 h-4" />
+            {Math.round(scale * 100)}%
+          </button>
+          <button
+            onClick={zoomIn}
+            className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+            title="Zoom in"
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
           </button>
         </div>
-      )}
-      <div className="flex-1 overflow-auto flex items-start justify-center p-4">
-        {pdfError ? (
-          <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3">
-            <FileText className="w-12 h-12 opacity-30" />
-            <p className="text-sm">Unable to render this PDF.</p>
+
+        <button
+          onClick={resetZoom}
+          className="flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+          title="Reset zoom"
+        >
+          <RotateCcw className="w-3 h-3" /> Fit
+        </button>
+
+        <div className="h-4 w-px bg-gray-700" />
+
+        {/* Highlight toggle */}
+        <button
+          onClick={() => setHighlightMode(h => !h)}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+            highlightMode
+              ? "bg-yellow-400 text-gray-900"
+              : "text-gray-400 hover:text-white hover:bg-gray-700"
+          }`}
+          title="Toggle highlight mode"
+        >
+          <Highlighter className="w-3.5 h-3.5" />
+          Highlight
+        </button>
+
+        <div className="flex-1" />
+
+        {/* Page navigation */}
+        {numPages && (
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => setPageNumber(p => Math.max(1, p - 1))}
+              disabled={pageNumber <= 1}
+              className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-xs text-gray-400 w-24 text-center tabular-nums">
+              {pageNumber} / {numPages}
+            </span>
+            <button
+              onClick={() => setPageNumber(p => Math.min(numPages!, p + 1))}
+              disabled={pageNumber >= numPages}
+              className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
-        ) : (
-          <Document
-            file={src}
-            onLoadSuccess={({ numPages }) => { setNumPages(numPages); setPageNumber(1); }}
-            onLoadError={() => setPdfError(true)}
-            loading={
-              <div className="flex items-center gap-2 text-gray-400 mt-20">
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <span className="text-sm">Loading PDF…</span>
-              </div>
-            }
-          >
-            <Page
-              pageNumber={pageNumber}
-              renderTextLayer={true}
-              renderAnnotationLayer={false}
-              className="shadow-2xl"
-            />
-          </Document>
+        )}
+
+        <div className="h-4 w-px bg-gray-700" />
+
+        {/* Panel toggle */}
+        <button
+          onClick={() => setShowPanel(s => !s)}
+          className={`p-1.5 rounded transition-colors ${showPanel ? "bg-gray-700 text-white" : "text-gray-400 hover:text-white hover:bg-gray-700"}`}
+          title="Toggle info panel"
+        >
+          <PanelRight className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Body */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* PDF scroll area */}
+        <div
+          ref={scrollRef}
+          className={`flex-1 overflow-auto bg-gray-900 flex items-start justify-center p-6 ${highlightMode ? "select-text" : "select-none"}`}
+          style={highlightMode ? { cursor: "text" } : {}}
+        >
+          {pdfError ? (
+            <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3 pt-20">
+              <FileText className="w-12 h-12 opacity-30" />
+              <p className="text-sm">Unable to render this PDF.</p>
+            </div>
+          ) : (
+            <Document
+              file={src}
+              onLoadSuccess={({ numPages }) => { setNumPages(numPages); setPageNumber(1); }}
+              onLoadError={() => setPdfError(true)}
+              loading={
+                <div className="flex items-center gap-2 text-gray-400 mt-20">
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span className="text-sm">Loading PDF…</span>
+                </div>
+              }
+            >
+              <Page
+                pageNumber={pageNumber}
+                scale={scale}
+                renderTextLayer={true}
+                renderAnnotationLayer={false}
+                className="shadow-2xl"
+              />
+            </Document>
+          )}
+        </div>
+
+        {/* Right panel */}
+        {showPanel && (
+          <div className="w-64 bg-gray-950 border-l border-gray-800 flex flex-col flex-shrink-0">
+            {/* Tabs */}
+            <div className="flex border-b border-gray-800">
+              {tabs.map(({ key, label, icon: Icon }) => (
+                <button
+                  key={key}
+                  onClick={() => setActiveTab(key)}
+                  className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium uppercase tracking-wide transition-colors ${
+                    activeTab === key
+                      ? "text-white border-b-2 border-blue-500"
+                      : "text-gray-500 hover:text-gray-300"
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Panel body */}
+            <div className="flex-1 overflow-auto">
+              {/* INFO */}
+              {activeTab === "info" && (
+                <div className="p-4 space-y-4">
+                  <div>
+                    <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-1">Drawing No.</p>
+                    <p className="text-sm text-white font-semibold leading-snug">{drawing.name}</p>
+                  </div>
+                  {drawing.project_name && (
+                    <div>
+                      <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-1">Project</p>
+                      <p className="text-sm text-gray-200">{drawing.project_name}</p>
+                      {drawing.project && drawing.project !== drawing.project_name && (
+                        <p className="text-[10px] text-gray-500 font-mono mt-0.5">{drawing.project}</p>
+                      )}
+                    </div>
+                  )}
+                  {drawing.department && (
+                    <div>
+                      <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-1">Department</p>
+                      <p className="text-sm text-gray-200">{drawing.department}</p>
+                    </div>
+                  )}
+                  {drawing.revision && (
+                    <div>
+                      <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-1">Revision</p>
+                      <span className="inline-block px-2 py-0.5 rounded bg-gray-800 text-gray-200 text-xs font-semibold">
+                        {drawing.revision}
+                      </span>
+                    </div>
+                  )}
+                  {drawing.tag && (
+                    <div>
+                      <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-1">Tag</p>
+                      <p className="text-sm text-gray-200">{drawing.tag}</p>
+                    </div>
+                  )}
+                  {drawing.modified && (
+                    <div>
+                      <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-1">Last Modified</p>
+                      <p className="text-sm text-gray-200">{formatDate(drawing.modified)}</p>
+                    </div>
+                  )}
+                  {numPages !== null && (
+                    <div>
+                      <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-1">Total Pages</p>
+                      <p className="text-sm text-gray-200">{numPages}</p>
+                    </div>
+                  )}
+                  <div className="pt-2 border-t border-gray-800">
+                    <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-2">Quick Actions</p>
+                    <div className="space-y-1">
+                      <button
+                        onClick={() => setHighlightMode(h => !h)}
+                        className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs transition-colors ${
+                          highlightMode ? "bg-yellow-400 text-gray-900" : "text-gray-400 hover:text-white hover:bg-gray-800"
+                        }`}
+                      >
+                        <Highlighter className="w-3.5 h-3.5" />
+                        {highlightMode ? "Highlight mode ON" : "Enable highlight"}
+                      </button>
+                      <button
+                        onClick={() => setActiveTab("views")}
+                        className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                      >
+                        <Clock className="w-3.5 h-3.5" />
+                        View history ({views.length})
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* VIEWS */}
+              {activeTab === "views" && (
+                <div className="p-3">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-[9px] text-gray-600 uppercase tracking-widest">View History</p>
+                    <span className="text-[10px] text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded">{views.length}</span>
+                  </div>
+                  {views.length === 0 ? (
+                    <p className="text-xs text-gray-600 text-center py-6">No views recorded</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {views.map((v, i) => (
+                        <div
+                          key={i}
+                          className="flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-gray-800 transition-colors"
+                        >
+                          <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">
+                            Y
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs text-gray-200 font-medium">You</p>
+                            <p className="text-[10px] text-gray-500 truncate" title={formatViewFull(v.time)}>
+                              {formatViewTime(v.time)}
+                            </p>
+                          </div>
+                          {i === 0 && (
+                            <span className="text-[9px] bg-blue-900 text-blue-300 px-1.5 py-0.5 rounded font-medium flex-shrink-0">
+                              Latest
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* PAGES */}
+              {activeTab === "pages" && (
+                <div className="p-2">
+                  <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-2 px-1">
+                    {numPages ? `${numPages} pages` : "Loading…"}
+                  </p>
+                  {numPages && (
+                    <Document
+                      file={src}
+                      loading={null}
+                      onLoadError={() => {}}
+                    >
+                      <div className="space-y-1.5">
+                        {Array.from({ length: numPages }, (_, i) => i + 1).map(pg => (
+                          <button
+                            key={pg}
+                            onClick={() => setPageNumber(pg)}
+                            className={`w-full rounded-lg overflow-hidden border-2 transition-colors text-left ${
+                              pg === pageNumber
+                                ? "border-blue-500"
+                                : "border-transparent hover:border-gray-700"
+                            }`}
+                          >
+                            <div className="bg-white overflow-hidden flex items-center justify-center">
+                              <Page
+                                pageNumber={pg}
+                                width={220}
+                                renderTextLayer={false}
+                                renderAnnotationLayer={false}
+                              />
+                            </div>
+                            <div className={`py-1 px-2 flex items-center justify-between ${pg === pageNumber ? "bg-blue-900" : "bg-gray-800"}`}>
+                              <span className={`text-[10px] font-medium ${pg === pageNumber ? "text-blue-200" : "text-gray-400"}`}>
+                                Page {pg}
+                              </span>
+                              {pg === pageNumber && (
+                                <span className="text-[9px] text-blue-300">Current</span>
+                              )}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </Document>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -163,7 +479,7 @@ function FileViewer({
       <div className="flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-800 flex-shrink-0">
         <button
           onClick={onClose}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors flex-shrink-0"
         >
           <X className="w-4 h-4" /> Close
         </button>
@@ -174,14 +490,15 @@ function FileViewer({
           <p className="text-sm font-semibold text-white truncate">{drawing.name}</p>
           <p className="text-xs text-gray-400 truncate">
             {drawing.project_name || drawing.project}
-            {drawing.revision ? ` · ${drawing.revision}` : ""}
+            {drawing.revision ? ` · Rev ${drawing.revision}` : ""}
             {drawing.tag ? ` · ${drawing.tag}` : ""}
           </p>
         </div>
 
-        {/* Navigator */}
+        {/* Drawing navigator */}
         {filtered.length > 1 && (
           <div className="flex items-center gap-1 ml-auto flex-shrink-0">
+            <span className="text-xs text-gray-600 mr-1">Drawing</span>
             <button
               onClick={() => onNavigate(currentIndex - 1)}
               disabled={currentIndex === 0}
@@ -211,7 +528,7 @@ function FileViewer({
             <p className="text-sm">No file attached to this drawing</p>
           </div>
         ) : isImage ? (
-          <div className="h-full flex items-center justify-center p-6 overflow-auto">
+          <div className="h-full flex items-center justify-center p-6 overflow-auto bg-gray-900">
             <img
               src={src}
               alt={drawing.name}
@@ -219,7 +536,7 @@ function FileViewer({
             />
           </div>
         ) : isPdf ? (
-          <PdfViewer key={src} src={src} />
+          <PdfViewer key={src} src={src} drawing={drawing} />
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-3">
             <FileText className="w-12 h-12 opacity-30" />
