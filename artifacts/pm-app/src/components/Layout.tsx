@@ -50,6 +50,7 @@ const navItems: NavItem[] = [
       { path: "/drawings/civil",      label: "Design Civil" },
     ],
   },
+  { path: "/design-3d", label: "Design 3D", icon: Box },
   { path: "/presentation", label: "Presentation", icon: MonitorPlay },
   { path: "/tasks", label: "P&ID Process", icon: GitBranch },
   { path: "/projects", label: "Projects", icon: Briefcase },

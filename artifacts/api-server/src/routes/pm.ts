@@ -4,7 +4,7 @@ import {
   projectsTable, tasksTable, campaignsTable, leadsTable, teamMembersTable,
 } from "@workspace/db/schema";
 import { eq, sql } from "drizzle-orm";
-import { isErpNextConfigured, fetchErpNextProjects, fetchErpNextDrawings } from "../lib/erpnext";
+import { isErpNextConfigured, fetchErpNextProjects, fetchErpNextDrawings, fetchErpNextDesign3D } from "../lib/erpnext";
 
 const router = Router();
 
@@ -228,6 +228,19 @@ router.get("/drawings", async (req, res) => {
     res.json(drawings);
   } catch (e) {
     console.error("Drawings fetch error:", e);
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── Design 3D ───────────────────────────────────────────────────────────────
+
+router.get("/design-3d", async (req, res) => {
+  try {
+    const { department } = req.query as { department?: string };
+    const records = await fetchErpNextDesign3D(department);
+    res.json(records);
+  } catch (e) {
+    console.error("Design 3D fetch error:", e);
     res.status(500).json({ error: String(e) });
   }
 });

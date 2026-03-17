@@ -19,6 +19,7 @@ import SheetsHome from "@/pages/SheetsHome";
 import Sheets from "@/pages/Sheets";
 import Presentation from "@/pages/Presentation";
 import Drawings from "@/pages/Drawings";
+import Design3D from "@/pages/Design3D";
 import Gallery from "@/pages/Gallery";
 import Settings from "@/pages/Settings";
 import Profile from "@/pages/Profile";
@@ -62,6 +63,7 @@ function ProtectedRoutes() {
       <Route path="/drawings/mechanical" component={Drawings} />
       <Route path="/drawings/electrical" component={Drawings} />
       <Route path="/drawings/civil" component={Drawings} />
+      <Route path="/design-3d" component={Design3D} />
       <Route path="/gallery" component={Gallery} />
       <Route path="/settings" component={Settings} />
       <Route path="/profile" component={Profile} />
