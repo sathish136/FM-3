@@ -11,6 +11,10 @@ import Campaigns from "@/pages/Campaigns";
 import Leads from "@/pages/Leads";
 import Team from "@/pages/Team";
 import ViewerOptions from "@/pages/ViewerOptions";
+import Presentation from "@/pages/Presentation";
+import Gallery from "@/pages/Gallery";
+import Settings from "@/pages/Settings";
+import Profile from "@/pages/Profile";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -31,6 +35,10 @@ function Router() {
       <Route path="/leads" component={Leads} />
       <Route path="/team" component={Team} />
       <Route path="/viewer-options" component={ViewerOptions} />
+      <Route path="/presentation" component={Presentation} />
+      <Route path="/gallery" component={Gallery} />
+      <Route path="/settings" component={Settings} />
+      <Route path="/profile" component={Profile} />
       <Route component={NotFound} />
     </Switch>
   );
