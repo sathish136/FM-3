@@ -4,6 +4,7 @@ import {
   projectsTable, tasksTable, campaignsTable, leadsTable, teamMembersTable,
 } from "@workspace/db/schema";
 import { eq, sql } from "drizzle-orm";
+import { isErpNextConfigured, fetchErpNextProjects } from "../lib/erpnext";
 
 const router = Router();
 
@@ -11,6 +12,10 @@ const router = Router();
 
 router.get("/projects", async (_req, res) => {
   try {
+    if (isErpNextConfigured()) {
+      const projects = await fetchErpNextProjects();
+      return res.json(projects);
+    }
     const rows = await db.select().from(projectsTable).orderBy(projectsTable.createdAt);
     res.json(rows.map(r => ({ ...r, createdAt: r.createdAt.toISOString() })));
   } catch (e) { res.status(500).json({ error: String(e) }); }
@@ -164,6 +169,12 @@ router.post("/team", async (req, res) => {
     const [row] = await db.insert(teamMembersTable).values(req.body).returning();
     res.status(201).json({ ...row, createdAt: row.createdAt.toISOString() });
   } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// ─── ERPNext Status ───────────────────────────────────────────────────────────
+
+router.get("/erpnext/status", (_req, res) => {
+  res.json({ configured: isErpNextConfigured(), url: process.env.ERPNEXT_URL || null });
 });
 
 // ─── Analytics Summary ────────────────────────────────────────────────────────

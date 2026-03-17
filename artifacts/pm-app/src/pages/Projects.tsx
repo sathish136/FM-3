@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   useListProjects,
   useCreateProject,
@@ -17,7 +17,7 @@ import {
   Plus, Calendar, CheckCircle2, Circle, Clock,
   Trash2, Edit2, Briefcase, AlertCircle,
   ChevronDown, ChevronRight, LayoutGrid, List,
-  TrendingUp, Layers
+  TrendingUp, Layers, RefreshCw, Zap
 } from "lucide-react";
 
 const STATUS_ORDER = ["active", "planning", "on_hold", "completed"];
@@ -201,7 +201,7 @@ function StatusGroup({
 
 export default function Projects() {
   const queryClient = useQueryClient();
-  const { data: projects, isLoading } = useListProjects();
+  const { data: projects, isLoading, isFetching } = useListProjects();
   const createProject = useCreateProject();
   const updateProject = useUpdateProject();
   const deleteProject = useDeleteProject();
@@ -209,6 +209,14 @@ export default function Projects() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [erpStatus, setErpStatus] = useState<{ configured: boolean; url: string | null } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/erpnext/status")
+      .then(r => r.json())
+      .then(setErpStatus)
+      .catch(() => {});
+  }, []);
 
   const handleCreate = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -280,9 +288,29 @@ export default function Projects() {
               <Layers className="w-6 h-6 text-blue-600" />
               Projects
             </h1>
-            <p className="text-sm text-gray-500 mt-0.5">Manage and track your team's ongoing initiatives</p>
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-sm text-gray-500">Manage and track your team's ongoing initiatives</p>
+              {erpStatus?.configured && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-medium">
+                  <Zap className="w-3 h-3" />
+                  Live from ERPNext
+                </span>
+              )}
+              {erpStatus && !erpStatus.configured && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-xs font-medium">
+                  ERPNext not configured
+                </span>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => queryClient.invalidateQueries({ queryKey: getListProjectsQueryKey() })}
+              className={`p-2 rounded-lg border border-gray-200 bg-white text-gray-500 hover:text-blue-600 hover:border-blue-200 transition-all ${isFetching ? "animate-spin text-blue-500" : ""}`}
+              title="Refresh"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
             <div className="flex items-center bg-gray-100 rounded-lg p-1 gap-0.5">
               <button
                 onClick={() => setViewMode("grid")}
@@ -299,9 +327,11 @@ export default function Projects() {
                 <List className="w-4 h-4" />
               </button>
             </div>
-            <button onClick={() => setIsCreateModalOpen(true)} className="btn-primary">
-              <Plus className="w-4 h-4" /> New Project
-            </button>
+            {!erpStatus?.configured && (
+              <button onClick={() => setIsCreateModalOpen(true)} className="btn-primary">
+                <Plus className="w-4 h-4" /> New Project
+              </button>
+            )}
           </div>
         </div>
 
