@@ -126,17 +126,41 @@ authRouter.get("/file-proxy", async (req, res) => {
 
     const contentType = fileRes.headers.get("content-type") || "application/octet-stream";
 
-    // Strip headers that would block in-app display, force inline rendering
     res.setHeader("Content-Type", contentType);
     res.setHeader("Cache-Control", "private, max-age=3600");
     res.setHeader("Content-Disposition", "inline");
-    // Do NOT forward X-Frame-Options or CSP from ERPNext — they block iframe embedding
 
     const buf = await fileRes.arrayBuffer();
     res.send(Buffer.from(buf));
   } catch (err) {
     console.error("File proxy error:", err);
     res.status(500).send("Failed to fetch file");
+  }
+});
+
+// Count slides inside a PPTX file (PPTX is a ZIP; slides are ppt/slides/slideN.xml)
+authRouter.get("/pptx-slides-count", async (req, res) => {
+  const url = req.query.url as string;
+  if (!url) return res.status(400).json({ error: "Missing url" });
+
+  try {
+    const target = url.startsWith("http") ? url : `${ERP_URL}${url}`;
+    const fileRes = await fetch(target, {
+      headers: { Authorization: `token ${API_KEY}:${API_SECRET}` },
+    });
+    if (!fileRes.ok) return res.status(fileRes.status).json({ error: "File not found" });
+
+    const buf = Buffer.from(await fileRes.arrayBuffer());
+    // PPTX (ZIP) stores filenames as ASCII in the central directory.
+    // Count unique entries matching ppt/slides/slideN.xml
+    const str = buf.toString("latin1");
+    const matches = str.match(/ppt\/slides\/slide\d+\.xml/g);
+    const numSlides = matches ? new Set(matches).size : 1;
+
+    res.json({ numSlides });
+  } catch (err) {
+    console.error("PPTX slides count error:", err);
+    res.status(500).json({ error: String(err) });
   }
 });
 

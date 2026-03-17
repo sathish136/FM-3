@@ -1,10 +1,11 @@
 import { Layout } from "@/components/Layout";
 import {
-  Layers, Eye, Share2, Download, ChevronLeft, ChevronRight,
+  Layers, Eye, Share2, ChevronLeft, ChevronRight,
   Plus, Loader2, FolderOpen, AlertCircle, Play, RefreshCw,
-  FileText, ZoomIn, ZoomOut, PanelRight, Info, RotateCcw, X,
+  FileText, ZoomIn, ZoomOut, PanelRight, RotateCcw, X,
+  Maximize2,
 } from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -20,8 +21,11 @@ interface Presentation {
   presentation_name: string;
   file_upload: string | null;
   modified: string;
-  num_slides?: number;
-  views?: number;
+}
+
+interface SlideInfo {
+  numSlides: number;
+  loading: boolean;
 }
 
 const SLIDE_COLORS = [
@@ -33,22 +37,23 @@ const SLIDE_COLORS = [
   { from: "#0e7490", to: "#0c4a6e" },
 ];
 
-const THUMB_COLORS = [
-  "#1a56db",
-  "#7c3aed",
-  "#2d9b6f",
-  "#c08a3a",
-  "#6d28d9",
-  "#0e7490",
-];
+const THUMB_COLORS = ["#1a56db", "#7c3aed", "#2d9b6f", "#c08a3a", "#6d28d9", "#0e7490"];
+
+function fileExt(f: string) { return (f.split(".").pop() || "").toLowerCase(); }
+function proxyUrl(f: string) { return `${BASE}/api/file-proxy?url=${encodeURIComponent(f)}`; }
+
+function officeOnlineUrl(fileUrl: string) {
+  const publicProxyUrl = `${window.location.origin}${BASE}/api/file-proxy?url=${encodeURIComponent(fileUrl)}`;
+  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(publicProxyUrl)}`;
+}
 
 function formatDate(iso: string) {
   try {
     const d = new Date(iso);
     const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const mins = Math.floor(diffMs / 60000);
-    if (mins < 60) return `${mins} minutes ago`;
+    const diff = now.getTime() - d.getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `${mins}m ago`;
     const hrs = Math.floor(mins / 60);
     if (hrs < 24) return `${hrs} hours ago`;
     const days = Math.floor(hrs / 24);
@@ -58,15 +63,44 @@ function formatDate(iso: string) {
   } catch { return iso; }
 }
 
-function fileExt(f: string) { return (f.split(".").pop() || "").toLowerCase(); }
-function fileName(f: string) { return f.split("/").pop() || f; }
-function proxyUrl(f: string) { return `${BASE}/api/file-proxy?url=${encodeURIComponent(f)}`; }
+// ── Fullscreen PPTX viewer (Office Online) ────────────────────────────────────
+function OfficeViewer({ fileUrl, pres, onClose }: {
+  fileUrl: string; pres: Presentation; onClose: () => void;
+}) {
+  const embedUrl = officeOnlineUrl(fileUrl);
 
-// Stable mock values derived from index
-function mockSlides(idx: number) { return [4, 8, 12, 6][idx % 4]; }
-function mockViews(idx: number) { return [24, 67, 142, 89][idx % 4]; }
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [onClose]);
 
-// ── Full-screen PDF viewer ────────────────────────────────────────────────────
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-gray-950">
+      <div className="flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-800 flex-shrink-0">
+        <button onClick={onClose}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors">
+          <X className="w-4 h-4" /> Close
+        </button>
+        <div className="h-5 w-px bg-gray-700" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-white truncate">{pres.presentation_name || pres.name}</p>
+          <p className="text-xs text-gray-400 truncate">{pres.project_name || pres.project}</p>
+        </div>
+      </div>
+      <div className="flex-1 overflow-hidden">
+        <iframe
+          src={embedUrl}
+          className="w-full h-full border-0"
+          title={pres.presentation_name || pres.name}
+          allow="fullscreen"
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── Fullscreen PDF viewer ─────────────────────────────────────────────────────
 function PdfViewer({ src, pres, onClose }: { src: string; pres: Presentation; onClose: () => void }) {
   const [numPages, setNumPages] = useState<number | null>(null);
   const [page, setPage] = useState(1);
@@ -83,7 +117,8 @@ function PdfViewer({ src, pres, onClose }: { src: string; pres: Presentation; on
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gray-950">
       <div className="flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-800 flex-shrink-0">
-        <button onClick={onClose} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors">
+        <button onClick={onClose}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors">
           <X className="w-4 h-4" /> Close
         </button>
         <div className="h-5 w-px bg-gray-700" />
@@ -92,25 +127,47 @@ function PdfViewer({ src, pres, onClose }: { src: string; pres: Presentation; on
           <p className="text-xs text-gray-400 truncate">{pres.project_name || pres.project}</p>
         </div>
         <div className="flex items-center gap-0.5 bg-gray-800 rounded-lg px-0.5">
-          <button onClick={() => setScale(s => Math.max(0.4, parseFloat((s - 0.2).toFixed(1))))} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"><ZoomOut className="w-3.5 h-3.5" /></button>
-          <button onClick={() => setScale(1.2)} className="px-2 text-xs text-gray-300 w-12 text-center">{Math.round(scale * 100)}%</button>
-          <button onClick={() => setScale(s => Math.min(3, parseFloat((s + 0.2).toFixed(1))))} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"><ZoomIn className="w-3.5 h-3.5" /></button>
+          <button onClick={() => setScale(s => Math.max(0.4, parseFloat((s - 0.2).toFixed(1))))}
+            className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 transition-colors">
+            <ZoomOut className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => setScale(1.2)}
+            className="px-2 text-xs text-gray-300 w-12 text-center">
+            {Math.round(scale * 100)}%
+          </button>
+          <button onClick={() => setScale(s => Math.min(3, parseFloat((s + 0.2).toFixed(1))))}
+            className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 transition-colors">
+            <ZoomIn className="w-3.5 h-3.5" />
+          </button>
         </div>
-        <button onClick={() => setScale(1.2)} className="flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"><RotateCcw className="w-3 h-3" /> Fit</button>
+        <button onClick={() => setScale(1.2)}
+          className="flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-400 hover:text-white hover:bg-gray-700 transition-colors">
+          <RotateCcw className="w-3 h-3" /> Fit
+        </button>
         {numPages && (
           <div className="flex items-center gap-0.5">
-            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-colors"><ChevronLeft className="w-4 h-4" /></button>
+            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
+              className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-colors">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
             <span className="text-xs text-gray-400 w-24 text-center tabular-nums">{page} / {numPages}</span>
-            <button onClick={() => setPage(p => Math.min(numPages!, p + 1))} disabled={page >= numPages} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-colors"><ChevronRight className="w-4 h-4" /></button>
+            <button onClick={() => setPage(p => Math.min(numPages!, p + 1))} disabled={page >= numPages}
+              className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-colors">
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
         )}
-        <button onClick={() => setShowPanel(s => !s)} className={`p-1.5 rounded transition-colors ${showPanel ? "bg-gray-700 text-white" : "text-gray-400 hover:text-white hover:bg-gray-700"}`}><PanelRight className="w-4 h-4" /></button>
+        <button onClick={() => setShowPanel(s => !s)}
+          className={`p-1.5 rounded transition-colors ${showPanel ? "bg-gray-700 text-white" : "text-gray-400 hover:text-white hover:bg-gray-700"}`}>
+          <PanelRight className="w-4 h-4" />
+        </button>
       </div>
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 overflow-auto bg-gray-900 flex items-start justify-center p-6">
           {pdfErr ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3 pt-20">
-              <FileText className="w-12 h-12 opacity-30" /><p className="text-sm">Unable to render this file.</p>
+              <FileText className="w-12 h-12 opacity-30" />
+              <p className="text-sm">Unable to render this file.</p>
             </div>
           ) : (
             <Document file={src}
@@ -124,22 +181,22 @@ function PdfViewer({ src, pres, onClose }: { src: string; pres: Presentation; on
         </div>
         {showPanel && (
           <div className="w-56 bg-gray-950 border-l border-gray-800 p-4 space-y-4 flex-shrink-0 overflow-auto">
-            <div className="flex items-center gap-2 mb-4">
-              <Info className="w-3.5 h-3.5 text-gray-500" />
-              <span className="text-[10px] text-gray-500 uppercase tracking-widest">Info</span>
-            </div>
             <div>
               <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-1">Presentation</p>
               <p className="text-sm text-white font-semibold leading-snug">{pres.presentation_name || pres.name}</p>
             </div>
-            {pres.project_name && <div>
-              <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-1">Project</p>
-              <p className="text-sm text-gray-200">{pres.project_name}</p>
-            </div>}
-            {numPages && <div>
-              <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-1">Slides</p>
-              <p className="text-sm text-gray-200">{numPages}</p>
-            </div>}
+            {pres.project_name && (
+              <div>
+                <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-1">Project</p>
+                <p className="text-sm text-gray-200">{pres.project_name}</p>
+              </div>
+            )}
+            {numPages && (
+              <div>
+                <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-1">Slides</p>
+                <p className="text-sm text-gray-200">{numPages}</p>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -147,58 +204,126 @@ function PdfViewer({ src, pres, onClose }: { src: string; pres: Presentation; on
   );
 }
 
-// ── Slide preview card ────────────────────────────────────────────────────────
-function SlidePreviewCard({ pres, colorIdx }: { pres: Presentation; colorIdx: number }) {
+// ── Inline PPTX preview (Office Online embed in card) ────────────────────────
+function PptxPreviewCard({ fileUrl, pres, colorIdx }: {
+  fileUrl: string; pres: Presentation; colorIdx: number;
+}) {
+  const [loaded, setLoaded] = useState(false);
   const color = SLIDE_COLORS[colorIdx % SLIDE_COLORS.length];
-  const ext = pres.file_upload ? fileExt(pres.file_upload) : "";
-  const isPdf = ext === "pdf";
-  const src = pres.file_upload ? proxyUrl(pres.file_upload) : null;
-
-  if (isPdf && src) {
-    return (
-      <div className="w-full aspect-video rounded-xl overflow-hidden bg-white flex items-center justify-center shadow-inner">
-        <Document file={src} loading={<Loader2 className="w-6 h-6 animate-spin text-gray-400" />} onLoadError={() => {}}>
-          <Page pageNumber={1} height={320} renderTextLayer={false} renderAnnotationLayer={false} />
-        </Document>
-      </div>
-    );
-  }
+  const embedUrl = officeOnlineUrl(fileUrl);
 
   return (
+    <div className="w-full aspect-video rounded-xl overflow-hidden relative bg-gray-100">
+      {!loaded && (
+        <div
+          className="absolute inset-0 flex flex-col items-center justify-center text-white"
+          style={{ background: `linear-gradient(135deg, ${color.from}, ${color.to})` }}
+        >
+          <div className="w-12 h-12 rounded-2xl bg-white/15 flex items-center justify-center mb-4">
+            <Layers className="w-6 h-6 text-white" />
+          </div>
+          <p className="text-xs font-semibold text-white/60 mb-1 uppercase tracking-widest">
+            {pres.project_name || "Presentation"}
+          </p>
+          <h2 className="text-xl font-bold text-center mb-1">{pres.presentation_name || pres.name}</h2>
+          <div className="flex items-center gap-2 mt-3 text-white/60 text-xs">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading preview…
+          </div>
+        </div>
+      )}
+      <iframe
+        src={embedUrl}
+        className="w-full h-full border-0"
+        title={pres.presentation_name || pres.name}
+        onLoad={() => setLoaded(true)}
+        style={{ opacity: loaded ? 1 : 0, transition: "opacity 0.3s" }}
+      />
+    </div>
+  );
+}
+
+// ── PDF inline preview card ───────────────────────────────────────────────────
+function PdfPreviewCard({ src, pres, colorIdx }: {
+  src: string; pres: Presentation; colorIdx: number;
+}) {
+  const [numPages, setNumPages] = useState<number | null>(null);
+  const [page, setPage] = useState(1);
+  const [pdfErr, setPdfErr] = useState(false);
+  const color = SLIDE_COLORS[colorIdx % SLIDE_COLORS.length];
+
+  return (
+    <div className="w-full aspect-video rounded-xl overflow-hidden bg-white flex flex-col">
+      {pdfErr ? (
+        <div
+          className="flex-1 flex flex-col items-center justify-center text-white"
+          style={{ background: `linear-gradient(135deg, ${color.from}, ${color.to})` }}
+        >
+          <Layers className="w-8 h-8 text-white/70 mb-2" />
+          <p className="text-sm font-semibold">{pres.presentation_name || pres.name}</p>
+        </div>
+      ) : (
+        <>
+          <div className="flex-1 flex items-center justify-center overflow-hidden">
+            <Document file={src}
+              onLoadSuccess={({ numPages }) => { setNumPages(numPages); setPage(1); }}
+              onLoadError={() => setPdfErr(true)}
+              loading={<Loader2 className="w-6 h-6 animate-spin text-gray-400" />}
+            >
+              <Page pageNumber={page} height={260} renderTextLayer={false} renderAnnotationLayer={false} />
+            </Document>
+          </div>
+          {numPages && numPages > 1 && (
+            <div className="flex items-center justify-center gap-2 py-1.5 bg-gray-50 border-t border-gray-100">
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
+                className="p-1 rounded text-gray-400 hover:text-gray-700 disabled:opacity-30">
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <span className="text-xs text-gray-400 tabular-nums">{page} / {numPages}</span>
+              <button onClick={() => setPage(p => Math.min(numPages!, p + 1))} disabled={page >= numPages}
+                className="p-1 rounded text-gray-400 hover:text-gray-700 disabled:opacity-30">
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Gradient placeholder card ─────────────────────────────────────────────────
+function GradientCard({ pres, colorIdx }: { pres: Presentation; colorIdx: number }) {
+  const color = SLIDE_COLORS[colorIdx % SLIDE_COLORS.length];
+  return (
     <div
-      className="w-full aspect-video rounded-xl overflow-hidden flex flex-col items-center justify-center p-8 text-white shadow-inner"
+      className="w-full aspect-video rounded-xl overflow-hidden flex flex-col items-center justify-center p-8 text-white"
       style={{ background: `linear-gradient(135deg, ${color.from}, ${color.to})` }}
     >
       <div className="w-12 h-12 rounded-2xl bg-white/15 flex items-center justify-center mb-5">
         <Layers className="w-6 h-6 text-white" />
       </div>
       <p className="text-xs font-semibold text-white/60 mb-2 uppercase tracking-widest">
-        {pres.project_name || pres.project || "Marketing & Project Performance"}
+        {pres.project_name || "Presentation"}
       </p>
       <h2 className="text-2xl font-bold text-center mb-2 leading-tight">
         {pres.presentation_name || pres.name}
       </h2>
-      <p className="text-white/55 text-sm text-center mt-1 max-w-xs">
-        {pres.file_upload
-          ? fileName(pres.file_upload)
-          : "Revenue targets, campaign results, and project milestones"}
-      </p>
     </div>
   );
 }
 
 // ── Deck list item ────────────────────────────────────────────────────────────
 function DeckListItem({
-  pres, index, active, onClick,
-}: { pres: Presentation; index: number; active: boolean; onClick: () => void }) {
-  const slides = pres.num_slides ?? mockSlides(index);
-  const views = pres.views ?? mockViews(index);
+  pres, index, active, numSlides, onClick,
+}: { pres: Presentation; index: number; active: boolean; numSlides: number; onClick: () => void }) {
+  const MOCK_VIEWS = [24, 67, 142, 89];
+  const views = MOCK_VIEWS[index % MOCK_VIEWS.length];
   const date = pres.modified ? formatDate(pres.modified) : "—";
 
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center justify-between p-3 rounded-xl transition-all text-left group ${
+      className={`w-full flex items-center justify-between p-3 rounded-xl transition-all text-left ${
         active ? "bg-blue-50 border border-blue-200" : "hover:bg-gray-50 border border-transparent"
       }`}
     >
@@ -211,7 +336,7 @@ function DeckListItem({
             {pres.presentation_name || pres.name}
           </p>
           <p className="text-xs text-gray-400 mt-0.5">
-            {slides} slides · {date}
+            {numSlides} {numSlides === 1 ? "slide" : "slides"} · {date}
           </p>
         </div>
       </div>
@@ -224,18 +349,24 @@ function DeckListItem({
 }
 
 // ── Thumbnail strip ───────────────────────────────────────────────────────────
-function DeckThumb({ index, active, onClick }: { index: number; active: boolean; onClick: () => void }) {
-  const bg = THUMB_COLORS[index % THUMB_COLORS.length];
+function SlideThumbStrip({ numSlides, activeSlide, onSelect }: {
+  numSlides: number; activeSlide: number; onSelect: (i: number) => void;
+}) {
   return (
-    <button
-      onClick={onClick}
-      className={`rounded-lg overflow-hidden aspect-video flex items-center justify-center transition-all ${
-        active ? "ring-2 ring-blue-500 ring-offset-2" : "opacity-60 hover:opacity-90"
-      }`}
-      style={{ background: bg }}
-    >
-      <span className="text-white font-bold text-sm">{index + 1}</span>
-    </button>
+    <div className="grid grid-cols-4 gap-2">
+      {Array.from({ length: numSlides }, (_, i) => (
+        <button
+          key={i}
+          onClick={() => onSelect(i)}
+          className={`rounded-lg overflow-hidden aspect-video flex items-center justify-center transition-all ${
+            i === activeSlide ? "ring-2 ring-blue-500 ring-offset-2" : "opacity-60 hover:opacity-90"
+          }`}
+          style={{ background: THUMB_COLORS[i % THUMB_COLORS.length] }}
+        >
+          <span className="text-white font-bold text-sm">{i + 1}</span>
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -246,6 +377,8 @@ export default function PresentationPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeIdx, setActiveIdx] = useState(0);
   const [viewerOpen, setViewerOpen] = useState(false);
+  const [slideInfoMap, setSlideInfoMap] = useState<Record<string, SlideInfo>>({});
+  const [activeSlide, setActiveSlide] = useState(0);
 
   const load = async () => {
     setLoading(true);
@@ -255,9 +388,19 @@ export default function PresentationPage() {
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      const list = Array.isArray(data) ? data : [];
+      const list: Presentation[] = Array.isArray(data) ? data : [];
       setRecords(list);
       setActiveIdx(0);
+      setActiveSlide(0);
+      // Fetch slide counts for all PPTX/PPT files
+      list.forEach((p) => {
+        if (p.file_upload) {
+          const ext = fileExt(p.file_upload);
+          if (ext === "pptx" || ext === "ppt") {
+            fetchSlideCount(p.name, p.file_upload);
+          }
+        }
+      });
     } catch (e: any) {
       setError(e.message || "Failed to load presentations");
     } finally {
@@ -265,26 +408,57 @@ export default function PresentationPage() {
     }
   };
 
+  const fetchSlideCount = async (name: string, fileUrl: string) => {
+    setSlideInfoMap(m => ({ ...m, [name]: { numSlides: 1, loading: true } }));
+    try {
+      const res = await fetch(`${BASE}/api/pptx-slides-count?url=${encodeURIComponent(fileUrl)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSlideInfoMap(m => ({ ...m, [name]: { numSlides: data.numSlides || 1, loading: false } }));
+      } else {
+        setSlideInfoMap(m => ({ ...m, [name]: { numSlides: 1, loading: false } }));
+      }
+    } catch {
+      setSlideInfoMap(m => ({ ...m, [name]: { numSlides: 1, loading: false } }));
+    }
+  };
+
   useEffect(() => { load(); }, []);
 
   const active = records[activeIdx] ?? null;
-  const openViewer = useCallback(() => setViewerOpen(true), []);
   const closeViewer = useCallback(() => setViewerOpen(false), []);
+
+  const activeExt = active?.file_upload ? fileExt(active.file_upload) : "";
+  const isPdf = activeExt === "pdf";
+  const isPptx = activeExt === "pptx" || activeExt === "ppt";
+  const src = active?.file_upload ? proxyUrl(active.file_upload) : null;
+
+  const slideInfo = active ? slideInfoMap[active.name] : null;
+  const numSlides = isPdf
+    ? (slideInfo?.numSlides ?? 1)
+    : isPptx
+      ? (slideInfo?.numSlides ?? 1)
+      : 1;
 
   const handlePresent = () => {
     if (!active?.file_upload) return;
-    const ext = fileExt(active.file_upload);
-    if (ext === "pdf") {
-      openViewer();
-    } else {
-      window.open(proxyUrl(active.file_upload), "_blank");
-    }
+    setViewerOpen(true);
+  };
+
+  const handleSelectDeck = (i: number) => {
+    setActiveIdx(i);
+    setActiveSlide(0);
   };
 
   return (
     <>
+      {/* Viewer overlays */}
       {viewerOpen && active?.file_upload && (
-        <PdfViewer src={proxyUrl(active.file_upload)} pres={active} onClose={closeViewer} />
+        isPptx ? (
+          <OfficeViewer fileUrl={active.file_upload} pres={active} onClose={closeViewer} />
+        ) : isPdf ? (
+          <PdfViewer src={proxyUrl(active.file_upload)} pres={active} onClose={closeViewer} />
+        ) : null
       )}
 
       <Layout>
@@ -297,11 +471,8 @@ export default function PresentationPage() {
               <p className="text-sm text-gray-500 mt-0.5">Create and manage slide decks</p>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={load}
-                disabled={loading}
-                className="p-2 rounded-lg border border-gray-200 text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
-              >
+              <button onClick={load} disabled={loading}
+                className="p-2 rounded-lg border border-gray-200 text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50">
                 <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
               </button>
               <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow transition-colors">
@@ -332,18 +503,24 @@ export default function PresentationPage() {
 
               {/* ── Left panel ── */}
               <div className="lg:col-span-7 space-y-4">
-
-                {/* Main deck card */}
                 <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                  {/* Deck header */}
+
+                  {/* Deck header row */}
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-base font-semibold text-gray-900 truncate flex-1 min-w-0">
-                      {active?.presentation_name || active?.name}
-                    </h2>
+                    <div className="min-w-0 flex-1">
+                      <h2 className="text-base font-semibold text-gray-900 truncate">
+                        {active?.presentation_name || active?.name}
+                      </h2>
+                      {active?.project_name && (
+                        <p className="text-xs text-gray-400 mt-0.5 uppercase tracking-wide">
+                          {active.project_name}
+                        </p>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 ml-3 flex-shrink-0">
                       <button
                         onClick={handlePresent}
-                        disabled={!active?.file_upload}
+                        disabled={!active?.file_upload || (!isPdf && !isPptx)}
                         className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:pointer-events-none text-white text-sm font-semibold shadow transition-colors"
                       >
                         <Play className="w-3.5 h-3.5 fill-white" /> Present
@@ -351,24 +528,30 @@ export default function PresentationPage() {
                       <button className="p-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">
                         <Share2 className="w-4 h-4" />
                       </button>
-                      {active?.file_upload && (
-                        <a
-                          href={proxyUrl(active.file_upload)}
-                          download
-                          target="_blank"
-                          rel="noopener noreferrer"
+                      {active?.file_upload && (isPdf || isPptx) && (
+                        <button
+                          onClick={() => setViewerOpen(true)}
                           className="p-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+                          title="Open fullscreen"
                         >
-                          <Download className="w-4 h-4" />
-                        </a>
+                          <Maximize2 className="w-4 h-4" />
+                        </button>
                       )}
                     </div>
                   </div>
 
                   {/* Slide preview */}
-                  {active && <SlidePreviewCard pres={active} colorIdx={activeIdx} />}
+                  {active && (
+                    isPptx && src ? (
+                      <PptxPreviewCard fileUrl={active.file_upload!} pres={active} colorIdx={activeIdx} />
+                    ) : isPdf && src ? (
+                      <PdfPreviewCard src={src} pres={active} colorIdx={activeIdx} />
+                    ) : (
+                      <GradientCard pres={active} colorIdx={activeIdx} />
+                    )
+                  )}
 
-                  {/* Nav: arrows + dots */}
+                  {/* Slide position indicator */}
                   <div className="flex items-center justify-between mt-4">
                     <button
                       onClick={() => setActiveIdx(i => Math.max(0, i - 1))}
@@ -379,9 +562,7 @@ export default function PresentationPage() {
                     </button>
                     <div className="flex items-center gap-1.5">
                       {records.map((_, i) => (
-                        <button
-                          key={i}
-                          onClick={() => setActiveIdx(i)}
+                        <button key={i} onClick={() => handleSelectDeck(i)}
                           className={`rounded-full transition-all ${
                             i === activeIdx ? "w-5 h-2 bg-blue-600" : "w-2 h-2 bg-gray-300 hover:bg-gray-400"
                           }`}
@@ -398,14 +579,19 @@ export default function PresentationPage() {
                   </div>
                 </div>
 
-                {/* All slides thumbnails */}
+                {/* ALL SLIDES thumbnails */}
                 <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">All Slides</p>
-                  <div className="grid grid-cols-4 gap-2">
-                    {records.map((_, i) => (
-                      <DeckThumb key={i} index={i} active={i === activeIdx} onClick={() => setActiveIdx(i)} />
-                    ))}
-                  </div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+                    All Slides
+                    {slideInfo?.loading && (
+                      <Loader2 className="inline w-3 h-3 ml-1.5 animate-spin" />
+                    )}
+                  </p>
+                  <SlideThumbStrip
+                    numSlides={numSlides}
+                    activeSlide={activeSlide}
+                    onSelect={setActiveSlide}
+                  />
                 </div>
               </div>
 
@@ -414,15 +600,20 @@ export default function PresentationPage() {
                 <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm h-full">
                   <h3 className="font-semibold text-gray-900 mb-4">All Decks</h3>
                   <div className="space-y-1">
-                    {records.map((r, i) => (
-                      <DeckListItem
-                        key={r.name}
-                        pres={r}
-                        index={i}
-                        active={i === activeIdx}
-                        onClick={() => setActiveIdx(i)}
-                      />
-                    ))}
+                    {records.map((r, i) => {
+                      const info = slideInfoMap[r.name];
+                      const slides = info?.numSlides ?? 1;
+                      return (
+                        <DeckListItem
+                          key={r.name}
+                          pres={r}
+                          index={i}
+                          active={i === activeIdx}
+                          numSlides={slides}
+                          onClick={() => handleSelectDeck(i)}
+                        />
+                      );
+                    })}
                   </div>
                   <button className="w-full mt-4 py-3 rounded-xl border-2 border-dashed border-gray-200 text-gray-400 text-sm hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2">
                     <Plus className="w-4 h-4" /> New Presentation
