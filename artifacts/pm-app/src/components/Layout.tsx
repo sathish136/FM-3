@@ -3,6 +3,7 @@ import {
   LayoutDashboard, Box, PenTool, GitBranch, Wrench,
   Briefcase, FolderOpen, Users, Settings, ChevronDown,
   ChevronRight, LogOut, ChevronLeft, ChevronRight as ChevronRightIcon, Menu,
+  MonitorPlay,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -20,7 +21,8 @@ const navItems: NavItem[] = [
     path: "/viewer-options", label: "3D Viewer", icon: Box,
     children: [{ path: "/", label: "3D Design Files" }],
   },
-  { path: "/presentation", label: "Drawings", icon: PenTool },
+  { path: "/drawings", label: "Drawings", icon: PenTool },
+  { path: "/presentation", label: "Presentation", icon: MonitorPlay },
   { path: "/tasks", label: "P&ID Process", icon: GitBranch },
   { path: "/gallery", label: "Spare Parts", icon: Wrench },
   { path: "/projects", label: "Projects", icon: Briefcase },
