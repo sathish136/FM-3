@@ -21,7 +21,14 @@ const navItems: NavItem[] = [
     path: "/viewer-options", label: "3D Viewer", icon: Box,
     children: [{ path: "/", label: "3D Design Files" }],
   },
-  { path: "/drawings", label: "Drawings", icon: PenTool },
+  {
+    path: "/drawings", label: "Drawings", icon: PenTool,
+    children: [
+      { path: "/drawings/mechanical", label: "Design Mechanical" },
+      { path: "/drawings/electrical", label: "Design Electrical" },
+      { path: "/drawings/civil",      label: "Design Civil" },
+    ],
+  },
   { path: "/presentation", label: "Presentation", icon: MonitorPlay },
   { path: "/tasks", label: "P&ID Process", icon: GitBranch },
   { path: "/gallery", label: "Spare Parts", icon: Wrench },
@@ -33,7 +40,7 @@ const navItems: NavItem[] = [
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
-  const [expandedItems, setExpandedItems] = useState<string[]>(["/viewer-options"]);
+  const [expandedItems, setExpandedItems] = useState<string[]>(["/viewer-options", "/drawings"]);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 

@@ -12,6 +12,7 @@ import Leads from "@/pages/Leads";
 import Team from "@/pages/Team";
 import ViewerOptions from "@/pages/ViewerOptions";
 import Presentation from "@/pages/Presentation";
+import Drawings from "@/pages/Drawings";
 import Gallery from "@/pages/Gallery";
 import Settings from "@/pages/Settings";
 import Profile from "@/pages/Profile";
@@ -36,6 +37,9 @@ function Router() {
       <Route path="/team" component={Team} />
       <Route path="/viewer-options" component={ViewerOptions} />
       <Route path="/presentation" component={Presentation} />
+      <Route path="/drawings/mechanical" component={Drawings} />
+      <Route path="/drawings/electrical" component={Drawings} />
+      <Route path="/drawings/civil" component={Drawings} />
       <Route path="/gallery" component={Gallery} />
       <Route path="/settings" component={Settings} />
       <Route path="/profile" component={Profile} />
