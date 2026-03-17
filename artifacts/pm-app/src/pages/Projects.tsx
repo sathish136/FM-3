@@ -188,9 +188,10 @@ export default function Projects() {
         ) : viewMode === "list" ? (
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             {/* Table header */}
-            <div className="grid grid-cols-[2fr_1fr_1fr_1fr_120px] gap-4 px-5 py-2.5 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <div className="grid grid-cols-[110px_2fr_1fr_1fr_1fr_120px] gap-4 px-5 py-2.5 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <span>Project No.</span>
               <button className="flex items-center gap-1 text-left hover:text-gray-700" onClick={() => toggleSort("name")}>
-                Project <SortIcon col="name" sortKey={sortKey} sortDir={sortDir} />
+                Project Name <SortIcon col="name" sortKey={sortKey} sortDir={sortDir} />
               </button>
               <span>Status</span>
               <button className="flex items-center gap-1 hover:text-gray-700" onClick={() => toggleSort("priority")}>
@@ -209,8 +210,13 @@ export default function Projects() {
               {tabProjects.map((project, idx) => (
                 <div
                   key={project.id}
-                  className="grid grid-cols-[2fr_1fr_1fr_1fr_120px] gap-4 px-5 py-3.5 items-center hover:bg-gray-50 transition-colors"
+                  className="grid grid-cols-[110px_2fr_1fr_1fr_1fr_120px] gap-4 px-5 py-3.5 items-center hover:bg-gray-50 transition-colors"
                 >
+                  <div className="min-w-0">
+                    <span className="inline-block text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md font-mono tracking-wide truncate max-w-full">
+                      {(project as any).erpnextName || "—"}
+                    </span>
+                  </div>
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-gray-900 truncate">{project.name}</p>
                     {project.description && (
