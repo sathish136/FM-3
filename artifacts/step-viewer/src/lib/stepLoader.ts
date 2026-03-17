@@ -6,13 +6,25 @@ export interface MeshData {
   name: string;
 }
 
+export interface TreeNode {
+  id: string;
+  name: string;
+  meshIndices: number[];
+  children: TreeNode[];
+}
+
+export interface LoadResult {
+  meshes: MeshData[];
+  root: TreeNode;
+}
+
 let occtInstance: unknown = null;
 
 async function ensureOcctScript(): Promise<void> {
   if ((window as any).occtimportjs) return;
 
   await new Promise<void>((resolve, reject) => {
-    const existing = document.querySelector('script[data-occt]');
+    const existing = document.querySelector("script[data-occt]");
     if (existing) { resolve(); return; }
 
     const script = document.createElement("script");
@@ -30,17 +42,13 @@ async function getOcct(): Promise<unknown> {
   await ensureOcctScript();
 
   const initFn = (window as any).occtimportjs;
-  if (!initFn) {
-    throw new Error("OpenCascade (occtimportjs) is not available on window after script load");
-  }
-  if (typeof initFn !== "function") {
-    throw new Error(`OpenCascade loaded but is not callable (type: ${typeof initFn})`);
+  if (!initFn || typeof initFn !== "function") {
+    throw new Error("OpenCascade failed to initialize");
   }
 
   const base = import.meta.env.BASE_URL;
   occtInstance = await initFn({
     locateFile: (path: string) => {
-      console.log("[occt] locateFile:", path, "→", base + path);
       if (path.endsWith(".wasm")) return `${base}occt-import-js.wasm`;
       return `${base}${path}`;
     },
@@ -49,26 +57,40 @@ async function getOcct(): Promise<unknown> {
   return occtInstance;
 }
 
+function buildTree(node: any, parentId: string, counter: { n: number }): TreeNode {
+  const id = `${parentId}-${counter.n++}`;
+  return {
+    id,
+    name: node.name || "Unnamed",
+    meshIndices: Array.isArray(node.meshes) ? node.meshes : [],
+    children: Array.isArray(node.children)
+      ? node.children.map((c: any) => buildTree(c, id, counter))
+      : [],
+  };
+}
+
+function collectAllMeshIndices(node: TreeNode): number[] {
+  return [
+    ...node.meshIndices,
+    ...node.children.flatMap(collectAllMeshIndices),
+  ];
+}
+
 export async function loadStepFile(
   fileBuffer: ArrayBuffer,
   onProgress: (msg: string) => void
-): Promise<MeshData[]> {
+): Promise<LoadResult> {
   onProgress("Loading OpenCascade engine...");
-  console.log("[stepLoader] starting load");
 
   const occt = (await getOcct()) as any;
-  console.log("[stepLoader] occt ready");
 
   onProgress("Parsing STEP file...");
 
   const fileData = new Uint8Array(fileBuffer);
   const result = occt.ReadStepFile(fileData, null);
-  console.log("[stepLoader] parse result:", result?.success, "meshes:", result?.meshes?.length);
 
   if (!result || !result.success) {
-    throw new Error(
-      "Failed to parse STEP file. The file may be corrupt or in an unsupported format."
-    );
+    throw new Error("Failed to parse STEP file. The file may be corrupt or in an unsupported format.");
   }
 
   const total: number = result.meshes.length;
@@ -86,9 +108,7 @@ export async function loadStepFile(
     const indices: number[] = Array.from(mesh.index.array as Uint32Array | Uint16Array);
 
     let color: [number, number, number] | null = null;
-    if (mesh.color) {
-      color = [mesh.color[0], mesh.color[1], mesh.color[2]];
-    }
+    if (mesh.color) color = [mesh.color[0], mesh.color[1], mesh.color[2]];
 
     meshes.push({
       positions,
@@ -104,6 +124,23 @@ export async function loadStepFile(
     }
   }
 
-  console.log("[stepLoader] done, total meshes:", meshes.length);
-  return meshes;
+  // Build tree from root hierarchy
+  let root: TreeNode;
+  if (result.root) {
+    root = buildTree(result.root, "root", { n: 0 });
+    // If root has no name, use the filename placeholder
+    if (!root.name || root.name === "" || root.name === "Unnamed") {
+      root.name = "Assembly";
+    }
+  } else {
+    // Fallback: flat list
+    root = {
+      id: "root",
+      name: "Assembly",
+      meshIndices: meshes.map((_, i) => i),
+      children: [],
+    };
+  }
+
+  return { meshes, root };
 }
