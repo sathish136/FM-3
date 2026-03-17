@@ -63,7 +63,7 @@ export default defineConfig({
     host: "0.0.0.0",
     allowedHosts: true,
     fs: {
-      strict: false,
+      strict: true,
       deny: ["**/.*"],
     },
   },
@@ -71,8 +71,5 @@ export default defineConfig({
     port,
     host: "0.0.0.0",
     allowedHosts: true,
-  },
-  optimizeDeps: {
-    exclude: ["occt-import-js"],
   },
 });
