@@ -15,13 +15,13 @@ export function setupTranscribeWS(httpServer: Server) {
   wss.on("connection", (clientWs: WebSocket) => {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      clientWs.send(JSON.stringify({ type: "error", message: "No API key" }));
+      clientWs.send(JSON.stringify({ type: "error", message: "No API key configured" }));
       clientWs.close();
       return;
     }
 
     const openaiWs = new WebSocket(
-      "wss://api.openai.com/v1/realtime?model=gpt-4o-transcribe&intent=transcription",
+      "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview",
       {
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -31,36 +31,41 @@ export function setupTranscribeWS(httpServer: Server) {
     );
 
     openaiWs.on("open", () => {
-      openaiWs.send(
-        JSON.stringify({
-          type: "transcription_session.update",
-          session: {
-            input_audio_format: "pcm16",
-            input_audio_transcription: { model: "gpt-4o-transcribe" },
-            turn_detection: {
-              type: "server_vad",
-              threshold: 0.5,
-              prefix_padding_ms: 300,
-              silence_duration_ms: 500,
-            },
+      // Configure session: transcription only, server VAD, no audio output
+      openaiWs.send(JSON.stringify({
+        type: "session.update",
+        session: {
+          modalities: ["text"],
+          input_audio_format: "pcm16",
+          input_audio_transcription: {
+            model: "whisper-1",
           },
-        })
-      );
+          turn_detection: {
+            type: "server_vad",
+            threshold: 0.5,
+            prefix_padding_ms: 300,
+            silence_duration_ms: 600,
+          },
+        },
+      }));
       clientWs.send(JSON.stringify({ type: "ready" }));
     });
 
     openaiWs.on("message", (raw) => {
       try {
         const event = JSON.parse(raw.toString());
-        if (event.type === "conversation.item.input_audio_transcription.delta") {
+        const t = event.type;
+
+        if (t === "conversation.item.input_audio_transcription.delta") {
           clientWs.send(JSON.stringify({ type: "delta", text: event.delta }));
-        } else if (event.type === "conversation.item.input_audio_transcription.completed") {
+        } else if (t === "conversation.item.input_audio_transcription.completed") {
           clientWs.send(JSON.stringify({ type: "final", text: event.transcript }));
-        } else if (event.type === "input_audio_buffer.speech_started") {
+        } else if (t === "input_audio_buffer.speech_started") {
           clientWs.send(JSON.stringify({ type: "speech_started" }));
-        } else if (event.type === "input_audio_buffer.speech_stopped") {
+        } else if (t === "input_audio_buffer.speech_stopped") {
           clientWs.send(JSON.stringify({ type: "speech_stopped" }));
-        } else if (event.type === "error") {
+        } else if (t === "error") {
+          console.error("OpenAI realtime error:", event.error);
           clientWs.send(JSON.stringify({ type: "error", message: event.error?.message || "OpenAI error" }));
         }
       } catch {}
@@ -77,9 +82,10 @@ export function setupTranscribeWS(httpServer: Server) {
 
     clientWs.on("message", (data) => {
       if (openaiWs.readyState === WebSocket.OPEN) {
-        openaiWs.send(
-          JSON.stringify({ type: "input_audio_buffer.append", audio: data.toString() })
-        );
+        openaiWs.send(JSON.stringify({
+          type: "input_audio_buffer.append",
+          audio: data.toString(),
+        }));
       }
     });
 
