@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
 
 interface NavItem {
   path: string;
@@ -39,6 +40,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [expandedItems, setExpandedItems] = useState<string[]>(["/drawings"]);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const { user, logout } = useAuth();
 
   const toggleExpand = (path: string) => {
     setExpandedItems(prev =>
@@ -124,17 +126,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
         })}
       </nav>
 
-      <div className="p-3 border-t border-white/10">
+      <div className="p-3 border-t border-white/10 space-y-1">
         <Link href="/profile" className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-white/10 transition-colors cursor-pointer">
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
-            AD
+            {user?.full_name?.slice(0, 2).toUpperCase() ?? "??"}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-white text-xs font-semibold truncate">Administrator</p>
-            <p className="text-slate-400 text-[10px] truncate">admin@wtt.com</p>
+            <p className="text-white text-xs font-semibold truncate">{user?.full_name ?? "User"}</p>
+            <p className="text-slate-400 text-[10px] truncate">{user?.email ?? ""}</p>
           </div>
-          <LogOut className="w-3.5 h-3.5 text-slate-500 shrink-0" />
         </Link>
+        <button
+          onClick={logout}
+          className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors text-xs"
+        >
+          <LogOut className="w-3.5 h-3.5 shrink-0" />
+          Sign out
+        </button>
       </div>
     </div>
   );
