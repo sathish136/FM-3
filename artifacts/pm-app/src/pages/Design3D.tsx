@@ -3,7 +3,7 @@ import {
   Box, FolderOpen, Search, RefreshCw, Loader2, X,
   ChevronLeft, ChevronRight, AlertCircle, Cpu,
   Eye, EyeOff, RotateCcw, Maximize2, Grid3X3,
-  Axis3D,
+  Axis3D, ChevronDown, FilterX,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { loadStepFile, type MeshData, type TreeNode } from "@/lib/stepLoader";
@@ -325,8 +325,76 @@ function ModelViewer({
   );
 }
 
+function FilterDropdown({
+  label,
+  value,
+  options,
+  onChange,
+  accentColor = "purple",
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
+  accentColor?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const isFiltered = value !== "";
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+          isFiltered
+            ? "bg-purple-50 border-purple-300 text-purple-700"
+            : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+        }`}
+      >
+        <span className="truncate max-w-[140px]">{value || label}</span>
+        <ChevronDown className="w-3.5 h-3.5 flex-shrink-0 opacity-60" />
+      </button>
+      {open && (
+        <div className="absolute top-full mt-1 left-0 z-30 bg-white border border-gray-200 rounded-xl shadow-lg min-w-[200px] max-h-64 overflow-auto py-1">
+          <button
+            onClick={() => { onChange(""); setOpen(false); }}
+            className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+              value === "" ? "text-purple-700 bg-purple-50 font-medium" : "text-gray-500 hover:bg-gray-50"
+            }`}
+          >
+            All {label}s
+          </button>
+          {options.map(opt => (
+            <button
+              key={opt}
+              onClick={() => { onChange(opt); setOpen(false); }}
+              className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                value === opt ? "text-purple-700 bg-purple-50 font-medium" : "text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Design3D() {
   const [search, setSearch] = useState("");
+  const [selectedProject, setSelectedProject] = useState("");
+  const [selectedSystem, setSelectedSystem] = useState("");
   const [records, setRecords] = useState<Design3DRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -350,16 +418,35 @@ export default function Design3D() {
 
   useEffect(() => { load(); }, []);
 
+  const projects = Array.from(
+    new Set(records.map(r => r.project_name || r.project).filter(Boolean))
+  ).sort();
+
+  const systems = Array.from(
+    new Set(records.map(r => r.system_name).filter(Boolean))
+  ).sort();
+
   const filtered = records.filter(r => {
     const q = search.toLowerCase();
-    return (
+    const matchSearch = !q || (
       r.name.toLowerCase().includes(q) ||
       (r.tag || "").toLowerCase().includes(q) ||
       (r.project_name || "").toLowerCase().includes(q) ||
       (r.system_name || "").toLowerCase().includes(q) ||
       (r.revision || "").toLowerCase().includes(q)
     );
+    const matchProject = !selectedProject || (r.project_name || r.project) === selectedProject;
+    const matchSystem = !selectedSystem || r.system_name === selectedSystem;
+    return matchSearch && matchProject && matchSystem;
   });
+
+  const hasFilters = search || selectedProject || selectedSystem;
+
+  const clearFilters = () => {
+    setSearch("");
+    setSelectedProject("");
+    setSelectedSystem("");
+  };
 
   const openViewer = useCallback((idx: number) => setViewerIndex(idx), []);
   const closeViewer = useCallback(() => setViewerIndex(null), []);
@@ -402,6 +489,33 @@ export default function Design3D() {
             </button>
           </div>
 
+          {/* Filters */}
+          <div className="flex flex-wrap items-center gap-3">
+            <FilterDropdown
+              label="Project"
+              value={selectedProject}
+              options={projects}
+              onChange={v => { setSelectedProject(v); setViewerIndex(null); }}
+            />
+            <FilterDropdown
+              label="System"
+              value={selectedSystem}
+              options={systems}
+              onChange={v => { setSelectedSystem(v); setViewerIndex(null); }}
+            />
+            {hasFilters && (
+              <button
+                onClick={clearFilters}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-500 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-colors"
+              >
+                <FilterX className="w-3.5 h-3.5" /> Clear
+              </button>
+            )}
+            <span className="ml-auto text-sm text-gray-400">
+              {loading ? "Loading…" : `${filtered.length} record${filtered.length !== 1 ? "s" : ""}`}
+            </span>
+          </div>
+
           {/* Table */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-3">
@@ -409,15 +523,12 @@ export default function Design3D() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Search by name, system, revision…"
+                  placeholder="Search by name, tag, revision…"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>
-              <span className="text-sm text-gray-400 ml-auto">
-                {loading ? "Loading…" : `${filtered.length} record${filtered.length !== 1 ? "s" : ""}`}
-              </span>
             </div>
 
             {/* Table header */}
