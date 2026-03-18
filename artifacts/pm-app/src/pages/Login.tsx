@@ -42,7 +42,7 @@ export default function Login() {
 
           {/* Title */}
           <h1 className="text-4xl font-black tracking-tight leading-none flex items-baseline gap-0">
-            <span style={{ background: "linear-gradient(90deg, #0a2463, #1a56db)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>FlowMatri</span><span style={{ color: "#0ea5e9", textShadow: "0 0 16px rgba(14,165,233,0.5)", fontSize: "1.35em", lineHeight: 1 }}>x</span>
+            <span style={{ color: "#0a2463" }}>FlowMatri</span><span style={{ color: "#0ea5e9", fontSize: "1.35em", lineHeight: 1 }}>x</span>
           </h1>
 
           <p className="text-[10px] font-semibold tracking-[0.2em] uppercase text-gray-400 mt-2 mb-3">Project Management</p>
