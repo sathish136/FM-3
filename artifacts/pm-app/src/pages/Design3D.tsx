@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { loadStepFile, type MeshData, type TreeNode } from "@/lib/stepLoader";
+import { getCached, setCached } from "@/lib/stepCache";
 import type { ViewMode, BgColor, ViewerRef } from "@/components/StepViewer3D";
 import MeshesPanel from "@/components/MeshesPanel";
 import * as THREE from "three";
@@ -104,13 +105,22 @@ function ModelViewer({
 
   const loadFromUrl = useCallback(async (attachUrl: string) => {
     setStatus("loading");
-    setProgress("Fetching file from server…");
+    setProgress("Checking local cache…");
     setMeshes([]);
     setTreeRoot(null);
     setHiddenMeshes(new Set());
     setError("");
     setMeasureResult(null);
     try {
+      const cached = await getCached(attachUrl);
+      if (cached) {
+        setProgress("Loading from cache…");
+        setMeshes(cached.meshes);
+        setTreeRoot(cached.root);
+        setStatus("loaded");
+        return;
+      }
+      setProgress("Fetching file from server…");
       const res = await fetch(proxyUrl(attachUrl));
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
       setProgress("Reading file…");
@@ -119,6 +129,7 @@ function ModelViewer({
       setMeshes(result.meshes);
       setTreeRoot(result.root);
       setStatus("loaded");
+      setCached(attachUrl, result.meshes, result.root);
     } catch (e: any) {
       setError(e.message || "Failed to load model");
       setStatus("error");
