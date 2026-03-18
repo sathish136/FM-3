@@ -3,12 +3,13 @@ import {
   PenLine, FolderOpen, Search, RefreshCw, Loader2, X,
   ChevronLeft, ChevronRight, AlertCircle, ZoomIn, ZoomOut,
   PanelRight, FileText, Layers, Building2,
-  Calendar, Info,
+  Calendar, Info, Download, Eye, EyeOff, Maximize2,
 } from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
+import { DxfViewer as DxfViewerLib, type LayerInfo } from "dxf-viewer";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -223,6 +224,304 @@ function ViewerSidebar({
   );
 }
 
+// ── DXF Fullscreen Viewer ─────────────────────────────────────────────────────
+const DXF_BG_COLORS: Record<BgPreset, string> = {
+  dark: "#0d0d12",
+  navy: "#0f0f1d",
+  light: "#dde3ee",
+  white: "#ffffff",
+};
+
+function DxfFileViewer({
+  src, record, onClose,
+}: { src: string; record: Design2DRecord; onClose: () => void }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<InstanceType<typeof DxfViewerLib> | null>(null);
+  const [layers, setLayers] = useState<LayerInfo[]>([]);
+  const [hiddenLayers, setHiddenLayers] = useState<Set<string>>(new Set());
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const [progress, setProgress] = useState(0);
+  const [showPanel, setShowPanel] = useState(true);
+  const [bgPreset, setBgPreset] = useState<BgPreset>("dark");
+  const [blackWhite, setBlackWhite] = useState(false);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const viewer = new DxfViewerLib(containerRef.current, {
+      autoResize: true,
+      clearAlpha: 0,
+      canvasAlpha: true,
+      antialias: true,
+    });
+    viewerRef.current = viewer;
+
+    const workerFactory = () => new Worker(
+      new URL("dxf-viewer/src/DxfWorker.js", import.meta.url),
+      { type: "module" }
+    );
+
+    viewer.Load({
+      url: src,
+      fonts: null,
+      workerFactory,
+      progressCbk: (phase, processed, total) => {
+        if (total > 0) setProgress(Math.round((processed / total) * 100));
+      },
+    }).then(() => {
+      const ls = [...viewer.GetLayers()];
+      setLayers(ls);
+      setLoadState("ready");
+    }).catch(() => {
+      setLoadState("error");
+    });
+
+    return () => { viewer.Destroy(); viewerRef.current = null; };
+  }, [src]);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [onClose]);
+
+  const toggleLayer = (name: string) => {
+    setHiddenLayers(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) { next.delete(name); viewerRef.current?.ShowLayer(name, true); }
+      else { next.add(name); viewerRef.current?.ShowLayer(name, false); }
+      return next;
+    });
+  };
+
+  const fitView = () => {
+    const v = viewerRef.current;
+    if (!v) return;
+    const cam = v.GetCamera();
+    const size = Math.max(cam.right - cam.left, cam.top - cam.bottom);
+    v.FitView(-size, size, -size, size, 0.05);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-gray-950">
+      <div className="flex items-center gap-3 px-4 py-3 bg-[#16162a] border-b border-white/10 flex-shrink-0">
+        <button onClick={onClose}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
+          <X className="w-4 h-4" /> Close
+        </button>
+        <div className="h-5 w-px bg-white/10" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-white truncate">{record.name}</p>
+          <p className="text-xs text-gray-400 truncate">{record.project_name || record.project}</p>
+        </div>
+        <span className="text-[10px] font-mono bg-blue-900/40 text-blue-300 border border-blue-700/30 px-2 py-0.5 rounded">DXF</span>
+        <a
+          href={src}
+          download
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
+          title="Download DXF file"
+        >
+          <Download className="w-4 h-4" />
+        </a>
+      </div>
+
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left toolbar */}
+        <aside className="w-12 bg-[#16162a] border-r border-white/10 flex flex-col items-center py-2 gap-0.5 flex-shrink-0 overflow-y-auto">
+          <TbSection label="View" />
+
+          <ToolBtn title="Normal colors" active={!blackWhite} onClick={() => setBlackWhite(false)}>
+            <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor"><circle cx="10" cy="10" r="7" /></svg>
+          </ToolBtn>
+          <ToolBtn title="Black & White" active={blackWhite} onClick={() => setBlackWhite(true)}>
+            <svg viewBox="0 0 20 20" className="w-5 h-5">
+              <path fill="currentColor" d="M10 3a7 7 0 1 1 0 14V3z" />
+              <path fill="none" stroke="currentColor" strokeWidth="1.5" d="M10 3a7 7 0 1 0 0 14" />
+            </svg>
+          </ToolBtn>
+
+          <TbDivider />
+          <TbSection label="BG" />
+          <ToolBtn title="Dark background" active={bgPreset === "dark"} onClick={() => setBgPreset("dark")}>
+            <div className="w-5 h-5 rounded-full bg-[#0f0f1a] border border-white/30" />
+          </ToolBtn>
+          <ToolBtn title="Navy background" active={bgPreset === "navy"} onClick={() => setBgPreset("navy")}>
+            <div className="w-5 h-5 rounded-full bg-[#1a1a2e] border border-white/30" />
+          </ToolBtn>
+          <ToolBtn title="Light background" active={bgPreset === "light"} onClick={() => setBgPreset("light")}>
+            <div className="w-5 h-5 rounded-full bg-[#dde3ee] border border-black/20" />
+          </ToolBtn>
+          <ToolBtn title="White background" active={bgPreset === "white"} onClick={() => setBgPreset("white")}>
+            <div className="w-5 h-5 rounded-full bg-white border border-black/20" />
+          </ToolBtn>
+
+          <TbDivider />
+          <TbSection label="Fit" />
+          <ToolBtn title="Fit to view" onClick={fitView}>
+            <Maximize2 className="w-4 h-4" />
+          </ToolBtn>
+
+          <TbDivider />
+          <TbSection label="Info" />
+          <ToolBtn title="Toggle info panel" active={showPanel} onClick={() => setShowPanel(v => !v)}>
+            <PanelRight className="w-4 h-4" />
+          </ToolBtn>
+        </aside>
+
+        {/* DXF canvas */}
+        <div className="flex-1 relative overflow-hidden" style={{ background: DXF_BG_COLORS[bgPreset] }}>
+          <div
+            ref={containerRef}
+            className="w-full h-full"
+            style={{ filter: blackWhite ? "invert(1) hue-rotate(180deg)" : undefined }}
+          />
+          {loadState === "loading" && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-400 pointer-events-none">
+              <Loader2 className="w-8 h-8 animate-spin" />
+              <p className="text-sm">Parsing DXF file… {progress > 0 ? `${progress}%` : ""}</p>
+            </div>
+          )}
+          {loadState === "error" && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-400">
+              <FileText className="w-10 h-10 opacity-30" />
+              <p className="text-sm">Unable to render this DXF file.</p>
+              <a href={src} download className="text-xs text-blue-400 underline flex items-center gap-1">
+                <Download className="w-3 h-3" /> Download instead
+              </a>
+            </div>
+          )}
+        </div>
+
+        {/* Info + layers panel */}
+        {showPanel && (
+          <div className="w-64 bg-[#16162a] border-l border-white/10 flex flex-col flex-shrink-0 overflow-hidden">
+            <div className="p-4 space-y-3 overflow-auto flex-1">
+              <div className="flex items-center gap-2">
+                <Info className="w-3.5 h-3.5 text-gray-500" />
+                <span className="text-[10px] text-gray-500 uppercase tracking-widest">Record Info</span>
+              </div>
+              {[
+                { label: "ID", value: record.name },
+                { label: "Project", value: record.project },
+                { label: "Project Name", value: record.project_name },
+                { label: "Department", value: record.department },
+                { label: "Revision", value: record.revision },
+                { label: "Tag", value: record.tag },
+                { label: "System Name", value: record.system_name },
+                { label: "Modified", value: formatDate(record.modified) },
+              ].map(({ label, value }) => value ? (
+                <div key={label}>
+                  <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-0.5">{label}</p>
+                  <p className="text-sm text-gray-200 break-words">{value}</p>
+                </div>
+              ) : null)}
+            </div>
+
+            {layers.length > 0 && (
+              <div className="border-t border-white/10 p-3 flex flex-col gap-1 overflow-auto max-h-56 flex-shrink-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <Layers className="w-3.5 h-3.5 text-gray-500" />
+                  <span className="text-[10px] text-gray-500 uppercase tracking-widest">Layers ({layers.length})</span>
+                </div>
+                {layers.map(layer => {
+                  const hex = "#" + layer.color.toString(16).padStart(6, "0");
+                  const isHidden = hiddenLayers.has(layer.name);
+                  return (
+                    <button
+                      key={layer.name}
+                      onClick={() => toggleLayer(layer.name)}
+                      className={`flex items-center gap-2 px-2 py-1 rounded text-xs text-left transition-colors
+                        ${isHidden ? "opacity-40 hover:opacity-70" : "hover:bg-white/5"}`}
+                      title={isHidden ? "Show layer" : "Hide layer"}
+                    >
+                      <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: hex }} />
+                      <span className="truncate flex-1 text-gray-300">{layer.displayName || layer.name}</span>
+                      {isHidden ? <EyeOff className="w-3 h-3 text-gray-600 flex-shrink-0" /> : <Eye className="w-3 h-3 text-gray-500 flex-shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── DWG Viewer (download-only, proprietary binary format) ─────────────────────
+function DwgFileViewer({
+  src, record, onClose,
+}: { src: string; record: Design2DRecord; onClose: () => void }) {
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-gray-950">
+      <div className="flex items-center gap-3 px-4 py-3 bg-[#16162a] border-b border-white/10 flex-shrink-0">
+        <button onClick={onClose}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
+          <X className="w-4 h-4" /> Close
+        </button>
+        <div className="h-5 w-px bg-white/10" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-white truncate">{record.name}</p>
+          <p className="text-xs text-gray-400 truncate">{record.project_name || record.project}</p>
+        </div>
+        <span className="text-[10px] font-mono bg-orange-900/40 text-orange-300 border border-orange-700/30 px-2 py-0.5 rounded">DWG</span>
+      </div>
+
+      <div className="flex-1 flex overflow-hidden">
+        {/* Sidebar */}
+        <aside className="w-12 bg-[#16162a] border-r border-white/10 flex flex-col items-center py-2 gap-0.5 flex-shrink-0" />
+
+        {/* Main area */}
+        <div className="flex-1 flex items-center justify-center bg-gray-950">
+          <div className="max-w-md w-full mx-6 bg-[#16162a] border border-white/10 rounded-2xl p-8 text-center">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-orange-900/20 border border-orange-700/30 flex items-center justify-center">
+              <svg viewBox="0 0 48 48" className="w-9 h-9" fill="none">
+                <rect x="6" y="4" width="36" height="40" rx="4" fill="#c2410c" opacity=".15" stroke="#c2410c" strokeWidth="1.5" />
+                <text x="24" y="30" textAnchor="middle" fill="#fb923c" fontSize="13" fontWeight="700" fontFamily="monospace">DWG</text>
+              </svg>
+            </div>
+            <h3 className="text-white font-semibold text-base mb-2">DWG File</h3>
+            <p className="text-gray-400 text-sm leading-relaxed mb-6">
+              DWG is AutoCAD's proprietary binary format and cannot be rendered directly in the browser.
+              Open it in AutoCAD, DraftSight, or any compatible CAD application.
+            </p>
+            <a
+              href={src}
+              download
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-xl transition-colors"
+            >
+              <Download className="w-4 h-4" /> Download DWG file
+            </a>
+
+            <div className="mt-8 text-left border-t border-white/10 pt-6 space-y-3">
+              <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-3">Record Info</p>
+              {[
+                { label: "ID", value: record.name },
+                { label: "Project", value: record.project_name || record.project },
+                { label: "Department", value: record.department },
+                { label: "Revision", value: record.revision },
+                { label: "System Name", value: record.system_name },
+                { label: "Modified", value: formatDate(record.modified) },
+              ].map(({ label, value }) => value ? (
+                <div key={label} className="flex items-start gap-3">
+                  <span className="text-[10px] text-gray-600 uppercase tracking-widest w-20 flex-shrink-0 pt-0.5">{label}</span>
+                  <span className="text-xs text-gray-300 break-words flex-1">{value}</span>
+                </div>
+              ) : null)}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── PDF Fullscreen Viewer ─────────────────────────────────────────────────────
 function PdfViewer({
   src, record, onClose,
@@ -352,7 +651,7 @@ function RecordCard({
 }: { record: Design2DRecord; onClick: () => void }) {
   const col = deptColor(record.department || "");
   const ext = record.attach ? fileExt(record.attach) : "";
-  const isViewable = ["pdf", "png", "jpg", "jpeg", "gif", "svg"].includes(ext);
+  const isViewable = ["pdf", "png", "jpg", "jpeg", "gif", "svg", "dxf", "dwg"].includes(ext);
 
   return (
     <button
@@ -394,6 +693,16 @@ function RecordCard({
             >
               <Page pageNumber={1} height={140} renderTextLayer={false} renderAnnotationLayer={false} />
             </Document>
+          </div>
+        ) : record.attach && (ext === "dxf" || ext === "dwg") ? (
+          <div className="flex flex-col items-center gap-2">
+            <div className={`w-14 h-14 rounded-xl flex items-center justify-center ${ext === "dwg" ? "bg-orange-50 border border-orange-200" : "bg-blue-50 border border-blue-200"}`}>
+              <svg viewBox="0 0 48 48" className="w-9 h-9" fill="none">
+                <rect x="6" y="4" width="36" height="40" rx="4" fill={ext === "dwg" ? "#fed7aa" : "#bfdbfe"} opacity=".6" />
+                <text x="24" y="30" textAnchor="middle" fill={ext === "dwg" ? "#c2410c" : "#1d4ed8"} fontSize="11" fontWeight="700" fontFamily="monospace">{ext.toUpperCase()}</text>
+              </svg>
+            </div>
+            <span className={`text-xs font-semibold ${ext === "dwg" ? "text-orange-500" : "text-blue-500"}`}>{ext.toUpperCase()} Drawing</span>
           </div>
         ) : record.attach ? (
           <div className="flex flex-col items-center gap-2 text-gray-300">
@@ -491,7 +800,7 @@ export default function Design2DPage() {
   const openViewer = useCallback((r: Design2DRecord) => {
     if (!r.attach) return;
     const ext = fileExt(r.attach);
-    if (["pdf", "png", "jpg", "jpeg", "gif", "svg"].includes(ext)) {
+    if (["pdf", "png", "jpg", "jpeg", "gif", "svg", "dxf", "dwg"].includes(ext)) {
       setViewer(r);
     }
   }, []);
@@ -500,6 +809,8 @@ export default function Design2DPage() {
   const isImage = viewer?.attach
     ? ["png", "jpg", "jpeg", "gif", "svg"].includes(fileExt(viewer.attach))
     : false;
+  const isDxf = viewer?.attach ? fileExt(viewer.attach) === "dxf" : false;
+  const isDwg = viewer?.attach ? fileExt(viewer.attach) === "dwg" : false;
 
   // Image viewer state
   const [imgViewMode, setImgViewMode] = useState<ViewMode>("normal");
@@ -517,6 +828,24 @@ export default function Design2DPage() {
       {/* PDF Fullscreen viewer */}
       {viewer && isPdf && (
         <PdfViewer
+          src={proxyUrl(viewer.attach!)}
+          record={viewer}
+          onClose={() => setViewer(null)}
+        />
+      )}
+
+      {/* DXF Fullscreen viewer */}
+      {viewer && isDxf && (
+        <DxfFileViewer
+          src={proxyUrl(viewer.attach!)}
+          record={viewer}
+          onClose={() => setViewer(null)}
+        />
+      )}
+
+      {/* DWG Fullscreen viewer */}
+      {viewer && isDwg && (
+        <DwgFileViewer
           src={proxyUrl(viewer.attach!)}
           record={viewer}
           onClose={() => setViewer(null)}

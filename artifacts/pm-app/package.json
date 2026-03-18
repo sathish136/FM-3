@@ -77,6 +77,7 @@
   },
   "dependencies": {
     "@types/three": "^0.183.1",
+    "dxf-viewer": "^1.0.46",
     "hyperformula": "^3.2.0",
     "jszip": "^3.10.1",
     "occt-import-js": "^0.0.23",
