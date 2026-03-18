@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, Box, PenTool, GitBranch,
-  Briefcase, Users, ChevronDown, FileText,
+  Briefcase, ChevronDown, FileText,
   ChevronRight, LogOut, ChevronLeft, ChevronRight as ChevronRightIcon, Menu,
   MonitorPlay, Table2, PenLine,
 } from "lucide-react";
@@ -58,7 +58,6 @@ const navItems: NavItem[] = [
   { path: "/projects", label: "Projects", icon: Briefcase },
   { path: "/meeting-minutes", label: "Meeting Minutes", icon: FileText },
   { path: "/sheets", label: "Sheets", icon: Table2 },
-  { path: "/team", label: "Team", icon: Users },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
