@@ -42,7 +42,7 @@ export default function Login() {
 
           {/* Title */}
           <h1 className="text-4xl font-black tracking-tight leading-none flex items-baseline gap-0">
-            <span style={{ background: "linear-gradient(90deg, #6366f1, #8b5cf6, #3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>FlowMatri</span><span style={{ color: "#06b6d4", textShadow: "0 0 16px rgba(6,182,212,0.5)", fontSize: "1.35em", lineHeight: 1 }}>x</span>
+            <span style={{ background: "linear-gradient(90deg, #0a2463, #1a56db)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>FlowMatri</span><span style={{ color: "#0ea5e9", textShadow: "0 0 16px rgba(14,165,233,0.5)", fontSize: "1.35em", lineHeight: 1 }}>x</span>
           </h1>
 
           <p className="text-[10px] font-semibold tracking-[0.2em] uppercase text-gray-400 mt-2 mb-3">Project Management</p>
@@ -128,7 +128,7 @@ export default function Login() {
               type="submit"
               disabled={loading}
               className="w-full py-3 rounded-xl font-semibold text-white text-sm transition-all flex items-center justify-center gap-2 shadow-md mt-2 disabled:opacity-60 disabled:cursor-not-allowed"
-              style={{ background: loading ? "#6b8fd1" : "linear-gradient(135deg, #3b82f6, #2563eb)" }}
+              style={{ background: loading ? "#4a7fc1" : "linear-gradient(135deg, #1a56db, #0a2463)" }}
             >
               {loading ? (
                 <>
