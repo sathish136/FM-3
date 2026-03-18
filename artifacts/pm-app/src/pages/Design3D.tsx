@@ -349,7 +349,7 @@ function ModelViewer({
                 fontSize: "20px",
                 fontFamily: "'Trebuchet MS', 'Century Gothic', 'Gill Sans', Arial, sans-serif",
                 fontWeight: 800,
-                letterSpacing: "0.35em",
+                letterSpacing: "0.18em",
                 textTransform: "uppercase",
                 fontStyle: "normal",
                 lineHeight: 1.1,
@@ -363,7 +363,7 @@ function ModelViewer({
                 fontSize: "10px",
                 fontFamily: "'Trebuchet MS', 'Century Gothic', 'Gill Sans', Arial, sans-serif",
                 fontWeight: 400,
-                letterSpacing: "0.22em",
+                letterSpacing: "0.12em",
                 fontStyle: "italic",
                 textTransform: "uppercase",
               }}
