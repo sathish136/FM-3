@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { Box, Eye, EyeOff, Loader2, User, Lock, LogIn } from "lucide-react";
+import { Eye, EyeOff, Loader2, User, Lock, LogIn } from "lucide-react";
 
 export default function Login() {
   const { login } = useAuth();
@@ -33,14 +33,11 @@ export default function Login() {
     >
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center mb-8">
-          <div
-            className="w-16 h-16 rounded-2xl flex items-center justify-center mb-5 shadow-lg"
-            style={{ background: "linear-gradient(135deg, #3b82f6, #2563eb)" }}
-          >
-            <Box className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-gray-900 text-2xl font-bold tracking-tight">WTT Project Management</h1>
-          <p className="text-gray-500 text-sm mt-1.5">Sign in to your account</p>
+          <h1 className="text-4xl font-black tracking-tight leading-none mb-2" style={{ background: "linear-gradient(90deg, #6366f1, #8b5cf6, #3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+            FlowMatrix
+          </h1>
+          <p className="text-[10px] font-semibold tracking-[0.2em] uppercase text-gray-400 mb-3">Project Management</p>
+          <p className="text-gray-500 text-sm">Sign in to your account</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-xl p-8">
@@ -140,7 +137,7 @@ export default function Login() {
         </div>
 
         <p className="text-center text-gray-400 text-xs mt-6">
-          Secure · {new Date().getFullYear()} WTT International
+          Secure · {new Date().getFullYear()} FlowMatrix
         </p>
       </div>
     </div>

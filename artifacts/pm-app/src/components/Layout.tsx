@@ -98,17 +98,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Logo / Brand */}
       <div className="relative flex items-center justify-between px-4 py-4 border-b border-white/[0.07]">
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shrink-0 shadow-lg shadow-indigo-500/30">
-              <Box className="w-4.5 h-4.5 text-white" style={{ width: 18, height: 18 }} />
-            </div>
-            <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-[#0f172a]" />
-          </div>
-          <div>
-            <p className="text-white font-bold text-sm leading-tight tracking-tight">WTT-Project</p>
-            <p className="text-indigo-300/60 text-[10px] leading-tight font-medium tracking-wide">Management System</p>
-          </div>
+        <div className="flex flex-col">
+          <span className="text-lg font-black tracking-tight leading-none" style={{ background: "linear-gradient(90deg, #818cf8, #a78bfa, #60a5fa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+            FlowMatrix
+          </span>
+          <span className="text-[9px] font-semibold tracking-[0.15em] uppercase text-slate-600 mt-0.5">Project Management</span>
         </div>
         <button
           onClick={() => setCollapsed(true)}
@@ -254,7 +248,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {/* Branding */}
         <div className="flex items-center justify-center gap-1.5 pt-1">
           <Zap className="w-2.5 h-2.5 text-indigo-500/50" />
-          <p className="text-[9px] text-slate-700 tracking-widest uppercase font-semibold">WTT International</p>
+          <p className="text-[9px] text-slate-700 tracking-widest uppercase font-semibold">FlowMatrix</p>
         </div>
       </div>
     </div>
@@ -266,12 +260,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Logo */}
       <div className="relative w-full flex justify-center py-3.5 border-b border-white/[0.07]">
-        <div className="relative">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
-            <Box className="w-4 h-4 text-white" />
-          </div>
-          <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-[#0f172a]" />
-        </div>
+        <span className="text-xs font-black tracking-tight" style={{ background: "linear-gradient(90deg, #818cf8, #a78bfa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+          FM
+        </span>
       </div>
 
       {/* Nav icons */}
@@ -374,7 +365,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             >
               <Menu className="w-4 h-4" />
             </button>
-            <span className="text-sm font-bold text-gray-800 tracking-tight">WTT Project Management</span>
+            <span className="text-base font-black tracking-tight" style={{ background: "linear-gradient(90deg, #6366f1, #8b5cf6, #3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>FlowMatrix</span>
           </div>
           <div className="flex-1 flex justify-center px-4">
             <AISearch />
