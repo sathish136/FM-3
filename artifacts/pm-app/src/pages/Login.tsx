@@ -37,7 +37,7 @@ export default function Login() {
           <img
             src="https://res.cloudinary.com/dd8fsxba6/image/upload/v1755166473/logo-bg_less_yaefzj.png"
             alt="WTT International"
-            className="h-28 w-auto object-contain mb-4"
+            className="h-40 w-auto object-contain mb-4"
           />
 
           {/* Title */}
