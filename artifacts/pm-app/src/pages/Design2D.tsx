@@ -390,6 +390,7 @@ function DxfFileViewer({
 }: { src: string; record: Design2DRecord; onClose: () => void; badge?: string; downloadSrc?: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<InstanceType<typeof DxfViewerLib> | null>(null);
+  const initialBoundsRef = useRef<{ left: number; right: number; top: number; bottom: number } | null>(null);
   const [layers, setLayers] = useState<LayerInfo[]>([]);
   const [hiddenLayers, setHiddenLayers] = useState<Set<string>>(new Set());
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
@@ -428,6 +429,7 @@ function DxfFileViewer({
     }).then(() => {
       const ls = [...viewer.GetLayers()];
       setLayers(ls);
+      initialBoundsRef.current = viewer.GetCamera();
       setLoadState("ready");
     }).catch(() => {
       setLoadState("error");
@@ -459,9 +461,10 @@ function DxfFileViewer({
   const fitView = () => {
     const v = viewerRef.current;
     if (!v) return;
-    const cam = v.GetCamera();
-    const size = Math.max(cam.right - cam.left, cam.top - cam.bottom);
-    v.FitView(-size, size, -size, size, 0.05);
+    const b = initialBoundsRef.current;
+    if (b) {
+      v.FitView(b.left, b.right, b.bottom, b.top, 0.05);
+    }
   };
 
   const dispatchWheel = useCallback((delta: number) => {
@@ -539,11 +542,11 @@ function DxfFileViewer({
           </div>
         )}
 
-        <a href={downloadSrc || src} download={record.name}
-          className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-          title={`Download ${badge} file`}>
-          <Download className="w-4 h-4" />
-        </a>
+        <button onClick={() => setShowPanel(p => !p)}
+          title={showPanel ? "Hide reference panel" : "Show drawing reference"}
+          className={`p-1.5 rounded-lg transition-colors ${showPanel ? "text-blue-400 bg-blue-900/30" : "text-gray-400 hover:text-white hover:bg-white/10"}`}>
+          <Info className="w-4 h-4" />
+        </button>
       </div>
 
       <div className="flex-1 flex overflow-hidden">
@@ -562,8 +565,6 @@ function DxfFileViewer({
           onResetScale={() => setPxPerMeter(null)}
           pxPerMeter={pxPerMeter}
           hasTwoPoints={measurePts.length === 2}
-          downloadSrc={downloadSrc || src}
-          recordName={record.name}
         />
 
         {/* DXF canvas + measurement overlay */}
@@ -593,9 +594,6 @@ function DxfFileViewer({
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-400">
               <FileText className="w-10 h-10 opacity-30" />
               <p className="text-sm">Unable to render this {badge} file.</p>
-              <a href={src} download className="text-xs text-blue-400 underline flex items-center gap-1">
-                <Download className="w-3 h-3" /> Download instead
-              </a>
             </div>
           )}
 
@@ -645,7 +643,7 @@ function DxfFileViewer({
             <div className="flex items-center justify-between px-4 pt-4 pb-2">
               <div className="flex items-center gap-2">
                 <Info className="w-3.5 h-3.5 text-gray-500" />
-                <span className="text-[10px] text-gray-500 uppercase tracking-widest">Record Info</span>
+                <span className="text-[10px] text-gray-500 uppercase tracking-widest">Drawing Reference</span>
               </div>
               <button onClick={() => setShowPanel(false)} className="text-gray-600 hover:text-gray-300 transition-colors" title="Hide panel">
                 <X className="w-3.5 h-3.5" />
@@ -673,12 +671,6 @@ function DxfFileViewer({
                   <p className="text-sm text-yellow-400 font-mono font-semibold">{formatDist(measureDist, pxPerMeter)}</p>
                 </div>
               )}
-              <div className="pt-3 border-t border-white/10">
-                <a href={downloadSrc || src} download={record.name}
-                  className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-gray-400 hover:text-white hover:bg-white/10 transition-colors">
-                  <Download className="w-3.5 h-3.5" /> Download {badge}
-                </a>
-              </div>
             </div>
 
             {layers.length > 0 && (
@@ -792,7 +784,7 @@ function DwgFileViewer({
     };
   }, [src]);
 
-  const fitView = () => managerRef.current?.sendStringToExecute("zoom");
+  const fitView = () => managerRef.current?.sendStringToExecute("zoom e");
 
   const dispatchWheel = useCallback((delta: number) => {
     const container = containerRef.current;
@@ -870,10 +862,11 @@ function DwgFileViewer({
           </div>
         )}
 
-        <a href={src} download={record.name}
-          className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors" title="Download DWG">
-          <Download className="w-4 h-4" />
-        </a>
+        <button onClick={() => setShowPanel(p => !p)}
+          title={showPanel ? "Hide reference panel" : "Show drawing reference"}
+          className={`p-1.5 rounded-lg transition-colors ${showPanel ? "text-blue-400 bg-blue-900/30" : "text-gray-400 hover:text-white hover:bg-white/10"}`}>
+          <Info className="w-4 h-4" />
+        </button>
       </div>
 
       <div className="flex-1 flex overflow-hidden">
@@ -892,8 +885,6 @@ function DwgFileViewer({
           onResetScale={() => setPxPerMeter(null)}
           pxPerMeter={pxPerMeter}
           hasTwoPoints={measurePts.length === 2}
-          downloadSrc={src}
-          recordName={record.name}
         />
 
         {/* Canvas + measurement overlay */}
@@ -924,10 +915,7 @@ function DwgFileViewer({
               <AlertCircle className="w-10 h-10 text-red-400 opacity-60" />
               <p className="text-sm text-gray-400">Failed to load drawing</p>
               {errMsg && <p className="text-xs text-gray-600 font-mono max-w-sm text-center break-all">{errMsg}</p>}
-              <a href={src} download
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-xl transition-colors">
-                <Download className="w-4 h-4" /> Download DWG file
-              </a>
+              <p className="text-xs text-gray-600">Please contact your administrator.</p>
             </div>
           )}
 
@@ -980,7 +968,7 @@ function DwgFileViewer({
             <div className="flex items-center justify-between px-4 pt-4 pb-2">
               <div className="flex items-center gap-2">
                 <Info className="w-3.5 h-3.5 text-gray-500" />
-                <span className="text-[10px] text-gray-500 uppercase tracking-widest">Record Info</span>
+                <span className="text-[10px] text-gray-500 uppercase tracking-widest">Drawing Reference</span>
               </div>
               <button onClick={() => setShowPanel(false)} className="text-gray-600 hover:text-gray-300 transition-colors" title="Hide panel">
                 <X className="w-3.5 h-3.5" />
@@ -1008,12 +996,6 @@ function DwgFileViewer({
                   <p className="text-sm text-yellow-400 font-mono font-semibold">{formatDist(measureDist, pxPerMeter)}</p>
                 </div>
               )}
-              <div className="pt-3 border-t border-white/10">
-                <a href={src} download={record.name}
-                  className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-gray-400 hover:text-white hover:bg-white/10 transition-colors">
-                  <Download className="w-3.5 h-3.5" /> Download DWG
-                </a>
-              </div>
             </div>
           </div>
         )}
@@ -1126,13 +1108,14 @@ function PdfViewer({
         {numPages && (
           <span className="text-xs text-gray-400 tabular-nums">{page} / {numPages}</span>
         )}
-        <a href={src} download={record.name}
-          className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors" title="Download PDF">
-          <Download className="w-4 h-4" />
-        </a>
         <button onClick={handlePrint}
           className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors" title="Print drawing">
           <Printer className="w-4 h-4" />
+        </button>
+        <button onClick={() => setShowPanel(p => !p)}
+          title={showPanel ? "Hide reference panel" : "Show drawing reference"}
+          className={`p-1.5 rounded-lg transition-colors ${showPanel ? "text-blue-400 bg-blue-900/30" : "text-gray-400 hover:text-white hover:bg-white/10"}`}>
+          <Info className="w-4 h-4" />
         </button>
       </div>
 
@@ -1154,8 +1137,6 @@ function PdfViewer({
           pxPerMeter={pxPerMeter}
           hasTwoPoints={measurePts.length === 2}
           onPrint={handlePrint}
-          downloadSrc={src}
-          recordName={record.name}
         />
 
         {/* Document area */}
@@ -1256,7 +1237,7 @@ function PdfViewer({
             <div className="flex items-center justify-between px-4 pt-4 pb-2">
               <div className="flex items-center gap-2">
                 <Info className="w-3.5 h-3.5 text-gray-500" />
-                <span className="text-[10px] text-gray-500 uppercase tracking-widest">Record Info</span>
+                <span className="text-[10px] text-gray-500 uppercase tracking-widest">Drawing Reference</span>
               </div>
               <button onClick={() => setShowPanel(v => !v)} className="text-gray-600 hover:text-gray-300 transition-colors" title="Hide panel">
                 <X className="w-3.5 h-3.5" />
