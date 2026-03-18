@@ -369,9 +369,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
             >
               <Menu className="w-4 h-4" />
             </button>
-            <span className="text-base font-black tracking-tight flex items-baseline gap-0">
-              <span style={{ background: "linear-gradient(90deg, #6366f1, #8b5cf6, #3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>FlowMatri</span><span style={{ color: "#06b6d4", textShadow: "0 0 10px rgba(6,182,212,0.6)", fontSize: "1.35em", lineHeight: 1 }}>x</span>
-            </span>
+            <div className="hidden md:flex items-center gap-1.5 text-xs text-gray-400">
+              <span className="font-medium text-gray-300">FlowMatriX</span>
+              <ChevronRightIcon className="w-3 h-3 text-gray-300" />
+              <span className="font-semibold text-gray-700">{pageTitle}</span>
+            </div>
           </div>
           <div className="flex-1 flex justify-center px-4">
             <AISearch />
