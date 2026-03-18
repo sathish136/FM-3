@@ -8,6 +8,7 @@ import {
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth, type AuthUser } from "@/hooks/useAuth";
+import { AISearch } from "@/components/AISearch";
 
 function UserAvatar({ user, size = "sm" }: { user: AuthUser | null; size?: "sm" | "md" }) {
   const [imgError, setImgError] = useState(false);
@@ -283,6 +284,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Menu className="w-4 h-4" />
             </button>
             <span className="text-sm font-semibold text-gray-800">WTT Project Management</span>
+          </div>
+          <div className="flex-1 flex justify-center px-4">
+            <AISearch />
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2.5">
