@@ -161,10 +161,9 @@ function usePptxSlides(fileUrl: string | null, ext: string) {
 function SlideCard({ slide, pres, deckIdx, scale = 1 }: {
   slide: SlideData; pres: Presentation; deckIdx: number; scale?: number;
 }) {
-  const bg = slide.bgColor || PALETTE[deckIdx % PALETTE.length].bg;
-  const isLight = /^#[ef][ef]/i.test(bg) || bg === "#ffffff";
-  const textColor = isLight ? "#111" : "#fff";
-  const subColor = isLight ? "#555" : "rgba(255,255,255,0.72)";
+  const rawBg = slide.bgColor || "";
+  const isLight = /^#[ef][ef]/i.test(rawBg) || rawBg === "#ffffff" || rawBg === "" ;
+  const bg = isLight ? PALETTE[(deckIdx + slide.index) % PALETTE.length].bg : rawBg;
 
   return (
     <div
@@ -173,20 +172,20 @@ function SlideCard({ slide, pres, deckIdx, scale = 1 }: {
     >
       <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-3"
         style={{ background: "rgba(255,255,255,0.18)" }}>
-        <Layers className="w-4 h-4" style={{ color: isLight ? "#333" : "#fff" }} />
+        <Layers className="w-4 h-4 text-white" />
       </div>
-      <h2 className="font-bold text-center leading-snug mb-2 max-w-xs"
-        style={{ color: textColor, fontSize: `${1.3 * scale}em` }}>
+      <h2 className="font-bold text-center leading-snug mb-2 max-w-xs text-white"
+        style={{ fontSize: `${1.3 * scale}em` }}>
         {slide.title || pres.presentation_name || pres.name}
       </h2>
       {slide.body.slice(0, 3).map((line, li) => (
         <p key={li} className="text-center leading-snug mb-1 max-w-xs"
-          style={{ color: subColor, fontSize: `${0.78 * scale}em` }}>
+          style={{ color: "rgba(255,255,255,0.75)", fontSize: `${0.78 * scale}em` }}>
           {line}
         </p>
       ))}
       {!slide.hasContent && (
-        <p style={{ color: subColor, fontSize: `${0.7 * scale}em` }} className="mt-1">
+        <p style={{ color: "rgba(255,255,255,0.6)", fontSize: `${0.7 * scale}em` }} className="mt-1">
           Slide {slide.index + 1}
         </p>
       )}
