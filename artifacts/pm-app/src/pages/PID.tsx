@@ -2,10 +2,9 @@ import { Layout } from "@/components/Layout";
 import {
   GitBranch, Search, RefreshCw, Loader2, X,
   ChevronLeft, ChevronRight, AlertCircle, ZoomIn, ZoomOut,
-  Download, RotateCcw, FileText, LayoutList, Eye,
-  FolderOpen,
+  Download, RotateCcw, FileText, Eye, FolderOpen,
 } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -32,63 +31,209 @@ function formatDate(iso: string) {
   } catch { return iso; }
 }
 
-type BgPreset = "dark" | "navy" | "light" | "white";
-type ViewMode = "normal" | "invert";
-type DisplayMode = "list" | "viewer";
+// ── Full-screen PDF viewer overlay ──────────────────────────────────────────
+function PdfViewer({ src }: { src: string }) {
+  const [numPages, setNumPages] = useState<number | null>(null);
+  const [page, setPage] = useState(1);
+  const [scale, setScale] = useState(1.2);
+  const [pdfError, setPdfError] = useState(false);
 
-const BG_CLASSES: Record<BgPreset, string> = {
-  dark: "bg-gray-950",
-  navy: "bg-[#1a1a2e]",
-  light: "bg-[#dde3ee]",
-  white: "bg-white",
-};
-
-interface ToolBtnProps {
-  active?: boolean;
-  title: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}
-function ToolBtn({ active, title, onClick, children }: ToolBtnProps) {
   return (
-    <button
-      title={title}
-      onClick={onClick}
-      className={`w-9 h-9 flex items-center justify-center rounded-md text-xs transition-colors border
-        ${active
-          ? "bg-blue-600 border-blue-500 text-white"
-          : "bg-transparent border-transparent text-gray-400 hover:bg-white/10 hover:text-white hover:border-white/10"
-        }`}
-    >
-      {children}
-    </button>
+    <div className="flex-1 flex flex-col overflow-hidden bg-gray-950">
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 px-3 py-2 bg-gray-900 border-b border-gray-800 flex-shrink-0">
+        <div className="flex items-center gap-0.5 bg-gray-800 rounded-lg px-0.5">
+          <button
+            onClick={() => setScale(s => Math.max(0.4, parseFloat((s - 0.2).toFixed(1))))}
+            className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+            title="Zoom out"
+          >
+            <ZoomOut className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => setScale(1.2)}
+            className="px-2 text-xs text-gray-300 hover:text-white tabular-nums w-12 text-center"
+            title="Reset zoom"
+          >
+            {Math.round(scale * 100)}%
+          </button>
+          <button
+            onClick={() => setScale(s => Math.min(4, parseFloat((s + 0.2).toFixed(1))))}
+            className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+            title="Zoom in"
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
+          </button>
+        </div>
+        <button
+          onClick={() => setScale(1.2)}
+          className="flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+        >
+          <RotateCcw className="w-3 h-3" /> Fit
+        </button>
+        <div className="flex-1" />
+        {numPages && numPages > 1 && (
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-xs text-gray-400 w-20 text-center tabular-nums">
+              {page} / {numPages}
+            </span>
+            <button
+              onClick={() => setPage(p => Math.min(numPages!, p + 1))}
+              disabled={page >= numPages}
+              className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* PDF content */}
+      <div className="flex-1 overflow-auto flex justify-center p-6">
+        {pdfError ? (
+          <div className="flex flex-col items-center justify-center gap-3 text-gray-400">
+            <AlertCircle className="w-8 h-8 text-red-400" />
+            <p className="text-sm">Could not load PDF</p>
+          </div>
+        ) : (
+          <Document
+            file={src}
+            onLoadSuccess={({ numPages: n }) => { setNumPages(n); setPdfError(false); }}
+            onLoadError={() => setPdfError(true)}
+            loading={
+              <div className="flex items-center gap-2 text-gray-400 mt-20">
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span className="text-sm">Loading PDF…</span>
+              </div>
+            }
+          >
+            <Page
+              pageNumber={page}
+              scale={scale}
+              renderTextLayer={true}
+              renderAnnotationLayer={true}
+            />
+          </Document>
+        )}
+      </div>
+    </div>
   );
 }
 
-function TbDivider() {
-  return <div className="w-full h-px bg-white/10 my-1" />;
+function FileViewer({
+  record,
+  filtered,
+  currentIndex,
+  onClose,
+  onNavigate,
+}: {
+  record: PIDRecord;
+  filtered: PIDRecord[];
+  currentIndex: number;
+  onClose: () => void;
+  onNavigate: (idx: number) => void;
+}) {
+  const src = record.attach ? proxyUrl(record.attach) : null;
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowLeft" && currentIndex > 0) onNavigate(currentIndex - 1);
+      if (e.key === "ArrowRight" && currentIndex < filtered.length - 1) onNavigate(currentIndex + 1);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [currentIndex, filtered.length, onClose, onNavigate]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-gray-950">
+      {/* Top bar */}
+      <div className="flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-800 flex-shrink-0">
+        <button
+          onClick={onClose}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors flex-shrink-0"
+        >
+          <X className="w-4 h-4" /> Close
+        </button>
+
+        <div className="h-5 w-px bg-gray-700" />
+
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <GitBranch className="w-4 h-4 text-indigo-400 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-white truncate">{record.name}</p>
+            <p className="text-xs text-gray-400 truncate">
+              {record.project_name || record.project}
+              {record.revision ? ` · ${record.revision}` : ""}
+            </p>
+          </div>
+        </div>
+
+        {record.attach && (
+          <a
+            href={proxyUrl(record.attach)}
+            download={fileName(record.attach)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-gray-400 hover:text-white hover:bg-gray-700 transition-colors flex-shrink-0"
+            title="Download"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Download
+          </a>
+        )}
+
+        {filtered.length > 1 && (
+          <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+            <span className="text-xs text-gray-600 mr-1">P&amp;ID</span>
+            <button
+              onClick={() => onNavigate(currentIndex - 1)}
+              disabled={currentIndex === 0}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-xs text-gray-400 w-16 text-center tabular-nums">
+              {currentIndex + 1} / {filtered.length}
+            </span>
+            <button
+              onClick={() => onNavigate(currentIndex + 1)}
+              disabled={currentIndex === filtered.length - 1}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-hidden">
+        {!src ? (
+          <div className="h-full flex flex-col items-center justify-center text-gray-500">
+            <FolderOpen className="w-12 h-12 mb-3 opacity-30" />
+            <p className="text-sm">No file attached to this record</p>
+          </div>
+        ) : (
+          <PdfViewer key={src} src={src} />
+        )}
+      </div>
+    </div>
+  );
 }
 
-function TbSection({ label }: { label: string }) {
-  return <div className="text-[9px] text-gray-500 uppercase tracking-widest px-1 mt-2 mb-0.5 select-none w-full text-center">{label}</div>;
-}
-
+// ── Main page ────────────────────────────────────────────────────────────────
 export default function PID() {
   const [records, setRecords] = useState<PIDRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<PIDRecord | null>(null);
-  const [displayMode, setDisplayMode] = useState<DisplayMode>("list");
-
-  const [numPages, setNumPages] = useState<number | null>(null);
-  const [page, setPage] = useState(1);
-  const [scale, setScale] = useState(1.2);
-  const [rotate, setRotate] = useState(0);
-  const [bgPreset, setBgPreset] = useState<BgPreset>("white");
-  const [viewMode, setViewMode] = useState<ViewMode>("normal");
-  const [pdfError, setPdfError] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
   const fetchRecords = async () => {
     setLoading(true);
@@ -118,26 +263,26 @@ export default function PID() {
     );
   });
 
-  const openViewer = (r: PIDRecord) => {
-    setSelected(r);
-    setPage(1);
-    setNumPages(null);
-    setPdfError(false);
-    setScale(1.2);
-    setRotate(0);
-    setDisplayMode("viewer");
-  };
+  const openViewer = useCallback((idx: number) => setViewerIndex(idx), []);
+  const closeViewer = useCallback(() => setViewerIndex(null), []);
 
-  const pdfSrc = selected?.attach ? proxyUrl(selected.attach) : null;
+  return (
+    <>
+      {viewerIndex !== null && filtered[viewerIndex] && (
+        <FileViewer
+          record={filtered[viewerIndex]}
+          filtered={filtered}
+          currentIndex={viewerIndex}
+          onClose={closeViewer}
+          onNavigate={setViewerIndex}
+        />
+      )}
 
-  // ── List view (full-page table) ────────────────────────────────────────────
-  if (displayMode === "list") {
-    return (
       <Layout>
         <div className="min-h-full bg-gray-50 p-6">
           {/* Page header */}
           <div className="mb-6">
-            <div className="flex items-center gap-3 mb-1">
+            <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center">
                 <GitBranch className="w-5 h-5 text-indigo-600" />
               </div>
@@ -180,7 +325,6 @@ export default function PID() {
 
           {/* Table */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            {/* Table header */}
             <div className="grid grid-cols-[2fr_2fr_120px_120px_100px] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
               <span>P&amp;ID No.</span>
               <span>Project</span>
@@ -202,7 +346,7 @@ export default function PID() {
               </div>
             ) : (
               <div className="divide-y divide-gray-100">
-                {filtered.map(r => (
+                {filtered.map((r, idx) => (
                   <div
                     key={r.name}
                     className="grid grid-cols-[2fr_2fr_120px_120px_100px] gap-4 px-5 py-3.5 items-center hover:bg-gray-50 transition-colors group"
@@ -227,10 +371,10 @@ export default function PID() {
                       {r.revision || "—"}
                     </span>
                     <span className="text-xs text-gray-400">{r.modified ? formatDate(r.modified) : "—"}</span>
-                    <div className="flex justify-end gap-2">
+                    <div className="flex justify-end">
                       {r.attach ? (
                         <button
-                          onClick={() => openViewer(r)}
+                          onClick={() => openViewer(idx)}
                           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-indigo-600 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-colors"
                         >
                           <Eye className="w-3.5 h-3.5" />
@@ -243,7 +387,7 @@ export default function PID() {
                   </div>
                 ))}
 
-                {filtered.length === 0 && !loading && (
+                {filtered.length === 0 && (
                   <div className="py-14 text-center text-gray-400">
                     <FolderOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
                     <p className="text-sm">No P&amp;ID records found</p>
@@ -255,191 +399,6 @@ export default function PID() {
           </div>
         </div>
       </Layout>
-    );
-  }
-
-  // ── Viewer mode ────────────────────────────────────────────────────────────
-  return (
-    <Layout>
-      <div className="flex h-full overflow-hidden bg-[#0f0f1a]">
-        <div className="flex-1 flex overflow-hidden">
-          {!selected ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-600">
-              <GitBranch className="w-12 h-12 opacity-20" />
-              <p className="text-sm">Select a P&amp;ID record to view</p>
-            </div>
-          ) : (
-            <>
-              {/* Toolbar sidebar */}
-              <aside className="w-12 bg-[#16162a] border-r border-white/10 flex flex-col items-center py-2 gap-0.5 flex-shrink-0 overflow-y-auto">
-                <TbSection label="View" />
-                <ToolBtn title="Normal view" active={viewMode === "normal"} onClick={() => setViewMode("normal")}>
-                  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor"><circle cx="10" cy="10" r="7" /></svg>
-                </ToolBtn>
-                <ToolBtn title="Invert colors" active={viewMode === "invert"} onClick={() => setViewMode("invert")}>
-                  <svg viewBox="0 0 20 20" className="w-5 h-5">
-                    <path fill="currentColor" d="M10 3a7 7 0 1 1 0 14V3z" />
-                    <path fill="none" stroke="currentColor" strokeWidth="1.5" d="M10 3a7 7 0 1 0 0 14" />
-                  </svg>
-                </ToolBtn>
-                <TbDivider />
-                <TbSection label="BG" />
-                <ToolBtn title="Dark background" active={bgPreset === "dark"} onClick={() => setBgPreset("dark")}>
-                  <div className="w-5 h-5 rounded-full bg-[#0f0f1a] border border-white/30" />
-                </ToolBtn>
-                <ToolBtn title="Navy background" active={bgPreset === "navy"} onClick={() => setBgPreset("navy")}>
-                  <div className="w-5 h-5 rounded-full bg-[#1a1a2e] border border-white/30" />
-                </ToolBtn>
-                <ToolBtn title="Light background" active={bgPreset === "light"} onClick={() => setBgPreset("light")}>
-                  <div className="w-5 h-5 rounded-full bg-[#dde3ee] border border-black/20" />
-                </ToolBtn>
-                <ToolBtn title="White background" active={bgPreset === "white"} onClick={() => setBgPreset("white")}>
-                  <div className="w-5 h-5 rounded-full bg-white border border-black/20" />
-                </ToolBtn>
-                <TbDivider />
-                <TbSection label="Zoom" />
-                <ToolBtn title="Zoom in" onClick={() => setScale(s => +(Math.min(4, s + 0.15).toFixed(2)))}>
-                  <ZoomIn className="w-4 h-4" />
-                </ToolBtn>
-                <div className="text-[9px] text-gray-400 tabular-nums text-center leading-tight py-0.5 select-none">
-                  {Math.round(scale * 100)}%
-                </div>
-                <ToolBtn title="Fit to window" onClick={() => setScale(1.2)}>
-                  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.4">
-                    <rect x="3" y="3" width="14" height="14" rx="1" />
-                    <polyline points="7,3 3,3 3,7" />
-                    <polyline points="13,3 17,3 17,7" />
-                    <polyline points="3,13 3,17 7,17" />
-                    <polyline points="17,13 17,17 13,17" />
-                  </svg>
-                </ToolBtn>
-                <ToolBtn title="Zoom out" onClick={() => setScale(s => +(Math.max(0.2, s - 0.15).toFixed(2)))}>
-                  <ZoomOut className="w-4 h-4" />
-                </ToolBtn>
-                <TbDivider />
-                <TbSection label="Rotate" />
-                <ToolBtn title="Rotate CCW" onClick={() => setRotate(r => (r - 90 + 360) % 360)}>
-                  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M4.5 10a5.5 5.5 0 1 0 1.2-3.4" />
-                    <polyline points="2,4 4.5,6.5 7,4" />
-                  </svg>
-                </ToolBtn>
-                <ToolBtn title="Rotate CW" onClick={() => setRotate(r => (r + 90) % 360)}>
-                  <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M15.5 10a5.5 5.5 0 1 1-1.2-3.4" />
-                    <polyline points="18,4 15.5,6.5 13,4" />
-                  </svg>
-                </ToolBtn>
-                {rotate !== 0 && (
-                  <ToolBtn title="Reset rotation" onClick={() => setRotate(0)}>
-                    <RotateCcw className="w-4 h-4" />
-                  </ToolBtn>
-                )}
-                {numPages != null && numPages > 1 && (
-                  <>
-                    <TbDivider />
-                    <TbSection label="Pages" />
-                    <ToolBtn title="Previous page" onClick={() => setPage(p => Math.max(1, p - 1))}>
-                      <ChevronLeft className="w-4 h-4" />
-                    </ToolBtn>
-                    <div className="text-[9px] text-gray-400 tabular-nums text-center leading-tight py-0.5 select-none">
-                      {page}<br /><span className="text-gray-600">/{numPages}</span>
-                    </div>
-                    <ToolBtn title="Next page" onClick={() => setPage(p => Math.min(numPages!, p + 1))}>
-                      <ChevronRight className="w-4 h-4" />
-                    </ToolBtn>
-                  </>
-                )}
-                <TbDivider />
-                <ToolBtn title="Back to list" onClick={() => setDisplayMode("list")}>
-                  <LayoutList className="w-4 h-4" />
-                </ToolBtn>
-              </aside>
-
-              {/* Main viewer */}
-              <div className="flex-1 flex flex-col overflow-hidden">
-                <div className="h-10 bg-[#0f0f1a] border-b border-white/10 flex items-center px-4 gap-3 shrink-0">
-                  <GitBranch className="w-4 h-4 text-indigo-400 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <span className="text-white text-sm font-medium truncate">{selected.name}</span>
-                    {selected.revision && (
-                      <span className="ml-2 text-xs text-indigo-300 bg-indigo-500/20 px-1.5 py-0.5 rounded">
-                        {selected.revision}
-                      </span>
-                    )}
-                    <span className="ml-2 text-xs text-gray-500 truncate hidden sm:inline">
-                      {selected.project_name || selected.project}
-                    </span>
-                  </div>
-                  {selected.attach && (
-                    <a
-                      href={proxyUrl(selected.attach)}
-                      download={fileName(selected.attach)}
-                      className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-white/10"
-                      title="Download file"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Download</span>
-                    </a>
-                  )}
-                </div>
-
-                <div
-                  ref={containerRef}
-                  className={`flex-1 overflow-auto flex justify-center pt-4 pb-8 ${BG_CLASSES[bgPreset]}`}
-                >
-                  {!selected.attach ? (
-                    <div className="flex flex-col items-center justify-center gap-2 text-gray-500 text-sm">
-                      <FileText className="w-8 h-8 opacity-30" />
-                      <p>No attachment on this record</p>
-                    </div>
-                  ) : pdfError ? (
-                    <div className="flex flex-col items-center justify-center gap-3 text-gray-400">
-                      <AlertCircle className="w-8 h-8 text-red-400" />
-                      <p className="text-sm">Could not load PDF</p>
-                      <a
-                        href={proxyUrl(selected.attach)}
-                        download={fileName(selected.attach)}
-                        className="flex items-center gap-1.5 text-sm text-indigo-400 hover:underline"
-                      >
-                        <Download className="w-4 h-4" />
-                        Download file instead
-                      </a>
-                    </div>
-                  ) : (
-                    <div
-                      style={{
-                        filter: viewMode === "invert" ? "invert(1) hue-rotate(180deg)" : undefined,
-                        transform: rotate ? `rotate(${rotate}deg)` : undefined,
-                        transition: "transform 0.2s",
-                      }}
-                    >
-                      <Document
-                        file={pdfSrc!}
-                        onLoadSuccess={({ numPages: n }) => { setNumPages(n); setPdfError(false); }}
-                        onLoadError={() => setPdfError(true)}
-                        loading={
-                          <div className="flex items-center gap-2 text-gray-400 mt-20">
-                            <Loader2 className="w-5 h-5 animate-spin" />
-                            <span className="text-sm">Loading PDF…</span>
-                          </div>
-                        }
-                      >
-                        <Page
-                          pageNumber={page}
-                          scale={scale}
-                          renderTextLayer={true}
-                          renderAnnotationLayer={true}
-                        />
-                      </Document>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </Layout>
+    </>
   );
 }
