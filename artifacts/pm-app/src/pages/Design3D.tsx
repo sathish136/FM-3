@@ -217,7 +217,7 @@ function ModelViewer({
       {/* Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left toolbar */}
-        <div className={`w-12 flex flex-col items-center py-2 gap-1 flex-shrink-0 overflow-y-auto ${isDark ? "bg-[#0f0f1a] border-r border-white/10" : "bg-white border-r border-gray-200"}`}>
+        <div className="w-12 flex flex-col items-center py-2 gap-1 flex-shrink-0 overflow-y-auto bg-[#0f0f1a] border-r border-white/10">
           <Section label="View" />
           <ToolBtn title="Shaded" active={viewMode === "shaded"} onClick={() => setViewMode("shaded")}>
             <svg viewBox="0 0 20 20" className="w-4 h-4" fill="currentColor"><circle cx="10" cy="10" r="7" /></svg>
@@ -346,7 +346,8 @@ function ModelViewer({
             <div className="absolute top-3 right-3 bg-yellow-500/90 text-black rounded-xl px-4 py-3 text-sm shadow-lg flex items-center gap-3">
               <div>
                 <div className="text-[10px] text-yellow-900 uppercase tracking-widest mb-0.5">Distance</div>
-                <div className="text-xl font-bold">{measureResult.dist.toFixed(4)} <span className="text-sm font-normal">units</span></div>
+                <div className="text-xl font-bold">{(measureResult.dist / 1000).toFixed(4)} <span className="text-sm font-normal">m</span></div>
+                <div className="text-[10px] text-yellow-800 mt-0.5">{measureResult.dist.toFixed(2)} mm</div>
               </div>
               <button onClick={clearMeasure} className="ml-2 text-yellow-900 hover:text-black transition-colors font-bold">✕</button>
             </div>
