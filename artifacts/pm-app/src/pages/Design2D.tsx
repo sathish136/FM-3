@@ -33,6 +33,8 @@ function fileExt(f: string) { return (f.split(".").pop() || "").toLowerCase(); }
 function fileName(f: string) { return f.split("/").pop() || f; }
 function proxyUrl(f: string) { return `${BASE}/api/file-proxy?url=${encodeURIComponent(f)}`; }
 
+type MeasurePt = { x: number; y: number };
+
 function formatDate(iso: string) {
   try {
     return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
@@ -139,6 +141,12 @@ interface ViewerSidebarProps {
   onClearMeasure?: () => void;
   onPrint?: () => void;
   onFitView?: () => void;
+  onZoomIn?: () => void;
+  onZoomOut?: () => void;
+  showPanel?: boolean;
+  setShowPanel?: (v: boolean) => void;
+  downloadSrc?: string;
+  recordName?: string;
 }
 
 function ViewerSidebar({
@@ -148,7 +156,8 @@ function ViewerSidebar({
   rotate, setRotate,
   numPages, page, setPage,
   measureMode, onToggleMeasure, onClearMeasure,
-  onPrint, onFitView,
+  onPrint, onFitView, onZoomIn, onZoomOut,
+  showPanel, setShowPanel,
 }: ViewerSidebarProps) {
   return (
     <aside className="w-12 bg-[#16162a] border-r border-white/10 flex flex-col items-center py-2 gap-0.5 flex-shrink-0 overflow-y-auto">
@@ -184,13 +193,16 @@ function ViewerSidebar({
         <div className="w-5 h-5 rounded-full bg-white border border-black/20" />
       </ToolBtn>
 
-      {(setScale || onFitView) && (
+      {(setScale || onFitView || onZoomIn || onZoomOut) && (
         <>
           <TbDivider />
           <TbSection label="Zoom" />
 
-          {setScale && (
-            <ToolBtn title="Zoom in (+)" onClick={() => setScale(s => +(Math.min(4, s + 0.1).toFixed(2)))}>
+          {(setScale || onZoomIn) && (
+            <ToolBtn title="Zoom in (+)" onClick={() => {
+              if (onZoomIn) onZoomIn();
+              else if (setScale) setScale(s => +(Math.min(4, s + 0.15).toFixed(2)));
+            }}>
               <ZoomIn className="w-4 h-4" />
             </ToolBtn>
           )}
@@ -201,21 +213,26 @@ function ViewerSidebar({
             </div>
           )}
 
-          <ToolBtn
-            title="Fit to window (reset zoom)"
-            onClick={() => { if (onFitView) onFitView(); else if (setScale) setScale(1.2); }}
-          >
-            <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.4">
-              <rect x="3" y="3" width="14" height="14" rx="1" />
-              <polyline points="7,3 3,3 3,7" />
-              <polyline points="13,3 17,3 17,7" />
-              <polyline points="3,13 3,17 7,17" />
-              <polyline points="17,13 17,17 13,17" />
-            </svg>
-          </ToolBtn>
+          {(onFitView || setScale) && (
+            <ToolBtn
+              title="Fit to window (reset zoom)"
+              onClick={() => { if (onFitView) onFitView(); else if (setScale) setScale(1.2); }}
+            >
+              <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.4">
+                <rect x="3" y="3" width="14" height="14" rx="1" />
+                <polyline points="7,3 3,3 3,7" />
+                <polyline points="13,3 17,3 17,7" />
+                <polyline points="3,13 3,17 7,17" />
+                <polyline points="17,13 17,17 13,17" />
+              </svg>
+            </ToolBtn>
+          )}
 
-          {setScale && (
-            <ToolBtn title="Zoom out (-)" onClick={() => setScale(s => +(Math.max(0.2, s - 0.1).toFixed(2)))}>
+          {(setScale || onZoomOut) && (
+            <ToolBtn title="Zoom out (-)" onClick={() => {
+              if (onZoomOut) onZoomOut();
+              else if (setScale) setScale(s => +(Math.max(0.2, s - 0.15).toFixed(2)));
+            }}>
               <ZoomOut className="w-4 h-4" />
             </ToolBtn>
           )}
@@ -289,6 +306,20 @@ function ViewerSidebar({
           <TbSection label="Print" />
           <ToolBtn title="Print drawing" onClick={onPrint}>
             <Printer className="w-4 h-4" />
+          </ToolBtn>
+        </>
+      )}
+
+      {setShowPanel && (
+        <>
+          <TbDivider />
+          <TbSection label="Panel" />
+          <ToolBtn
+            title={showPanel ? "Hide info panel" : "Show info panel"}
+            active={showPanel}
+            onClick={() => setShowPanel(!showPanel)}
+          >
+            <PanelRight className="w-4 h-4" />
           </ToolBtn>
         </>
       )}
@@ -382,6 +413,28 @@ function DxfFileViewer({
     v.FitView(-size, size, -size, size, 0.05);
   };
 
+  const zoomIn = useCallback(() => {
+    const v = viewerRef.current;
+    if (!v) return;
+    const cam = v.GetCamera();
+    const cx = (cam.left + cam.right) / 2;
+    const cy = (cam.bottom + cam.top) / 2;
+    const w = (cam.right - cam.left) * 0.75;
+    const h = (cam.top - cam.bottom) * 0.75;
+    v.FitView(cx - w / 2, cx + w / 2, cy - h / 2, cy + h / 2, 0);
+  }, []);
+
+  const zoomOut = useCallback(() => {
+    const v = viewerRef.current;
+    if (!v) return;
+    const cam = v.GetCamera();
+    const cx = (cam.left + cam.right) / 2;
+    const cy = (cam.bottom + cam.top) / 2;
+    const w = (cam.right - cam.left) * 1.33;
+    const h = (cam.top - cam.bottom) * 1.33;
+    v.FitView(cx - w / 2, cx + w / 2, cy - h / 2, cy + h / 2, 0);
+  }, []);
+
   const handleMeasureClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!measureMode) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -447,6 +500,8 @@ function DxfFileViewer({
           bgPreset={bgPreset} setBgPreset={setBgPreset}
           showPanel={showPanel} setShowPanel={setShowPanel}
           onFitView={fitView}
+          onZoomIn={zoomIn}
+          onZoomOut={zoomOut}
           measureMode={measureMode}
           onToggleMeasure={() => { setMeasureMode(m => !m); clearMeasure(); }}
           onClearMeasure={clearMeasure}
@@ -681,6 +736,24 @@ function DwgFileViewer({
 
   const fitView = () => managerRef.current?.sendStringToExecute("zoom");
 
+  const zoomIn = useCallback(() => {
+    if (!containerRef.current) return;
+    const el = containerRef.current;
+    const rect = el.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    el.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, clientX: cx, clientY: cy, deltaY: -300 }));
+  }, []);
+
+  const zoomOut = useCallback(() => {
+    if (!containerRef.current) return;
+    const el = containerRef.current;
+    const rect = el.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    el.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, clientX: cx, clientY: cy, deltaY: 300 }));
+  }, []);
+
   const handleMeasureClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!measureMode) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -746,6 +819,8 @@ function DwgFileViewer({
           bgPreset={bgPreset} setBgPreset={setBgPreset}
           showPanel={showPanel} setShowPanel={setShowPanel}
           onFitView={fitView}
+          onZoomIn={zoomIn}
+          onZoomOut={zoomOut}
           measureMode={measureMode}
           onToggleMeasure={() => { setMeasureMode(m => !m); clearMeasure(); }}
           onClearMeasure={clearMeasure}
@@ -880,8 +955,6 @@ function DwgFileViewer({
 }
 
 // ── PDF Fullscreen Viewer ─────────────────────────────────────────────────────
-type MeasurePt = { x: number; y: number };
-
 function PdfViewer({
   src, record, onClose,
 }: { src: string; record: Design2DRecord; onClose: () => void }) {
