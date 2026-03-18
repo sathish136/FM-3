@@ -4,7 +4,7 @@ import {
   ChevronLeft, ChevronRight, AlertCircle, ZoomIn, ZoomOut,
   PanelRight, FileText, Layers, Building2,
   Calendar, Info, Download, Eye, EyeOff, Maximize2,
-  ChevronDown, FilterX,
+  ChevronDown, FilterX, Printer, Ruler, RotateCcw, Crosshair,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
@@ -98,11 +98,17 @@ interface ViewerSidebarProps {
   setScale?: (fn: (s: number) => number) => void;
   rotate?: number;
   setRotate?: (fn: (r: number) => number) => void;
-  showPanel?: boolean;
-  setShowPanel?: (fn: (v: boolean) => boolean) => void;
+  showPanel: boolean;
+  setShowPanel: (fn: (v: boolean) => boolean) => void;
   numPages?: number | null;
   page?: number;
   setPage?: (fn: (p: number) => number) => void;
+  measureMode?: boolean;
+  onToggleMeasure?: () => void;
+  onClearMeasure?: () => void;
+  onPrint?: () => void;
+  downloadSrc?: string;
+  recordName?: string;
 }
 
 function ViewerSidebar({
@@ -112,6 +118,8 @@ function ViewerSidebar({
   rotate, setRotate,
   showPanel, setShowPanel,
   numPages, page, setPage,
+  measureMode, onToggleMeasure, onClearMeasure,
+  onPrint, downloadSrc, recordName,
 }: ViewerSidebarProps) {
   return (
     <aside className="w-12 bg-[#16162a] border-r border-white/10 flex flex-col items-center py-2 gap-0.5 flex-shrink-0 overflow-y-auto">
@@ -124,7 +132,7 @@ function ViewerSidebar({
         </svg>
       </ToolBtn>
 
-      <ToolBtn title="Invert colors" active={viewMode === "invert"} onClick={() => setViewMode("invert")}>
+      <ToolBtn title="Invert colors (white drawing on dark BG)" active={viewMode === "invert"} onClick={() => setViewMode("invert")}>
         <svg viewBox="0 0 20 20" className="w-5 h-5">
           <path fill="currentColor" d="M10 3a7 7 0 1 1 0 14V3z" />
           <path fill="none" stroke="currentColor" strokeWidth="1.5" d="M10 3a7 7 0 1 0 0 14" />
@@ -152,11 +160,17 @@ function ViewerSidebar({
           <TbDivider />
           <TbSection label="Zoom" />
 
-          <ToolBtn title="Zoom in" onClick={() => setScale(s => Math.min(4, parseFloat((s + 0.2).toFixed(1))))}>
+          <ToolBtn title="Zoom in (+)" onClick={() => setScale(s => Math.min(4, parseFloat((s + 0.25).toFixed(2))))}>
             <ZoomIn className="w-4 h-4" />
           </ToolBtn>
 
-          <ToolBtn title="Fit (reset zoom)" onClick={() => setScale(() => 1.2)}>
+          {scale != null && (
+            <div className="text-[9px] text-gray-400 tabular-nums text-center leading-tight py-0.5 select-none">
+              {Math.round(scale * 100)}%
+            </div>
+          )}
+
+          <ToolBtn title="Fit to window (reset zoom)" onClick={() => setScale(() => 1.2)}>
             <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.4">
               <rect x="3" y="3" width="14" height="14" rx="1" />
               <polyline points="7,3 3,3 3,7" />
@@ -166,7 +180,7 @@ function ViewerSidebar({
             </svg>
           </ToolBtn>
 
-          <ToolBtn title="Zoom out" onClick={() => setScale(s => Math.max(0.4, parseFloat((s - 0.2).toFixed(1))))}>
+          <ToolBtn title="Zoom out (-)" onClick={() => setScale(s => Math.max(0.3, parseFloat((s - 0.25).toFixed(2))))}>
             <ZoomOut className="w-4 h-4" />
           </ToolBtn>
         </>
@@ -177,19 +191,25 @@ function ViewerSidebar({
           <TbDivider />
           <TbSection label="Rotate" />
 
-          <ToolBtn title="Rotate counter-clockwise" onClick={() => setRotate(r => (r - 90 + 360) % 360)}>
+          <ToolBtn title="Rotate 90° counter-clockwise" onClick={() => setRotate(r => (r - 90 + 360) % 360)}>
             <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M4.5 10a5.5 5.5 0 1 0 1.2-3.4" />
               <polyline points="2,4 4.5,6.5 7,4" />
             </svg>
           </ToolBtn>
 
-          <ToolBtn title="Rotate clockwise" onClick={() => setRotate(r => (r + 90) % 360)}>
+          <ToolBtn title="Rotate 90° clockwise" onClick={() => setRotate(r => (r + 90) % 360)}>
             <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M15.5 10a5.5 5.5 0 1 1-1.2-3.4" />
               <polyline points="18,4 15.5,6.5 13,4" />
             </svg>
           </ToolBtn>
+
+          {rotate != null && rotate !== 0 && (
+            <ToolBtn title="Reset rotation" onClick={() => setRotate(() => 0)}>
+              <RotateCcw className="w-4 h-4" />
+            </ToolBtn>
+          )}
         </>
       )}
 
@@ -198,7 +218,7 @@ function ViewerSidebar({
           <TbDivider />
           <TbSection label="Pages" />
 
-          <ToolBtn title="Previous page" onClick={() => setPage(p => Math.max(1, p - 1))}>
+          <ToolBtn title="Previous page (←)" onClick={() => setPage(p => Math.max(1, p - 1))}>
             <ChevronLeft className="w-4 h-4" />
           </ToolBtn>
 
@@ -206,20 +226,52 @@ function ViewerSidebar({
             {page}<br /><span className="text-gray-600">/{numPages}</span>
           </div>
 
-          <ToolBtn title="Next page" onClick={() => setPage(p => Math.min(numPages!, p + 1))}>
+          <ToolBtn title="Next page (→)" onClick={() => setPage(p => Math.min(numPages!, p + 1))}>
             <ChevronRight className="w-4 h-4" />
           </ToolBtn>
         </>
       )}
 
-      {setShowPanel && showPanel != null && (
+      {onToggleMeasure && (
         <>
           <TbDivider />
-          <TbSection label="Info" />
-
-          <ToolBtn title="Toggle info panel" active={showPanel} onClick={() => setShowPanel(v => !v)}>
-            <PanelRight className="w-4 h-4" />
+          <TbSection label="Measure" />
+          <ToolBtn title="Measure distance — click two points on the drawing" active={measureMode} onClick={onToggleMeasure}>
+            <Ruler className="w-4 h-4" />
           </ToolBtn>
+          {measureMode && onClearMeasure && (
+            <ToolBtn title="Clear measurement" onClick={onClearMeasure}>
+              <X className="w-4 h-4" />
+            </ToolBtn>
+          )}
+        </>
+      )}
+
+      <TbDivider />
+      <TbSection label="Info" />
+      <ToolBtn title={showPanel ? "Hide info panel" : "Show info panel"} active={showPanel} onClick={() => setShowPanel(v => !v)}>
+        <PanelRight className="w-4 h-4" />
+      </ToolBtn>
+
+      {(onPrint || downloadSrc) && (
+        <>
+          <TbDivider />
+          <TbSection label="File" />
+          {onPrint && (
+            <ToolBtn title="Print drawing" onClick={onPrint}>
+              <Printer className="w-4 h-4" />
+            </ToolBtn>
+          )}
+          {downloadSrc && (
+            <a
+              href={downloadSrc}
+              download={recordName || "drawing"}
+              title="Download file"
+              className="w-9 h-9 flex items-center justify-center rounded-md text-xs transition-colors border bg-white/10 border-white/15 text-gray-200 hover:bg-white/20 hover:text-white hover:border-white/30"
+            >
+              <Download className="w-4 h-4" />
+            </a>
+          )}
         </>
       )}
     </aside>
@@ -643,6 +695,8 @@ function DwgFileViewer({
 }
 
 // ── PDF Fullscreen Viewer ─────────────────────────────────────────────────────
+type MeasurePt = { x: number; y: number };
+
 function PdfViewer({
   src, record, onClose,
 }: { src: string; record: Design2DRecord; onClose: () => void }) {
@@ -655,15 +709,51 @@ function PdfViewer({
   const [viewMode, setViewMode] = useState<ViewMode>("normal");
   const [bgPreset, setBgPreset] = useState<BgPreset>("dark");
 
+  const [measureMode, setMeasureMode] = useState(false);
+  const [measurePts, setMeasurePts] = useState<MeasurePt[]>([]);
+  const [mousePos, setMousePos] = useState<MeasurePt | null>(null);
+  const measureOverlayRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") { if (measureMode) { setMeasureMode(false); setMeasurePts([]); } else onClose(); }
       if (e.key === "ArrowRight" && numPages && page < numPages) setPage(p => p + 1);
       if (e.key === "ArrowLeft" && page > 1) setPage(p => p - 1);
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [onClose, page, numPages]);
+  }, [onClose, page, numPages, measureMode]);
+
+  const handleMeasureClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!measureMode) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pt = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    setMeasurePts(prev => {
+      if (prev.length === 0) return [pt];
+      if (prev.length === 1) return [prev[0], pt];
+      return [pt];
+    });
+  }, [measureMode]);
+
+  const handleMeasureMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!measureMode) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+  }, [measureMode]);
+
+  const clearMeasure = useCallback(() => {
+    setMeasurePts([]);
+    setMousePos(null);
+  }, []);
+
+  const measureDist = measurePts.length === 2
+    ? Math.sqrt((measurePts[1].x - measurePts[0].x) ** 2 + (measurePts[1].y - measurePts[0].y) ** 2)
+    : null;
+
+  const handlePrint = useCallback(() => {
+    const win = window.open(src, "_blank");
+    if (win) { win.onload = () => win.print(); }
+  }, [src]);
 
   const bgClass = BG_CLASSES[bgPreset];
 
@@ -678,16 +768,37 @@ function PdfViewer({
         <div className="h-5 w-px bg-white/10" />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-white truncate">{record.name}</p>
-          <p className="text-xs text-gray-400 truncate">{record.project_name || record.project}</p>
+          <p className="text-xs text-gray-400 truncate">{record.project_name || record.project}{record.revision ? ` · Rev ${record.revision}` : ""}</p>
         </div>
-        {/* Zoom indicator in header */}
-        <div className="flex items-center gap-0.5 bg-white/5 rounded-lg px-2 py-1">
-          <span className="text-xs text-gray-400 tabular-nums w-10 text-center">{Math.round(scale * 100)}%</span>
-        </div>
-        {/* Page indicator in header */}
+
+        {measureDist !== null && (
+          <div className="flex items-center gap-2 bg-yellow-500/90 text-gray-900 px-3 py-1.5 rounded-lg text-xs font-semibold">
+            <Ruler className="w-3.5 h-3.5" />
+            {measureDist.toFixed(1)} px
+            <span className="text-gray-700 font-normal">@ {Math.round(scale * 100)}%</span>
+            <button onClick={clearMeasure} className="ml-1 hover:text-gray-900 opacity-70 hover:opacity-100">✕</button>
+          </div>
+        )}
+
+        {measureMode && measurePts.length < 2 && (
+          <div className="flex items-center gap-1.5 bg-blue-600/20 border border-blue-500/30 text-blue-300 px-3 py-1.5 rounded-lg text-xs">
+            <Crosshair className="w-3.5 h-3.5" />
+            {measurePts.length === 0 ? "Click first point" : "Click second point"}
+          </div>
+        )}
+
+        <span className="text-xs text-gray-500 tabular-nums bg-white/5 px-2 py-1 rounded">{Math.round(scale * 100)}%</span>
         {numPages && (
           <span className="text-xs text-gray-400 tabular-nums">{page} / {numPages}</span>
         )}
+        <a href={src} download={record.name}
+          className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors" title="Download PDF">
+          <Download className="w-4 h-4" />
+        </a>
+        <button onClick={handlePrint}
+          className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors" title="Print drawing">
+          <Printer className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Body */}
@@ -700,17 +811,23 @@ function PdfViewer({
           rotate={rotate} setRotate={setRotate}
           showPanel={showPanel} setShowPanel={setShowPanel}
           numPages={numPages} page={page} setPage={setPage}
+          measureMode={measureMode}
+          onToggleMeasure={() => { setMeasureMode(m => !m); clearMeasure(); }}
+          onClearMeasure={clearMeasure}
+          onPrint={handlePrint}
+          downloadSrc={src}
+          recordName={record.name}
         />
 
         {/* Document area */}
-        <div className={`flex-1 overflow-auto flex items-start justify-center p-6 transition-colors ${bgClass}`}>
+        <div className={`flex-1 overflow-auto flex items-start justify-center p-6 transition-colors relative ${bgClass}`}>
           {pdfErr ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3 pt-20">
               <FileText className="w-12 h-12 opacity-30" />
               <p className="text-sm">Unable to render this file.</p>
             </div>
           ) : (
-            <div style={{ filter: viewMode === "invert" ? "invert(1) hue-rotate(180deg)" : undefined }}>
+            <div className="relative" style={{ filter: viewMode === "invert" ? "invert(1) hue-rotate(180deg)" : undefined }}>
               <Document
                 file={src}
                 onLoadSuccess={({ numPages }) => { setNumPages(numPages); setPage(1); }}
@@ -726,38 +843,124 @@ function PdfViewer({
                   className="shadow-2xl"
                 />
               </Document>
+
+              {/* Measurement overlay */}
+              {measureMode && (
+                <div
+                  ref={measureOverlayRef}
+                  className="absolute inset-0"
+                  style={{ cursor: "crosshair", zIndex: 10 }}
+                  onClick={handleMeasureClick}
+                  onMouseMove={handleMeasureMove}
+                  onMouseLeave={() => setMousePos(null)}
+                >
+                  <svg className="absolute inset-0 w-full h-full" style={{ pointerEvents: "none" }}>
+                    {/* Point 1 */}
+                    {measurePts[0] && (
+                      <>
+                        <circle cx={measurePts[0].x} cy={measurePts[0].y} r="6" fill="#3b82f6" fillOpacity="0.9" />
+                        <circle cx={measurePts[0].x} cy={measurePts[0].y} r="10" fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeOpacity="0.5" />
+                      </>
+                    )}
+                    {/* Live line from pt1 to mouse */}
+                    {measurePts.length === 1 && mousePos && (
+                      <line x1={measurePts[0].x} y1={measurePts[0].y} x2={mousePos.x} y2={mousePos.y}
+                        stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="6 3" strokeOpacity="0.7" />
+                    )}
+                    {/* Point 2 + final line */}
+                    {measurePts[1] && (
+                      <>
+                        <line x1={measurePts[0].x} y1={measurePts[0].y} x2={measurePts[1].x} y2={measurePts[1].y}
+                          stroke="#eab308" strokeWidth="2" strokeDasharray="6 3" />
+                        <circle cx={measurePts[0].x} cy={measurePts[0].y} r="5" fill="#eab308" />
+                        <circle cx={measurePts[1].x} cy={measurePts[1].y} r="5" fill="#eab308" />
+                        {/* Tick marks */}
+                        {(() => {
+                          const dx = measurePts[1].x - measurePts[0].x;
+                          const dy = measurePts[1].y - measurePts[0].y;
+                          const len = Math.sqrt(dx * dx + dy * dy);
+                          const nx = -dy / len * 8, ny = dx / len * 8;
+                          return (
+                            <>
+                              <line x1={measurePts[0].x - nx} y1={measurePts[0].y - ny} x2={measurePts[0].x + nx} y2={measurePts[0].y + ny} stroke="#eab308" strokeWidth="2" />
+                              <line x1={measurePts[1].x - nx} y1={measurePts[1].y - ny} x2={measurePts[1].x + nx} y2={measurePts[1].y + ny} stroke="#eab308" strokeWidth="2" />
+                            </>
+                          );
+                        })()}
+                        {/* Distance label on line */}
+                        {(() => {
+                          const mx = (measurePts[0].x + measurePts[1].x) / 2;
+                          const my = (measurePts[0].y + measurePts[1].y) / 2;
+                          return (
+                            <>
+                              <rect x={mx - 36} y={my - 12} width="72" height="20" rx="4" fill="#eab308" fillOpacity="0.95" />
+                              <text x={mx} y={my + 3} textAnchor="middle" fill="#1a1100" fontSize="11" fontWeight="bold" fontFamily="monospace">
+                                {measureDist?.toFixed(1)} px
+                              </text>
+                            </>
+                          );
+                        })()}
+                      </>
+                    )}
+                  </svg>
+                </div>
+              )}
             </div>
           )}
         </div>
 
         {/* Info panel */}
         {showPanel && (
-          <div className="w-60 bg-[#16162a] border-l border-white/10 p-4 space-y-4 flex-shrink-0 overflow-auto">
-            <div className="flex items-center gap-2">
-              <Info className="w-3.5 h-3.5 text-gray-500" />
-              <span className="text-[10px] text-gray-500 uppercase tracking-widest">Record Info</span>
+          <div className="w-60 bg-[#16162a] border-l border-white/10 flex-shrink-0 overflow-auto flex flex-col">
+            <div className="flex items-center justify-between px-4 pt-4 pb-2">
+              <div className="flex items-center gap-2">
+                <Info className="w-3.5 h-3.5 text-gray-500" />
+                <span className="text-[10px] text-gray-500 uppercase tracking-widest">Record Info</span>
+              </div>
+              <button onClick={() => setShowPanel(v => !v)} className="text-gray-600 hover:text-gray-300 transition-colors" title="Hide panel">
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
-            {[
-              { label: "ID", value: record.name },
-              { label: "Project", value: record.project },
-              { label: "Project Name", value: record.project_name },
-              { label: "Department", value: record.department },
-              { label: "Revision", value: record.revision },
-              { label: "Tag", value: record.tag },
-              { label: "System Name", value: record.system_name },
-              { label: "Modified", value: formatDate(record.modified) },
-            ].map(({ label, value }) => value ? (
-              <div key={label}>
-                <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-0.5">{label}</p>
-                <p className="text-sm text-gray-200 break-words">{value}</p>
+            <div className="px-4 pb-4 space-y-3 flex-1">
+              {[
+                { label: "ID", value: record.name },
+                { label: "Project", value: record.project },
+                { label: "Project Name", value: record.project_name },
+                { label: "Department", value: record.department },
+                { label: "Revision", value: record.revision },
+                { label: "Tag", value: record.tag },
+                { label: "System Name", value: record.system_name },
+                { label: "Modified", value: formatDate(record.modified) },
+              ].map(({ label, value }) => value ? (
+                <div key={label}>
+                  <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-0.5">{label}</p>
+                  <p className="text-sm text-gray-200 break-words">{value}</p>
+                </div>
+              ) : null)}
+              {numPages && (
+                <div>
+                  <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-0.5">Pages</p>
+                  <p className="text-sm text-gray-200">{numPages}</p>
+                </div>
+              )}
+              {measureDist !== null && (
+                <div className="mt-2 pt-3 border-t border-white/10">
+                  <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-1">Last Measurement</p>
+                  <p className="text-sm text-yellow-400 font-mono font-semibold">{measureDist.toFixed(2)} px</p>
+                  <p className="text-[10px] text-gray-500 mt-0.5">At {Math.round(scale * 100)}% zoom</p>
+                </div>
+              )}
+              <div className="pt-3 border-t border-white/10 flex flex-col gap-1.5">
+                <button onClick={handlePrint}
+                  className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-gray-400 hover:text-white hover:bg-white/10 transition-colors">
+                  <Printer className="w-3.5 h-3.5" /> Print drawing
+                </button>
+                <a href={src} download={record.name}
+                  className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-gray-400 hover:text-white hover:bg-white/10 transition-colors">
+                  <Download className="w-3.5 h-3.5" /> Download PDF
+                </a>
               </div>
-            ) : null)}
-            {numPages && (
-              <div>
-                <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-0.5">Pages</p>
-                <p className="text-sm text-gray-200">{numPages}</p>
-              </div>
-            )}
+            </div>
           </div>
         )}
       </div>
@@ -996,10 +1199,11 @@ export default function Design2DPage() {
   const isDxf   = viewer?.attach ? fileExt(viewer.attach) === "dxf" : false;
   const isDwg   = viewer?.attach ? fileExt(viewer.attach) === "dwg" : false;
 
-  const [imgViewMode, setImgViewMode]   = useState<ViewMode>("normal");
-  const [imgBgPreset, setImgBgPreset]   = useState<BgPreset>("dark");
-  const [imgRotate,   setImgRotate]     = useState(0);
-  const resetImageState = () => { setImgViewMode("normal"); setImgBgPreset("dark"); setImgRotate(0); };
+  const [imgViewMode,  setImgViewMode]  = useState<ViewMode>("normal");
+  const [imgBgPreset,  setImgBgPreset]  = useState<BgPreset>("dark");
+  const [imgRotate,    setImgRotate]    = useState(0);
+  const [imgShowPanel, setImgShowPanel] = useState(true);
+  const resetImageState = () => { setImgViewMode("normal"); setImgBgPreset("dark"); setImgRotate(0); setImgShowPanel(true); };
 
   return (
     <>
@@ -1020,14 +1224,23 @@ export default function Design2DPage() {
               <X className="w-4 h-4" /> Close
             </button>
             <div className="h-5 w-px bg-white/10" />
-            <p className="text-sm font-semibold text-white truncate flex-1">{viewer.name}</p>
-            <p className="text-xs text-gray-400">{viewer.project_name || viewer.project}</p>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-white truncate">{viewer.name}</p>
+              <p className="text-xs text-gray-400 truncate">{viewer.project_name || viewer.project}</p>
+            </div>
+            <a href={proxyUrl(viewer.attach!)} download={viewer.name}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors" title="Download image">
+              <Download className="w-4 h-4" />
+            </a>
           </div>
           <div className="flex-1 flex overflow-hidden">
             <ViewerSidebar
               viewMode={imgViewMode} setViewMode={setImgViewMode}
               bgPreset={imgBgPreset} setBgPreset={setImgBgPreset}
               rotate={imgRotate} setRotate={setImgRotate}
+              showPanel={imgShowPanel} setShowPanel={setImgShowPanel}
+              downloadSrc={proxyUrl(viewer.attach!)}
+              recordName={viewer.name}
             />
             <div className={`flex-1 overflow-auto flex items-center justify-center p-6 transition-colors ${BG_CLASSES[imgBgPreset]}`}>
               <img
@@ -1041,6 +1254,35 @@ export default function Design2DPage() {
                 className="max-w-full max-h-full object-contain shadow-2xl rounded"
               />
             </div>
+            {imgShowPanel && (
+              <div className="w-60 bg-[#16162a] border-l border-white/10 flex-shrink-0 overflow-auto flex flex-col">
+                <div className="flex items-center justify-between px-4 pt-4 pb-2">
+                  <div className="flex items-center gap-2">
+                    <Info className="w-3.5 h-3.5 text-gray-500" />
+                    <span className="text-[10px] text-gray-500 uppercase tracking-widest">Record Info</span>
+                  </div>
+                  <button onClick={() => setImgShowPanel(false)} className="text-gray-600 hover:text-gray-300 transition-colors" title="Hide panel">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="px-4 pb-4 space-y-3">
+                  {[
+                    { label: "ID", value: viewer.name },
+                    { label: "Project", value: viewer.project_name || viewer.project },
+                    { label: "Department", value: viewer.department },
+                    { label: "Revision", value: viewer.revision },
+                    { label: "Tag", value: viewer.tag },
+                    { label: "System Name", value: viewer.system_name },
+                    { label: "Modified", value: formatDate(viewer.modified) },
+                  ].map(({ label, value }) => value ? (
+                    <div key={label}>
+                      <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-0.5">{label}</p>
+                      <p className="text-sm text-gray-200 break-words">{value}</p>
+                    </div>
+                  ) : null)}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
