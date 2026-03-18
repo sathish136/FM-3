@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Eye, EyeOff, Loader2, User, Lock, LogIn } from "lucide-react";
-import { WaterDropAnimation } from "@/components/WaterAnimation";
 
 export default function Login() {
   const { login } = useAuth();
@@ -38,14 +37,11 @@ export default function Login() {
           <img
             src="https://res.cloudinary.com/dd8fsxba6/image/upload/v1755166473/logo-bg_less_yaefzj.png"
             alt="WTT International"
-            className="h-16 w-auto object-contain mb-3"
+            className="h-28 w-auto object-contain mb-4"
           />
 
-          {/* Water animation centered above title */}
-          <WaterDropAnimation size="md" />
-
           {/* Title */}
-          <h1 className="text-4xl font-black tracking-tight leading-none flex items-baseline gap-0 mt-1">
+          <h1 className="text-4xl font-black tracking-tight leading-none flex items-baseline gap-0">
             <span style={{ background: "linear-gradient(90deg, #6366f1, #8b5cf6, #3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>FlowMatri</span><span style={{ color: "#06b6d4", textShadow: "0 0 16px rgba(6,182,212,0.5)", fontSize: "1.35em", lineHeight: 1 }}>x</span>
           </h1>
 
