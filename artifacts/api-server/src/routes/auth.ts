@@ -1,4 +1,11 @@
 import { Router } from "express";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { writeFile, readFile, unlink, mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const execFileAsync = promisify(execFile);
 
 const authRouter = Router();
 
@@ -161,6 +168,47 @@ authRouter.get("/pptx-slides-count", async (req, res) => {
   } catch (err) {
     console.error("PPTX slides count error:", err);
     res.status(500).json({ error: String(err) });
+  }
+});
+
+// Convert DWG → DXF server-side using dwg2dxf (libredwg), then return the DXF
+authRouter.get("/dwg-convert", async (req, res) => {
+  const url = req.query.url as string;
+  if (!url) return res.status(400).send("Missing url");
+
+  let tmpDir: string | null = null;
+  try {
+    const target = url.startsWith("http") ? url : `${ERP_URL}${url}`;
+    const fileRes = await fetch(target, {
+      headers: { Authorization: `token ${API_KEY}:${API_SECRET}` },
+    });
+    if (!fileRes.ok) return res.status(fileRes.status).send("File not found");
+
+    const buf = Buffer.from(await fileRes.arrayBuffer());
+    tmpDir = await mkdtemp(join(tmpdir(), "dwg-"));
+    const dwgPath = join(tmpDir, "input.dwg");
+    const dxfPath = join(tmpDir, "input.dxf");
+
+    await writeFile(dwgPath, buf);
+
+    await execFileAsync("/home/runner/.nix-profile/bin/dwg2dxf", ["-o", dxfPath, dwgPath], {
+      timeout: 30000,
+    });
+
+    const dxfBuf = await readFile(dxfPath);
+    res.setHeader("Content-Type", "application/dxf");
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.setHeader("Content-Disposition", "inline; filename=\"drawing.dxf\"");
+    res.send(dxfBuf);
+  } catch (err: any) {
+    console.error("DWG convert error:", err);
+    res.status(500).json({ error: String(err?.message || err) });
+  } finally {
+    if (tmpDir) {
+      const dwgPath = join(tmpDir, "input.dwg");
+      const dxfPath = join(tmpDir, "input.dxf");
+      await Promise.allSettled([unlink(dwgPath), unlink(dxfPath)]);
+    }
   }
 });
 

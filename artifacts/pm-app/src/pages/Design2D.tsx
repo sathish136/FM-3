@@ -233,8 +233,8 @@ const DXF_BG_COLORS: Record<BgPreset, string> = {
 };
 
 function DxfFileViewer({
-  src, record, onClose,
-}: { src: string; record: Design2DRecord; onClose: () => void }) {
+  src, record, onClose, badge = "DXF", downloadSrc,
+}: { src: string; record: Design2DRecord; onClose: () => void; badge?: string; downloadSrc?: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<InstanceType<typeof DxfViewerLib> | null>(null);
   const [layers, setLayers] = useState<LayerInfo[]>([]);
@@ -313,12 +313,12 @@ function DxfFileViewer({
           <p className="text-sm font-semibold text-white truncate">{record.name}</p>
           <p className="text-xs text-gray-400 truncate">{record.project_name || record.project}</p>
         </div>
-        <span className="text-[10px] font-mono bg-blue-900/40 text-blue-300 border border-blue-700/30 px-2 py-0.5 rounded">DXF</span>
+        <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${badge === "DWG" ? "bg-orange-900/40 text-orange-300 border-orange-700/30" : "bg-blue-900/40 text-blue-300 border-blue-700/30"}`}>{badge}</span>
         <a
-          href={src}
+          href={downloadSrc || src}
           download
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
-          title="Download DXF file"
+          title={`Download ${badge} file`}
         >
           <Download className="w-4 h-4" />
         </a>
@@ -448,15 +448,21 @@ function DxfFileViewer({
   );
 }
 
-// ── DWG Viewer (download-only, proprietary binary format) ─────────────────────
+// ── DWG Viewer (ShareCAD online embed + download fallback) ────────────────────
 function DwgFileViewer({
   src, record, onClose,
 }: { src: string; record: Design2DRecord; onClose: () => void }) {
+  const [showPanel, setShowPanel] = useState(true);
+  const [embedErr, setEmbedErr] = useState(false);
+
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, [onClose]);
+
+  const publicFileUrl = window.location.origin + src;
+  const shareCadUrl = `https://sharecad.org/cadframe/load?url=${encodeURIComponent(publicFileUrl)}`;
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gray-950">
@@ -471,52 +477,70 @@ function DwgFileViewer({
           <p className="text-xs text-gray-400 truncate">{record.project_name || record.project}</p>
         </div>
         <span className="text-[10px] font-mono bg-orange-900/40 text-orange-300 border border-orange-700/30 px-2 py-0.5 rounded">DWG</span>
+        <a href={src} download
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
+          title="Download DWG file">
+          <Download className="w-4 h-4" />
+        </a>
       </div>
 
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar */}
-        <aside className="w-12 bg-[#16162a] border-r border-white/10 flex flex-col items-center py-2 gap-0.5 flex-shrink-0" />
+        <aside className="w-12 bg-[#16162a] border-r border-white/10 flex flex-col items-center py-2 gap-0.5 flex-shrink-0">
+          <TbSection label="Info" />
+          <ToolBtn title="Toggle info panel" active={showPanel} onClick={() => setShowPanel(v => !v)}>
+            <PanelRight className="w-4 h-4" />
+          </ToolBtn>
+        </aside>
 
-        {/* Main area */}
-        <div className="flex-1 flex items-center justify-center bg-gray-950">
-          <div className="max-w-md w-full mx-6 bg-[#16162a] border border-white/10 rounded-2xl p-8 text-center">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-orange-900/20 border border-orange-700/30 flex items-center justify-center">
-              <svg viewBox="0 0 48 48" className="w-9 h-9" fill="none">
-                <rect x="6" y="4" width="36" height="40" rx="4" fill="#c2410c" opacity=".15" stroke="#c2410c" strokeWidth="1.5" />
-                <text x="24" y="30" textAnchor="middle" fill="#fb923c" fontSize="13" fontWeight="700" fontFamily="monospace">DWG</text>
-              </svg>
+        {/* Viewer */}
+        <div className="flex-1 relative bg-white overflow-hidden">
+          {!embedErr ? (
+            <iframe
+              src={shareCadUrl}
+              className="w-full h-full border-0"
+              title={record.name}
+              allow="fullscreen"
+              onError={() => setEmbedErr(true)}
+            />
+          ) : (
+            <div className="flex-1 flex items-center justify-center h-full">
+              <div className="max-w-md mx-auto text-center p-8">
+                <AlertCircle className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                <h3 className="font-semibold text-gray-700 mb-2">Unable to load viewer</h3>
+                <a href={src} download
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-xl transition-colors">
+                  <Download className="w-4 h-4" /> Download DWG file
+                </a>
+              </div>
             </div>
-            <h3 className="text-white font-semibold text-base mb-2">DWG File</h3>
-            <p className="text-gray-400 text-sm leading-relaxed mb-6">
-              DWG is AutoCAD's proprietary binary format and cannot be rendered directly in the browser.
-              Open it in AutoCAD, DraftSight, or any compatible CAD application.
-            </p>
-            <a
-              href={src}
-              download
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-xl transition-colors"
-            >
-              <Download className="w-4 h-4" /> Download DWG file
-            </a>
-
-            <div className="mt-8 text-left border-t border-white/10 pt-6 space-y-3">
-              <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-3">Record Info</p>
-              {[
-                { label: "ID", value: record.name },
-                { label: "Project", value: record.project_name || record.project },
-                { label: "Department", value: record.department },
-                { label: "Revision", value: record.revision },
-                { label: "System Name", value: record.system_name },
-                { label: "Modified", value: formatDate(record.modified) },
-              ].map(({ label, value }) => value ? (
-                <div key={label} className="flex items-start gap-3">
-                  <span className="text-[10px] text-gray-600 uppercase tracking-widest w-20 flex-shrink-0 pt-0.5">{label}</span>
-                  <span className="text-xs text-gray-300 break-words flex-1">{value}</span>
-                </div>
-              ) : null)}
-            </div>
-          </div>
+          )}
         </div>
+
+        {/* Info panel */}
+        {showPanel && (
+          <div className="w-60 bg-[#16162a] border-l border-white/10 p-4 space-y-4 flex-shrink-0 overflow-auto">
+            <div className="flex items-center gap-2">
+              <Info className="w-3.5 h-3.5 text-gray-500" />
+              <span className="text-[10px] text-gray-500 uppercase tracking-widest">Record Info</span>
+            </div>
+            {[
+              { label: "ID", value: record.name },
+              { label: "Project", value: record.project },
+              { label: "Project Name", value: record.project_name },
+              { label: "Department", value: record.department },
+              { label: "Revision", value: record.revision },
+              { label: "Tag", value: record.tag },
+              { label: "System Name", value: record.system_name },
+              { label: "Modified", value: formatDate(record.modified) },
+            ].map(({ label, value }) => value ? (
+              <div key={label}>
+                <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-0.5">{label}</p>
+                <p className="text-sm text-gray-200 break-words">{value}</p>
+              </div>
+            ) : null)}
+          </div>
+        )}
       </div>
     </div>
   );
