@@ -95,21 +95,17 @@ interface ViewerSidebarProps {
   bgPreset: BgPreset;
   setBgPreset: (v: BgPreset) => void;
   scale?: number;
-  setScale?: (fn: (s: number) => number) => void;
+  setScale?: React.Dispatch<React.SetStateAction<number>>;
   rotate?: number;
-  setRotate?: (fn: (r: number) => number) => void;
-  showPanel: boolean;
-  setShowPanel: (fn: (v: boolean) => boolean) => void;
+  setRotate?: React.Dispatch<React.SetStateAction<number>>;
   numPages?: number | null;
   page?: number;
-  setPage?: (fn: (p: number) => number) => void;
+  setPage?: React.Dispatch<React.SetStateAction<number>>;
   measureMode?: boolean;
   onToggleMeasure?: () => void;
   onClearMeasure?: () => void;
   onPrint?: () => void;
   onFitView?: () => void;
-  downloadSrc?: string;
-  recordName?: string;
 }
 
 function ViewerSidebar({
@@ -117,10 +113,9 @@ function ViewerSidebar({
   bgPreset, setBgPreset,
   scale, setScale,
   rotate, setRotate,
-  showPanel, setShowPanel,
   numPages, page, setPage,
   measureMode, onToggleMeasure, onClearMeasure,
-  onPrint, onFitView, downloadSrc, recordName,
+  onPrint, onFitView,
 }: ViewerSidebarProps) {
   return (
     <aside className="w-12 bg-[#16162a] border-r border-white/10 flex flex-col items-center py-2 gap-0.5 flex-shrink-0 overflow-y-auto">
@@ -162,7 +157,7 @@ function ViewerSidebar({
           <TbSection label="Zoom" />
 
           {setScale && (
-            <ToolBtn title="Zoom in (+)" onClick={() => setScale(s => Math.min(4, parseFloat((s + 0.25).toFixed(2))))}>
+            <ToolBtn title="Zoom in (+)" onClick={() => setScale(s => +(Math.min(4, s + 0.1).toFixed(2)))}>
               <ZoomIn className="w-4 h-4" />
             </ToolBtn>
           )}
@@ -174,8 +169,8 @@ function ViewerSidebar({
           )}
 
           <ToolBtn
-            title="Fit to window"
-            onClick={() => { if (onFitView) onFitView(); else if (setScale) setScale(() => 1.2); }}
+            title="Fit to window (reset zoom)"
+            onClick={() => { if (onFitView) onFitView(); else if (setScale) setScale(1.2); }}
           >
             <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.4">
               <rect x="3" y="3" width="14" height="14" rx="1" />
@@ -187,7 +182,7 @@ function ViewerSidebar({
           </ToolBtn>
 
           {setScale && (
-            <ToolBtn title="Zoom out (-)" onClick={() => setScale(s => Math.max(0.3, parseFloat((s - 0.25).toFixed(2))))}>
+            <ToolBtn title="Zoom out (-)" onClick={() => setScale(s => +(Math.max(0.2, s - 0.1).toFixed(2)))}>
               <ZoomOut className="w-4 h-4" />
             </ToolBtn>
           )}
@@ -199,14 +194,14 @@ function ViewerSidebar({
           <TbDivider />
           <TbSection label="Rotate" />
 
-          <ToolBtn title="Rotate 90° counter-clockwise" onClick={() => setRotate(r => (r - 90 + 360) % 360)}>
+          <ToolBtn title="Rotate 90° counter-clockwise" onClick={() => setRotate!(r => (r - 90 + 360) % 360)}>
             <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M4.5 10a5.5 5.5 0 1 0 1.2-3.4" />
               <polyline points="2,4 4.5,6.5 7,4" />
             </svg>
           </ToolBtn>
 
-          <ToolBtn title="Rotate 90° clockwise" onClick={() => setRotate(r => (r + 90) % 360)}>
+          <ToolBtn title="Rotate 90° clockwise" onClick={() => setRotate!(r => (r + 90) % 360)}>
             <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M15.5 10a5.5 5.5 0 1 1-1.2-3.4" />
               <polyline points="18,4 15.5,6.5 13,4" />
@@ -214,7 +209,7 @@ function ViewerSidebar({
           </ToolBtn>
 
           {rotate != null && rotate !== 0 && (
-            <ToolBtn title="Reset rotation" onClick={() => setRotate(() => 0)}>
+            <ToolBtn title="Reset rotation" onClick={() => setRotate!(0)}>
               <RotateCcw className="w-4 h-4" />
             </ToolBtn>
           )}
@@ -255,31 +250,13 @@ function ViewerSidebar({
         </>
       )}
 
-      <TbDivider />
-      <TbSection label="Info" />
-      <ToolBtn title={showPanel ? "Hide info panel" : "Show info panel"} active={showPanel} onClick={() => setShowPanel(v => !v)}>
-        <PanelRight className="w-4 h-4" />
-      </ToolBtn>
-
-      {(onPrint || downloadSrc) && (
+      {onPrint && (
         <>
           <TbDivider />
-          <TbSection label="File" />
-          {onPrint && (
-            <ToolBtn title="Print drawing" onClick={onPrint}>
-              <Printer className="w-4 h-4" />
-            </ToolBtn>
-          )}
-          {downloadSrc && (
-            <a
-              href={downloadSrc}
-              download={recordName || "drawing"}
-              title="Download file"
-              className="w-9 h-9 flex items-center justify-center rounded-md text-xs transition-colors border bg-white/10 border-white/15 text-gray-200 hover:bg-white/20 hover:text-white hover:border-white/30"
-            >
-              <Download className="w-4 h-4" />
-            </a>
-          )}
+          <TbSection label="Print" />
+          <ToolBtn title="Print drawing" onClick={onPrint}>
+            <Printer className="w-4 h-4" />
+          </ToolBtn>
         </>
       )}
     </aside>
