@@ -341,6 +341,13 @@ function ModelViewer({
             </div>
           )}
 
+          {/* Watermark */}
+          <div className="absolute top-3 right-3 pointer-events-none select-none flex flex-col items-end">
+            <span className={`text-xl font-black tracking-[0.2em] uppercase opacity-20 ${isDark ? "text-white" : "text-gray-800"}`}>
+              WTT INTERNATIONAL
+            </span>
+          </div>
+
           {/* Measure result overlay */}
           {measureResult && (
             <div className="absolute top-3 right-3 bg-yellow-500/90 text-black rounded-xl px-4 py-3 text-sm shadow-lg flex items-center gap-3">
