@@ -3,7 +3,7 @@ import {
   GitBranch, Search, RefreshCw, Loader2, X,
   ChevronLeft, ChevronRight, AlertCircle, ZoomIn, ZoomOut,
   Download, RotateCcw, FileText, LayoutList, Eye,
-  FolderOpen, ArrowLeft,
+  FolderOpen,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
@@ -262,102 +262,6 @@ export default function PID() {
   return (
     <Layout>
       <div className="flex h-full overflow-hidden bg-[#0f0f1a]">
-
-        {/* Left list panel */}
-        <div className="w-72 flex-shrink-0 flex flex-col border-r border-white/10 bg-[#13132b]">
-          <div className="px-4 pt-4 pb-3 border-b border-white/10">
-            <div className="flex items-center gap-2 mb-3">
-              <button
-                onClick={() => setDisplayMode("list")}
-                className="p-1 rounded text-gray-500 hover:text-white hover:bg-white/10 transition-colors"
-                title="Back to list"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-              </button>
-              <GitBranch className="w-4 h-4 text-indigo-400 shrink-0" />
-              <span className="text-white font-semibold text-sm">P&amp;ID Process</span>
-              <span className="ml-auto text-xs text-gray-500">{filtered.length}</span>
-              <button
-                onClick={fetchRecords}
-                disabled={loading}
-                className="p-1 rounded text-gray-500 hover:text-white hover:bg-white/10 transition-colors"
-                title="Refresh"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-              </button>
-            </div>
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search P&ID…"
-                className="w-full pl-8 pr-8 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
-              />
-              {search && (
-                <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white">
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto py-2 px-2 space-y-1">
-            {loading && (
-              <div className="flex items-center justify-center py-10 gap-2 text-gray-500 text-xs">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Loading…
-              </div>
-            )}
-            {error && (
-              <div className="flex flex-col items-center justify-center py-8 gap-2 text-center px-4">
-                <AlertCircle className="w-6 h-6 text-red-400" />
-                <p className="text-xs text-red-400">{error}</p>
-                <button onClick={fetchRecords} className="text-xs text-indigo-400 hover:underline">Retry</button>
-              </div>
-            )}
-            {!loading && !error && filtered.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-10 gap-2 text-gray-500 text-xs">
-                <FileText className="w-5 h-5" />
-                {search ? "No results" : "No P&ID records"}
-              </div>
-            )}
-            {!loading && !error && filtered.map(r => {
-              const isActive = selected?.name === r.name;
-              return (
-                <button
-                  key={r.name}
-                  onClick={() => openViewer(r)}
-                  className={`w-full text-left px-3 py-2.5 rounded-lg transition-all border ${
-                    isActive
-                      ? "bg-indigo-600/20 border-indigo-500/40 text-white"
-                      : "bg-white/3 border-transparent text-gray-300 hover:bg-white/8 hover:text-white"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold truncate">{r.name}</p>
-                      <p className="text-[11px] text-gray-400 truncate mt-0.5">{r.project_name || r.project}</p>
-                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                        {r.revision && (
-                          <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded">
-                            {r.revision}
-                          </span>
-                        )}
-                        {r.project && (
-                          <span className="text-[10px] text-gray-500">{r.project}</span>
-                        )}
-                      </div>
-                    </div>
-                    {r.attach && <FileText className="w-3.5 h-3.5 text-gray-500 shrink-0 mt-0.5" />}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Viewer area */}
         <div className="flex-1 flex overflow-hidden">
           {!selected ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-600">
