@@ -64,7 +64,7 @@ export interface ErpDrawing {
 export async function fetchErpNextDrawings(department?: string): Promise<ErpDrawing[]> {
   const fields = JSON.stringify([
     "name", "project", "project_name", "department",
-    "revision", "tag", "attach", "modified",
+    "tag", "attach", "modified",
   ]);
 
   const filters: any[] = [];
@@ -144,7 +144,7 @@ export async function fetchErpNextPresentations(): Promise<ErpPresentation[]> {
 export async function fetchErpNextDesign3D(department?: string): Promise<ErpDesign3D[]> {
   const fields = JSON.stringify([
     "name", "project", "project_name", "department",
-    "revision", "tag", "system_name", "attach", "modified",
+    "tag", "system_name", "attach", "modified",
   ]);
 
   const filters: any[] = [];
