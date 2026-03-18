@@ -23,11 +23,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) setUser(JSON.parse(stored));
-    } catch {}
-    setLoading(false);
+    const init = async () => {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const parsed: AuthUser = JSON.parse(stored);
+          setUser(parsed);
+          // Refresh photo from ERPNext in background
+          try {
+            const res = await fetch(
+              `${BASE}/api/auth/me?email=${encodeURIComponent(parsed.email)}`
+            );
+            if (res.ok) {
+              const data = await res.json();
+              const rawPhoto = (data.photo as string | null) ?? null;
+              const proxyPhoto = rawPhoto
+                ? `${BASE}/api/auth/photo?url=${encodeURIComponent(rawPhoto)}`
+                : null;
+              const refreshed: AuthUser = {
+                email: data.email || parsed.email,
+                full_name: data.full_name || parsed.full_name,
+                photo: proxyPhoto,
+              };
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(refreshed));
+              setUser(refreshed);
+            }
+          } catch { /* photo refresh failure is non-fatal */ }
+        }
+      } catch {}
+      setLoading(false);
+    };
+    init();
   }, []);
 
   const login = async (usr: string, pwd: string) => {

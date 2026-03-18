@@ -93,6 +93,41 @@ authRouter.post("/auth/logout", (_req, res) => {
   res.json({ ok: true });
 });
 
+// Refresh current user's profile (name + photo) from ERPNext
+authRouter.get("/auth/me", async (req, res) => {
+  const email = req.query.email as string;
+  if (!email) return res.status(400).json({ error: "Missing email" });
+  try {
+    const profileRes = await fetch(
+      `${ERP_URL}/api/resource/User/${encodeURIComponent(email)}`,
+      {
+        headers: {
+          Accept: "application/json",
+          Authorization: `token ${API_KEY}:${API_SECRET}`,
+        },
+      }
+    );
+    if (!profileRes.ok) return res.status(profileRes.status).json({ error: "Not found" });
+    const profile = await safeJson(profileRes);
+    const d = (profile as any)?.data;
+    if (!d) return res.status(404).json({ error: "No data" });
+    let photo: string | null = null;
+    if (d.user_image) {
+      photo = String(d.user_image).startsWith("http")
+        ? d.user_image
+        : `${ERP_URL}${d.user_image}`;
+    }
+    return res.json({
+      email: d.email || email,
+      full_name: d.full_name || email,
+      photo,
+    });
+  } catch (err) {
+    console.error("Me error:", err);
+    return res.status(500).json({ error: "Failed to fetch profile" });
+  }
+});
+
 // Proxy ERPNext user images so browser doesn't need direct access
 authRouter.get("/auth/photo", async (req, res) => {
   const url = req.query.url as string;
