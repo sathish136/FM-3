@@ -88,6 +88,39 @@ const BG_CLASSES: Record<BgPreset, string> = {
   white: "bg-white",
 };
 
+function WttWatermark({ bg = "dark" }: { bg?: BgPreset }) {
+  const isLight = bg === "light" || bg === "white";
+  return (
+    <div className="absolute top-10 right-10 pointer-events-none select-none flex flex-col items-end gap-0.5" style={{ zIndex: 5 }}>
+      <span style={{
+        fontSize: "20px",
+        fontFamily: "'Trebuchet MS', 'Century Gothic', 'Gill Sans', Arial, sans-serif",
+        fontWeight: 800,
+        letterSpacing: "0.18em",
+        textTransform: "uppercase",
+        fontStyle: "normal",
+        lineHeight: 1.1,
+        opacity: 0.3,
+        color: isLight ? "#374151" : "#ffffff",
+      }}>
+        WTT INTERNATIONAL
+      </span>
+      <span style={{
+        fontSize: "10px",
+        fontFamily: "'Trebuchet MS', 'Century Gothic', 'Gill Sans', Arial, sans-serif",
+        fontWeight: 400,
+        letterSpacing: "0.12em",
+        fontStyle: "italic",
+        textTransform: "uppercase",
+        opacity: 0.22,
+        color: isLight ? "#374151" : "#ffffff",
+      }}>
+        Water Loving Technology
+      </span>
+    </div>
+  );
+}
+
 // ── Left Sidebar (shared by PDF and Image viewer) ────────────────────────────
 interface ViewerSidebarProps {
   viewMode: ViewMode;
@@ -437,6 +470,7 @@ function DxfFileViewer({
               pointerEvents: measureMode ? "none" : undefined,
             }}
           />
+          <WttWatermark bg={bgPreset} />
           {loadState === "loading" && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-400 pointer-events-none">
               <Loader2 className="w-8 h-8 animate-spin" />
@@ -735,6 +769,7 @@ function DwgFileViewer({
               pointerEvents: measureMode ? "none" : undefined,
             }}
           />
+          <WttWatermark bg={bgPreset} />
           {loadState === "loading" && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-400 pointer-events-none">
               <Loader2 className="w-8 h-8 animate-spin" />
@@ -971,6 +1006,7 @@ function PdfViewer({
 
         {/* Document area */}
         <div className={`flex-1 overflow-auto flex items-start justify-center p-6 transition-colors relative ${bgClass}`}>
+          <WttWatermark bg={bgPreset} />
           {pdfErr ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3 pt-20">
               <FileText className="w-12 h-12 opacity-30" />
@@ -1393,7 +1429,8 @@ export default function Design2DPage() {
               downloadSrc={proxyUrl(viewer.attach!)}
               recordName={viewer.name}
             />
-            <div className={`flex-1 overflow-auto flex items-center justify-center p-6 transition-colors ${BG_CLASSES[imgBgPreset]}`}>
+            <div className={`flex-1 overflow-auto flex items-center justify-center p-6 transition-colors relative ${BG_CLASSES[imgBgPreset]}`}>
+              <WttWatermark bg={imgBgPreset} />
               <img
                 src={proxyUrl(viewer.attach!)}
                 alt={viewer.name}
