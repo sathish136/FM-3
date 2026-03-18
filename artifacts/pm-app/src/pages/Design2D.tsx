@@ -10,6 +10,7 @@ import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import { DxfViewer as DxfViewerLib, type LayerInfo } from "dxf-viewer";
+import { AcApDocManager, AcEdOpenMode } from "@mlightcad/cad-simple-viewer";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -448,12 +449,24 @@ function DxfFileViewer({
   );
 }
 
-// ── DWG Viewer (ShareCAD online embed + download fallback) ────────────────────
+// ── DWG Viewer (mlightcad WebAssembly-powered, supports DWG & DXF natively) ───
+const DWG_BG_CSS: Record<BgPreset, string> = {
+  dark:  "#0d0d12",
+  navy:  "#0f0f1d",
+  light: "#dde3ee",
+  white: "#ffffff",
+};
+
 function DwgFileViewer({
   src, record, onClose,
 }: { src: string; record: Design2DRecord; onClose: () => void }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const managerRef = useRef<AcApDocManager | null>(null);
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const [errMsg, setErrMsg] = useState("");
   const [showPanel, setShowPanel] = useState(true);
-  const [embedErr, setEmbedErr] = useState(false);
+  const [bgPreset, setBgPreset] = useState<BgPreset>("dark");
+  const [invertMode, setInvertMode] = useState(false);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -461,11 +474,57 @@ function DwgFileViewer({
     return () => window.removeEventListener("keydown", h);
   }, [onClose]);
 
-  const publicFileUrl = window.location.origin + src;
-  const shareCadUrl = `https://sharecad.org/cadframe/load?url=${encodeURIComponent(publicFileUrl)}`;
+  useEffect(() => {
+    if (!containerRef.current) return;
+    let destroyed = false;
+
+    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+    const dwgWorkerUrl  = `${window.location.origin}${base}/cad-workers/libredwg-parser-worker.js`;
+    const mtextWorkerUrl = `${window.location.origin}${base}/cad-workers/mtext-renderer-worker.js`;
+
+    const manager = AcApDocManager.createInstance({
+      container: containerRef.current,
+      autoResize: true,
+      webworkerFileUrls: {
+        dxfParser:   dwgWorkerUrl,
+        dwgParser:   dwgWorkerUrl,
+        mtextRender: mtextWorkerUrl,
+      },
+    });
+
+    if (!manager) { setLoadState("error"); setErrMsg("Failed to create viewer"); return; }
+    managerRef.current = manager;
+
+    const fileName = record.attach?.split("/").pop() || "drawing.dwg";
+
+    fetch(src)
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.arrayBuffer(); })
+      .then(buf => manager.openDocument(fileName, buf, { mode: AcEdOpenMode.Read }))
+      .then(ok => {
+        if (destroyed) return;
+        if (ok) setLoadState("ready");
+        else { setLoadState("error"); setErrMsg("File could not be opened"); }
+      })
+      .catch(e => {
+        if (destroyed) return;
+        setErrMsg(e?.message || String(e));
+        setLoadState("error");
+      });
+
+    return () => {
+      destroyed = true;
+      try { manager.destroy(); } catch {}
+      managerRef.current = null;
+    };
+  }, [src]);
+
+  const fitView = () => managerRef.current?.sendStringToExecute("zoom");
+  const zoomIn  = () => managerRef.current?.sendStringToExecute("zoomin");
+  const zoomOut = () => managerRef.current?.sendStringToExecute("zoomout");
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gray-950">
+      {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 bg-[#16162a] border-b border-white/10 flex-shrink-0">
         <button onClick={onClose}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
@@ -485,34 +544,78 @@ function DwgFileViewer({
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar */}
-        <aside className="w-12 bg-[#16162a] border-r border-white/10 flex flex-col items-center py-2 gap-0.5 flex-shrink-0">
+        {/* Left toolbar */}
+        <aside className="w-12 bg-[#16162a] border-r border-white/10 flex flex-col items-center py-2 gap-0.5 flex-shrink-0 overflow-y-auto">
+          <TbSection label="View" />
+          <ToolBtn title="Normal colors" active={!invertMode} onClick={() => setInvertMode(false)}>
+            <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor"><circle cx="10" cy="10" r="7" /></svg>
+          </ToolBtn>
+          <ToolBtn title="Invert colors" active={invertMode} onClick={() => setInvertMode(true)}>
+            <svg viewBox="0 0 20 20" className="w-5 h-5">
+              <path fill="currentColor" d="M10 3a7 7 0 1 1 0 14V3z" />
+              <path fill="none" stroke="currentColor" strokeWidth="1.5" d="M10 3a7 7 0 1 0 0 14" />
+            </svg>
+          </ToolBtn>
+
+          <TbDivider />
+          <TbSection label="BG" />
+          <ToolBtn title="Dark background" active={bgPreset === "dark"} onClick={() => setBgPreset("dark")}>
+            <div className="w-5 h-5 rounded-full bg-[#0f0f1a] border border-white/30" />
+          </ToolBtn>
+          <ToolBtn title="Navy background" active={bgPreset === "navy"} onClick={() => setBgPreset("navy")}>
+            <div className="w-5 h-5 rounded-full bg-[#1a1a2e] border border-white/30" />
+          </ToolBtn>
+          <ToolBtn title="Light background" active={bgPreset === "light"} onClick={() => setBgPreset("light")}>
+            <div className="w-5 h-5 rounded-full bg-[#dde3ee] border border-black/20" />
+          </ToolBtn>
+          <ToolBtn title="White background" active={bgPreset === "white"} onClick={() => setBgPreset("white")}>
+            <div className="w-5 h-5 rounded-full bg-white border border-black/20" />
+          </ToolBtn>
+
+          <TbDivider />
+          <TbSection label="Zoom" />
+          <ToolBtn title="Zoom in" onClick={zoomIn}>
+            <ZoomIn className="w-4 h-4" />
+          </ToolBtn>
+          <ToolBtn title="Fit to view" onClick={fitView}>
+            <Maximize2 className="w-4 h-4" />
+          </ToolBtn>
+          <ToolBtn title="Zoom out" onClick={zoomOut}>
+            <ZoomOut className="w-4 h-4" />
+          </ToolBtn>
+
+          <TbDivider />
           <TbSection label="Info" />
           <ToolBtn title="Toggle info panel" active={showPanel} onClick={() => setShowPanel(v => !v)}>
             <PanelRight className="w-4 h-4" />
           </ToolBtn>
         </aside>
 
-        {/* Viewer */}
-        <div className="flex-1 relative bg-white overflow-hidden">
-          {!embedErr ? (
-            <iframe
-              src={shareCadUrl}
-              className="w-full h-full border-0"
-              title={record.name}
-              allow="fullscreen"
-              onError={() => setEmbedErr(true)}
-            />
-          ) : (
-            <div className="flex-1 flex items-center justify-center h-full">
-              <div className="max-w-md mx-auto text-center p-8">
-                <AlertCircle className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                <h3 className="font-semibold text-gray-700 mb-2">Unable to load viewer</h3>
-                <a href={src} download
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-xl transition-colors">
-                  <Download className="w-4 h-4" /> Download DWG file
-                </a>
-              </div>
+        {/* Canvas */}
+        <div
+          className="flex-1 relative overflow-hidden"
+          style={{ background: DWG_BG_CSS[bgPreset] }}
+        >
+          <div
+            ref={containerRef}
+            className="w-full h-full"
+            style={{ filter: invertMode ? "invert(1) hue-rotate(180deg)" : undefined }}
+          />
+          {loadState === "loading" && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-400 pointer-events-none">
+              <Loader2 className="w-8 h-8 animate-spin" />
+              <p className="text-sm">Loading DWG file…</p>
+            </div>
+          )}
+          {loadState === "error" && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
+              <AlertCircle className="w-10 h-10 text-red-400 opacity-60" />
+              <p className="text-sm text-gray-400">Failed to load drawing</p>
+              {errMsg && <p className="text-xs text-gray-600 font-mono max-w-sm text-center break-all">{errMsg}</p>}
+              <a href={src} download
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-xl transition-colors">
+                <Download className="w-4 h-4" /> Download DWG file
+              </a>
             </div>
           )}
         </div>
@@ -525,14 +628,14 @@ function DwgFileViewer({
               <span className="text-[10px] text-gray-500 uppercase tracking-widest">Record Info</span>
             </div>
             {[
-              { label: "ID", value: record.name },
-              { label: "Project", value: record.project },
+              { label: "ID",           value: record.name },
+              { label: "Project",      value: record.project },
               { label: "Project Name", value: record.project_name },
-              { label: "Department", value: record.department },
-              { label: "Revision", value: record.revision },
-              { label: "Tag", value: record.tag },
-              { label: "System Name", value: record.system_name },
-              { label: "Modified", value: formatDate(record.modified) },
+              { label: "Department",   value: record.department },
+              { label: "Revision",     value: record.revision },
+              { label: "Tag",          value: record.tag },
+              { label: "System Name",  value: record.system_name },
+              { label: "Modified",     value: formatDate(record.modified) },
             ].map(({ label, value }) => value ? (
               <div key={label}>
                 <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-0.5">{label}</p>

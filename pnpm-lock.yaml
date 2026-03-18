@@ -404,6 +404,15 @@ importers:
 
   artifacts/pm-app:
     dependencies:
+      '@mlightcad/cad-simple-viewer':
+        specifier: ^1.4.10
+        version: 1.4.10(@mlightcad/data-model@1.7.5)(lodash-es@4.17.23)(three@0.183.2)
+      '@mlightcad/data-model':
+        specifier: ^1.7.5
+        version: 1.7.5
+      '@types/lodash-es':
+        specifier: ^4.17.12
+        version: 4.17.12
       '@types/three':
         specifier: ^0.183.1
         version: 0.183.1
@@ -416,6 +425,9 @@ importers:
       jszip:
         specifier: ^3.10.1
         version: 3.10.1
+      lodash-es:
+        specifier: ^4.17.23
+        version: 4.17.23
       occt-import-js:
         specifier: ^0.0.23
         version: 0.0.23
@@ -1000,6 +1012,9 @@ packages:
   '@floating-ui/utils@0.2.11':
     resolution: {integrity: sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg==}
 
+  '@fxts/core@1.26.0':
+    resolution: {integrity: sha512-ONaza1CGr8dLKmJ0HQgi0h4XuyDJMr0P70M7o/My/YeeRxuYoSANHjE2nSY7xO4WHgxUD5ojd5dpxlFOzAEJsA==}
+
   '@gerrit0/mini-shiki@3.23.0':
     resolution: {integrity: sha512-bEMORlG0cqdjVyCEuU0cDQbORWX+kYCeo0kV1lbxF5bt4r7SID2l9bqsxJEM0zndaxpOUT7riCyIVEuqq/Ynxg==}
 
@@ -1023,6 +1038,45 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@lukeed/csprng@1.1.0':
+    resolution: {integrity: sha512-Z7C/xXCiGWsg0KuKsHTKJxbWhpI3Vs5GwLfOean7MGyVFGqdRgBbAjOCh6u4bbjPc/8MJ2pZmK/0DLdCbivLDA==}
+    engines: {node: '>=8'}
+
+  '@mlightcad/cad-simple-viewer@1.4.10':
+    resolution: {integrity: sha512-ZXpGwBj2+IMzsNKygAvsn1r0YJjZz8Eeo6zDWrFTjv6hnQx/W59N0HWad7hKM7ZibKrHh9YJT/Dk9nBiy29/aQ==}
+    peerDependencies:
+      '@mlightcad/data-model': ^1.7.3
+      lodash-es: 4.17.21
+      three: ^0.172.0
+
+  '@mlightcad/common@1.4.5':
+    resolution: {integrity: sha512-B6cEuFBgASEEQD8QM6wHuX7JCsxOZncEAc5cOo7yqYhMiYXbkJHT39R+YJR7DjSGWcQ1Xx38sjmf7s5ZJ+WBGg==}
+
+  '@mlightcad/data-model@1.7.5':
+    resolution: {integrity: sha512-3agiNoMh/zo/CM3nTQF/Eq18NoonANk5aLLpBkalG558iUgbRSCMADn9CoN2J3lpVL029KvZXPmEYndKF79Ihg==}
+
+  '@mlightcad/dxf-json@1.0.10':
+    resolution: {integrity: sha512-KY2E49y9DHPb0LoEi2Uz2cgmtVFgiNNNBn1DsWYvqn4VLD7itr2+GE51yBZLAzG1SFXiwqPjp5mprU6fI7kysg==}
+
+  '@mlightcad/geometry-engine@3.2.5':
+    resolution: {integrity: sha512-aIxoBen74/AakN4me6WhHM4BPzCXj5bsKiicq0RgI0kAvhvk0xobk9fptCxbB5PMk8I37DMriUuit52i2uzbHQ==}
+    peerDependencies:
+      '@mlightcad/common': 1.4.5
+
+  '@mlightcad/graphic-interface@3.3.5':
+    resolution: {integrity: sha512-5KOj2q0nR2cfVRjwWW0NMDLsGVC9i18/dgnPGEA4NzQy9oni3t9zK7R6aTR7a89mFFubM0RPmUkfuBHEKaQg6Q==}
+    peerDependencies:
+      '@mlightcad/common': 1.4.5
+      '@mlightcad/geometry-engine': 3.2.5
+
+  '@mlightcad/libredwg-converter@3.5.5':
+    resolution: {integrity: sha512-EqimoeJO4DZa8lVtbOw8OrbWzK5gllYTsoXC9lWW0I+ZvuT0emcjEmsmbownXoJwrGd7GescL9voesGr0XbuyQ==}
+    peerDependencies:
+      '@mlightcad/data-model': 1.7.5
+
+  '@mlightcad/libredwg-web@0.6.6':
+    resolution: {integrity: sha512-Xv8uhe0M7etEW3mHDOWYhZx5qqLXLO/702H32bf22J9veQLjjxO33aNQfo37tgQs3CnaxkSMdeRvVrQCQwmigw==}
 
   '@napi-rs/canvas-android-arm64@0.1.97':
     resolution: {integrity: sha512-V1c/WVw+NzH8vk7ZK/O8/nyBSCQimU8sfMsB/9qeSvdkGKNU7+mxy/bIF0gTgeBFmHpj30S4E9WHMSrxXGQuVQ==}
@@ -1992,6 +2046,12 @@ packages:
     resolution: {integrity: sha512-TezXjmf3lj+zQ651r6hPqvSScqBLvyPI9FxdXBqpEwBijNGQ2NXpaFW/7joGzveYkKQUil7iiDHLo6LV71Pc0A==}
     deprecated: This is a stub types definition. jszip provides its own type definitions, so you do not need this installed.
 
+  '@types/lodash-es@4.17.12':
+    resolution: {integrity: sha512-0NgftHUcV4v34VhXm8QBSftKVXtbkBG3ViCjs6+eJ5a6y6Mi/jiFGPc1sC7QK+9BFhWrURE3EOggmWaSxL9OzQ==}
+
+  '@types/lodash@4.17.24':
+    resolution: {integrity: sha512-gIW7lQLZbue7lRSWEFql49QJJWThrTFFeIMJdp3eH4tKoxm1OvEPg02rm4wCCSHS0cL3/Fizimb35b7k8atwsQ==}
+
   '@types/multer@2.1.0':
     resolution: {integrity: sha512-zYZb0+nJhOHtPpGDb3vqPjwpdeGlGC157VpkqNQL+UU2qwoacoQ7MpsAmUptI/0Oa127X32JzWDqQVEXp2RcIA==}
 
@@ -2097,6 +2157,9 @@ packages:
     resolution: {integrity: sha512-lIyg0szRfYbiy67j9KN8IyeD7q7hcmqnJ1ddWmNt19ItGpNN64mnllmxUNFIOdOm6by97jlL6wfpTTJrmnjWAA==}
     engines: {node: '>=6.0.0'}
     hasBin: true
+
+  bindings@1.5.0:
+    resolution: {integrity: sha512-p2q/t/mhvuOj/UeLlV6566GD/guowlr0hHxClI0W9m7MWYkL1F0hLo+0Aexs9HSPCtR1SXQ0TD3MMKrXZajbiQ==}
 
   body-parser@2.2.2:
     resolution: {integrity: sha512-oP5VkATKlNwcgvxi0vM0p/D3n2C3EReYVX+DNYs5TjZFn/oQt2j+4sVJtSMr18pdRr8wjTcBl6LoV+FUwzPmNA==}
@@ -2540,6 +2603,9 @@ packages:
     resolution: {integrity: sha512-d+l3qxjSesT4V7v2fh+QnmFnUWv9lSpjarhShNTgBOfA0ttejbQUAlHLitbjkoRiDulW0OPoQPYIGhIC8ohejg==}
     engines: {node: '>=18'}
 
+  file-uri-to-path@1.0.0:
+    resolution: {integrity: sha512-0Zt+s3L7Vf1biwWZ29aARiVYLx7iMGnEUl9x33fbB/j3jR81u/O2LbqK+Bm1CDSNDKVtJ/YjwY7TUd5SkeLQLw==}
+
   fill-range@7.1.1:
     resolution: {integrity: sha512-YsGpe3WHLK8ZYi4tWDg2Jy3ebRz2rXowDxnld4bkQB00cc/1Zw9AWnC0i9ztDJitivtQvaI9KaLyKrc+hBW0yg==}
     engines: {node: '>=8'}
@@ -2771,6 +2837,9 @@ packages:
     resolution: {integrity: sha512-XT9ewWAC43tiAV7xDAPflMkG0qOPn2QjHqlgX8FOqmWa/rxnyYDulF9T0F7tRy1u+TVTmK/M//6VIOye+2zDXg==}
     engines: {node: '>=20'}
 
+  lodash-es@4.17.23:
+    resolution: {integrity: sha512-kVI48u3PZr38HdYz98UmfPnXl2DXrpdctLrFLCd3kOx1xUkOmpFPx7gCWWM5MPkL/fD8zb+Ph0QzjGFs4+hHWg==}
+
   lodash@4.17.23:
     resolution: {integrity: sha512-LgVTMpQtIopCi79SJeDiP0TfWi5CNEc/L/aRdTh3yIvmZXTnheWpKjSZhnvMl8iXbC1tFg9gdHHDMLoV7CnG+w==}
 
@@ -2882,6 +2951,9 @@ packages:
   multer@2.1.1:
     resolution: {integrity: sha512-mo+QTzKlx8R7E5ylSXxWzGoXoZbOsRMpyitcht8By2KHvMbf3tjwosZ/Mu/XYU6UuJ3VZnODIrak5ZrPiPyB6A==}
     engines: {node: '>= 10.16.0'}
+
+  nan@2.25.0:
+    resolution: {integrity: sha512-0M90Ag7Xn5KMLLZ7zliPWP3rT90P6PN+IzVFS0VqmnPktBk3700xUVv8Ikm9EUaUE5SDWdp/BIxdENzVznpm1g==}
 
   nanoid@3.3.11:
     resolution: {integrity: sha512-N8SpfPUnUp1bK+PMYW8qSWdl9U+wwNWI4QKxOYDy9JAro3WMX7p2OeVRF9v+347pnakNevPmiHhNmZ2HbFA76w==}
@@ -3086,6 +3158,9 @@ packages:
   queue-microtask@1.2.3:
     resolution: {integrity: sha512-NuaNSa6flKT5JaSYQzJok04JzTL1CA6aGhv5rfLW3PgqA+M2ChpZQnAC8h8i4ZFkBS8X5RqkDBHA7r4hej3K9A==}
 
+  quickselect@3.0.0:
+    resolution: {integrity: sha512-XdjUArbK4Bm5fLLvlm5KpTFOiOThgfWWI4axAZDWg4E/0mKdZyI9tNEfds27qCi1ze/vwTR16kvmmGhRra3c2g==}
+
   range-parser@1.2.1:
     resolution: {integrity: sha512-Hrgsx+orqoygnmhFbKaHE6c296J+HTAQXoxEF6gNupROmmGJRoyzfG3ccAveqCBrwr/2yxQ5BVd/GTl5agOwSg==}
     engines: {node: '>= 0.6'}
@@ -3093,6 +3168,9 @@ packages:
   raw-body@3.0.2:
     resolution: {integrity: sha512-K5zQjDllxWkf7Z5xJdV0/B0WTNqx6vxG70zJE4N0kBs4LovmEYWJzQGxC9bS9RAKu3bgM40lrd5zoLJ12MQ5BA==}
     engines: {node: '>= 0.10'}
+
+  rbush@4.0.1:
+    resolution: {integrity: sha512-IP0UpfeWQujYC8Jg162rMNc01Rf0gWMMAb2Uxus/Q0qOFw4lCcq6ZnQEZwUoJqWyUGJ9th7JjwI4yIWo+uvoAQ==}
 
   react-day-picker@9.14.0:
     resolution: {integrity: sha512-tBaoDWjPwe0M5pGrum4H0SR6Lyk+BO9oHnp9JbKpGKW2mlraNPgP9BMfsg5pWpwrssARmeqk7YBl2oXutZTaHA==}
@@ -3456,6 +3534,10 @@ packages:
   uc.micro@2.1.0:
     resolution: {integrity: sha512-ARDJmphmdvUk6Glw7y9DQ2bFkKBHwQHLi2lsaH6PPmz/Ka9sFOBsBluozhDltWmnv9u/cF6Rt87znRTPV+yp/A==}
 
+  uid@2.0.2:
+    resolution: {integrity: sha512-u3xV3X7uzvi5b1MncmZo3i2Aw222Zk1keqLA1YkHldREkAhAqi65wuPfe7lHx8H/Wzy+8CE7S7uS3jekIM5s8g==}
+    engines: {node: '>=8'}
+
   undici-types@7.18.2:
     resolution: {integrity: sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==}
 
@@ -3519,6 +3601,9 @@ packages:
       react: ^16.8 || ^17.0 || ^18.0 || ^19.0.0 || ^19.0.0-rc
       react-dom: ^16.8 || ^17.0 || ^18.0 || ^19.0.0 || ^19.0.0-rc
 
+  verb-nurbs-web@2.1.3:
+    resolution: {integrity: sha512-2PvI2bx7dn0r3kWtk+JuDIDZ+p7I5Piu8y6/ZNhUVpilOyHKK1nNzLHtgown+dFOmBnKnuAKIMh1xn/5kzrxZA==}
+
   victory-vendor@36.9.2:
     resolution: {integrity: sha512-PnpQQMuxlwYdocC8fIJqVXvkeViHYzotI+NJrCuav0ZYFoq912ZHBk3mCeuj+5/VpodOjPe1z0Fk2ihgzlXqjQ==}
 
@@ -3564,6 +3649,10 @@ packages:
 
   warning@4.0.3:
     resolution: {integrity: sha512-rpJyN222KWIvHJ/F53XSZv0Zl/accqHR8et1kpaMTD/fLCRxtV8iX8czMzY7sVZupTI3zcUTg8eycS2kNF9l6w==}
+
+  webworker-threads@0.7.17:
+    resolution: {integrity: sha512-Y2w2aXBbDLk9IzTEb9u+MsODC3s4YlGI7g4h0t+1OAwIO8yBI9rQL35ZYlyayiCuWu1dZMH/P7kGU8OwW7YsyA==}
+    engines: {node: '>= 0.10.16'}
 
   which@2.0.2:
     resolution: {integrity: sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA==}
@@ -3775,6 +3864,10 @@ snapshots:
 
   '@floating-ui/utils@0.2.11': {}
 
+  '@fxts/core@1.26.0':
+    dependencies:
+      tslib: 2.8.1
+
   '@gerrit0/mini-shiki@3.23.0':
     dependencies:
       '@shikijs/engine-oniguruma': 3.23.0
@@ -3805,6 +3898,51 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@lukeed/csprng@1.1.0': {}
+
+  '@mlightcad/cad-simple-viewer@1.4.10(@mlightcad/data-model@1.7.5)(lodash-es@4.17.23)(three@0.183.2)':
+    dependencies:
+      '@mlightcad/data-model': 1.7.5
+      '@mlightcad/libredwg-converter': 3.5.5(@mlightcad/data-model@1.7.5)
+      lodash-es: 4.17.23
+      mitt: 3.0.1
+      rbush: 4.0.1
+      three: 0.183.2
+
+  '@mlightcad/common@1.4.5':
+    dependencies:
+      loglevel: 1.9.2
+
+  '@mlightcad/data-model@1.7.5':
+    dependencies:
+      '@mlightcad/common': 1.4.5
+      '@mlightcad/dxf-json': 1.0.10
+      '@mlightcad/geometry-engine': 3.2.5(@mlightcad/common@1.4.5)
+      '@mlightcad/graphic-interface': 3.3.5(@mlightcad/common@1.4.5)(@mlightcad/geometry-engine@3.2.5(@mlightcad/common@1.4.5))
+      iconv-lite: 0.7.2
+      uid: 2.0.2
+
+  '@mlightcad/dxf-json@1.0.10':
+    dependencies:
+      '@fxts/core': 1.26.0
+
+  '@mlightcad/geometry-engine@3.2.5(@mlightcad/common@1.4.5)':
+    dependencies:
+      '@mlightcad/common': 1.4.5
+      verb-nurbs-web: 2.1.3
+
+  '@mlightcad/graphic-interface@3.3.5(@mlightcad/common@1.4.5)(@mlightcad/geometry-engine@3.2.5(@mlightcad/common@1.4.5))':
+    dependencies:
+      '@mlightcad/common': 1.4.5
+      '@mlightcad/geometry-engine': 3.2.5(@mlightcad/common@1.4.5)
+
+  '@mlightcad/libredwg-converter@3.5.5(@mlightcad/data-model@1.7.5)':
+    dependencies:
+      '@mlightcad/data-model': 1.7.5
+      '@mlightcad/libredwg-web': 0.6.6
+
+  '@mlightcad/libredwg-web@0.6.6': {}
 
   '@napi-rs/canvas-android-arm64@0.1.97':
     optional: true
@@ -4878,6 +5016,12 @@ snapshots:
     dependencies:
       jszip: 3.10.1
 
+  '@types/lodash-es@4.17.12':
+    dependencies:
+      '@types/lodash': 4.17.24
+
+  '@types/lodash@4.17.24': {}
+
   '@types/multer@2.1.0':
     dependencies:
       '@types/express': 5.0.6
@@ -4986,6 +5130,11 @@ snapshots:
   balanced-match@1.0.2: {}
 
   baseline-browser-mapping@2.10.0: {}
+
+  bindings@1.5.0:
+    dependencies:
+      file-uri-to-path: 1.0.0
+    optional: true
 
   body-parser@2.2.2:
     dependencies:
@@ -5353,6 +5502,9 @@ snapshots:
     dependencies:
       is-unicode-supported: 2.1.0
 
+  file-uri-to-path@1.0.0:
+    optional: true
+
   fill-range@7.1.1:
     dependencies:
       to-regex-range: 5.0.1
@@ -5561,6 +5713,8 @@ snapshots:
     dependencies:
       p-locate: 6.0.0
 
+  lodash-es@4.17.23: {}
+
   lodash@4.17.23: {}
 
   loglevel@1.9.2: {}
@@ -5653,6 +5807,9 @@ snapshots:
       busboy: 1.6.0
       concat-stream: 2.0.0
       type-is: 1.6.18
+
+  nan@2.25.0:
+    optional: true
 
   nanoid@3.3.11: {}
 
@@ -5847,6 +6004,8 @@ snapshots:
 
   queue-microtask@1.2.3: {}
 
+  quickselect@3.0.0: {}
+
   range-parser@1.2.1: {}
 
   raw-body@3.0.2:
@@ -5855,6 +6014,10 @@ snapshots:
       http-errors: 2.0.1
       iconv-lite: 0.7.2
       unpipe: 1.0.0
+
+  rbush@4.0.1:
+    dependencies:
+      quickselect: 3.0.0
 
   react-day-picker@9.14.0(react@19.1.0):
     dependencies:
@@ -6211,6 +6374,10 @@ snapshots:
 
   uc.micro@2.1.0: {}
 
+  uid@2.0.2:
+    dependencies:
+      '@lukeed/csprng': 1.1.0
+
   undici-types@7.18.2: {}
 
   unicorn-magic@0.3.0: {}
@@ -6259,6 +6426,10 @@ snapshots:
       - '@types/react'
       - '@types/react-dom'
 
+  verb-nurbs-web@2.1.3:
+    optionalDependencies:
+      webworker-threads: 0.7.17
+
   victory-vendor@36.9.2:
     dependencies:
       '@types/d3-array': 3.2.2
@@ -6295,6 +6466,12 @@ snapshots:
   warning@4.0.3:
     dependencies:
       loose-envify: 1.4.0
+
+  webworker-threads@0.7.17:
+    dependencies:
+      bindings: 1.5.0
+      nan: 2.25.0
+    optional: true
 
   which@2.0.2:
     dependencies:
