@@ -35,6 +35,16 @@ function proxyUrl(f: string) { return `${BASE}/api/file-proxy?url=${encodeURICom
 
 type MeasurePt = { x: number; y: number };
 
+function formatDist(px: number, pxPerMeter: number | null): string {
+  if (pxPerMeter && pxPerMeter > 0) {
+    const m = px / pxPerMeter;
+    if (m < 0.001) return `${(m * 1000000).toFixed(1)} µm`;
+    if (m < 1)     return `${(m * 1000).toFixed(1)} mm`;
+    return `${m.toFixed(3)} m`;
+  }
+  return `${px.toFixed(1)} px`;
+}
+
 function formatDate(iso: string) {
   try {
     return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
@@ -146,6 +156,10 @@ interface ViewerSidebarProps {
   measureMode?: boolean;
   onToggleMeasure?: () => void;
   onClearMeasure?: () => void;
+  onCalibrate?: () => void;
+  onResetScale?: () => void;
+  pxPerMeter?: number | null;
+  hasTwoPoints?: boolean;
   onPrint?: () => void;
   onFitView?: () => void;
   onZoomIn?: () => void;
@@ -162,6 +176,7 @@ function ViewerSidebar({
   rotate, setRotate,
   numPages, page, setPage,
   measureMode, onToggleMeasure, onClearMeasure,
+  onCalibrate, onResetScale, pxPerMeter, hasTwoPoints,
   onPrint, onFitView, onZoomIn, onZoomOut,
   showPanel, setShowPanel,
 }: ViewerSidebarProps) {
@@ -304,6 +319,34 @@ function ViewerSidebar({
               <X className="w-4 h-4" />
             </ToolBtn>
           )}
+          {onCalibrate && (
+            <ToolBtn
+              title={hasTwoPoints ? "Set scale — enter the real distance for the two clicked points" : "Calibrate scale: first click two points on a known distance"}
+              active={!!pxPerMeter}
+              onClick={hasTwoPoints ? onCalibrate : undefined as any}
+            >
+              <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <line x1="2" y1="10" x2="18" y2="10" />
+                <line x1="2" y1="7" x2="2" y2="13" />
+                <line x1="18" y1="7" x2="18" y2="13" />
+                <line x1="10" y1="8" x2="10" y2="12" />
+              </svg>
+            </ToolBtn>
+          )}
+          {pxPerMeter && onResetScale && (
+            <ToolBtn title="Reset scale (back to pixels)" onClick={onResetScale}>
+              <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M4.5 10a5.5 5.5 0 1 0 1.2-3.4" />
+                <polyline points="2,4 4.5,6.5 7,4" />
+                <line x1="8" y1="10" x2="12" y2="10" strokeWidth="2" />
+              </svg>
+            </ToolBtn>
+          )}
+          {pxPerMeter && (
+            <div className="text-[8px] text-yellow-400 tabular-nums text-center leading-tight py-0.5 select-none px-0.5">
+              m
+            </div>
+          )}
         </>
       )}
 
@@ -358,6 +401,7 @@ function DxfFileViewer({
   const [measureMode, setMeasureMode] = useState(false);
   const [measurePts, setMeasurePts] = useState<MeasurePt[]>([]);
   const [mousePos, setMousePos] = useState<MeasurePt | null>(null);
+  const [pxPerMeter, setPxPerMeter] = useState<number | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -459,6 +503,14 @@ function DxfFileViewer({
     ? Math.sqrt((measurePts[1].x - measurePts[0].x) ** 2 + (measurePts[1].y - measurePts[0].y) ** 2)
     : null;
 
+  const calibrate = useCallback(() => {
+    if (!measureDist) return;
+    const input = window.prompt("Enter the real distance between the two clicked points (in meters):", "1");
+    if (!input) return;
+    const meters = parseFloat(input);
+    if (!isNaN(meters) && meters > 0) setPxPerMeter(measureDist / meters);
+  }, [measureDist]);
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gray-950">
       <div className="flex items-center gap-3 px-4 py-3 bg-[#16162a] border-b border-white/10 flex-shrink-0">
@@ -476,7 +528,7 @@ function DxfFileViewer({
         {measureDist !== null && (
           <div className="flex items-center gap-2 bg-yellow-500/90 text-gray-900 px-3 py-1.5 rounded-lg text-xs font-semibold">
             <Ruler className="w-3.5 h-3.5" />
-            {measureDist.toFixed(1)} px
+            {formatDist(measureDist, pxPerMeter)}
             <button onClick={clearMeasure} className="ml-1 opacity-70 hover:opacity-100">✕</button>
           </div>
         )}
@@ -506,6 +558,10 @@ function DxfFileViewer({
           measureMode={measureMode}
           onToggleMeasure={() => { setMeasureMode(m => !m); clearMeasure(); }}
           onClearMeasure={clearMeasure}
+          onCalibrate={calibrate}
+          onResetScale={() => setPxPerMeter(null)}
+          pxPerMeter={pxPerMeter}
+          hasTwoPoints={measurePts.length === 2}
           downloadSrc={downloadSrc || src}
           recordName={record.name}
         />
@@ -574,7 +630,7 @@ function DxfFileViewer({
                     <line x1={measurePts[1].x - nx} y1={measurePts[1].y - ny} x2={measurePts[1].x + nx} y2={measurePts[1].y + ny} stroke="#eab308" strokeWidth="2" />
                     <rect x={mx - 36} y={my - 12} width="72" height="20" rx="4" fill="#eab308" fillOpacity="0.95" />
                     <text x={mx} y={my + 3} textAnchor="middle" fill="#1a1100" fontSize="11" fontWeight="bold" fontFamily="monospace">
-                      {measureDist?.toFixed(1)} px
+                      {formatDist(measureDist!, pxPerMeter)}
                     </text>
                   </>
                 );
@@ -614,7 +670,7 @@ function DxfFileViewer({
               {measureDist !== null && (
                 <div className="mt-2 pt-3 border-t border-white/10">
                   <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-1">Last Measurement</p>
-                  <p className="text-sm text-yellow-400 font-mono font-semibold">{measureDist.toFixed(2)} px</p>
+                  <p className="text-sm text-yellow-400 font-mono font-semibold">{formatDist(measureDist, pxPerMeter)}</p>
                 </div>
               )}
               <div className="pt-3 border-t border-white/10">
@@ -679,6 +735,7 @@ function DwgFileViewer({
   const [measureMode, setMeasureMode] = useState(false);
   const [measurePts, setMeasurePts] = useState<MeasurePt[]>([]);
   const [mousePos, setMousePos] = useState<MeasurePt | null>(null);
+  const [pxPerMeter, setPxPerMeter] = useState<number | null>(null);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -776,6 +833,14 @@ function DwgFileViewer({
     ? Math.sqrt((measurePts[1].x - measurePts[0].x) ** 2 + (measurePts[1].y - measurePts[0].y) ** 2)
     : null;
 
+  const calibrate = useCallback(() => {
+    if (!measureDist) return;
+    const input = window.prompt("Enter the real distance between the two clicked points (in meters):", "1");
+    if (!input) return;
+    const meters = parseFloat(input);
+    if (!isNaN(meters) && meters > 0) setPxPerMeter(measureDist / meters);
+  }, [measureDist]);
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gray-950">
       {/* Header */}
@@ -794,7 +859,7 @@ function DwgFileViewer({
         {measureDist !== null && (
           <div className="flex items-center gap-2 bg-yellow-500/90 text-gray-900 px-3 py-1.5 rounded-lg text-xs font-semibold">
             <Ruler className="w-3.5 h-3.5" />
-            {measureDist.toFixed(1)} px
+            {formatDist(measureDist, pxPerMeter)}
             <button onClick={clearMeasure} className="ml-1 opacity-70 hover:opacity-100">✕</button>
           </div>
         )}
@@ -823,6 +888,10 @@ function DwgFileViewer({
           measureMode={measureMode}
           onToggleMeasure={() => { setMeasureMode(m => !m); clearMeasure(); }}
           onClearMeasure={clearMeasure}
+          onCalibrate={calibrate}
+          onResetScale={() => setPxPerMeter(null)}
+          pxPerMeter={pxPerMeter}
+          hasTwoPoints={measurePts.length === 2}
           downloadSrc={src}
           recordName={record.name}
         />
@@ -896,7 +965,7 @@ function DwgFileViewer({
                     <line x1={measurePts[1].x - nx} y1={measurePts[1].y - ny} x2={measurePts[1].x + nx} y2={measurePts[1].y + ny} stroke="#eab308" strokeWidth="2" />
                     <rect x={mx - 36} y={my - 12} width="72" height="20" rx="4" fill="#eab308" fillOpacity="0.95" />
                     <text x={mx} y={my + 3} textAnchor="middle" fill="#1a1100" fontSize="11" fontWeight="bold" fontFamily="monospace">
-                      {measureDist?.toFixed(1)} px
+                      {formatDist(measureDist!, pxPerMeter)}
                     </text>
                   </>
                 );
@@ -936,7 +1005,7 @@ function DwgFileViewer({
               {measureDist !== null && (
                 <div className="mt-2 pt-3 border-t border-white/10">
                   <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-1">Last Measurement</p>
-                  <p className="text-sm text-yellow-400 font-mono font-semibold">{measureDist.toFixed(2)} px</p>
+                  <p className="text-sm text-yellow-400 font-mono font-semibold">{formatDist(measureDist, pxPerMeter)}</p>
                 </div>
               )}
               <div className="pt-3 border-t border-white/10">
@@ -969,6 +1038,7 @@ function PdfViewer({
   const [measureMode, setMeasureMode] = useState(false);
   const [measurePts, setMeasurePts] = useState<MeasurePt[]>([]);
   const [mousePos, setMousePos] = useState<MeasurePt | null>(null);
+  const [pxPerMeter, setPxPerMeter] = useState<number | null>(null);
   const measureOverlayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -1007,6 +1077,14 @@ function PdfViewer({
     ? Math.sqrt((measurePts[1].x - measurePts[0].x) ** 2 + (measurePts[1].y - measurePts[0].y) ** 2)
     : null;
 
+  const calibrate = useCallback(() => {
+    if (!measureDist) return;
+    const input = window.prompt("Enter the real distance between the two clicked points (in meters):", "1");
+    if (!input) return;
+    const meters = parseFloat(input);
+    if (!isNaN(meters) && meters > 0) setPxPerMeter(measureDist / meters);
+  }, [measureDist]);
+
   const handlePrint = useCallback(() => {
     const win = window.open(src, "_blank");
     if (win) { win.onload = () => win.print(); }
@@ -1031,7 +1109,7 @@ function PdfViewer({
         {measureDist !== null && (
           <div className="flex items-center gap-2 bg-yellow-500/90 text-gray-900 px-3 py-1.5 rounded-lg text-xs font-semibold">
             <Ruler className="w-3.5 h-3.5" />
-            {measureDist.toFixed(1)} px
+            {formatDist(measureDist, pxPerMeter)}
             <span className="text-gray-700 font-normal">@ {Math.round(scale * 100)}%</span>
             <button onClick={clearMeasure} className="ml-1 hover:text-gray-900 opacity-70 hover:opacity-100">✕</button>
           </div>
@@ -1071,6 +1149,10 @@ function PdfViewer({
           measureMode={measureMode}
           onToggleMeasure={() => { setMeasureMode(m => !m); clearMeasure(); }}
           onClearMeasure={clearMeasure}
+          onCalibrate={calibrate}
+          onResetScale={() => setPxPerMeter(null)}
+          pxPerMeter={pxPerMeter}
+          hasTwoPoints={measurePts.length === 2}
           onPrint={handlePrint}
           downloadSrc={src}
           recordName={record.name}
@@ -1154,7 +1236,7 @@ function PdfViewer({
                             <>
                               <rect x={mx - 36} y={my - 12} width="72" height="20" rx="4" fill="#eab308" fillOpacity="0.95" />
                               <text x={mx} y={my + 3} textAnchor="middle" fill="#1a1100" fontSize="11" fontWeight="bold" fontFamily="monospace">
-                                {measureDist?.toFixed(1)} px
+                                {formatDist(measureDist!, pxPerMeter)}
                               </text>
                             </>
                           );
@@ -1205,7 +1287,7 @@ function PdfViewer({
               {measureDist !== null && (
                 <div className="mt-2 pt-3 border-t border-white/10">
                   <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-1">Last Measurement</p>
-                  <p className="text-sm text-yellow-400 font-mono font-semibold">{measureDist.toFixed(2)} px</p>
+                  <p className="text-sm text-yellow-400 font-mono font-semibold">{formatDist(measureDist, pxPerMeter)}</p>
                   <p className="text-[10px] text-gray-500 mt-0.5">At {Math.round(scale * 100)}% zoom</p>
                 </div>
               )}
