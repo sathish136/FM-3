@@ -51,7 +51,14 @@ function deptColor(dept: string) {
 
 // ── Toolbar primitives (matches 3D viewer style) ──────────────────────────────
 type BgPreset = "dark" | "navy" | "light" | "white";
-type ViewMode = "normal" | "invert";
+type ViewMode = "normal" | "invert" | "gray" | "contrast";
+
+function viewFilter(mode: ViewMode): string | undefined {
+  if (mode === "invert")   return "invert(1) hue-rotate(180deg)";
+  if (mode === "gray")     return "grayscale(1)";
+  if (mode === "contrast") return "contrast(2) brightness(1.05)";
+  return undefined;
+}
 
 interface ToolBtnProps {
   active?: boolean;
@@ -151,7 +158,6 @@ interface ViewerSidebarProps {
 
 function ViewerSidebar({
   viewMode, setViewMode,
-  bgPreset, setBgPreset,
   scale, setScale,
   rotate, setRotate,
   numPages, page, setPage,
@@ -170,7 +176,7 @@ function ViewerSidebar({
         </svg>
       </ToolBtn>
 
-      <ToolBtn title="Invert colors (white drawing on dark BG)" active={viewMode === "invert"} onClick={() => setViewMode("invert")}>
+      <ToolBtn title="Invert colors" active={viewMode === "invert"} onClick={() => setViewMode("invert")}>
         <svg viewBox="0 0 20 20" className="w-5 h-5">
           <path fill="currentColor" d="M10 3a7 7 0 1 1 0 14V3z" />
           <path fill="none" stroke="currentColor" strokeWidth="1.5" d="M10 3a7 7 0 1 0 0 14" />
@@ -178,19 +184,20 @@ function ViewerSidebar({
       </ToolBtn>
 
       <TbDivider />
-      <TbSection label="BG" />
+      <TbSection label="Filter" />
 
-      <ToolBtn title="Dark background" active={bgPreset === "dark"} onClick={() => setBgPreset("dark")}>
-        <div className="w-5 h-5 rounded-full bg-[#0f0f1a] border border-white/30" />
+      <ToolBtn title="Grayscale — convert to black & white" active={viewMode === "gray"} onClick={() => setViewMode(viewMode === "gray" ? "normal" : "gray")}>
+        <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <circle cx="10" cy="10" r="7" />
+          <line x1="10" y1="3" x2="10" y2="17" />
+        </svg>
       </ToolBtn>
-      <ToolBtn title="Navy background" active={bgPreset === "navy"} onClick={() => setBgPreset("navy")}>
-        <div className="w-5 h-5 rounded-full bg-[#1a1a2e] border border-white/30" />
-      </ToolBtn>
-      <ToolBtn title="Light background" active={bgPreset === "light"} onClick={() => setBgPreset("light")}>
-        <div className="w-5 h-5 rounded-full bg-[#dde3ee] border border-black/20" />
-      </ToolBtn>
-      <ToolBtn title="White background" active={bgPreset === "white"} onClick={() => setBgPreset("white")}>
-        <div className="w-5 h-5 rounded-full bg-white border border-black/20" />
+
+      <ToolBtn title="High contrast — boost contrast for faded drawings" active={viewMode === "contrast"} onClick={() => setViewMode(viewMode === "contrast" ? "normal" : "contrast")}>
+        <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <circle cx="10" cy="10" r="7" fill="currentColor" fillOpacity="0.15" />
+          <path d="M10 3 A7 7 0 0 1 10 17 Z" fill="currentColor" />
+        </svg>
       </ToolBtn>
 
       {(setScale || onFitView || onZoomIn || onZoomOut) && (
@@ -413,27 +420,21 @@ function DxfFileViewer({
     v.FitView(-size, size, -size, size, 0.05);
   };
 
-  const zoomIn = useCallback(() => {
-    const v = viewerRef.current;
-    if (!v) return;
-    const cam = v.GetCamera();
-    const cx = (cam.left + cam.right) / 2;
-    const cy = (cam.bottom + cam.top) / 2;
-    const w = (cam.right - cam.left) * 0.75;
-    const h = (cam.top - cam.bottom) * 0.75;
-    v.FitView(cx - w / 2, cx + w / 2, cy - h / 2, cy + h / 2, 0);
+  const dispatchWheel = useCallback((delta: number) => {
+    const container = containerRef.current;
+    if (!container) return;
+    const target = container.querySelector("canvas") ?? container;
+    const rect = target.getBoundingClientRect();
+    target.dispatchEvent(new WheelEvent("wheel", {
+      bubbles: true, cancelable: true,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2,
+      deltaY: delta, deltaMode: 0,
+    }));
   }, []);
 
-  const zoomOut = useCallback(() => {
-    const v = viewerRef.current;
-    if (!v) return;
-    const cam = v.GetCamera();
-    const cx = (cam.left + cam.right) / 2;
-    const cy = (cam.bottom + cam.top) / 2;
-    const w = (cam.right - cam.left) * 1.33;
-    const h = (cam.top - cam.bottom) * 1.33;
-    v.FitView(cx - w / 2, cx + w / 2, cy - h / 2, cy + h / 2, 0);
-  }, []);
+  const zoomIn  = useCallback(() => dispatchWheel(-250), [dispatchWheel]);
+  const zoomOut = useCallback(() => dispatchWheel(250),  [dispatchWheel]);
 
   const handleMeasureClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!measureMode) return;
@@ -521,7 +522,7 @@ function DxfFileViewer({
             ref={containerRef}
             className="w-full h-full"
             style={{
-              filter: viewMode === "invert" ? "invert(1) hue-rotate(180deg)" : undefined,
+              filter: viewFilter(viewMode),
               pointerEvents: measureMode ? "none" : undefined,
             }}
           />
@@ -736,23 +737,21 @@ function DwgFileViewer({
 
   const fitView = () => managerRef.current?.sendStringToExecute("zoom");
 
-  const zoomIn = useCallback(() => {
-    if (!containerRef.current) return;
-    const el = containerRef.current;
-    const rect = el.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    el.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, clientX: cx, clientY: cy, deltaY: -300 }));
+  const dispatchWheel = useCallback((delta: number) => {
+    const container = containerRef.current;
+    if (!container) return;
+    const target = container.querySelector("canvas") ?? container;
+    const rect = target.getBoundingClientRect();
+    target.dispatchEvent(new WheelEvent("wheel", {
+      bubbles: true, cancelable: true,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2,
+      deltaY: delta, deltaMode: 0,
+    }));
   }, []);
 
-  const zoomOut = useCallback(() => {
-    if (!containerRef.current) return;
-    const el = containerRef.current;
-    const rect = el.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    el.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, clientX: cx, clientY: cy, deltaY: 300 }));
-  }, []);
+  const zoomIn  = useCallback(() => dispatchWheel(-250), [dispatchWheel]);
+  const zoomOut = useCallback(() => dispatchWheel(250),  [dispatchWheel]);
 
   const handleMeasureClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!measureMode) return;
@@ -840,7 +839,7 @@ function DwgFileViewer({
             ref={containerRef}
             className="w-full h-full"
             style={{
-              filter: viewMode === "invert" ? "invert(1) hue-rotate(180deg)" : undefined,
+              filter: viewFilter(viewMode),
               pointerEvents: measureMode ? "none" : undefined,
             }}
           />
@@ -1086,7 +1085,7 @@ function PdfViewer({
               <p className="text-sm">Unable to render this file.</p>
             </div>
           ) : (
-            <div className="relative" style={{ filter: viewMode === "invert" ? "invert(1) hue-rotate(180deg)" : undefined }}>
+            <div className="relative" style={{ filter: viewFilter(viewMode) }}>
               <Document
                 file={src}
                 onLoadSuccess={({ numPages }) => { setNumPages(numPages); setPage(1); }}
@@ -1509,7 +1508,7 @@ export default function Design2DPage() {
                 alt={viewer.name}
                 style={{
                   transform: `rotate(${imgRotate}deg)`,
-                  filter: imgViewMode === "invert" ? "invert(1) hue-rotate(180deg)" : undefined,
+                  filter: viewFilter(imgViewMode),
                   transition: "transform 0.25s ease",
                 }}
                 className="max-w-full max-h-full object-contain shadow-2xl rounded"
