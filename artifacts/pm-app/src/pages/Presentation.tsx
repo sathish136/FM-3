@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import JSZip from "jszip";
+import { init as initPptxPreview } from "pptx-preview";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -193,21 +194,79 @@ function SlideCard({ slide, pres, deckIdx, scale = 1 }: {
   );
 }
 
+// ── pptx-preview powered viewer ───────────────────────────────────────────────
+function PptxViewer({ fileUrl }: { fileUrl: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [errorMsg, setErrorMsg] = useState("");
+  const viewerRef = useRef<ReturnType<typeof initPptxPreview> | null>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const el = containerRef.current;
+    const { clientWidth, clientHeight } = el;
+    const w = clientWidth || 1280;
+    const h = clientHeight || 720;
+
+    let cancelled = false;
+    setStatus("loading");
+
+    const viewer = initPptxPreview(el, { width: w, height: h });
+    viewerRef.current = viewer;
+
+    fetch(fileUrl)
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.arrayBuffer();
+      })
+      .then(buf => {
+        if (cancelled) return;
+        viewer.preview(buf);
+        setStatus("ready");
+      })
+      .catch(err => {
+        if (cancelled) return;
+        console.error("pptx-preview error:", err);
+        setErrorMsg(err.message || "Failed to load");
+        setStatus("error");
+      });
+
+    return () => { cancelled = true; };
+  }, [fileUrl]);
+
+  return (
+    <div className="w-full h-full relative bg-gray-950 overflow-auto">
+      {status === "loading" && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-400 z-10 bg-gray-950">
+          <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
+          <p className="text-sm font-medium">Rendering slides…</p>
+          <p className="text-xs text-gray-600">Parsing PPTX content</p>
+        </div>
+      )}
+      {status === "error" && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-400 bg-gray-950">
+          <AlertCircle className="w-10 h-10 text-red-400" />
+          <p className="text-sm font-medium text-red-300">Could not render slides</p>
+          <p className="text-xs text-gray-500">{errorMsg}</p>
+        </div>
+      )}
+      <div ref={containerRef} className="w-full min-h-full" style={{ visibility: status === "ready" ? "visible" : "hidden" }} />
+    </div>
+  );
+}
+
 // ── Fullscreen Viewer ─────────────────────────────────────────────────────────
 function FullscreenViewer({ pres, slides, slidesLoading, onClose }: {
   pres: Presentation; slides: SlideData[]; slidesLoading: boolean; onClose: () => void;
 }) {
   const ext = pres.file_upload ? fileExt(pres.file_upload) : "";
   const isPptx = ext === "pptx" || ext === "ppt";
-  const [viewMode, setViewMode] = useState<"google" | "native">(isPptx && pres.file_upload ? "google" : "native");
+  const [viewMode, setViewMode] = useState<"pptx" | "native">(isPptx && pres.file_upload ? "pptx" : "native");
   const [current, setCurrent] = useState(0);
-  const [iframeLoading, setIframeLoading] = useState(true);
   const total = slides.length || 1;
 
   const fileProxyUrl = pres.file_upload ? proxyAbsUrl(pres.file_upload) : null;
-  const googleViewerUrl = fileProxyUrl
-    ? `https://docs.google.com/viewer?url=${encodeURIComponent(fileProxyUrl)}&embedded=true`
-    : null;
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -224,8 +283,6 @@ function FullscreenViewer({ pres, slides, slidesLoading, onClose }: {
     return () => window.removeEventListener("keydown", handleKey);
   }, [total, onClose, viewMode]);
 
-  useEffect(() => { setIframeLoading(true); }, [googleViewerUrl]);
-
   const slide = slides[current] ?? null;
 
   return (
@@ -240,25 +297,25 @@ function FullscreenViewer({ pres, slides, slidesLoading, onClose }: {
         <p className="text-sm font-semibold text-white truncate flex-1">{pres.presentation_name || pres.name}</p>
         {pres.project_name && <p className="text-xs text-gray-400 uppercase tracking-wide mr-2">{pres.project_name}</p>}
 
-        {/* View mode toggle */}
+        {/* View mode toggle – only for PPTX */}
         {isPptx && pres.file_upload && (
           <div className="flex items-center gap-1 bg-gray-800 rounded-lg p-1">
             <button
-              onClick={() => setViewMode("google")}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${viewMode === "google" ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white"}`}>
-              <Monitor className="w-3 h-3" /> Presentation
+              onClick={() => setViewMode("pptx")}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${viewMode === "pptx" ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white"}`}>
+              <Monitor className="w-3 h-3" /> Slides
             </button>
             <button
               onClick={() => setViewMode("native")}
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${viewMode === "native" ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white"}`}>
-              <LayoutGrid className="w-3 h-3" /> Slides
+              <LayoutGrid className="w-3 h-3" /> Outline
             </button>
           </div>
         )}
 
         {viewMode === "native" && <span className="text-xs text-gray-500 tabular-nums">{current + 1} / {total}</span>}
-        {pres.file_upload && (
-          <a href={fileProxyUrl!} download
+        {fileProxyUrl && (
+          <a href={fileProxyUrl} download
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors">
             <Download className="w-4 h-4" /> Download
           </a>
@@ -266,28 +323,12 @@ function FullscreenViewer({ pres, slides, slidesLoading, onClose }: {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-hidden relative bg-gray-950">
-        {viewMode === "google" && googleViewerUrl ? (
-          <>
-            {iframeLoading && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-400 z-10">
-                <Loader2 className="w-8 h-8 animate-spin" />
-                <p className="text-sm">Loading presentation…</p>
-                <p className="text-xs text-gray-600">Using Google Docs viewer</p>
-              </div>
-            )}
-            <iframe
-              key={googleViewerUrl}
-              src={googleViewerUrl}
-              className="w-full h-full border-0"
-              title={pres.presentation_name || pres.name}
-              onLoad={() => setIframeLoading(false)}
-              allow="fullscreen"
-            />
-          </>
+      <div className="flex-1 overflow-hidden relative">
+        {viewMode === "pptx" && fileProxyUrl ? (
+          <PptxViewer key={fileProxyUrl} fileUrl={fileProxyUrl} />
         ) : (
-          /* Native slide viewer */
-          <div className="w-full h-full flex flex-col">
+          /* Outline / native slide viewer */
+          <div className="w-full h-full bg-gray-950 flex flex-col">
             <div className="flex-1 flex items-center justify-center px-16 py-8 relative">
               {slidesLoading ? (
                 <div className="flex flex-col items-center gap-3 text-gray-400">
