@@ -705,7 +705,7 @@ export default function Drawings() {
                     <span className="text-xs text-gray-400">{d.modified ? formatDate(d.modified) : "—"}</span>
                     <div className="flex justify-end">
                       {d.attach ? (
-                        <span className="opacity-0 group-hover:opacity-100 transition-opacity px-2.5 py-1 rounded-lg text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200">
+                        <span className="px-2.5 py-1 rounded-lg text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200">
                           View
                         </span>
                       ) : (
