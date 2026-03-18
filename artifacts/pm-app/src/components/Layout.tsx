@@ -173,6 +173,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <LogOut className="w-3.5 h-3.5 shrink-0" />
           Sign out
         </button>
+        <p className="text-[9px] text-slate-600 text-center pt-1 tracking-wide">Powered by WTT INTERNATIONAL</p>
       </div>
     </div>
   );
