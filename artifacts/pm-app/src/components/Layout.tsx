@@ -9,6 +9,7 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth, type AuthUser } from "@/hooks/useAuth";
 import { AISearch } from "@/components/AISearch";
+import { WaterDropAnimation } from "@/components/WaterAnimation";
 
 function UserAvatar({ user, size = "sm" }: { user: AuthUser | null; size?: "sm" | "md" | "lg" }) {
   const [imgError, setImgError] = useState(false);
@@ -98,11 +99,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Logo / Brand */}
       <div className="relative flex items-center justify-between px-4 py-4 border-b border-white/[0.07]">
-        <div className="flex flex-col">
-          <span className="text-lg font-black tracking-tight leading-none flex items-baseline gap-0">
-            <span style={{ background: "linear-gradient(90deg, #818cf8, #a78bfa, #60a5fa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>FlowMatri</span><span style={{ color: "#22d3ee", textShadow: "0 0 12px rgba(34,211,238,0.7)", fontSize: "1.35em", lineHeight: 1 }}>x</span>
-          </span>
-          <span className="text-[9px] font-semibold tracking-[0.15em] uppercase text-slate-600 mt-0.5">Project Management</span>
+        <div className="flex items-center gap-2">
+          <WaterDropAnimation size="sm" />
+          <div className="flex flex-col">
+            <span className="text-lg font-black tracking-tight leading-none flex items-baseline gap-0">
+              <span style={{ background: "linear-gradient(90deg, #818cf8, #a78bfa, #60a5fa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>FlowMatri</span><span style={{ color: "#22d3ee", textShadow: "0 0 12px rgba(34,211,238,0.7)", fontSize: "1.35em", lineHeight: 1 }}>x</span>
+            </span>
+            <span className="text-[9px] font-semibold tracking-[0.15em] uppercase text-slate-600 mt-0.5">Project Management</span>
+          </div>
         </div>
         <button
           onClick={() => setCollapsed(true)}

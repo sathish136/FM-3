@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Eye, EyeOff, Loader2, User, Lock, LogIn } from "lucide-react";
+import { WaterDropAnimation } from "@/components/WaterAnimation";
 
 export default function Login() {
   const { login } = useAuth();
@@ -33,9 +34,12 @@ export default function Login() {
     >
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center mb-8">
-          <h1 className="text-4xl font-black tracking-tight leading-none mb-2 flex items-baseline gap-0">
-            <span style={{ background: "linear-gradient(90deg, #6366f1, #8b5cf6, #3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>FlowMatri</span><span style={{ color: "#06b6d4", textShadow: "0 0 16px rgba(6,182,212,0.5)", fontSize: "1.35em", lineHeight: 1 }}>x</span>
-          </h1>
+          <div className="flex items-center gap-2 mb-1">
+            <WaterDropAnimation size="lg" />
+            <h1 className="text-4xl font-black tracking-tight leading-none flex items-baseline gap-0">
+              <span style={{ background: "linear-gradient(90deg, #6366f1, #8b5cf6, #3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>FlowMatri</span><span style={{ color: "#06b6d4", textShadow: "0 0 16px rgba(6,182,212,0.5)", fontSize: "1.35em", lineHeight: 1 }}>x</span>
+            </h1>
+          </div>
           <p className="text-[10px] font-semibold tracking-[0.2em] uppercase text-gray-400 mb-3">Project Management</p>
           <p className="text-gray-500 text-sm">Sign in to your account</p>
         </div>
