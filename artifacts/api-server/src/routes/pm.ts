@@ -4,7 +4,7 @@ import {
   projectsTable, tasksTable, campaignsTable, leadsTable, teamMembersTable,
 } from "@workspace/db/schema";
 import { eq, sql } from "drizzle-orm";
-import { isErpNextConfigured, fetchErpNextProjects, fetchErpNextDrawings, fetchErpNextDesign3D, fetchErpNextDesign2D, fetchErpNextPresentations } from "../lib/erpnext";
+import { isErpNextConfigured, fetchErpNextProjects, fetchErpNextDrawings, fetchErpNextDesign3D, fetchErpNextDesign2D, fetchErpNextPresentations, fetchErpNextPID } from "../lib/erpnext";
 
 const router = Router();
 
@@ -240,6 +240,18 @@ router.get("/presentations", async (req, res) => {
     res.json(records);
   } catch (e) {
     console.error("Presentations fetch error:", e);
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── P&ID ─────────────────────────────────────────────────────────────────────
+
+router.get("/pid", async (_req, res) => {
+  try {
+    const records = await fetchErpNextPID();
+    res.json(records);
+  } catch (e) {
+    console.error("P&ID fetch error:", e);
     res.status(500).json({ error: String(e) });
   }
 });

@@ -54,7 +54,7 @@ const navItems: NavItem[] = [
   { path: "/design-2d", label: "Design 2D", icon: PenLine },
   { path: "/design-3d", label: "Design 3D", icon: Box },
   { path: "/presentation", label: "Presentation", icon: MonitorPlay },
-  { path: "https://erp.wttint.com/app/p-and-id", label: "P&ID Process", icon: GitBranch, external: true },
+  { path: "/pid", label: "P&ID Process", icon: GitBranch },
   { path: "/projects", label: "Projects", icon: Briefcase },
   { path: "/meeting-minutes", label: "Meeting Minutes", icon: FileText },
   { path: "/sheets", label: "Sheets", icon: Table2 },

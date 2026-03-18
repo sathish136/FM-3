@@ -21,6 +21,7 @@ import Presentation from "@/pages/Presentation";
 import Design2D from "@/pages/Design2D";
 import Drawings from "@/pages/Drawings";
 import Design3D from "@/pages/Design3D";
+import PID from "@/pages/PID";
 import Gallery from "@/pages/Gallery";
 import Settings from "@/pages/Settings";
 import Profile from "@/pages/Profile";
@@ -52,6 +53,7 @@ function ProtectedRoutes() {
       <Route path="/" component={Dashboard} />
       <Route path="/projects" component={Projects} />
       <Route path="/tasks" component={Kanban} />
+      <Route path="/pid" component={PID} />
       <Route path="/campaigns" component={Campaigns} />
       <Route path="/leads" component={Leads} />
       <Route path="/meeting-minutes" component={MeetingMinutes} />

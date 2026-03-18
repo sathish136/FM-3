@@ -174,6 +174,41 @@ export async function fetchErpNextDesign3D(department?: string): Promise<ErpDesi
   return (json.data || []) as ErpDesign3D[];
 }
 
+export interface ErpPID {
+  name: string;
+  project: string;
+  project_name: string;
+  revision: string;
+  attach: string | null;
+  modified: string;
+}
+
+export async function fetchErpNextPID(): Promise<ErpPID[]> {
+  const fields = JSON.stringify([
+    "name", "project", "project_name", "revision", "attach", "modified",
+  ]);
+
+  const params = new URLSearchParams({
+    fields,
+    limit_page_length: "500",
+    order_by: "modified desc",
+  });
+
+  const url = `${ERPNEXT_URL}/api/resource/P and ID?${params.toString()}`;
+
+  const res = await fetch(url, {
+    headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`ERPNext P&ID API error ${res.status}: ${body}`);
+  }
+
+  const json = await res.json();
+  return (json.data || []) as ErpPID[];
+}
+
 export interface ErpDesign2D {
   name: string;
   project: string;
