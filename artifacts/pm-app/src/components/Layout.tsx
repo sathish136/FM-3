@@ -28,7 +28,7 @@ function UserAvatar({ user, size = "sm" }: { user: AuthUser | null; size?: "sm" 
     );
   }
   return (
-    <div className={cn(dim, "rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white font-bold shrink-0 shadow-lg", text)}>
+    <div className={cn(dim, "rounded-full bg-gradient-to-br from-sky-500 to-blue-700 flex items-center justify-center text-white font-bold shrink-0 shadow-lg", text)}>
       {initials}
     </div>
   );
