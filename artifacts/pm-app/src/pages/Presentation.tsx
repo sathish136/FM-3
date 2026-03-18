@@ -38,10 +38,6 @@ function proxyAbsUrl(fileUrl: string): string {
   return `${origin}${BASE}/api/file-proxy?url=${encodeURIComponent(fileUrl)}`;
 }
 
-function officeViewerUrl(fileUrl: string): string {
-  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(proxyAbsUrl(fileUrl))}`;
-}
-
 function formatDate(iso: string) {
   try {
     const d = new Date(iso);
@@ -198,11 +194,30 @@ function SlideCard({ slide, pres, deckIdx, scale = 1 }: {
   );
 }
 
-// ── Fullscreen Viewer (Office Online) ────────────────────────────────────────
-function FullscreenViewer({ pres, onClose }: { pres: Presentation; onClose: () => void }) {
-  const ext = pres.file_upload ? fileExt(pres.file_upload) : "";
-  const isPptx = ext === "pptx" || ext === "ppt";
-  const viewerUrl = pres.file_upload && isPptx ? officeViewerUrl(pres.file_upload) : null;
+// ── Fullscreen Viewer (Native Slide Renderer) ─────────────────────────────────
+function FullscreenViewer({ pres, slides, slidesLoading, onClose }: {
+  pres: Presentation; slides: SlideData[]; slidesLoading: boolean; onClose: () => void;
+}) {
+  const [current, setCurrent] = useState(0);
+  const total = slides.length || 1;
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight" || e.key === "ArrowDown" || e.key === " ") {
+        e.preventDefault();
+        setCurrent(c => (c + 1) % total);
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+        e.preventDefault();
+        setCurrent(c => (c - 1 + total) % total);
+      } else if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [total, onClose]);
+
+  const slide = slides[current] ?? null;
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black">
@@ -214,6 +229,7 @@ function FullscreenViewer({ pres, onClose }: { pres: Presentation; onClose: () =
         <div className="h-4 w-px bg-gray-700" />
         <p className="text-sm font-semibold text-white truncate flex-1">{pres.presentation_name || pres.name}</p>
         {pres.project_name && <p className="text-xs text-gray-400 uppercase tracking-wide">{pres.project_name}</p>}
+        <span className="text-xs text-gray-500 tabular-nums">{current + 1} / {total}</span>
         {pres.file_upload && (
           <a href={proxyAbsUrl(pres.file_upload)} download
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors">
@@ -221,16 +237,56 @@ function FullscreenViewer({ pres, onClose }: { pres: Presentation; onClose: () =
           </a>
         )}
       </div>
-      <div className="flex-1 overflow-hidden bg-gray-900">
-        {viewerUrl ? (
-          <iframe src={viewerUrl} className="w-full h-full border-0"
-            title={pres.presentation_name || pres.name} allow="fullscreen" />
+
+      <div className="flex-1 flex items-center justify-center bg-gray-950 relative overflow-hidden">
+        {slidesLoading ? (
+          <div className="flex flex-col items-center gap-3 text-gray-400">
+            <Loader2 className="w-8 h-8 animate-spin" />
+            <p className="text-sm">Loading slides…</p>
+          </div>
+        ) : slide ? (
+          <div className="w-full h-full max-w-6xl mx-auto px-16 flex items-center justify-center">
+            <div className="w-full aspect-video rounded-2xl overflow-hidden shadow-2xl">
+              <SlideCard slide={slide} pres={pres} deckIdx={0} scale={1.6} />
+            </div>
+          </div>
         ) : (
-          <div className="flex items-center justify-center h-full text-gray-500 text-sm">
-            No preview available for this file type.
+          <div className="w-full h-full max-w-6xl mx-auto px-16 flex items-center justify-center">
+            <div className="w-full aspect-video rounded-2xl overflow-hidden shadow-2xl"
+              style={{ background: PALETTE[0].bg }}>
+              <div className="w-full h-full flex flex-col items-center justify-center text-white px-10">
+                <Layers className="w-12 h-12 mb-4 opacity-60" />
+                <h2 className="text-2xl font-bold text-center">{pres.presentation_name || pres.name}</h2>
+                {pres.project_name && <p className="text-sm text-white/60 mt-2 uppercase tracking-widest">{pres.project_name}</p>}
+              </div>
+            </div>
           </div>
         )}
+
+        {slides.length > 1 && (
+          <>
+            <button
+              onClick={() => setCurrent(c => (c - 1 + total) % total)}
+              className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center transition-all backdrop-blur-sm">
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+            <button
+              onClick={() => setCurrent(c => (c + 1) % total)}
+              className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center transition-all backdrop-blur-sm">
+              <ChevronRight className="w-6 h-6" />
+            </button>
+          </>
+        )}
       </div>
+
+      {slides.length > 1 && (
+        <div className="flex items-center justify-center gap-1.5 py-3 bg-gray-950 flex-shrink-0">
+          {slides.map((_, i) => (
+            <button key={i} onClick={() => setCurrent(i)}
+              className={`rounded-full transition-all ${i === current ? "w-6 h-2 bg-blue-500" : "w-2 h-2 bg-gray-600 hover:bg-gray-400"}`} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -345,7 +401,7 @@ export default function PresentationPage() {
 
   return (
     <>
-      {fullscreen && active && <FullscreenViewer pres={active} onClose={() => setFullscreen(false)} />}
+      {fullscreen && active && <FullscreenViewer pres={active} slides={slides} slidesLoading={slidesLoading} onClose={() => setFullscreen(false)} />}
 
       <Layout>
         <div className="p-6 space-y-6 max-w-7xl">
@@ -416,7 +472,7 @@ export default function PresentationPage() {
                       )}
                       <button
                         onClick={() => setFullscreen(true)}
-                        disabled={!isPptx || !active?.file_upload}
+                        disabled={!active}
                         className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:pointer-events-none text-white text-sm font-semibold shadow transition-colors">
                         <Maximize2 className="w-3.5 h-3.5" /> Full View
                       </button>
