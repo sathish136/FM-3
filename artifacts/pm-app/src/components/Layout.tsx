@@ -36,6 +36,7 @@ interface NavItem {
   path: string;
   label: string;
   icon: React.ElementType;
+  external?: boolean;
   children?: { path: string; label: string }[];
 }
 
@@ -53,7 +54,7 @@ const navItems: NavItem[] = [
   { path: "/design-2d", label: "Design 2D", icon: PenLine },
   { path: "/design-3d", label: "Design 3D", icon: Box },
   { path: "/presentation", label: "Presentation", icon: MonitorPlay },
-  { path: "/tasks", label: "P&ID Process", icon: GitBranch },
+  { path: "https://erp.wttint.com/app/p-and-id", label: "P&ID Process", icon: GitBranch, external: true },
   { path: "/projects", label: "Projects", icon: Briefcase },
   { path: "/meeting-minutes", label: "Meeting Minutes", icon: FileText },
   { path: "/sheets", label: "Sheets", icon: Table2 },
@@ -116,10 +117,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 onClick={() => { if (hasChildren) toggleExpand(item.path); }}
               >
                 {!hasChildren ? (
-                  <Link href={item.path} className="flex items-center gap-2.5 flex-1 min-w-0">
-                    <Icon className={cn("w-4 h-4 shrink-0", isActive ? "text-white" : "text-slate-400")} />
-                    <span className="truncate">{item.label}</span>
-                  </Link>
+                  item.external ? (
+                    <a href={item.path} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2.5 flex-1 min-w-0">
+                      <Icon className="w-4 h-4 shrink-0 text-slate-400" />
+                      <span className="truncate">{item.label}</span>
+                    </a>
+                  ) : (
+                    <Link href={item.path} className="flex items-center gap-2.5 flex-1 min-w-0">
+                      <Icon className={cn("w-4 h-4 shrink-0", isActive ? "text-white" : "text-slate-400")} />
+                      <span className="truncate">{item.label}</span>
+                    </Link>
+                  )
                 ) : (
                   <>
                     <Icon className="w-4 h-4 shrink-0 text-slate-400" />
@@ -187,6 +195,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
           return (
             <div key={`mini-${item.path}-${item.label}`} className="w-full relative group/tooltip">
               {!hasChildren ? (
+                item.external ? (
+                  <a href={item.path} target="_blank" rel="noopener noreferrer">
+                    <div className="w-full h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer text-slate-400 hover:bg-white/10 hover:text-white">
+                      <Icon style={{ width: 18, height: 18 }} />
+                    </div>
+                  </a>
+                ) : (
                 <Link href={item.path}>
                   <div className={cn(
                     "w-full h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer",
@@ -197,6 +212,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     <Icon className="w-4.5 h-4.5" style={{ width: 18, height: 18 }} />
                   </div>
                 </Link>
+                )
               ) : (
                 <div
                   className={cn(
