@@ -42,7 +42,6 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { path: "/", label: "Dashboard", icon: LayoutDashboard },
-  { path: "/viewer-options/mechanical", label: "3D Viewer", icon: Box },
   {
     path: "/drawings", label: "Drawings", icon: PenTool,
     children: [
