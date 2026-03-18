@@ -4,6 +4,7 @@ import {
   ChevronLeft, ChevronRight, AlertCircle, ZoomIn, ZoomOut,
   PanelRight, FileText, Layers, Building2,
   Calendar, Info, Download, Eye, EyeOff, Maximize2,
+  ChevronDown, FilterX,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
@@ -872,22 +873,78 @@ function RecordCard({
   );
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────────
+// ── FilterDropdown (matches Design 3D style) ──────────────────────────────────
+function FilterDropdown({
+  label, value, options, onChange,
+}: {
+  label: string; value: string; options: string[]; onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const isFiltered = value !== "";
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+          isFiltered
+            ? "bg-blue-50 border-blue-300 text-blue-700"
+            : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+        }`}
+      >
+        <span className="truncate max-w-[140px]">{value || label}</span>
+        <ChevronDown className="w-3.5 h-3.5 flex-shrink-0 opacity-60" />
+      </button>
+      {open && (
+        <div className="absolute top-full mt-1 left-0 z-30 bg-white border border-gray-200 rounded-xl shadow-lg min-w-[200px] max-h-64 overflow-auto py-1">
+          <button
+            onClick={() => { onChange(""); setOpen(false); }}
+            className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+              value === "" ? "text-blue-700 bg-blue-50 font-medium" : "text-gray-500 hover:bg-gray-50"
+            }`}
+          >
+            All {label}s
+          </button>
+          {options.map(opt => (
+            <button
+              key={opt}
+              onClick={() => { onChange(opt); setOpen(false); }}
+              className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                value === opt ? "text-blue-700 bg-blue-50 font-medium" : "text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Design2DPage() {
   const [records, setRecords] = useState<Design2DRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [deptFilter, setDeptFilter] = useState("");
+  const [selectedProject, setSelectedProject] = useState("");
+  const [selectedDept, setSelectedDept] = useState("");
   const [viewer, setViewer] = useState<Design2DRecord | null>(null);
 
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams();
-      if (deptFilter) params.set("department", deptFilter);
-      const res = await fetch(`${BASE}/api/design-2d?${params}`);
+      const res = await fetch(`${BASE}/api/design-2d`);
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -899,22 +956,32 @@ export default function Design2DPage() {
     }
   };
 
-  useEffect(() => { load(); }, [deptFilter]);
+  useEffect(() => { load(); }, []);
+
+  const projects = Array.from(
+    new Set(records.map(r => r.project_name || r.project).filter(Boolean))
+  ).sort();
+
+  const departments = Array.from(
+    new Set(records.map(r => r.department).filter(Boolean))
+  ).sort();
 
   const filtered = records.filter(r => {
-    if (!search) return true;
     const q = search.toLowerCase();
-    return (
+    const matchSearch = !q || (
       r.name.toLowerCase().includes(q) ||
+      (r.tag || "").toLowerCase().includes(q) ||
       (r.project_name || "").toLowerCase().includes(q) ||
-      (r.project || "").toLowerCase().includes(q) ||
-      (r.department || "").toLowerCase().includes(q) ||
       (r.system_name || "").toLowerCase().includes(q) ||
-      (r.tag || "").toLowerCase().includes(q)
+      (r.revision || "").toLowerCase().includes(q)
     );
+    const matchProject = !selectedProject || (r.project_name || r.project) === selectedProject;
+    const matchDept = !selectedDept || r.department === selectedDept;
+    return matchSearch && matchProject && matchDept;
   });
 
-  const departments = [...new Set(records.map(r => r.department).filter(Boolean))].sort();
+  const hasFilters = search || selectedProject || selectedDept;
+  const clearFilters = () => { setSearch(""); setSelectedProject(""); setSelectedDept(""); };
 
   const openViewer = useCallback((r: Design2DRecord) => {
     if (!r.attach) return;
@@ -924,57 +991,29 @@ export default function Design2DPage() {
     }
   }, []);
 
-  const isPdf = viewer?.attach ? fileExt(viewer.attach) === "pdf" : false;
-  const isImage = viewer?.attach
-    ? ["png", "jpg", "jpeg", "gif", "svg"].includes(fileExt(viewer.attach))
-    : false;
-  const isDxf = viewer?.attach ? fileExt(viewer.attach) === "dxf" : false;
-  const isDwg = viewer?.attach ? fileExt(viewer.attach) === "dwg" : false;
+  const isPdf   = viewer?.attach ? fileExt(viewer.attach) === "pdf" : false;
+  const isImage = viewer?.attach ? ["png","jpg","jpeg","gif","svg"].includes(fileExt(viewer.attach)) : false;
+  const isDxf   = viewer?.attach ? fileExt(viewer.attach) === "dxf" : false;
+  const isDwg   = viewer?.attach ? fileExt(viewer.attach) === "dwg" : false;
 
-  // Image viewer state
-  const [imgViewMode, setImgViewMode] = useState<ViewMode>("normal");
-  const [imgBgPreset, setImgBgPreset] = useState<BgPreset>("dark");
-  const [imgRotate, setImgRotate] = useState(0);
-
-  const resetImageState = () => {
-    setImgViewMode("normal");
-    setImgBgPreset("dark");
-    setImgRotate(0);
-  };
+  const [imgViewMode, setImgViewMode]   = useState<ViewMode>("normal");
+  const [imgBgPreset, setImgBgPreset]   = useState<BgPreset>("dark");
+  const [imgRotate,   setImgRotate]     = useState(0);
+  const resetImageState = () => { setImgViewMode("normal"); setImgBgPreset("dark"); setImgRotate(0); };
 
   return (
     <>
-      {/* PDF Fullscreen viewer */}
       {viewer && isPdf && (
-        <PdfViewer
-          src={proxyUrl(viewer.attach!)}
-          record={viewer}
-          onClose={() => setViewer(null)}
-        />
+        <PdfViewer src={proxyUrl(viewer.attach!)} record={viewer} onClose={() => setViewer(null)} />
       )}
-
-      {/* DXF Fullscreen viewer */}
       {viewer && isDxf && (
-        <DxfFileViewer
-          src={proxyUrl(viewer.attach!)}
-          record={viewer}
-          onClose={() => setViewer(null)}
-        />
+        <DxfFileViewer src={proxyUrl(viewer.attach!)} record={viewer} onClose={() => setViewer(null)} />
       )}
-
-      {/* DWG Fullscreen viewer */}
       {viewer && isDwg && (
-        <DwgFileViewer
-          src={proxyUrl(viewer.attach!)}
-          record={viewer}
-          onClose={() => setViewer(null)}
-        />
+        <DwgFileViewer src={proxyUrl(viewer.attach!)} record={viewer} onClose={() => setViewer(null)} />
       )}
-
-      {/* Image fullscreen viewer */}
       {viewer && isImage && (
         <div className="fixed inset-0 z-50 flex flex-col bg-gray-950">
-          {/* Header */}
           <div className="flex items-center gap-3 px-4 py-3 bg-[#16162a] border-b border-white/10 flex-shrink-0">
             <button onClick={() => { setViewer(null); resetImageState(); }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
@@ -984,17 +1023,12 @@ export default function Design2DPage() {
             <p className="text-sm font-semibold text-white truncate flex-1">{viewer.name}</p>
             <p className="text-xs text-gray-400">{viewer.project_name || viewer.project}</p>
           </div>
-
-          {/* Body */}
           <div className="flex-1 flex overflow-hidden">
-            {/* Left Toolbar */}
             <ViewerSidebar
               viewMode={imgViewMode} setViewMode={setImgViewMode}
               bgPreset={imgBgPreset} setBgPreset={setImgBgPreset}
               rotate={imgRotate} setRotate={setImgRotate}
             />
-
-            {/* Image area */}
             <div className={`flex-1 overflow-auto flex items-center justify-center p-6 transition-colors ${BG_CLASSES[imgBgPreset]}`}>
               <img
                 src={proxyUrl(viewer.attach!)}
@@ -1012,89 +1046,152 @@ export default function Design2DPage() {
       )}
 
       <Layout>
-        <div className="p-6 space-y-6 max-w-7xl">
+        <div className="p-6 space-y-5 max-w-6xl">
 
           {/* Header */}
-          <div className="flex items-start justify-between flex-wrap gap-3">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2.5">
-                <PenLine className="w-6 h-6 text-blue-600" />
-                Design 2D
-              </h1>
-              <p className="text-sm text-gray-500 mt-0.5">2D engineering drawings and design documents</p>
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center">
+                <PenLine className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Design 2D</h1>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  2D engineering drawings from ERPNext — click any record to open the viewer.
+                </p>
+              </div>
             </div>
-            <button onClick={load} disabled={loading}
-              className="p-2 rounded-lg border border-gray-200 text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50">
+            <button
+              onClick={load}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors shadow-sm disabled:opacity-50"
+            >
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+              Refresh
             </button>
           </div>
 
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 min-w-48">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search by name, project, department…"
-                className="w-full pl-9 pr-4 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white"
-              />
-              {search && (
-                <button onClick={() => setSearch("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-            <select
-              value={deptFilter}
-              onChange={e => setDeptFilter(e.target.value)}
-              className="px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 min-w-40"
-            >
-              <option value="">All Departments</option>
-              {departments.map(d => (
-                <option key={d} value={d}>{d}</option>
-              ))}
-            </select>
+            <FilterDropdown
+              label="Project"
+              value={selectedProject}
+              options={projects}
+              onChange={v => { setSelectedProject(v); setViewer(null); }}
+            />
+            <FilterDropdown
+              label="Department"
+              value={selectedDept}
+              options={departments}
+              onChange={v => { setSelectedDept(v); setViewer(null); }}
+            />
+            {hasFilters && (
+              <button
+                onClick={clearFilters}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-500 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-colors"
+              >
+                <FilterX className="w-3.5 h-3.5" /> Clear
+              </button>
+            )}
+            <span className="ml-auto text-sm text-gray-400">
+              {loading ? "Loading…" : `${filtered.length} record${filtered.length !== 1 ? "s" : ""}`}
+            </span>
           </div>
 
-          {/* Stats bar */}
-          {!loading && !error && records.length > 0 && (
-            <div className="flex items-center gap-4 text-sm text-gray-500">
-              <span><strong className="text-gray-900">{filtered.length}</strong> of {records.length} records</span>
-              {deptFilter && (
-                <button onClick={() => setDeptFilter("")}
-                  className="text-blue-600 hover:text-blue-800 text-xs flex items-center gap-1">
-                  <X className="w-3 h-3" /> Clear filter
-                </button>
-              )}
+          {/* Table */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-3">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search by name, tag, revision…"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
             </div>
-          )}
 
-          {/* Body */}
-          {loading ? (
-            <div className="py-24 flex flex-col items-center gap-3 text-gray-400">
-              <Loader2 className="w-8 h-8 animate-spin" />
-              <p className="text-sm">Fetching Design 2D records…</p>
+            {/* Table header */}
+            <div className="grid grid-cols-[2fr_1fr_1fr_110px_110px_90px] gap-4 px-5 py-2.5 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <span>Design No. / Tag</span>
+              <span>Project</span>
+              <span>Department</span>
+              <span>Revision</span>
+              <span>Modified</span>
+              <span className="text-right">File</span>
             </div>
-          ) : error ? (
-            <div className="py-20 text-center">
-              <AlertCircle className="w-8 h-8 text-red-300 mx-auto mb-2" />
-              <p className="text-sm text-red-500 mb-3">{error}</p>
-              <button onClick={load} className="text-sm text-blue-600 underline">Retry</button>
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="py-20 text-center text-gray-400">
-              <FolderOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
-              <p className="text-sm">{search || deptFilter ? "No records match your search" : "No Design 2D records found"}</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filtered.map(r => (
-                <RecordCard key={r.name} record={r} onClick={() => openViewer(r)} />
-              ))}
-            </div>
-          )}
+
+            {loading ? (
+              <div className="py-16 flex flex-col items-center gap-3 text-gray-400">
+                <Loader2 className="w-8 h-8 animate-spin" />
+                <p className="text-sm">Fetching 2D designs from ERPNext…</p>
+              </div>
+            ) : error ? (
+              <div className="py-12 text-center">
+                <AlertCircle className="w-8 h-8 text-red-300 mx-auto mb-2" />
+                <p className="text-sm text-red-500 mb-3">{error}</p>
+                <button onClick={load} className="text-sm text-blue-600 underline">Retry</button>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {filtered.map(r => {
+                  const ext = r.attach ? fileExt(r.attach) : "";
+                  const isViewable = ["pdf","png","jpg","jpeg","gif","svg","dxf","dwg"].includes(ext);
+                  return (
+                    <div
+                      key={r.name}
+                      onClick={() => openViewer(r)}
+                      className={`grid grid-cols-[2fr_1fr_1fr_110px_110px_90px] gap-4 px-5 py-3.5 items-center transition-colors group ${
+                        isViewable ? "hover:bg-gray-50 cursor-pointer" : "opacity-60"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center flex-shrink-0">
+                          <PenLine className="w-4 h-4 text-blue-600" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate group-hover:text-blue-700 transition-colors">
+                            {r.name}
+                          </p>
+                          {r.tag && <p className="text-xs text-gray-400 truncate">{r.tag}</p>}
+                        </div>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs text-gray-600 font-medium truncate">{r.project_name || r.project || "—"}</p>
+                        {r.project && r.project !== r.project_name && (
+                          <p className="text-[10px] text-gray-400 font-mono truncate">{r.project}</p>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-600 truncate">{r.department || "—"}</p>
+                      <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded w-fit">
+                        {r.revision || "—"}
+                      </span>
+                      <span className="text-xs text-gray-400">{r.modified ? formatDate(r.modified) : "—"}</span>
+                      <div className="flex justify-end">
+                        {isViewable ? (
+                          <span className="opacity-0 group-hover:opacity-100 transition-opacity px-2.5 py-1 rounded-lg text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200">
+                            View
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-300">—</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {filtered.length === 0 && !loading && (
+                  <div className="py-12 text-center text-gray-400">
+                    <FolderOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">No 2D designs found</p>
+                    <p className="text-xs mt-1 text-gray-300">2D designs are managed in ERPNext</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
         </div>
       </Layout>
