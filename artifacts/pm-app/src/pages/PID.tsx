@@ -6,7 +6,7 @@ import {
   PanelRight, Info, Layers, Clock, Sparkles, ListChecks,
   CheckCircle2, XCircle, Copy, Table2,
 } from "lucide-react";
-import { useState, useEffect, useCallback, useRef, type RefObject } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -105,25 +105,29 @@ function exportBomCsv(items: BOMItem[], pidName: string) {
   a.href = url;
   a.download = `BOM_${pidName}_${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
-  // Fix #4: delay revocation so browser has time to start the download
-  setTimeout(() => URL.revokeObjectURL(url), 150);
+  URL.revokeObjectURL(url);
 }
 
 // ── Full-screen PDF viewer ────────────────────────────────────────────────────
-function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
+function PdfViewer({
+  src, record, autoAnalyze = false,
+}: {
+  src: string;
+  record: PIDRecord;
+  autoAnalyze?: boolean;
+}) {
   const [numPages, setNumPages] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const [scale, setScale] = useState(1.2);
   const [pdfError, setPdfError] = useState(false);
   const [showPanel, setShowPanel] = useState(true);
-  const [activeTab, setActiveTab] = useState<PanelTab>("info");
+  const [activeTab, setActiveTab] = useState<PanelTab>(autoAnalyze ? "ai" : "info");
   const [views, setViews] = useState<ViewEntry[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [copiedBom, setCopiedBom] = useState(false);
-  // Fix #3: use React ref instead of document.querySelector to capture the PDF canvas
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const autoAnalyzeFiredRef = useRef(false);
 
   useEffect(() => {
     const key = `pid-views-${record.name}`;
@@ -138,18 +142,26 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
     }
   }, [record.name]);
 
+  // Auto-trigger analysis when PDF has loaded and autoAnalyze is requested
+  useEffect(() => {
+    if (!autoAnalyze || autoAnalyzeFiredRef.current || numPages === null) return;
+    autoAnalyzeFiredRef.current = true;
+    // Small delay so the canvas has time to render after PDF load
+    const t = setTimeout(() => { analyzeCurrentPage(); }, 600);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [numPages, autoAnalyze]);
+
   const analyzeCurrentPage = async () => {
     setAnalyzing(true);
     setAnalysisError(null);
     setActiveTab("ai");
 
     try {
-      // Fix #3: use canvasRef (attached to <Page>) instead of document.querySelector
-      // Fix #6: use PNG — preserves fine lines, thin text, and instrument symbols in P&IDs
-      const canvas = canvasRef.current;
-      if (!canvas) throw new Error("Could not capture the current page. Wait for the PDF to finish rendering, then try again.");
+      const canvas = document.querySelector(".react-pdf__Page__canvas") as HTMLCanvasElement | null;
+      if (!canvas) throw new Error("Could not capture the current page. Make sure a PDF is visible.");
 
-      const imageBase64 = canvas.toDataURL("image/png");
+      const imageBase64 = canvas.toDataURL("image/jpeg", 0.85);
 
       const res = await fetch(`${BASE}/api/pid/analyze`, {
         method: "POST",
@@ -292,8 +304,7 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
                 </div>
               }
             >
-              {/* Fix #3: canvasRef wired here so analyzeCurrentPage can read the rendered pixels */}
-              <Page pageNumber={page} scale={scale} renderTextLayer={true} renderAnnotationLayer={false} className="shadow-2xl" canvasRef={canvasRef as RefObject<HTMLCanvasElement>} />
+              <Page pageNumber={page} scale={scale} renderTextLayer={true} renderAnnotationLayer={false} className="shadow-2xl" />
             </Document>
           )}
         </div>
@@ -448,26 +459,7 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
               {/* AI tab */}
               {activeTab === "ai" && (
                 <div className="flex flex-col h-full">
-
-                  {/* State: analyzing (covers everything) */}
-                  {analyzing && (
-                    <div className="flex flex-col items-center justify-center flex-1 p-6 text-center gap-4">
-                      <div className="w-14 h-14 rounded-2xl bg-indigo-900/50 border border-indigo-700/50 flex items-center justify-center">
-                        <Sparkles className="w-7 h-7 text-indigo-400 animate-pulse" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-white mb-1">Analyzing P&amp;ID…</p>
-                        <p className="text-xs text-gray-400">AI is scanning page {page} for components</p>
-                      </div>
-                      <div className="flex gap-1.5">
-                        {[0, 1, 2].map(i => (
-                          <div key={i} className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* State: idle — no result, no error */}
+                  {/* State: idle / no result */}
                   {!analyzing && !analysisResult && !analysisError && (
                     <div className="flex flex-col items-center justify-center flex-1 p-6 text-center gap-4">
                       <div className="w-14 h-14 rounded-2xl bg-indigo-900/50 border border-indigo-700/50 flex items-center justify-center">
@@ -489,8 +481,26 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
                     </div>
                   )}
 
-                  {/* State: error only (no previous result to show) */}
-                  {!analyzing && analysisError && !analysisResult && (
+                  {/* State: analyzing */}
+                  {analyzing && (
+                    <div className="flex flex-col items-center justify-center flex-1 p-6 text-center gap-4">
+                      <div className="w-14 h-14 rounded-2xl bg-indigo-900/50 border border-indigo-700/50 flex items-center justify-center">
+                        <Sparkles className="w-7 h-7 text-indigo-400 animate-pulse" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-white mb-1">Analyzing P&amp;ID…</p>
+                        <p className="text-xs text-gray-400">AI is scanning page {page} for components</p>
+                      </div>
+                      <div className="flex gap-1.5">
+                        {[0, 1, 2].map(i => (
+                          <div key={i} className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* State: error */}
+                  {analysisError && !analyzing && (
                     <div className="p-4 space-y-3">
                       <div className="flex items-start gap-2 p-3 rounded-lg bg-red-900/30 border border-red-800/50">
                         <XCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
@@ -508,31 +518,11 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
                     </div>
                   )}
 
-                  {/* State: result (with optional error banner above) */}
-                  {/* Fix #5: error shows as a dismissable banner; previous BOM stays visible underneath */}
-                  {!analyzing && analysisResult && (
+                  {/* State: result */}
+                  {analysisResult && !analyzing && (
                     <div className="flex flex-col flex-1 min-h-0">
-
-                      {/* Error banner when re-analyze fails but old result still exists */}
-                      {analysisError && (
-                        <div className="flex items-start gap-2 px-3 py-2.5 bg-red-900/30 border-b border-red-800/50 flex-shrink-0">
-                          <XCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[10px] font-semibold text-red-300">Re-analysis failed — showing previous result</p>
-                            <p className="text-[9px] text-red-400 leading-snug mt-0.5 truncate">{analysisError}</p>
-                          </div>
-                          <button
-                            onClick={() => setAnalysisError(null)}
-                            className="text-red-500 hover:text-red-300 flex-shrink-0 ml-1"
-                            title="Dismiss"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      )}
-
                       {/* Result header */}
-                      <div className="p-3 border-b border-gray-800 space-y-2 flex-shrink-0">
+                      <div className="p-3 border-b border-gray-800 space-y-2">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5">
                             <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
@@ -541,12 +531,13 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
                             </span>
                           </div>
                           <span className="text-[9px] text-gray-500">
-                            Pg {analysisResult.analyzedPage} · {formatViewTime(analysisResult.timestamp)}
+                            Page {analysisResult.analyzedPage} · {formatViewTime(analysisResult.timestamp)}
                           </span>
                         </div>
                         {analysisResult.summary && (
                           <p className="text-[10px] text-gray-400 leading-relaxed">{analysisResult.summary}</p>
                         )}
+                        {/* Type breakdown chips */}
                         <div className="flex flex-wrap gap-1 pt-1">
                           {Object.entries(bomSummaryByType).slice(0, 8).map(([type, count]) => (
                             <span key={type} className={typeBadge(type)}>
@@ -557,7 +548,7 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
                       </div>
 
                       {/* Action buttons */}
-                      <div className="flex gap-1.5 p-2 border-b border-gray-800 flex-shrink-0">
+                      <div className="flex gap-1.5 p-2 border-b border-gray-800">
                         <button
                           onClick={() => exportBomCsv(analysisResult.items, record.name)}
                           className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-[10px] text-gray-300 transition-colors"
@@ -623,13 +614,14 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
 
 // ── Full-screen viewer overlay ────────────────────────────────────────────────
 function FileViewer({
-  record, filtered, currentIndex, onClose, onNavigate,
+  record, filtered, currentIndex, onClose, onNavigate, autoAnalyze = false,
 }: {
   record: PIDRecord;
   filtered: PIDRecord[];
   currentIndex: number;
   onClose: () => void;
   onNavigate: (idx: number) => void;
+  autoAnalyze?: boolean;
 }) {
   const src = record.attach ? proxyUrl(record.attach) : null;
 
@@ -699,7 +691,7 @@ function FileViewer({
             <p className="text-sm">No file attached to this record</p>
           </div>
         ) : (
-          <PdfViewer key={src} src={src} record={record} />
+          <PdfViewer key={src} src={src} record={record} autoAnalyze={autoAnalyze} />
         )}
       </div>
     </div>
@@ -713,6 +705,7 @@ export default function PID() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const [viewerAutoAnalyze, setViewerAutoAnalyze] = useState(false);
 
   const fetchRecords = async () => {
     setLoading(true);
@@ -742,8 +735,20 @@ export default function PID() {
     );
   });
 
-  const openViewer = useCallback((idx: number) => setViewerIndex(idx), []);
-  const closeViewer = useCallback(() => setViewerIndex(null), []);
+  const openViewer = useCallback((idx: number) => {
+    setViewerAutoAnalyze(false);
+    setViewerIndex(idx);
+  }, []);
+
+  const openViewerForAnalyze = useCallback((idx: number) => {
+    setViewerAutoAnalyze(true);
+    setViewerIndex(idx);
+  }, []);
+
+  const closeViewer = useCallback(() => {
+    setViewerIndex(null);
+    setViewerAutoAnalyze(false);
+  }, []);
 
   return (
     <>
@@ -754,6 +759,7 @@ export default function PID() {
           currentIndex={viewerIndex}
           onClose={closeViewer}
           onNavigate={setViewerIndex}
+          autoAnalyze={viewerAutoAnalyze}
         />
       )}
 
@@ -801,12 +807,13 @@ export default function PID() {
           </div>
 
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="grid grid-cols-[2fr_2fr_120px_120px_140px] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            {/* Table header — wider action column to fit 3 buttons */}
+            <div className="grid grid-cols-[2fr_2fr_100px_110px_1fr] gap-3 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
               <span>P&amp;ID No.</span>
               <span>Project</span>
               <span>Revision</span>
               <span>Modified</span>
-              <span className="text-right">Action</span>
+              <span className="text-right">Actions</span>
             </div>
 
             {loading ? (
@@ -827,7 +834,7 @@ export default function PID() {
                   return (
                     <div
                       key={r.name}
-                      className="grid grid-cols-[2fr_2fr_120px_120px_140px] gap-4 px-5 py-3.5 items-center hover:bg-gray-50 transition-colors group"
+                      className="grid grid-cols-[2fr_2fr_100px_110px_1fr] gap-3 px-5 py-3.5 items-center hover:bg-gray-50 transition-colors group"
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center flex-shrink-0 relative">
@@ -850,24 +857,41 @@ export default function PID() {
                         {r.revision || "—"}
                       </span>
                       <span className="text-xs text-gray-400">{r.modified ? formatDate(r.modified) : "—"}</span>
-                      <div className="flex justify-end gap-1.5">
+
+                      {/* Actions column */}
+                      <div className="flex justify-end items-center gap-1.5 flex-wrap">
                         {r.attach ? (
-                          <button
-                            onClick={() => openViewer(idx)}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-indigo-600 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-colors"
-                          >
-                            <Eye className="w-3.5 h-3.5" /> View
-                          </button>
+                          <>
+                            {/* View button */}
+                            <button
+                              onClick={() => openViewer(idx)}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-indigo-600 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-colors"
+                            >
+                              <Eye className="w-3.5 h-3.5" /> View
+                            </button>
+
+                            {/* Analyze button */}
+                            <button
+                              onClick={() => openViewerForAnalyze(idx)}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-violet-600 bg-violet-50 border border-violet-200 hover:bg-violet-100 transition-colors"
+                              title="Open and auto-analyze this P&ID with AI"
+                            >
+                              <Sparkles className="w-3.5 h-3.5" />
+                              {hasBom ? "Re-analyze" : "Analyze"}
+                            </button>
+                          </>
                         ) : (
-                          <span className="text-xs text-gray-300">—</span>
+                          <span className="text-xs text-gray-300">No file</span>
                         )}
+
+                        {/* BOM ready indicator */}
                         {hasBom && (
                           <button
                             onClick={() => openViewer(idx)}
-                            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium text-green-600 bg-green-50 border border-green-200 hover:bg-green-100 transition-colors"
-                            title="BOM available"
+                            className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium text-green-600 bg-green-50 border border-green-200 hover:bg-green-100 transition-colors"
+                            title="BOM already generated — click to view"
                           >
-                            <ListChecks className="w-3.5 h-3.5" />
+                            <ListChecks className="w-3.5 h-3.5" /> BOM
                           </button>
                         )}
                       </div>
@@ -887,14 +911,18 @@ export default function PID() {
           </div>
 
           {/* Legend */}
-          <div className="mt-3 flex items-center gap-3 text-[10px] text-gray-400">
-            <div className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />
-              BOM already generated
+          <div className="mt-3 flex items-center gap-4 text-[10px] text-gray-400 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <Eye className="w-3 h-3 text-indigo-400" />
+              View — opens the diagram
             </div>
             <div className="flex items-center gap-1.5">
-              <Sparkles className="w-3 h-3 text-indigo-400" />
-              Open a diagram → click "Analyze P&amp;ID" to generate BOM
+              <Sparkles className="w-3 h-3 text-violet-400" />
+              Analyze — opens diagram and auto-runs AI analysis
+            </div>
+            <div className="flex items-center gap-1.5">
+              <ListChecks className="w-3 h-3 text-green-400" />
+              BOM — analysis already done, click to view results
             </div>
           </div>
         </div>
