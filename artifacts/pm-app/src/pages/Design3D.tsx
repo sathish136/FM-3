@@ -2,13 +2,13 @@ import { Layout } from "@/components/Layout";
 import {
   Box, FolderOpen, Search, RefreshCw, Loader2, X,
   ChevronLeft, ChevronRight, AlertCircle, Cpu,
-  Eye, EyeOff, RotateCcw, Maximize2, Grid3X3,
-  Axis3D, ChevronDown, FilterX,
+  Eye, EyeOff, ChevronDown, FilterX,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { loadStepFile, type MeshData, type TreeNode } from "@/lib/stepLoader";
 import type { ViewMode, BgColor, ViewerRef } from "@/components/StepViewer3D";
 import MeshesPanel from "@/components/MeshesPanel";
+import * as THREE from "three";
 
 const StepViewer3D = lazy(() => import("@/components/StepViewer3D"));
 
@@ -45,23 +45,30 @@ function fileName(attach: string) {
 type LoadStatus = "idle" | "loading" | "loaded" | "error";
 
 function ToolBtn({
-  active, title, onClick, children,
+  active, title, onClick, children, danger,
 }: {
-  active?: boolean; title: string; onClick: () => void; children: React.ReactNode;
+  active?: boolean; title: string; onClick: () => void; children: React.ReactNode; danger?: boolean;
 }) {
   return (
     <button
       title={title}
       onClick={onClick}
-      className={`w-8 h-8 flex items-center justify-center rounded-md text-xs transition-colors border
+      className={`w-9 h-9 flex items-center justify-center rounded-md text-xs transition-colors border
         ${active
           ? "bg-blue-600 border-blue-500 text-white"
-          : "bg-transparent border-transparent text-gray-400 hover:bg-white/10 hover:text-white hover:border-white/10"
+          : danger
+          ? "bg-red-500/10 border-red-400/30 text-red-400 hover:bg-red-500/25 hover:border-red-400/60"
+          : "bg-white/10 border-white/15 text-gray-200 hover:bg-white/20 hover:text-white hover:border-white/30"
         }`}
     >
       {children}
     </button>
   );
+}
+
+function Divider() { return <div className="w-full h-px bg-white/10 my-1" />; }
+function Section({ label }: { label: string }) {
+  return <div className="text-[9px] text-gray-400 uppercase tracking-widest px-1 mt-2 mb-0.5 select-none">{label}</div>;
 }
 
 function ModelViewer({
@@ -88,6 +95,10 @@ function ModelViewer({
   const [bgColor, setBgColor] = useState<BgColor>("dark");
   const [showGrid, setShowGrid] = useState(true);
   const [showAxes, setShowAxes] = useState(true);
+  const [measureMode, setMeasureMode] = useState(false);
+  const [measureResult, setMeasureResult] = useState<{
+    dist: number; p1: THREE.Vector3; p2: THREE.Vector3;
+  } | null>(null);
 
   const viewerRef = useRef<ViewerRef>(null);
 
@@ -98,6 +109,7 @@ function ModelViewer({
     setTreeRoot(null);
     setHiddenMeshes(new Set());
     setError("");
+    setMeasureResult(null);
     try {
       const res = await fetch(proxyUrl(attachUrl));
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
@@ -134,33 +146,32 @@ function ModelViewer({
   const toggleMesh = useCallback((indices: number[], hidden: boolean) => {
     setHiddenMeshes(prev => {
       const next = new Set(prev);
-      if (hidden) {
-        indices.forEach(i => next.add(i));
-      } else {
-        indices.forEach(i => next.delete(i));
-      }
+      if (hidden) indices.forEach(i => next.add(i));
+      else indices.forEach(i => next.delete(i));
       return next;
     });
   }, []);
 
-  const BG_OPTIONS: { key: BgColor; label: string; cls: string }[] = [
-    { key: "dark", label: "Dark", cls: "bg-gray-800" },
-    { key: "navy", label: "Navy", cls: "bg-blue-950" },
-    { key: "white", label: "White", cls: "bg-white" },
-    { key: "light", label: "Light", cls: "bg-gray-200" },
-  ];
+  const clearMeasure = useCallback(() => {
+    viewerRef.current?.clearMeasure();
+    setMeasureResult(null);
+  }, []);
 
-  const VIEW_MODES: { key: ViewMode; label: string }[] = [
-    { key: "shaded", label: "Shaded" },
-    { key: "wireframe", label: "Wire" },
-    { key: "flat", label: "Flat" },
-    { key: "edges", label: "Edges" },
-  ];
+  const handleMeasureResult = useCallback((
+    dist: number | null,
+    p1: THREE.Vector3 | null,
+    p2: THREE.Vector3 | null,
+  ) => {
+    if (dist !== null && p1 && p2) setMeasureResult({ dist, p1, p2 });
+    else setMeasureResult(null);
+  }, []);
+
+  const isDark = bgColor === "dark" || bgColor === "navy";
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gray-950">
       {/* Top bar */}
-      <div className="flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-800 flex-shrink-0">
+      <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-900 border-b border-gray-800 flex-shrink-0">
         <button
           onClick={onClose}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors flex-shrink-0"
@@ -206,39 +217,75 @@ function ModelViewer({
       {/* Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left toolbar */}
-        <div className="w-12 bg-gray-900 border-r border-gray-800 flex flex-col items-center py-3 gap-1 flex-shrink-0">
+        <div className={`w-12 flex flex-col items-center py-2 gap-1 flex-shrink-0 overflow-y-auto ${isDark ? "bg-[#0f0f1a] border-r border-white/10" : "bg-white border-r border-gray-200"}`}>
+          <Section label="View" />
+          <ToolBtn title="Shaded" active={viewMode === "shaded"} onClick={() => setViewMode("shaded")}>
+            <svg viewBox="0 0 20 20" className="w-4 h-4" fill="currentColor"><circle cx="10" cy="10" r="7" /></svg>
+          </ToolBtn>
+          <ToolBtn title="Wireframe" active={viewMode === "wireframe"} onClick={() => setViewMode("wireframe")}>
+            <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="10" cy="10" r="7" /></svg>
+          </ToolBtn>
+          <ToolBtn title="Flat" active={viewMode === "flat"} onClick={() => setViewMode("flat")}>
+            <svg viewBox="0 0 20 20" className="w-4 h-4" fill="currentColor"><rect x="3" y="3" width="14" height="14" rx="2" /></svg>
+          </ToolBtn>
+          <ToolBtn title="Edges" active={viewMode === "edges"} onClick={() => setViewMode("edges")}>
+            <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="14" height="14" rx="2" /></svg>
+          </ToolBtn>
+
+          <Divider />
+          <Section label="Cam" />
+          <ToolBtn title="Isometric" onClick={() => viewerRef.current?.setCamera("iso")}>
+            <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.3">
+              <path d="M10 3L3 7v6l7 4 7-4V7L10 3z" /><line x1="10" y1="3" x2="10" y2="17" /><line x1="3" y1="7" x2="17" y2="7" />
+            </svg>
+          </ToolBtn>
+          <ToolBtn title="Front" onClick={() => viewerRef.current?.setCamera("front")}>F</ToolBtn>
+          <ToolBtn title="Top" onClick={() => viewerRef.current?.setCamera("top")}>T</ToolBtn>
+          <ToolBtn title="Right" onClick={() => viewerRef.current?.setCamera("right")}>R</ToolBtn>
           <ToolBtn title="Fit to view" onClick={() => viewerRef.current?.fitToView()}>
-            <RotateCcw className="w-4 h-4" />
+            <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.3">
+              <polyline points="2,6 2,2 6,2" /><polyline points="14,2 18,2 18,6" /><polyline points="18,14 18,18 14,18" /><polyline points="6,18 2,18 2,14" />
+            </svg>
           </ToolBtn>
-          <ToolBtn title="Isometric view" onClick={() => viewerRef.current?.setCamera("iso")}>
-            <Maximize2 className="w-4 h-4" />
-          </ToolBtn>
-          <div className="w-6 h-px bg-gray-700 my-1" />
-          <ToolBtn title="Toggle grid" active={showGrid} onClick={() => setShowGrid(s => !s)}>
-            <Grid3X3 className="w-4 h-4" />
-          </ToolBtn>
-          <ToolBtn title="Toggle axes" active={showAxes} onClick={() => setShowAxes(s => !s)}>
-            <Axis3D className="w-4 h-4" />
-          </ToolBtn>
-          <div className="w-6 h-px bg-gray-700 my-1" />
-          {VIEW_MODES.map(m => (
-            <ToolBtn key={m.key} title={m.label} active={viewMode === m.key} onClick={() => setViewMode(m.key)}>
-              <span className="text-[9px] font-bold uppercase">{m.label.slice(0, 2)}</span>
+
+          <Divider />
+          <Section label="BG" />
+          {(["dark","navy","light","white"] as BgColor[]).map(c => (
+            <ToolBtn key={c} title={c} active={bgColor === c} onClick={() => setBgColor(c)}>
+              <div className={`w-4 h-4 rounded-full border ${
+                c === "dark" ? "bg-[#0f0f1a] border-gray-600" :
+                c === "navy" ? "bg-[#1a1a2e] border-blue-800" :
+                c === "light" ? "bg-[#dde3ee] border-gray-400" :
+                "bg-white border-gray-400"
+              }`} />
             </ToolBtn>
           ))}
-          <div className="w-6 h-px bg-gray-700 my-1" />
-          {BG_OPTIONS.map(b => (
-            <button
-              key={b.key}
-              title={`Background: ${b.label}`}
-              onClick={() => setBgColor(b.key)}
-              className={`w-6 h-6 rounded-full border-2 transition-colors ${b.cls} ${bgColor === b.key ? "border-blue-400" : "border-transparent hover:border-gray-500"}`}
-            />
-          ))}
+
+          <Divider />
+          <Section label="Opts" />
+          <ToolBtn title="Grid" active={showGrid} onClick={() => setShowGrid(v => !v)}>
+            <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.3">
+              <line x1="0" y1="7" x2="20" y2="7" /><line x1="0" y1="13" x2="20" y2="13" />
+              <line x1="7" y1="0" x2="7" y2="20" /><line x1="13" y1="0" x2="13" y2="20" />
+            </svg>
+          </ToolBtn>
+          <ToolBtn title="Axes" active={showAxes} onClick={() => setShowAxes(v => !v)}>
+            <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <line x1="4" y1="16" x2="16" y2="4" stroke="blue" />
+              <line x1="4" y1="16" x2="16" y2="16" stroke="red" />
+              <line x1="4" y1="16" x2="4" y2="4" stroke="green" />
+            </svg>
+          </ToolBtn>
+          <ToolBtn title="Measure" active={measureMode} onClick={() => { setMeasureMode(v => !v); if (measureMode) clearMeasure(); }}>
+            <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.3">
+              <line x1="3" y1="17" x2="17" y2="3" /><line x1="3" y1="17" x2="6" y2="14" /><line x1="17" y1="3" x2="14" y2="6" />
+              <circle cx="3" cy="17" r="1.5" fill="currentColor" /><circle cx="17" cy="3" r="1.5" fill="currentColor" />
+            </svg>
+          </ToolBtn>
         </div>
 
         {/* 3D viewport */}
-        <div className="flex-1 relative overflow-hidden">
+        <div className={`flex-1 relative overflow-hidden ${isDark ? "bg-[#0f0f1a]" : "bg-[#dde3ee]"}`}>
           {status === "idle" && (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500">
               <Box className="w-12 h-12 mb-3 opacity-30" />
@@ -280,10 +327,36 @@ function ModelViewer({
                 bgColor={bgColor}
                 showGrid={showGrid}
                 showAxes={showAxes}
-                measureMode={false}
-                onMeasureResult={() => {}}
+                measureMode={measureMode}
+                onMeasureResult={handleMeasureResult}
               />
             </Suspense>
+          )}
+
+          {/* File / record badge */}
+          {status === "loaded" && (
+            <div className={`absolute top-3 left-3 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 pointer-events-none ${isDark ? "bg-black/50 text-gray-300" : "bg-white/80 text-gray-600"}`}>
+              <Box className="w-3.5 h-3.5" />
+              {record.name}
+            </div>
+          )}
+
+          {/* Measure result overlay */}
+          {measureResult && (
+            <div className="absolute top-3 right-3 bg-yellow-500/90 text-black rounded-xl px-4 py-3 text-sm shadow-lg flex items-center gap-3">
+              <div>
+                <div className="text-[10px] text-yellow-900 uppercase tracking-widest mb-0.5">Distance</div>
+                <div className="text-xl font-bold">{measureResult.dist.toFixed(4)} <span className="text-sm font-normal">units</span></div>
+              </div>
+              <button onClick={clearMeasure} className="ml-2 text-yellow-900 hover:text-black transition-colors font-bold">✕</button>
+            </div>
+          )}
+
+          {/* Controls hint */}
+          {status === "loaded" && (
+            <div className={`absolute bottom-3 left-3 rounded-lg px-3 py-2 text-[10px] pointer-events-none ${isDark ? "bg-black/40 text-gray-400" : "bg-black/20 text-gray-600"}`}>
+              🖱 Left: Rotate · Right: Pan · Scroll: Zoom
+            </div>
           )}
         </div>
 
