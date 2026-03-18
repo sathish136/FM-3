@@ -614,7 +614,7 @@ export default function Drawings() {
       )}
 
       <Layout>
-        <div className="p-6 space-y-5 max-w-6xl">
+        <div className="p-6 space-y-5">
 
           {/* Header */}
           <div className="flex items-start justify-between">
@@ -638,7 +638,7 @@ export default function Drawings() {
           </div>
 
           {/* Table card */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
             <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-3">
               <div className="relative flex-1 max-w-sm">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -656,7 +656,7 @@ export default function Drawings() {
             </div>
 
             {/* Table header */}
-            <div className="grid grid-cols-[2fr_1fr_130px_110px_90px] gap-4 px-5 py-2.5 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <div className="min-w-[600px] grid grid-cols-[2fr_1fr_130px_110px_90px] gap-4 px-5 py-2.5 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
               <span>Drawing / Tag</span>
               <span>Project</span>
               <span>Revision</span>
@@ -680,7 +680,7 @@ export default function Drawings() {
                   <div
                     key={d.name}
                     onClick={() => openViewer(idx)}
-                    className="grid grid-cols-[2fr_1fr_130px_110px_90px] gap-4 px-5 py-3.5 items-center hover:bg-gray-50 transition-colors group cursor-pointer"
+                    className="min-w-[600px] grid grid-cols-[2fr_1fr_130px_110px_90px] gap-4 px-5 py-3.5 items-center hover:bg-gray-50 transition-colors group cursor-pointer"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className={`w-8 h-8 rounded-lg ${cfg.bg} ${cfg.border} border flex items-center justify-center flex-shrink-0`}>

@@ -806,9 +806,9 @@ export default function PID() {
             </span>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
             {/* Table header — wider action column to fit 3 buttons */}
-            <div className="grid grid-cols-[2fr_2fr_100px_110px_1fr] gap-3 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <div className="min-w-[680px] grid grid-cols-[2fr_2fr_100px_110px_minmax(220px,1fr)] gap-3 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
               <span>P&amp;ID No.</span>
               <span>Project</span>
               <span>Revision</span>
@@ -834,7 +834,7 @@ export default function PID() {
                   return (
                     <div
                       key={r.name}
-                      className="grid grid-cols-[2fr_2fr_100px_110px_1fr] gap-3 px-5 py-3.5 items-center hover:bg-gray-50 transition-colors group"
+                      className="min-w-[680px] grid grid-cols-[2fr_2fr_100px_110px_minmax(220px,1fr)] gap-3 px-5 py-3.5 items-center hover:bg-gray-50 transition-colors group"
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center flex-shrink-0 relative">

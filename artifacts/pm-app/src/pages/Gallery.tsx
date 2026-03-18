@@ -39,7 +39,7 @@ export default function Gallery() {
 
   return (
     <Layout>
-      <div className="p-6 space-y-5 max-w-6xl">
+      <div className="p-6 space-y-5">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>

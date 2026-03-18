@@ -1439,7 +1439,7 @@ export default function Design2DPage() {
       )}
 
       <Layout>
-        <div className="p-6 space-y-5 max-w-6xl">
+        <div className="p-6 space-y-5">
 
           {/* Header */}
           <div className="flex items-start justify-between">
@@ -1492,7 +1492,7 @@ export default function Design2DPage() {
           </div>
 
           {/* Table */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
             <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-3">
               <div className="relative flex-1 max-w-sm">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -1507,7 +1507,7 @@ export default function Design2DPage() {
             </div>
 
             {/* Table header */}
-            <div className="grid grid-cols-[2fr_1fr_1fr_110px_110px_90px] gap-4 px-5 py-2.5 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <div className="min-w-[640px] grid grid-cols-[2fr_1fr_1fr_110px_110px_90px] gap-4 px-5 py-2.5 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
               <span>Design No. / Tag</span>
               <span>Project</span>
               <span>Department</span>
@@ -1536,7 +1536,7 @@ export default function Design2DPage() {
                     <div
                       key={r.name}
                       onClick={() => openViewer(r)}
-                      className={`grid grid-cols-[2fr_1fr_1fr_110px_110px_90px] gap-4 px-5 py-3.5 items-center transition-colors group ${
+                      className={`min-w-[640px] grid grid-cols-[2fr_1fr_1fr_110px_110px_90px] gap-4 px-5 py-3.5 items-center transition-colors group ${
                         isViewable ? "hover:bg-gray-50 cursor-pointer" : "opacity-60"
                       }`}
                     >
