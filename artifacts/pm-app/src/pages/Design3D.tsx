@@ -346,24 +346,24 @@ function ModelViewer({
             <span
               className={`opacity-30 ${isDark ? "text-white" : "text-gray-700"}`}
               style={{
-                fontSize: "26px",
-                fontFamily: "'Georgia', 'Times New Roman', serif",
-                fontWeight: 700,
-                letterSpacing: "0.3em",
+                fontSize: "20px",
+                fontFamily: "'Trebuchet MS', 'Century Gothic', 'Gill Sans', Arial, sans-serif",
+                fontWeight: 800,
+                letterSpacing: "0.35em",
                 textTransform: "uppercase",
-                fontStyle: "italic",
+                fontStyle: "normal",
                 lineHeight: 1.1,
               }}
             >
-              WTT International
+              WTT INTERNATIONAL
             </span>
             <span
               className={`opacity-25 ${isDark ? "text-white" : "text-gray-700"}`}
               style={{
-                fontSize: "12px",
-                fontFamily: "'Georgia', 'Times New Roman', serif",
+                fontSize: "10px",
+                fontFamily: "'Trebuchet MS', 'Century Gothic', 'Gill Sans', Arial, sans-serif",
                 fontWeight: 400,
-                letterSpacing: "0.18em",
+                letterSpacing: "0.22em",
                 fontStyle: "italic",
                 textTransform: "uppercase",
               }}
