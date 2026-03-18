@@ -196,39 +196,50 @@ function SlideCard({ slide, pres, deckIdx, scale = 1 }: {
 
 // ── pptx-preview powered viewer ───────────────────────────────────────────────
 function PptxViewer({ fileUrl }: { fileUrl: string }) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [errorMsg, setErrorMsg] = useState("");
-  const viewerRef = useRef<ReturnType<typeof initPptxPreview> | null>(null);
 
   useEffect(() => {
-    if (!containerRef.current) return;
-
-    const el = containerRef.current;
-    const { clientWidth, clientHeight } = el;
-    const w = clientWidth || 1280;
-    const h = clientHeight || 720;
+    if (!containerRef.current || !wrapperRef.current) return;
 
     let cancelled = false;
     setStatus("loading");
 
-    const viewer = initPptxPreview(el, { width: w, height: h });
-    viewerRef.current = viewer;
+    // Measure from the wrapper (which is always visible and has proper dimensions)
+    const wrapper = wrapperRef.current;
+    const w = wrapper.clientWidth || window.innerWidth;
+    const h = wrapper.clientHeight || window.innerHeight - 48;
+
+    // Clear any previous render
+    containerRef.current.innerHTML = "";
+
+    let viewer: ReturnType<typeof initPptxPreview>;
+    try {
+      viewer = initPptxPreview(containerRef.current, { width: w, height: h });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("pptx-preview init error:", e);
+      if (!cancelled) { setErrorMsg(msg); setStatus("error"); }
+      return;
+    }
 
     fetch(fileUrl)
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.arrayBuffer();
       })
-      .then(buf => {
+      .then(async buf => {
         if (cancelled) return;
-        viewer.preview(buf);
-        setStatus("ready");
+        // preview() returns a Promise that resolves when all slides are rendered
+        await (viewer.preview(buf) as unknown as Promise<unknown>);
+        if (!cancelled) setStatus("ready");
       })
       .catch(err => {
         if (cancelled) return;
         console.error("pptx-preview error:", err);
-        setErrorMsg(err.message || "Failed to load");
+        setErrorMsg(err.message || "Failed to render presentation");
         setStatus("error");
       });
 
@@ -236,22 +247,31 @@ function PptxViewer({ fileUrl }: { fileUrl: string }) {
   }, [fileUrl]);
 
   return (
-    <div className="w-full h-full relative bg-gray-950 overflow-auto">
+    <div ref={wrapperRef} className="w-full h-full relative bg-white overflow-auto">
+      {/* Loading overlay — sits on top of the container so container dimensions are unaffected */}
       {status === "loading" && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-400 z-10 bg-gray-950">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-400 z-10 bg-gray-950 pointer-events-none">
           <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
-          <p className="text-sm font-medium">Rendering slides…</p>
-          <p className="text-xs text-gray-600">Parsing PPTX content</p>
+          <p className="text-sm font-medium text-gray-300">Rendering slides…</p>
+          <p className="text-xs text-gray-500">Parsing PPTX content</p>
         </div>
       )}
       {status === "error" && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-400 bg-gray-950">
-          <AlertCircle className="w-10 h-10 text-red-400" />
-          <p className="text-sm font-medium text-red-300">Could not render slides</p>
-          <p className="text-xs text-gray-500">{errorMsg}</p>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-gray-950 z-10">
+          <AlertCircle className="w-12 h-12 text-red-400" />
+          <p className="text-sm font-medium text-red-300">Could not render presentation</p>
+          <p className="text-xs text-gray-500 max-w-xs text-center">{errorMsg}</p>
+          <a href={fileUrl} download className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-gray-800 text-gray-200 hover:bg-gray-700 transition-colors">
+            <Download className="w-4 h-4" /> Download instead
+          </a>
         </div>
       )}
-      <div ref={containerRef} className="w-full min-h-full" style={{ visibility: status === "ready" ? "visible" : "hidden" }} />
+      {/* Container is always in DOM so pptx-preview can measure it */}
+      <div
+        ref={containerRef}
+        className="w-full"
+        style={{ opacity: status === "ready" ? 1 : 0, transition: "opacity 0.3s ease" }}
+      />
     </div>
   );
 }
