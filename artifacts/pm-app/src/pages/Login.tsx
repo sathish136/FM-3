@@ -33,14 +33,23 @@ export default function Login() {
       }}
     >
       <div className="w-full max-w-md">
-        <div className="flex flex-col items-center mb-8">
-          <div className="flex items-center gap-2 mb-1">
-            <WaterDropAnimation size="lg" />
-            <h1 className="text-4xl font-black tracking-tight leading-none flex items-baseline gap-0">
-              <span style={{ background: "linear-gradient(90deg, #6366f1, #8b5cf6, #3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>FlowMatri</span><span style={{ color: "#06b6d4", textShadow: "0 0 16px rgba(6,182,212,0.5)", fontSize: "1.35em", lineHeight: 1 }}>x</span>
-            </h1>
-          </div>
-          <p className="text-[10px] font-semibold tracking-[0.2em] uppercase text-gray-400 mb-3">Project Management</p>
+        <div className="flex flex-col items-center mb-8 text-center">
+          {/* Company logo */}
+          <img
+            src="https://res.cloudinary.com/dd8fsxba6/image/upload/v1755166473/logo-bg_less_yaefzj.png"
+            alt="WTT International"
+            className="h-16 w-auto object-contain mb-3"
+          />
+
+          {/* Water animation centered above title */}
+          <WaterDropAnimation size="md" />
+
+          {/* Title */}
+          <h1 className="text-4xl font-black tracking-tight leading-none flex items-baseline gap-0 mt-1">
+            <span style={{ background: "linear-gradient(90deg, #6366f1, #8b5cf6, #3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>FlowMatri</span><span style={{ color: "#06b6d4", textShadow: "0 0 16px rgba(6,182,212,0.5)", fontSize: "1.35em", lineHeight: 1 }}>x</span>
+          </h1>
+
+          <p className="text-[10px] font-semibold tracking-[0.2em] uppercase text-gray-400 mt-2 mb-3">Project Management</p>
           <p className="text-gray-500 text-sm">Sign in to your account</p>
         </div>
 
@@ -141,7 +150,7 @@ export default function Login() {
         </div>
 
         <p className="text-center text-gray-400 text-xs mt-6">
-          Secure · {new Date().getFullYear()} FlowMatrix
+          © {new Date().getFullYear()} WTT International India. All rights reserved.
         </p>
       </div>
     </div>
