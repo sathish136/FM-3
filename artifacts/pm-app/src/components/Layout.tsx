@@ -245,7 +245,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       )}
 
       <aside className={cn(
-        "hidden md:flex flex-col flex-shrink-0 transition-all duration-300",
+        "flex flex-col flex-shrink-0 transition-all duration-300",
         "bg-[#0f172a]",
         collapsed ? "w-[64px]" : "w-56"
       )}>
