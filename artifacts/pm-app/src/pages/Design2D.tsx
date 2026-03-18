@@ -1171,7 +1171,7 @@ export default function Design2DPage() {
                       <span className="text-xs text-gray-400">{r.modified ? formatDate(r.modified) : "—"}</span>
                       <div className="flex justify-end">
                         {isViewable ? (
-                          <span className="opacity-0 group-hover:opacity-100 transition-opacity px-2.5 py-1 rounded-lg text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200">
+                          <span className="px-2.5 py-1 rounded-lg text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200">
                             View
                           </span>
                         ) : (
