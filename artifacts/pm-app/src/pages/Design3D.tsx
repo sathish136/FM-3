@@ -342,8 +342,18 @@ function ModelViewer({
           )}
 
           {/* Watermark */}
-          <div className="absolute top-3 right-3 pointer-events-none select-none flex flex-col items-end">
-            <span className={`text-xl font-black tracking-[0.2em] uppercase opacity-20 ${isDark ? "text-white" : "text-gray-800"}`}>
+          <div className="absolute top-10 right-10 pointer-events-none select-none flex flex-col items-end">
+            <span
+              className={`opacity-25 ${isDark ? "text-white" : "text-gray-700"}`}
+              style={{
+                fontSize: "22px",
+                fontFamily: "'Georgia', 'Times New Roman', serif",
+                fontWeight: 700,
+                letterSpacing: "0.25em",
+                textTransform: "uppercase",
+                fontStyle: "italic",
+              }}
+            >
               WTT INTERNATIONAL
             </span>
           </div>
