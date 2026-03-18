@@ -2,7 +2,7 @@ import { Layout } from "@/components/Layout";
 import {
   Layers, Eye, Share2, Plus, Loader2, FolderOpen,
   AlertCircle, Maximize2, Download, RefreshCw, ExternalLink, X,
-  ChevronLeft, ChevronRight, Play, Pause, Clock, Monitor, Film,
+  ChevronLeft, ChevronRight, Play, Pause, Clock, Monitor, Film, LayoutGrid,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import JSZip from "jszip";
@@ -193,99 +193,147 @@ function SlideCard({ slide, pres, deckIdx, scale = 1 }: {
   );
 }
 
-// ── Fullscreen Viewer (Native Slide Renderer) ─────────────────────────────────
+// ── Fullscreen Viewer ─────────────────────────────────────────────────────────
 function FullscreenViewer({ pres, slides, slidesLoading, onClose }: {
   pres: Presentation; slides: SlideData[]; slidesLoading: boolean; onClose: () => void;
 }) {
+  const ext = pres.file_upload ? fileExt(pres.file_upload) : "";
+  const isPptx = ext === "pptx" || ext === "ppt";
+  const [viewMode, setViewMode] = useState<"google" | "native">(isPptx && pres.file_upload ? "google" : "native");
   const [current, setCurrent] = useState(0);
+  const [iframeLoading, setIframeLoading] = useState(true);
   const total = slides.length || 1;
+
+  const fileProxyUrl = pres.file_upload ? proxyAbsUrl(pres.file_upload) : null;
+  const googleViewerUrl = fileProxyUrl
+    ? `https://docs.google.com/viewer?url=${encodeURIComponent(fileProxyUrl)}&embedded=true`
+    : null;
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
+      if (viewMode !== "native") return;
       if (e.key === "ArrowRight" || e.key === "ArrowDown" || e.key === " ") {
-        e.preventDefault();
-        setCurrent(c => (c + 1) % total);
+        e.preventDefault(); setCurrent(c => (c + 1) % total);
       } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
-        e.preventDefault();
-        setCurrent(c => (c - 1 + total) % total);
+        e.preventDefault(); setCurrent(c => (c - 1 + total) % total);
       } else if (e.key === "Escape") {
         onClose();
       }
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [total, onClose]);
+  }, [total, onClose, viewMode]);
+
+  useEffect(() => { setIframeLoading(true); }, [googleViewerUrl]);
 
   const slide = slides[current] ?? null;
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black">
-      <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-950 border-b border-gray-800 flex-shrink-0">
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-950 border-b border-gray-800 flex-shrink-0">
         <button onClick={onClose}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors">
           <X className="w-4 h-4" /> Exit
         </button>
         <div className="h-4 w-px bg-gray-700" />
         <p className="text-sm font-semibold text-white truncate flex-1">{pres.presentation_name || pres.name}</p>
-        {pres.project_name && <p className="text-xs text-gray-400 uppercase tracking-wide">{pres.project_name}</p>}
-        <span className="text-xs text-gray-500 tabular-nums">{current + 1} / {total}</span>
+        {pres.project_name && <p className="text-xs text-gray-400 uppercase tracking-wide mr-2">{pres.project_name}</p>}
+
+        {/* View mode toggle */}
+        {isPptx && pres.file_upload && (
+          <div className="flex items-center gap-1 bg-gray-800 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode("google")}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${viewMode === "google" ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white"}`}>
+              <Monitor className="w-3 h-3" /> Presentation
+            </button>
+            <button
+              onClick={() => setViewMode("native")}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${viewMode === "native" ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white"}`}>
+              <LayoutGrid className="w-3 h-3" /> Slides
+            </button>
+          </div>
+        )}
+
+        {viewMode === "native" && <span className="text-xs text-gray-500 tabular-nums">{current + 1} / {total}</span>}
         {pres.file_upload && (
-          <a href={proxyAbsUrl(pres.file_upload)} download
+          <a href={fileProxyUrl!} download
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors">
             <Download className="w-4 h-4" /> Download
           </a>
         )}
       </div>
 
-      <div className="flex-1 flex items-center justify-center bg-gray-950 relative overflow-hidden">
-        {slidesLoading ? (
-          <div className="flex flex-col items-center gap-3 text-gray-400">
-            <Loader2 className="w-8 h-8 animate-spin" />
-            <p className="text-sm">Loading slides…</p>
-          </div>
-        ) : slide ? (
-          <div className="w-full h-full max-w-6xl mx-auto px-16 flex items-center justify-center">
-            <div className="w-full aspect-video rounded-2xl overflow-hidden shadow-2xl">
-              <SlideCard slide={slide} pres={pres} deckIdx={0} scale={1.6} />
-            </div>
-          </div>
-        ) : (
-          <div className="w-full h-full max-w-6xl mx-auto px-16 flex items-center justify-center">
-            <div className="w-full aspect-video rounded-2xl overflow-hidden shadow-2xl"
-              style={{ background: PALETTE[0].bg }}>
-              <div className="w-full h-full flex flex-col items-center justify-center text-white px-10">
-                <Layers className="w-12 h-12 mb-4 opacity-60" />
-                <h2 className="text-2xl font-bold text-center">{pres.presentation_name || pres.name}</h2>
-                {pres.project_name && <p className="text-sm text-white/60 mt-2 uppercase tracking-widest">{pres.project_name}</p>}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {slides.length > 1 && (
+      {/* Content */}
+      <div className="flex-1 overflow-hidden relative bg-gray-950">
+        {viewMode === "google" && googleViewerUrl ? (
           <>
-            <button
-              onClick={() => setCurrent(c => (c - 1 + total) % total)}
-              className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center transition-all backdrop-blur-sm">
-              <ChevronLeft className="w-6 h-6" />
-            </button>
-            <button
-              onClick={() => setCurrent(c => (c + 1) % total)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center transition-all backdrop-blur-sm">
-              <ChevronRight className="w-6 h-6" />
-            </button>
+            {iframeLoading && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-400 z-10">
+                <Loader2 className="w-8 h-8 animate-spin" />
+                <p className="text-sm">Loading presentation…</p>
+                <p className="text-xs text-gray-600">Using Google Docs viewer</p>
+              </div>
+            )}
+            <iframe
+              key={googleViewerUrl}
+              src={googleViewerUrl}
+              className="w-full h-full border-0"
+              title={pres.presentation_name || pres.name}
+              onLoad={() => setIframeLoading(false)}
+              allow="fullscreen"
+            />
           </>
+        ) : (
+          /* Native slide viewer */
+          <div className="w-full h-full flex flex-col">
+            <div className="flex-1 flex items-center justify-center px-16 py-8 relative">
+              {slidesLoading ? (
+                <div className="flex flex-col items-center gap-3 text-gray-400">
+                  <Loader2 className="w-8 h-8 animate-spin" />
+                  <p className="text-sm">Parsing slides…</p>
+                </div>
+              ) : slide ? (
+                <div className="w-full max-w-5xl aspect-video rounded-2xl overflow-hidden shadow-2xl">
+                  <SlideCard slide={slide} pres={pres} deckIdx={0} scale={1.6} />
+                </div>
+              ) : (
+                <div className="w-full max-w-5xl aspect-video rounded-2xl overflow-hidden shadow-2xl"
+                  style={{ background: PALETTE[0].bg }}>
+                  <div className="w-full h-full flex flex-col items-center justify-center text-white px-10">
+                    <Layers className="w-12 h-12 mb-4 opacity-60" />
+                    <h2 className="text-2xl font-bold text-center">{pres.presentation_name || pres.name}</h2>
+                    {pres.project_name && <p className="text-sm text-white/60 mt-2 uppercase tracking-widest">{pres.project_name}</p>}
+                  </div>
+                </div>
+              )}
+
+              {slides.length > 1 && (
+                <>
+                  <button onClick={() => setCurrent(c => (c - 1 + total) % total)}
+                    className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center transition-all backdrop-blur-sm">
+                    <ChevronLeft className="w-6 h-6" />
+                  </button>
+                  <button onClick={() => setCurrent(c => (c + 1) % total)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center transition-all backdrop-blur-sm">
+                    <ChevronRight className="w-6 h-6" />
+                  </button>
+                </>
+              )}
+            </div>
+
+            {slides.length > 1 && (
+              <div className="flex items-center justify-center gap-1.5 py-3 flex-shrink-0">
+                {slides.map((_, i) => (
+                  <button key={i} onClick={() => setCurrent(i)}
+                    className={`rounded-full transition-all ${i === current ? "w-6 h-2 bg-blue-500" : "w-2 h-2 bg-gray-600 hover:bg-gray-400"}`} />
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
-
-      {slides.length > 1 && (
-        <div className="flex items-center justify-center gap-1.5 py-3 bg-gray-950 flex-shrink-0">
-          {slides.map((_, i) => (
-            <button key={i} onClick={() => setCurrent(i)}
-              className={`rounded-full transition-all ${i === current ? "w-6 h-2 bg-blue-500" : "w-2 h-2 bg-gray-600 hover:bg-gray-400"}`} />
-          ))}
-        </div>
-      )}
     </div>
   );
 }

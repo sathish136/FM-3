@@ -166,11 +166,23 @@ authRouter.get("/file-proxy", async (req, res) => {
     });
     if (!fileRes.ok) return res.status(fileRes.status).send("File not found");
 
-    const contentType = fileRes.headers.get("content-type") || "application/octet-stream";
+    const ext = url.split(".").pop()?.toLowerCase() || "";
+    const mimeMap: Record<string, string> = {
+      pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      ppt: "application/vnd.ms-powerpoint",
+      pdf: "application/pdf",
+      docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      png: "image/png",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+    };
+    const contentType = mimeMap[ext] || fileRes.headers.get("content-type") || "application/octet-stream";
 
     res.setHeader("Content-Type", contentType);
-    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.setHeader("Cache-Control", "public, max-age=3600");
     res.setHeader("Content-Disposition", "inline");
+    res.setHeader("Access-Control-Allow-Origin", "*");
 
     const buf = await fileRes.arrayBuffer();
     res.send(Buffer.from(buf));
