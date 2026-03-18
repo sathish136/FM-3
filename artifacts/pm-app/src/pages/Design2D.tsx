@@ -519,8 +519,6 @@ function DwgFileViewer({
   }, [src]);
 
   const fitView = () => managerRef.current?.sendStringToExecute("zoom");
-  const zoomIn  = () => managerRef.current?.sendStringToExecute("zoomin");
-  const zoomOut = () => managerRef.current?.sendStringToExecute("zoomout");
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gray-950">
@@ -574,14 +572,8 @@ function DwgFileViewer({
 
           <TbDivider />
           <TbSection label="Zoom" />
-          <ToolBtn title="Zoom in" onClick={zoomIn}>
-            <ZoomIn className="w-4 h-4" />
-          </ToolBtn>
-          <ToolBtn title="Fit to view" onClick={fitView}>
+          <ToolBtn title="Fit to view (scroll wheel to zoom)" onClick={fitView}>
             <Maximize2 className="w-4 h-4" />
-          </ToolBtn>
-          <ToolBtn title="Zoom out" onClick={zoomOut}>
-            <ZoomOut className="w-4 h-4" />
           </ToolBtn>
 
           <TbDivider />
