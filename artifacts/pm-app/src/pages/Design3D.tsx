@@ -342,19 +342,33 @@ function ModelViewer({
           )}
 
           {/* Watermark */}
-          <div className="absolute top-10 right-10 pointer-events-none select-none flex flex-col items-end">
+          <div className="absolute top-10 right-10 pointer-events-none select-none flex flex-col items-end gap-0.5">
+            <span
+              className={`opacity-30 ${isDark ? "text-white" : "text-gray-700"}`}
+              style={{
+                fontSize: "26px",
+                fontFamily: "'Georgia', 'Times New Roman', serif",
+                fontWeight: 700,
+                letterSpacing: "0.3em",
+                textTransform: "uppercase",
+                fontStyle: "italic",
+                lineHeight: 1.1,
+              }}
+            >
+              WTT International
+            </span>
             <span
               className={`opacity-25 ${isDark ? "text-white" : "text-gray-700"}`}
               style={{
-                fontSize: "22px",
+                fontSize: "12px",
                 fontFamily: "'Georgia', 'Times New Roman', serif",
-                fontWeight: 700,
-                letterSpacing: "0.25em",
-                textTransform: "uppercase",
+                fontWeight: 400,
+                letterSpacing: "0.18em",
                 fontStyle: "italic",
+                textTransform: "uppercase",
               }}
             >
-              WTT INTERNATIONAL
+              Water Loving Technology
             </span>
           </div>
 
