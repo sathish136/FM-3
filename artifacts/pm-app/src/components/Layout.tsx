@@ -91,6 +91,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
     );
   };
 
+  const currentPage = allNavItems.find(i => i.path === location || i.children?.some(c => c.path === location));
+  const pageTitle = currentPage?.label ?? "Dashboard";
+
   const FullSidebar = () => (
     <div className="flex flex-col h-full relative overflow-hidden">
       {/* Subtle background gradient overlay */}
