@@ -3,7 +3,8 @@ import {
   GitBranch, Search, RefreshCw, Loader2, X,
   ChevronLeft, ChevronRight, AlertCircle, ZoomIn, ZoomOut,
   Download, RotateCcw, FileText, Eye, FolderOpen,
-  PanelRight, Info, Layers, Clock,
+  PanelRight, Info, Layers, Clock, Sparkles, ListChecks,
+  CheckCircle2, XCircle, Copy, Table2,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
@@ -14,6 +15,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.vers
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+// ── Types ────────────────────────────────────────────────────────────────────
 interface PIDRecord {
   name: string;
   project: string;
@@ -23,10 +25,26 @@ interface PIDRecord {
   modified: string;
 }
 
+interface BOMItem {
+  tag: string;
+  type: string;
+  description: string;
+  quantity: number;
+  specifications: string;
+}
+
+interface AnalysisResult {
+  summary: string;
+  items: BOMItem[];
+  analyzedPage: number;
+  timestamp: string;
+}
+
 interface ViewEntry { time: string; }
 
-type PanelTab = "info" | "views" | "pages";
+type PanelTab = "info" | "views" | "pages" | "ai";
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
 function proxyUrl(f: string) { return `${BASE}/api/file-proxy?url=${encodeURIComponent(f)}`; }
 function fileName(f: string) { return f.split("/").pop() || f; }
 
@@ -49,7 +67,48 @@ function formatViewFull(iso: string) {
   try { return new Date(iso).toLocaleString(); } catch { return iso; }
 }
 
-// ── Full-screen PDF viewer ───────────────────────────────────────────────────
+const BOM_TYPE_COLORS: Record<string, string> = {
+  "Pump": "bg-blue-900/60 text-blue-300 border-blue-800",
+  "Valve": "bg-green-900/60 text-green-300 border-green-800",
+  "Control Valve": "bg-emerald-900/60 text-emerald-300 border-emerald-800",
+  "Safety Valve": "bg-red-900/60 text-red-300 border-red-800",
+  "Check Valve": "bg-teal-900/60 text-teal-300 border-teal-800",
+  "Gate Valve": "bg-cyan-900/60 text-cyan-300 border-cyan-800",
+  "Ball Valve": "bg-sky-900/60 text-sky-300 border-sky-800",
+  "Vessel": "bg-purple-900/60 text-purple-300 border-purple-800",
+  "Tank": "bg-violet-900/60 text-violet-300 border-violet-800",
+  "Heat Exchanger": "bg-orange-900/60 text-orange-300 border-orange-800",
+  "Instrument": "bg-yellow-900/60 text-yellow-300 border-yellow-800",
+  "Sensor": "bg-amber-900/60 text-amber-300 border-amber-800",
+  "Compressor": "bg-pink-900/60 text-pink-300 border-pink-800",
+  "Filter": "bg-indigo-900/60 text-indigo-300 border-indigo-800",
+  "Pipe": "bg-gray-700/60 text-gray-300 border-gray-600",
+};
+
+function typeBadge(type: string) {
+  const cls = BOM_TYPE_COLORS[type] ?? "bg-gray-700/60 text-gray-300 border-gray-600";
+  return `inline-block border text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${cls}`;
+}
+
+function exportBomCsv(items: BOMItem[], pidName: string) {
+  const header = "Tag,Type,Description,Quantity,Specifications\n";
+  const rows = items.map(i => [
+    `"${i.tag || ""}"`,
+    `"${i.type || ""}"`,
+    `"${(i.description || "").replace(/"/g, '""')}"`,
+    i.quantity,
+    `"${(i.specifications || "").replace(/"/g, '""')}"`,
+  ].join(",")).join("\n");
+  const blob = new Blob([header + rows], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `BOM_${pidName}_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Full-screen PDF viewer ────────────────────────────────────────────────────
 function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
   const [numPages, setNumPages] = useState<number | null>(null);
   const [page, setPage] = useState(1);
@@ -58,7 +117,10 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
   const [showPanel, setShowPanel] = useState(true);
   const [activeTab, setActiveTab] = useState<PanelTab>("info");
   const [views, setViews] = useState<ViewEntry[]>([]);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [copiedBom, setCopiedBom] = useState(false);
 
   useEffect(() => {
     const key = `pid-views-${record.name}`;
@@ -66,13 +128,77 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
     const updated = [{ time: new Date().toISOString() }, ...existing].slice(0, 100);
     localStorage.setItem(key, JSON.stringify(updated));
     setViews(updated);
+
+    const savedAnalysis = localStorage.getItem(`pid-analysis-${record.name}`);
+    if (savedAnalysis) {
+      try { setAnalysisResult(JSON.parse(savedAnalysis)); } catch {}
+    }
   }, [record.name]);
+
+  const analyzeCurrentPage = async () => {
+    setAnalyzing(true);
+    setAnalysisError(null);
+    setActiveTab("ai");
+
+    try {
+      const canvas = document.querySelector(".react-pdf__Page__canvas") as HTMLCanvasElement | null;
+      if (!canvas) throw new Error("Could not capture the current page. Make sure a PDF is visible.");
+
+      const imageBase64 = canvas.toDataURL("image/jpeg", 0.85);
+
+      const res = await fetch(`${BASE}/api/pid/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageBase64,
+          pidName: record.name,
+          projectName: record.project_name || record.project,
+          revision: record.revision,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `Server error ${res.status}` }));
+        throw new Error(err.error || `Server error ${res.status}`);
+      }
+
+      const data = await res.json();
+      const result: AnalysisResult = {
+        summary: data.summary ?? "",
+        items: data.items ?? [],
+        analyzedPage: page,
+        timestamp: new Date().toISOString(),
+      };
+
+      setAnalysisResult(result);
+      localStorage.setItem(`pid-analysis-${record.name}`, JSON.stringify(result));
+    } catch (e: any) {
+      setAnalysisError(e?.message ?? String(e));
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const copyBomJson = () => {
+    if (!analysisResult) return;
+    navigator.clipboard.writeText(JSON.stringify(analysisResult.items, null, 2));
+    setCopiedBom(true);
+    setTimeout(() => setCopiedBom(false), 2000);
+  };
 
   const tabs: { key: PanelTab; label: string; icon: React.ElementType }[] = [
     { key: "info", label: "Info", icon: Info },
     { key: "views", label: "Views", icon: Eye },
     { key: "pages", label: "Pages", icon: Layers },
+    { key: "ai", label: "AI", icon: Sparkles },
   ];
+
+  const bomSummaryByType = analysisResult
+    ? analysisResult.items.reduce<Record<string, number>>((acc, item) => {
+        acc[item.type] = (acc[item.type] ?? 0) + (item.quantity || 1);
+        return acc;
+      }, {})
+    : {};
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-gray-950">
@@ -97,6 +223,25 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
           <RotateCcw className="w-3 h-3" /> Fit
         </button>
         <div className="h-4 w-px bg-gray-700" />
+
+        {/* AI Analyze button */}
+        <button
+          onClick={analyzeCurrentPage}
+          disabled={analyzing || pdfError}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+            analyzing
+              ? "bg-indigo-700 text-white opacity-70 cursor-not-allowed"
+              : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm shadow-indigo-900"
+          }`}
+          title="Analyze this P&ID with AI and generate a BOM"
+        >
+          {analyzing ? (
+            <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Analyzing…</>
+          ) : (
+            <><Sparkles className="w-3.5 h-3.5" /> Analyze P&amp;ID</>
+          )}
+        </button>
+
         <div className="flex-1" />
         {numPages && numPages > 1 && (
           <div className="flex items-center gap-0.5">
@@ -124,7 +269,7 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
       {/* Body */}
       <div className="flex-1 flex overflow-hidden">
         {/* PDF scroll area */}
-        <div ref={scrollRef} className="flex-1 overflow-auto bg-gray-900 flex items-start justify-center p-6">
+        <div className="flex-1 overflow-auto bg-gray-900 flex items-start justify-center p-6">
           {pdfError ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3 pt-20">
               <FileText className="w-12 h-12 opacity-30" />
@@ -149,7 +294,7 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
 
         {/* Right panel */}
         {showPanel && (
-          <div className="w-64 bg-gray-950 border-l border-gray-800 flex flex-col flex-shrink-0">
+          <div className="w-72 bg-gray-950 border-l border-gray-800 flex flex-col flex-shrink-0">
             {/* Tabs */}
             <div className="flex border-b border-gray-800">
               {tabs.map(({ key, label, icon: Icon }) => (
@@ -205,17 +350,23 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
                       <p className="text-sm text-gray-200">{numPages}</p>
                     </div>
                   )}
-                  <div className="pt-2 border-t border-gray-800">
+                  <div className="pt-2 border-t border-gray-800 space-y-1">
                     <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-2">Quick Actions</p>
-                    <div className="space-y-1">
-                      <button
-                        onClick={() => setActiveTab("views")}
-                        className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
-                      >
-                        <Clock className="w-3.5 h-3.5" />
-                        View history ({views.length})
-                      </button>
-                    </div>
+                    <button
+                      onClick={analyzeCurrentPage}
+                      disabled={analyzing}
+                      className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-indigo-300 bg-indigo-900/40 hover:bg-indigo-900/70 border border-indigo-800/50 transition-colors"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      {analyzing ? "Analyzing…" : analysisResult ? "Re-analyze P&ID" : "Analyze P&ID + Generate BOM"}
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("views")}
+                      className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                    >
+                      <Clock className="w-3.5 h-3.5" />
+                      View history ({views.length})
+                    </button>
                   </div>
                 </div>
               )}
@@ -272,7 +423,7 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
                             }`}
                           >
                             <div className="bg-white overflow-hidden flex items-center justify-center">
-                              <Page pageNumber={pg} width={220} renderTextLayer={false} renderAnnotationLayer={false} />
+                              <Page pageNumber={pg} width={240} renderTextLayer={false} renderAnnotationLayer={false} />
                             </div>
                             <div className={`py-1 px-2 flex items-center justify-between ${pg === page ? "bg-indigo-900" : "bg-gray-800"}`}>
                               <span className={`text-[10px] font-medium ${pg === page ? "text-indigo-200" : "text-gray-400"}`}>
@@ -288,6 +439,154 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
                 </div>
               )}
 
+              {/* AI tab */}
+              {activeTab === "ai" && (
+                <div className="flex flex-col h-full">
+                  {/* State: idle / no result */}
+                  {!analyzing && !analysisResult && !analysisError && (
+                    <div className="flex flex-col items-center justify-center flex-1 p-6 text-center gap-4">
+                      <div className="w-14 h-14 rounded-2xl bg-indigo-900/50 border border-indigo-700/50 flex items-center justify-center">
+                        <Sparkles className="w-7 h-7 text-indigo-400" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-white mb-1">AI P&amp;ID Analysis</p>
+                        <p className="text-xs text-gray-400 leading-relaxed">
+                          Scan this P&amp;ID with AI to identify all equipment, instruments, and valves — then auto-generate a Bill of Materials.
+                        </p>
+                      </div>
+                      <button
+                        onClick={analyzeCurrentPage}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold transition-colors shadow-lg shadow-indigo-900/50"
+                      >
+                        <Sparkles className="w-4 h-4" /> Analyze P&amp;ID
+                      </button>
+                      <p className="text-[10px] text-gray-600">Analyzes the currently visible page</p>
+                    </div>
+                  )}
+
+                  {/* State: analyzing */}
+                  {analyzing && (
+                    <div className="flex flex-col items-center justify-center flex-1 p-6 text-center gap-4">
+                      <div className="w-14 h-14 rounded-2xl bg-indigo-900/50 border border-indigo-700/50 flex items-center justify-center">
+                        <Sparkles className="w-7 h-7 text-indigo-400 animate-pulse" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-white mb-1">Analyzing P&amp;ID…</p>
+                        <p className="text-xs text-gray-400">AI is scanning page {page} for components</p>
+                      </div>
+                      <div className="flex gap-1.5">
+                        {[0, 1, 2].map(i => (
+                          <div key={i} className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* State: error */}
+                  {analysisError && !analyzing && (
+                    <div className="p-4 space-y-3">
+                      <div className="flex items-start gap-2 p-3 rounded-lg bg-red-900/30 border border-red-800/50">
+                        <XCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-semibold text-red-300 mb-0.5">Analysis failed</p>
+                          <p className="text-[10px] text-red-400 leading-relaxed">{analysisError}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={analyzeCurrentPage}
+                        className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs text-gray-300 transition-colors"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" /> Try again
+                      </button>
+                    </div>
+                  )}
+
+                  {/* State: result */}
+                  {analysisResult && !analyzing && (
+                    <div className="flex flex-col flex-1 min-h-0">
+                      {/* Result header */}
+                      <div className="p-3 border-b border-gray-800 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+                            <span className="text-xs font-semibold text-white">
+                              {analysisResult.items.length} items found
+                            </span>
+                          </div>
+                          <span className="text-[9px] text-gray-500">
+                            Page {analysisResult.analyzedPage} · {formatViewTime(analysisResult.timestamp)}
+                          </span>
+                        </div>
+                        {analysisResult.summary && (
+                          <p className="text-[10px] text-gray-400 leading-relaxed">{analysisResult.summary}</p>
+                        )}
+                        {/* Type breakdown chips */}
+                        <div className="flex flex-wrap gap-1 pt-1">
+                          {Object.entries(bomSummaryByType).slice(0, 8).map(([type, count]) => (
+                            <span key={type} className={typeBadge(type)}>
+                              {type} ×{count}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex gap-1.5 p-2 border-b border-gray-800">
+                        <button
+                          onClick={() => exportBomCsv(analysisResult.items, record.name)}
+                          className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-[10px] text-gray-300 transition-colors"
+                        >
+                          <Table2 className="w-3 h-3" /> Export CSV
+                        </button>
+                        <button
+                          onClick={copyBomJson}
+                          className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-[10px] text-gray-300 transition-colors"
+                        >
+                          {copiedBom ? <CheckCircle2 className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                          {copiedBom ? "Copied!" : "Copy JSON"}
+                        </button>
+                        <button
+                          onClick={analyzeCurrentPage}
+                          title="Re-analyze"
+                          className="px-2 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                        </button>
+                      </div>
+
+                      {/* BOM items list */}
+                      <div className="flex-1 overflow-auto">
+                        <div className="divide-y divide-gray-800/50">
+                          {analysisResult.items.map((item, i) => (
+                            <div key={i} className="px-3 py-2.5 hover:bg-gray-900/50 transition-colors">
+                              <div className="flex items-start justify-between gap-2 mb-1">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  {item.tag && (
+                                    <span className="text-xs font-bold text-white font-mono flex-shrink-0 bg-gray-800 px-1.5 py-0.5 rounded">
+                                      {item.tag}
+                                    </span>
+                                  )}
+                                  {item.quantity > 1 && (
+                                    <span className="text-[9px] text-indigo-300 bg-indigo-900/50 px-1 py-0.5 rounded font-semibold flex-shrink-0">
+                                      ×{item.quantity}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className={typeBadge(item.type)}>{item.type}</span>
+                              </div>
+                              <p className="text-[10px] text-gray-300 leading-snug">{item.description}</p>
+                              {item.specifications && (
+                                <p className="text-[9px] text-gray-600 mt-1 font-mono">{item.specifications}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
             </div>
           </div>
         )}
@@ -296,7 +595,7 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
   );
 }
 
-// ── Full-screen viewer overlay ───────────────────────────────────────────────
+// ── Full-screen viewer overlay ────────────────────────────────────────────────
 function FileViewer({
   record, filtered, currentIndex, onClose, onNavigate,
 }: {
@@ -381,7 +680,7 @@ function FileViewer({
   );
 }
 
-// ── Main page ────────────────────────────────────────────────────────────────
+// ── Main page ─────────────────────────────────────────────────────────────────
 export default function PID() {
   const [records, setRecords] = useState<PIDRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -441,7 +740,7 @@ export default function PID() {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-gray-900">P&amp;ID Process</h1>
-                <p className="text-xs text-gray-400">Piping &amp; Instrumentation Diagrams from ERPNext</p>
+                <p className="text-xs text-gray-400">Piping &amp; Instrumentation Diagrams · AI Analysis &amp; BOM Generation</p>
               </div>
             </div>
           </div>
@@ -476,7 +775,7 @@ export default function PID() {
           </div>
 
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="grid grid-cols-[2fr_2fr_120px_120px_100px] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <div className="grid grid-cols-[2fr_2fr_120px_120px_140px] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
               <span>P&amp;ID No.</span>
               <span>Project</span>
               <span>Revision</span>
@@ -497,43 +796,58 @@ export default function PID() {
               </div>
             ) : (
               <div className="divide-y divide-gray-100">
-                {filtered.map((r, idx) => (
-                  <div
-                    key={r.name}
-                    className="grid grid-cols-[2fr_2fr_120px_120px_100px] gap-4 px-5 py-3.5 items-center hover:bg-gray-50 transition-colors group"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center flex-shrink-0">
-                        <GitBranch className="w-4 h-4 text-indigo-600" />
+                {filtered.map((r, idx) => {
+                  const hasBom = !!localStorage.getItem(`pid-analysis-${r.name}`);
+                  return (
+                    <div
+                      key={r.name}
+                      className="grid grid-cols-[2fr_2fr_120px_120px_140px] gap-4 px-5 py-3.5 items-center hover:bg-gray-50 transition-colors group"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center flex-shrink-0 relative">
+                          <GitBranch className="w-4 h-4 text-indigo-600" />
+                          {hasBom && (
+                            <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-green-500 border-2 border-white" title="BOM generated" />
+                          )}
+                        </div>
+                        <p className="text-sm font-medium text-gray-900 truncate group-hover:text-indigo-700 transition-colors">
+                          {r.name}
+                        </p>
                       </div>
-                      <p className="text-sm font-medium text-gray-900 truncate group-hover:text-indigo-700 transition-colors">
-                        {r.name}
-                      </p>
+                      <div className="min-w-0">
+                        <p className="text-xs text-gray-700 font-medium truncate">{r.project_name || r.project || "—"}</p>
+                        {r.project && r.project !== r.project_name && (
+                          <p className="text-[10px] text-gray-400 font-mono truncate">{r.project}</p>
+                        )}
+                      </div>
+                      <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded w-fit">
+                        {r.revision || "—"}
+                      </span>
+                      <span className="text-xs text-gray-400">{r.modified ? formatDate(r.modified) : "—"}</span>
+                      <div className="flex justify-end gap-1.5">
+                        {r.attach ? (
+                          <button
+                            onClick={() => openViewer(idx)}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-indigo-600 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-colors"
+                          >
+                            <Eye className="w-3.5 h-3.5" /> View
+                          </button>
+                        ) : (
+                          <span className="text-xs text-gray-300">—</span>
+                        )}
+                        {hasBom && (
+                          <button
+                            onClick={() => openViewer(idx)}
+                            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium text-green-600 bg-green-50 border border-green-200 hover:bg-green-100 transition-colors"
+                            title="BOM available"
+                          >
+                            <ListChecks className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-xs text-gray-700 font-medium truncate">{r.project_name || r.project || "—"}</p>
-                      {r.project && r.project !== r.project_name && (
-                        <p className="text-[10px] text-gray-400 font-mono truncate">{r.project}</p>
-                      )}
-                    </div>
-                    <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded w-fit">
-                      {r.revision || "—"}
-                    </span>
-                    <span className="text-xs text-gray-400">{r.modified ? formatDate(r.modified) : "—"}</span>
-                    <div className="flex justify-end">
-                      {r.attach ? (
-                        <button
-                          onClick={() => openViewer(idx)}
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-indigo-600 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-colors"
-                        >
-                          <Eye className="w-3.5 h-3.5" /> View
-                        </button>
-                      ) : (
-                        <span className="text-xs text-gray-300">—</span>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 {filtered.length === 0 && (
                   <div className="py-14 text-center text-gray-400">
@@ -544,6 +858,18 @@ export default function PID() {
                 )}
               </div>
             )}
+          </div>
+
+          {/* Legend */}
+          <div className="mt-3 flex items-center gap-3 text-[10px] text-gray-400">
+            <div className="flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />
+              BOM already generated
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Sparkles className="w-3 h-3 text-indigo-400" />
+              Open a diagram → click "Analyze P&amp;ID" to generate BOM
+            </div>
           </div>
         </div>
       </Layout>
