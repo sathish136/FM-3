@@ -107,6 +107,7 @@ interface ViewerSidebarProps {
   onToggleMeasure?: () => void;
   onClearMeasure?: () => void;
   onPrint?: () => void;
+  onFitView?: () => void;
   downloadSrc?: string;
   recordName?: string;
 }
@@ -119,7 +120,7 @@ function ViewerSidebar({
   showPanel, setShowPanel,
   numPages, page, setPage,
   measureMode, onToggleMeasure, onClearMeasure,
-  onPrint, downloadSrc, recordName,
+  onPrint, onFitView, downloadSrc, recordName,
 }: ViewerSidebarProps) {
   return (
     <aside className="w-12 bg-[#16162a] border-r border-white/10 flex flex-col items-center py-2 gap-0.5 flex-shrink-0 overflow-y-auto">
@@ -155,14 +156,16 @@ function ViewerSidebar({
         <div className="w-5 h-5 rounded-full bg-white border border-black/20" />
       </ToolBtn>
 
-      {setScale && (
+      {(setScale || onFitView) && (
         <>
           <TbDivider />
           <TbSection label="Zoom" />
 
-          <ToolBtn title="Zoom in (+)" onClick={() => setScale(s => Math.min(4, parseFloat((s + 0.25).toFixed(2))))}>
-            <ZoomIn className="w-4 h-4" />
-          </ToolBtn>
+          {setScale && (
+            <ToolBtn title="Zoom in (+)" onClick={() => setScale(s => Math.min(4, parseFloat((s + 0.25).toFixed(2))))}>
+              <ZoomIn className="w-4 h-4" />
+            </ToolBtn>
+          )}
 
           {scale != null && (
             <div className="text-[9px] text-gray-400 tabular-nums text-center leading-tight py-0.5 select-none">
@@ -170,7 +173,10 @@ function ViewerSidebar({
             </div>
           )}
 
-          <ToolBtn title="Fit to window (reset zoom)" onClick={() => setScale(() => 1.2)}>
+          <ToolBtn
+            title="Fit to window"
+            onClick={() => { if (onFitView) onFitView(); else if (setScale) setScale(() => 1.2); }}
+          >
             <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.4">
               <rect x="3" y="3" width="14" height="14" rx="1" />
               <polyline points="7,3 3,3 3,7" />
@@ -180,9 +186,11 @@ function ViewerSidebar({
             </svg>
           </ToolBtn>
 
-          <ToolBtn title="Zoom out (-)" onClick={() => setScale(s => Math.max(0.3, parseFloat((s - 0.25).toFixed(2))))}>
-            <ZoomOut className="w-4 h-4" />
-          </ToolBtn>
+          {setScale && (
+            <ToolBtn title="Zoom out (-)" onClick={() => setScale(s => Math.max(0.3, parseFloat((s - 0.25).toFixed(2))))}>
+              <ZoomOut className="w-4 h-4" />
+            </ToolBtn>
+          )}
         </>
       )}
 
@@ -297,7 +305,11 @@ function DxfFileViewer({
   const [progress, setProgress] = useState(0);
   const [showPanel, setShowPanel] = useState(true);
   const [bgPreset, setBgPreset] = useState<BgPreset>("dark");
-  const [blackWhite, setBlackWhite] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("normal");
+
+  const [measureMode, setMeasureMode] = useState(false);
+  const [measurePts, setMeasurePts] = useState<MeasurePt[]>([]);
+  const [mousePos, setMousePos] = useState<MeasurePt | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -318,7 +330,7 @@ function DxfFileViewer({
       url: src,
       fonts: null,
       workerFactory,
-      progressCbk: (phase, processed, total) => {
+      progressCbk: (_phase, processed, total) => {
         if (total > 0) setProgress(Math.round((processed / total) * 100));
       },
     }).then(() => {
@@ -333,10 +345,15 @@ function DxfFileViewer({
   }, [src]);
 
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const h = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (measureMode) { setMeasureMode(false); setMeasurePts([]); }
+        else onClose();
+      }
+    };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [onClose]);
+  }, [onClose, measureMode]);
 
   const toggleLayer = (name: string) => {
     setHiddenLayers(prev => {
@@ -355,6 +372,29 @@ function DxfFileViewer({
     v.FitView(-size, size, -size, size, 0.05);
   };
 
+  const handleMeasureClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!measureMode) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pt = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    setMeasurePts(prev => {
+      if (prev.length === 0) return [pt];
+      if (prev.length === 1) return [prev[0], pt];
+      return [pt];
+    });
+  }, [measureMode]);
+
+  const handleMeasureMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!measureMode) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+  }, [measureMode]);
+
+  const clearMeasure = useCallback(() => { setMeasurePts([]); setMousePos(null); }, []);
+
+  const measureDist = measurePts.length === 2
+    ? Math.sqrt((measurePts[1].x - measurePts[0].x) ** 2 + (measurePts[1].y - measurePts[0].y) ** 2)
+    : null;
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gray-950">
       <div className="flex items-center gap-3 px-4 py-3 bg-[#16162a] border-b border-white/10 flex-shrink-0">
@@ -365,94 +405,130 @@ function DxfFileViewer({
         <div className="h-5 w-px bg-white/10" />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-white truncate">{record.name}</p>
-          <p className="text-xs text-gray-400 truncate">{record.project_name || record.project}</p>
+          <p className="text-xs text-gray-400 truncate">{record.project_name || record.project}{record.revision ? ` · Rev ${record.revision}` : ""}</p>
         </div>
         <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${badge === "DWG" ? "bg-orange-900/40 text-orange-300 border-orange-700/30" : "bg-blue-900/40 text-blue-300 border-blue-700/30"}`}>{badge}</span>
-        <a
-          href={downloadSrc || src}
-          download
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
-          title={`Download ${badge} file`}
-        >
+
+        {measureDist !== null && (
+          <div className="flex items-center gap-2 bg-yellow-500/90 text-gray-900 px-3 py-1.5 rounded-lg text-xs font-semibold">
+            <Ruler className="w-3.5 h-3.5" />
+            {measureDist.toFixed(1)} px
+            <button onClick={clearMeasure} className="ml-1 opacity-70 hover:opacity-100">✕</button>
+          </div>
+        )}
+        {measureMode && measurePts.length < 2 && (
+          <div className="flex items-center gap-1.5 bg-blue-600/20 border border-blue-500/30 text-blue-300 px-3 py-1.5 rounded-lg text-xs">
+            <Crosshair className="w-3.5 h-3.5" />
+            {measurePts.length === 0 ? "Click first point" : "Click second point"}
+          </div>
+        )}
+
+        <a href={downloadSrc || src} download={record.name}
+          className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+          title={`Download ${badge} file`}>
           <Download className="w-4 h-4" />
         </a>
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Left toolbar */}
-        <aside className="w-12 bg-[#16162a] border-r border-white/10 flex flex-col items-center py-2 gap-0.5 flex-shrink-0 overflow-y-auto">
-          <TbSection label="View" />
+        {/* Left toolbar — shared ViewerSidebar */}
+        <ViewerSidebar
+          viewMode={viewMode} setViewMode={setViewMode}
+          bgPreset={bgPreset} setBgPreset={setBgPreset}
+          showPanel={showPanel} setShowPanel={setShowPanel}
+          onFitView={fitView}
+          measureMode={measureMode}
+          onToggleMeasure={() => { setMeasureMode(m => !m); clearMeasure(); }}
+          onClearMeasure={clearMeasure}
+          downloadSrc={downloadSrc || src}
+          recordName={record.name}
+        />
 
-          <ToolBtn title="Normal colors" active={!blackWhite} onClick={() => setBlackWhite(false)}>
-            <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor"><circle cx="10" cy="10" r="7" /></svg>
-          </ToolBtn>
-          <ToolBtn title="Black & White" active={blackWhite} onClick={() => setBlackWhite(true)}>
-            <svg viewBox="0 0 20 20" className="w-5 h-5">
-              <path fill="currentColor" d="M10 3a7 7 0 1 1 0 14V3z" />
-              <path fill="none" stroke="currentColor" strokeWidth="1.5" d="M10 3a7 7 0 1 0 0 14" />
-            </svg>
-          </ToolBtn>
-
-          <TbDivider />
-          <TbSection label="BG" />
-          <ToolBtn title="Dark background" active={bgPreset === "dark"} onClick={() => setBgPreset("dark")}>
-            <div className="w-5 h-5 rounded-full bg-[#0f0f1a] border border-white/30" />
-          </ToolBtn>
-          <ToolBtn title="Navy background" active={bgPreset === "navy"} onClick={() => setBgPreset("navy")}>
-            <div className="w-5 h-5 rounded-full bg-[#1a1a2e] border border-white/30" />
-          </ToolBtn>
-          <ToolBtn title="Light background" active={bgPreset === "light"} onClick={() => setBgPreset("light")}>
-            <div className="w-5 h-5 rounded-full bg-[#dde3ee] border border-black/20" />
-          </ToolBtn>
-          <ToolBtn title="White background" active={bgPreset === "white"} onClick={() => setBgPreset("white")}>
-            <div className="w-5 h-5 rounded-full bg-white border border-black/20" />
-          </ToolBtn>
-
-          <TbDivider />
-          <TbSection label="Fit" />
-          <ToolBtn title="Fit to view" onClick={fitView}>
-            <Maximize2 className="w-4 h-4" />
-          </ToolBtn>
-
-          <TbDivider />
-          <TbSection label="Info" />
-          <ToolBtn title="Toggle info panel" active={showPanel} onClick={() => setShowPanel(v => !v)}>
-            <PanelRight className="w-4 h-4" />
-          </ToolBtn>
-        </aside>
-
-        {/* DXF canvas */}
-        <div className="flex-1 relative overflow-hidden" style={{ background: DXF_BG_COLORS[bgPreset] }}>
+        {/* DXF canvas + measurement overlay */}
+        <div
+          className="flex-1 relative overflow-hidden"
+          style={{ background: DXF_BG_COLORS[bgPreset] }}
+          onClick={handleMeasureClick}
+          onMouseMove={handleMeasureMove}
+          onMouseLeave={() => setMousePos(null)}
+        >
           <div
             ref={containerRef}
             className="w-full h-full"
-            style={{ filter: blackWhite ? "invert(1) hue-rotate(180deg)" : undefined }}
+            style={{
+              filter: viewMode === "invert" ? "invert(1) hue-rotate(180deg)" : undefined,
+              pointerEvents: measureMode ? "none" : undefined,
+            }}
           />
           {loadState === "loading" && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-400 pointer-events-none">
               <Loader2 className="w-8 h-8 animate-spin" />
-              <p className="text-sm">Parsing DXF file… {progress > 0 ? `${progress}%` : ""}</p>
+              <p className="text-sm">Parsing {badge} file… {progress > 0 ? `${progress}%` : ""}</p>
             </div>
           )}
           {loadState === "error" && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-400">
               <FileText className="w-10 h-10 opacity-30" />
-              <p className="text-sm">Unable to render this DXF file.</p>
+              <p className="text-sm">Unable to render this {badge} file.</p>
               <a href={src} download className="text-xs text-blue-400 underline flex items-center gap-1">
                 <Download className="w-3 h-3" /> Download instead
               </a>
             </div>
+          )}
+
+          {/* Measurement SVG overlay */}
+          {measureMode && (
+            <svg className="absolute inset-0 w-full h-full" style={{ cursor: "crosshair", pointerEvents: "none" }}>
+              {measurePts[0] && (
+                <>
+                  <circle cx={measurePts[0].x} cy={measurePts[0].y} r="6" fill="#3b82f6" fillOpacity="0.9" />
+                  <circle cx={measurePts[0].x} cy={measurePts[0].y} r="10" fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeOpacity="0.5" />
+                </>
+              )}
+              {measurePts.length === 1 && mousePos && (
+                <line x1={measurePts[0].x} y1={measurePts[0].y} x2={mousePos.x} y2={mousePos.y}
+                  stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="6 3" strokeOpacity="0.7" />
+              )}
+              {measurePts[1] && (() => {
+                const dx = measurePts[1].x - measurePts[0].x;
+                const dy = measurePts[1].y - measurePts[0].y;
+                const len = Math.sqrt(dx * dx + dy * dy);
+                if (len === 0) return null;
+                const nx = -dy / len * 8, ny = dx / len * 8;
+                const mx = (measurePts[0].x + measurePts[1].x) / 2;
+                const my = (measurePts[0].y + measurePts[1].y) / 2;
+                return (
+                  <>
+                    <line x1={measurePts[0].x} y1={measurePts[0].y} x2={measurePts[1].x} y2={measurePts[1].y}
+                      stroke="#eab308" strokeWidth="2" strokeDasharray="6 3" />
+                    <circle cx={measurePts[0].x} cy={measurePts[0].y} r="5" fill="#eab308" />
+                    <circle cx={measurePts[1].x} cy={measurePts[1].y} r="5" fill="#eab308" />
+                    <line x1={measurePts[0].x - nx} y1={measurePts[0].y - ny} x2={measurePts[0].x + nx} y2={measurePts[0].y + ny} stroke="#eab308" strokeWidth="2" />
+                    <line x1={measurePts[1].x - nx} y1={measurePts[1].y - ny} x2={measurePts[1].x + nx} y2={measurePts[1].y + ny} stroke="#eab308" strokeWidth="2" />
+                    <rect x={mx - 36} y={my - 12} width="72" height="20" rx="4" fill="#eab308" fillOpacity="0.95" />
+                    <text x={mx} y={my + 3} textAnchor="middle" fill="#1a1100" fontSize="11" fontWeight="bold" fontFamily="monospace">
+                      {measureDist?.toFixed(1)} px
+                    </text>
+                  </>
+                );
+              })()}
+            </svg>
           )}
         </div>
 
         {/* Info + layers panel */}
         {showPanel && (
           <div className="w-64 bg-[#16162a] border-l border-white/10 flex flex-col flex-shrink-0 overflow-hidden">
-            <div className="p-4 space-y-3 overflow-auto flex-1">
+            <div className="flex items-center justify-between px-4 pt-4 pb-2">
               <div className="flex items-center gap-2">
                 <Info className="w-3.5 h-3.5 text-gray-500" />
                 <span className="text-[10px] text-gray-500 uppercase tracking-widest">Record Info</span>
               </div>
+              <button onClick={() => setShowPanel(false)} className="text-gray-600 hover:text-gray-300 transition-colors" title="Hide panel">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="px-4 pb-4 space-y-3 overflow-auto flex-1">
               {[
                 { label: "ID", value: record.name },
                 { label: "Project", value: record.project },
@@ -468,6 +544,18 @@ function DxfFileViewer({
                   <p className="text-sm text-gray-200 break-words">{value}</p>
                 </div>
               ) : null)}
+              {measureDist !== null && (
+                <div className="mt-2 pt-3 border-t border-white/10">
+                  <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-1">Last Measurement</p>
+                  <p className="text-sm text-yellow-400 font-mono font-semibold">{measureDist.toFixed(2)} px</p>
+                </div>
+              )}
+              <div className="pt-3 border-t border-white/10">
+                <a href={downloadSrc || src} download={record.name}
+                  className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-gray-400 hover:text-white hover:bg-white/10 transition-colors">
+                  <Download className="w-3.5 h-3.5" /> Download {badge}
+                </a>
+              </div>
             </div>
 
             {layers.length > 0 && (
@@ -519,13 +607,22 @@ function DwgFileViewer({
   const [errMsg, setErrMsg] = useState("");
   const [showPanel, setShowPanel] = useState(true);
   const [bgPreset, setBgPreset] = useState<BgPreset>("dark");
-  const [invertMode, setInvertMode] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("normal");
+
+  const [measureMode, setMeasureMode] = useState(false);
+  const [measurePts, setMeasurePts] = useState<MeasurePt[]>([]);
+  const [mousePos, setMousePos] = useState<MeasurePt | null>(null);
 
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const h = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (measureMode) { setMeasureMode(false); setMeasurePts([]); }
+        else onClose();
+      }
+    };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [onClose]);
+  }, [onClose, measureMode]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -573,6 +670,29 @@ function DwgFileViewer({
 
   const fitView = () => managerRef.current?.sendStringToExecute("zoom");
 
+  const handleMeasureClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!measureMode) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pt = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    setMeasurePts(prev => {
+      if (prev.length === 0) return [pt];
+      if (prev.length === 1) return [prev[0], pt];
+      return [pt];
+    });
+  }, [measureMode]);
+
+  const handleMeasureMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!measureMode) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+  }, [measureMode]);
+
+  const clearMeasure = useCallback(() => { setMeasurePts([]); setMousePos(null); }, []);
+
+  const measureDist = measurePts.length === 2
+    ? Math.sqrt((measurePts[1].x - measurePts[0].x) ** 2 + (measurePts[1].y - measurePts[0].y) ** 2)
+    : null;
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gray-950">
       {/* Header */}
@@ -584,67 +704,59 @@ function DwgFileViewer({
         <div className="h-5 w-px bg-white/10" />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-white truncate">{record.name}</p>
-          <p className="text-xs text-gray-400 truncate">{record.project_name || record.project}</p>
+          <p className="text-xs text-gray-400 truncate">{record.project_name || record.project}{record.revision ? ` · Rev ${record.revision}` : ""}</p>
         </div>
         <span className="text-[10px] font-mono bg-orange-900/40 text-orange-300 border border-orange-700/30 px-2 py-0.5 rounded">DWG</span>
-        <a href={src} download
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
-          title="Download DWG file">
+
+        {measureDist !== null && (
+          <div className="flex items-center gap-2 bg-yellow-500/90 text-gray-900 px-3 py-1.5 rounded-lg text-xs font-semibold">
+            <Ruler className="w-3.5 h-3.5" />
+            {measureDist.toFixed(1)} px
+            <button onClick={clearMeasure} className="ml-1 opacity-70 hover:opacity-100">✕</button>
+          </div>
+        )}
+        {measureMode && measurePts.length < 2 && (
+          <div className="flex items-center gap-1.5 bg-blue-600/20 border border-blue-500/30 text-blue-300 px-3 py-1.5 rounded-lg text-xs">
+            <Crosshair className="w-3.5 h-3.5" />
+            {measurePts.length === 0 ? "Click first point" : "Click second point"}
+          </div>
+        )}
+
+        <a href={src} download={record.name}
+          className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors" title="Download DWG">
           <Download className="w-4 h-4" />
         </a>
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Left toolbar */}
-        <aside className="w-12 bg-[#16162a] border-r border-white/10 flex flex-col items-center py-2 gap-0.5 flex-shrink-0 overflow-y-auto">
-          <TbSection label="View" />
-          <ToolBtn title="Normal colors" active={!invertMode} onClick={() => setInvertMode(false)}>
-            <svg viewBox="0 0 20 20" className="w-5 h-5" fill="currentColor"><circle cx="10" cy="10" r="7" /></svg>
-          </ToolBtn>
-          <ToolBtn title="Invert colors" active={invertMode} onClick={() => setInvertMode(true)}>
-            <svg viewBox="0 0 20 20" className="w-5 h-5">
-              <path fill="currentColor" d="M10 3a7 7 0 1 1 0 14V3z" />
-              <path fill="none" stroke="currentColor" strokeWidth="1.5" d="M10 3a7 7 0 1 0 0 14" />
-            </svg>
-          </ToolBtn>
+        {/* Left toolbar — shared ViewerSidebar */}
+        <ViewerSidebar
+          viewMode={viewMode} setViewMode={setViewMode}
+          bgPreset={bgPreset} setBgPreset={setBgPreset}
+          showPanel={showPanel} setShowPanel={setShowPanel}
+          onFitView={fitView}
+          measureMode={measureMode}
+          onToggleMeasure={() => { setMeasureMode(m => !m); clearMeasure(); }}
+          onClearMeasure={clearMeasure}
+          downloadSrc={src}
+          recordName={record.name}
+        />
 
-          <TbDivider />
-          <TbSection label="BG" />
-          <ToolBtn title="Dark background" active={bgPreset === "dark"} onClick={() => setBgPreset("dark")}>
-            <div className="w-5 h-5 rounded-full bg-[#0f0f1a] border border-white/30" />
-          </ToolBtn>
-          <ToolBtn title="Navy background" active={bgPreset === "navy"} onClick={() => setBgPreset("navy")}>
-            <div className="w-5 h-5 rounded-full bg-[#1a1a2e] border border-white/30" />
-          </ToolBtn>
-          <ToolBtn title="Light background" active={bgPreset === "light"} onClick={() => setBgPreset("light")}>
-            <div className="w-5 h-5 rounded-full bg-[#dde3ee] border border-black/20" />
-          </ToolBtn>
-          <ToolBtn title="White background" active={bgPreset === "white"} onClick={() => setBgPreset("white")}>
-            <div className="w-5 h-5 rounded-full bg-white border border-black/20" />
-          </ToolBtn>
-
-          <TbDivider />
-          <TbSection label="Zoom" />
-          <ToolBtn title="Fit to view (scroll wheel to zoom)" onClick={fitView}>
-            <Maximize2 className="w-4 h-4" />
-          </ToolBtn>
-
-          <TbDivider />
-          <TbSection label="Info" />
-          <ToolBtn title="Toggle info panel" active={showPanel} onClick={() => setShowPanel(v => !v)}>
-            <PanelRight className="w-4 h-4" />
-          </ToolBtn>
-        </aside>
-
-        {/* Canvas */}
+        {/* Canvas + measurement overlay */}
         <div
           className="flex-1 relative overflow-hidden"
           style={{ background: DWG_BG_CSS[bgPreset] }}
+          onClick={handleMeasureClick}
+          onMouseMove={handleMeasureMove}
+          onMouseLeave={() => setMousePos(null)}
         >
           <div
             ref={containerRef}
             className="w-full h-full"
-            style={{ filter: invertMode ? "invert(1) hue-rotate(180deg)" : undefined }}
+            style={{
+              filter: viewMode === "invert" ? "invert(1) hue-rotate(180deg)" : undefined,
+              pointerEvents: measureMode ? "none" : undefined,
+            }}
           />
           {loadState === "loading" && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-400 pointer-events-none">
@@ -663,30 +775,91 @@ function DwgFileViewer({
               </a>
             </div>
           )}
+
+          {/* Measurement SVG overlay */}
+          {measureMode && (
+            <svg
+              className="absolute inset-0 w-full h-full"
+              style={{ cursor: "crosshair", pointerEvents: "none" }}
+            >
+              {measurePts[0] && (
+                <>
+                  <circle cx={measurePts[0].x} cy={measurePts[0].y} r="6" fill="#3b82f6" fillOpacity="0.9" />
+                  <circle cx={measurePts[0].x} cy={measurePts[0].y} r="10" fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeOpacity="0.5" />
+                </>
+              )}
+              {measurePts.length === 1 && mousePos && (
+                <line x1={measurePts[0].x} y1={measurePts[0].y} x2={mousePos.x} y2={mousePos.y}
+                  stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="6 3" strokeOpacity="0.7" />
+              )}
+              {measurePts[1] && (() => {
+                const dx = measurePts[1].x - measurePts[0].x;
+                const dy = measurePts[1].y - measurePts[0].y;
+                const len = Math.sqrt(dx * dx + dy * dy);
+                if (len === 0) return null;
+                const nx = -dy / len * 8, ny = dx / len * 8;
+                const mx = (measurePts[0].x + measurePts[1].x) / 2;
+                const my = (measurePts[0].y + measurePts[1].y) / 2;
+                return (
+                  <>
+                    <line x1={measurePts[0].x} y1={measurePts[0].y} x2={measurePts[1].x} y2={measurePts[1].y}
+                      stroke="#eab308" strokeWidth="2" strokeDasharray="6 3" />
+                    <circle cx={measurePts[0].x} cy={measurePts[0].y} r="5" fill="#eab308" />
+                    <circle cx={measurePts[1].x} cy={measurePts[1].y} r="5" fill="#eab308" />
+                    <line x1={measurePts[0].x - nx} y1={measurePts[0].y - ny} x2={measurePts[0].x + nx} y2={measurePts[0].y + ny} stroke="#eab308" strokeWidth="2" />
+                    <line x1={measurePts[1].x - nx} y1={measurePts[1].y - ny} x2={measurePts[1].x + nx} y2={measurePts[1].y + ny} stroke="#eab308" strokeWidth="2" />
+                    <rect x={mx - 36} y={my - 12} width="72" height="20" rx="4" fill="#eab308" fillOpacity="0.95" />
+                    <text x={mx} y={my + 3} textAnchor="middle" fill="#1a1100" fontSize="11" fontWeight="bold" fontFamily="monospace">
+                      {measureDist?.toFixed(1)} px
+                    </text>
+                  </>
+                );
+              })()}
+            </svg>
+          )}
         </div>
 
         {/* Info panel */}
         {showPanel && (
-          <div className="w-60 bg-[#16162a] border-l border-white/10 p-4 space-y-4 flex-shrink-0 overflow-auto">
-            <div className="flex items-center gap-2">
-              <Info className="w-3.5 h-3.5 text-gray-500" />
-              <span className="text-[10px] text-gray-500 uppercase tracking-widest">Record Info</span>
-            </div>
-            {[
-              { label: "ID",           value: record.name },
-              { label: "Project",      value: record.project },
-              { label: "Project Name", value: record.project_name },
-              { label: "Department",   value: record.department },
-              { label: "Revision",     value: record.revision },
-              { label: "Tag",          value: record.tag },
-              { label: "System Name",  value: record.system_name },
-              { label: "Modified",     value: formatDate(record.modified) },
-            ].map(({ label, value }) => value ? (
-              <div key={label}>
-                <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-0.5">{label}</p>
-                <p className="text-sm text-gray-200 break-words">{value}</p>
+          <div className="w-60 bg-[#16162a] border-l border-white/10 flex-shrink-0 overflow-auto flex flex-col">
+            <div className="flex items-center justify-between px-4 pt-4 pb-2">
+              <div className="flex items-center gap-2">
+                <Info className="w-3.5 h-3.5 text-gray-500" />
+                <span className="text-[10px] text-gray-500 uppercase tracking-widest">Record Info</span>
               </div>
-            ) : null)}
+              <button onClick={() => setShowPanel(false)} className="text-gray-600 hover:text-gray-300 transition-colors" title="Hide panel">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="px-4 pb-4 space-y-3 flex-1">
+              {[
+                { label: "ID",           value: record.name },
+                { label: "Project",      value: record.project },
+                { label: "Project Name", value: record.project_name },
+                { label: "Department",   value: record.department },
+                { label: "Revision",     value: record.revision },
+                { label: "Tag",          value: record.tag },
+                { label: "System Name",  value: record.system_name },
+                { label: "Modified",     value: formatDate(record.modified) },
+              ].map(({ label, value }) => value ? (
+                <div key={label}>
+                  <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-0.5">{label}</p>
+                  <p className="text-sm text-gray-200 break-words">{value}</p>
+                </div>
+              ) : null)}
+              {measureDist !== null && (
+                <div className="mt-2 pt-3 border-t border-white/10">
+                  <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-1">Last Measurement</p>
+                  <p className="text-sm text-yellow-400 font-mono font-semibold">{measureDist.toFixed(2)} px</p>
+                </div>
+              )}
+              <div className="pt-3 border-t border-white/10">
+                <a href={src} download={record.name}
+                  className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-gray-400 hover:text-white hover:bg-white/10 transition-colors">
+                  <Download className="w-3.5 h-3.5" /> Download DWG
+                </a>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -879,6 +1052,7 @@ function PdfViewer({
                           const dx = measurePts[1].x - measurePts[0].x;
                           const dy = measurePts[1].y - measurePts[0].y;
                           const len = Math.sqrt(dx * dx + dy * dy);
+                          if (len === 0) return null;
                           const nx = -dy / len * 8, ny = dx / len * 8;
                           return (
                             <>
