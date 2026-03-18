@@ -100,7 +100,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <div className="relative flex items-center justify-between px-4 py-4 border-b border-white/[0.07]">
         <div className="flex flex-col">
           <span className="text-lg font-black tracking-tight leading-none flex items-baseline gap-0">
-            <span style={{ background: "linear-gradient(90deg, #818cf8, #a78bfa, #60a5fa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>FlowMatri</span><span style={{ color: "#22d3ee", textShadow: "0 0 12px rgba(34,211,238,0.7)" }}>x</span>
+            <span style={{ background: "linear-gradient(90deg, #818cf8, #a78bfa, #60a5fa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>FlowMatri</span><span style={{ color: "#22d3ee", textShadow: "0 0 12px rgba(34,211,238,0.7)", fontSize: "1.35em", lineHeight: 1 }}>x</span>
           </span>
           <span className="text-[9px] font-semibold tracking-[0.15em] uppercase text-slate-600 mt-0.5">Project Management</span>
         </div>
@@ -366,7 +366,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Menu className="w-4 h-4" />
             </button>
             <span className="text-base font-black tracking-tight flex items-baseline gap-0">
-              <span style={{ background: "linear-gradient(90deg, #6366f1, #8b5cf6, #3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>FlowMatri</span><span style={{ color: "#06b6d4", textShadow: "0 0 10px rgba(6,182,212,0.6)" }}>x</span>
+              <span style={{ background: "linear-gradient(90deg, #6366f1, #8b5cf6, #3b82f6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>FlowMatri</span><span style={{ color: "#06b6d4", textShadow: "0 0 10px rgba(6,182,212,0.6)", fontSize: "1.35em", lineHeight: 1 }}>x</span>
             </span>
           </div>
           <div className="flex-1 flex justify-center px-4">
