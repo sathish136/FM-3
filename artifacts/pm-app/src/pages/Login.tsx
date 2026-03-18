@@ -146,7 +146,7 @@ export default function Login() {
         </div>
 
         <p className="text-center text-gray-400 text-xs mt-6">
-          © {new Date().getFullYear()} WTT International India. All rights reserved.
+          © {new Date().getFullYear()} WTT INTERNATIONAL INDIA. All rights reserved.
         </p>
       </div>
     </div>
