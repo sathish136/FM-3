@@ -45,8 +45,8 @@ function ToolBtn({
         ${active
           ? "bg-blue-600 border-blue-500 text-white"
           : danger
-          ? "bg-transparent border-transparent text-red-400 hover:bg-red-500/20 hover:border-red-500/40"
-          : "bg-transparent border-transparent text-gray-400 hover:bg-white/10 hover:text-white hover:border-white/10"
+          ? "bg-red-500/10 border-red-400/30 text-red-400 hover:bg-red-500/25 hover:border-red-400/60"
+          : "bg-white/10 border-white/15 text-gray-200 hover:bg-white/20 hover:text-white hover:border-white/30"
         }`}
     >
       {children}
@@ -56,7 +56,7 @@ function ToolBtn({
 
 function Divider() { return <div className="w-full h-px bg-white/10 my-1" />; }
 function Section({ label }: { label: string }) {
-  return <div className="text-[9px] text-gray-500 uppercase tracking-widest px-1 mt-2 mb-0.5 select-none">{label}</div>;
+  return <div className="text-[9px] text-gray-400 uppercase tracking-widest px-1 mt-2 mb-0.5 select-none">{label}</div>;
 }
 
 function ManualUploadViewer() {
