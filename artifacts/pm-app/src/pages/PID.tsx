@@ -2,7 +2,8 @@ import { Layout } from "@/components/Layout";
 import {
   GitBranch, Search, RefreshCw, Loader2, X,
   ChevronLeft, ChevronRight, AlertCircle, ZoomIn, ZoomOut,
-  Calendar, Download, RotateCcw, FileText,
+  Download, RotateCcw, FileText, LayoutList, Eye,
+  FolderOpen, ArrowLeft,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
@@ -33,6 +34,7 @@ function formatDate(iso: string) {
 
 type BgPreset = "dark" | "navy" | "light" | "white";
 type ViewMode = "normal" | "invert";
+type DisplayMode = "list" | "viewer";
 
 const BG_CLASSES: Record<BgPreset, string> = {
   dark: "bg-gray-950",
@@ -77,6 +79,7 @@ export default function PID() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<PIDRecord | null>(null);
+  const [displayMode, setDisplayMode] = useState<DisplayMode>("list");
 
   const [numPages, setNumPages] = useState<number | null>(null);
   const [page, setPage] = useState(1);
@@ -94,9 +97,10 @@ export default function PID() {
       const res = await fetch(`${BASE}/api/pid`);
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       const data = await res.json();
-      setRecords(data);
-    } catch (e) {
-      setError(String(e));
+      if (data.error) throw new Error(data.error);
+      setRecords(Array.isArray(data) ? data : []);
+    } catch (e: any) {
+      setError(e.message || String(e));
     } finally {
       setLoading(false);
     }
@@ -114,28 +118,164 @@ export default function PID() {
     );
   });
 
-  const selectRecord = (r: PIDRecord) => {
+  const openViewer = (r: PIDRecord) => {
     setSelected(r);
     setPage(1);
     setNumPages(null);
     setPdfError(false);
     setScale(1.2);
     setRotate(0);
+    setDisplayMode("viewer");
   };
 
   const pdfSrc = selected?.attach ? proxyUrl(selected.attach) : null;
 
+  // ── List view (full-page table) ────────────────────────────────────────────
+  if (displayMode === "list") {
+    return (
+      <Layout>
+        <div className="min-h-full bg-gray-50 p-6">
+          {/* Page header */}
+          <div className="mb-6">
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center">
+                <GitBranch className="w-5 h-5 text-indigo-600" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">P&amp;ID Process</h1>
+                <p className="text-xs text-gray-400">Piping &amp; Instrumentation Diagrams from ERPNext</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Toolbar */}
+          <div className="flex items-center gap-3 mb-4 flex-wrap">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search by name, project, revision…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              />
+              {search && (
+                <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <button
+              onClick={fetchRecords}
+              disabled={loading}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+            <span className="ml-auto text-sm text-gray-400">
+              {loading ? "Loading…" : `${filtered.length} record${filtered.length !== 1 ? "s" : ""}`}
+            </span>
+          </div>
+
+          {/* Table */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            {/* Table header */}
+            <div className="grid grid-cols-[2fr_2fr_120px_120px_100px] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <span>P&amp;ID No.</span>
+              <span>Project</span>
+              <span>Revision</span>
+              <span>Modified</span>
+              <span className="text-right">Action</span>
+            </div>
+
+            {loading ? (
+              <div className="py-16 flex flex-col items-center gap-3 text-gray-400">
+                <Loader2 className="w-8 h-8 animate-spin" />
+                <p className="text-sm">Fetching P&amp;ID records from ERPNext…</p>
+              </div>
+            ) : error ? (
+              <div className="py-12 text-center">
+                <AlertCircle className="w-8 h-8 text-red-300 mx-auto mb-2" />
+                <p className="text-sm text-red-500 mb-3">{error}</p>
+                <button onClick={fetchRecords} className="text-sm text-indigo-600 underline">Retry</button>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {filtered.map(r => (
+                  <div
+                    key={r.name}
+                    className="grid grid-cols-[2fr_2fr_120px_120px_100px] gap-4 px-5 py-3.5 items-center hover:bg-gray-50 transition-colors group"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center flex-shrink-0">
+                        <GitBranch className="w-4 h-4 text-indigo-600" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate group-hover:text-indigo-700 transition-colors">
+                          {r.name}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs text-gray-700 font-medium truncate">{r.project_name || r.project || "—"}</p>
+                      {r.project && r.project !== r.project_name && (
+                        <p className="text-[10px] text-gray-400 font-mono truncate">{r.project}</p>
+                      )}
+                    </div>
+                    <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded w-fit">
+                      {r.revision || "—"}
+                    </span>
+                    <span className="text-xs text-gray-400">{r.modified ? formatDate(r.modified) : "—"}</span>
+                    <div className="flex justify-end gap-2">
+                      {r.attach ? (
+                        <button
+                          onClick={() => openViewer(r)}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-indigo-600 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-colors"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          View
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-300">—</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                {filtered.length === 0 && !loading && (
+                  <div className="py-14 text-center text-gray-400">
+                    <FolderOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">No P&amp;ID records found</p>
+                    <p className="text-xs mt-1 text-gray-300">Records are managed in ERPNext</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  // ── Viewer mode ────────────────────────────────────────────────────────────
   return (
     <Layout>
       <div className="flex h-full overflow-hidden bg-[#0f0f1a]">
 
-        {/* ── Left list panel ── */}
+        {/* Left list panel */}
         <div className="w-72 flex-shrink-0 flex flex-col border-r border-white/10 bg-[#13132b]">
-          {/* Header */}
           <div className="px-4 pt-4 pb-3 border-b border-white/10">
             <div className="flex items-center gap-2 mb-3">
+              <button
+                onClick={() => setDisplayMode("list")}
+                className="p-1 rounded text-gray-500 hover:text-white hover:bg-white/10 transition-colors"
+                title="Back to list"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+              </button>
               <GitBranch className="w-4 h-4 text-indigo-400 shrink-0" />
-              <span className="text-white font-semibold text-sm">P&ID Process</span>
+              <span className="text-white font-semibold text-sm">P&amp;ID Process</span>
               <span className="ml-auto text-xs text-gray-500">{filtered.length}</span>
               <button
                 onClick={fetchRecords}
@@ -162,7 +302,6 @@ export default function PID() {
             </div>
           </div>
 
-          {/* List */}
           <div className="flex-1 overflow-y-auto py-2 px-2 space-y-1">
             {loading && (
               <div className="flex items-center justify-center py-10 gap-2 text-gray-500 text-xs">
@@ -188,7 +327,7 @@ export default function PID() {
               return (
                 <button
                   key={r.name}
-                  onClick={() => selectRecord(r)}
+                  onClick={() => openViewer(r)}
                   className={`w-full text-left px-3 py-2.5 rounded-lg transition-all border ${
                     isActive
                       ? "bg-indigo-600/20 border-indigo-500/40 text-white"
@@ -210,28 +349,20 @@ export default function PID() {
                         )}
                       </div>
                     </div>
-                    {r.attach && (
-                      <FileText className="w-3.5 h-3.5 text-gray-500 shrink-0 mt-0.5" />
-                    )}
+                    {r.attach && <FileText className="w-3.5 h-3.5 text-gray-500 shrink-0 mt-0.5" />}
                   </div>
-                  {r.modified && (
-                    <div className="flex items-center gap-1 mt-1.5 text-[10px] text-gray-600">
-                      <Calendar className="w-3 h-3" />
-                      {formatDate(r.modified)}
-                    </div>
-                  )}
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* ── Viewer area ── */}
+        {/* Viewer area */}
         <div className="flex-1 flex overflow-hidden">
           {!selected ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-600">
               <GitBranch className="w-12 h-12 opacity-20" />
-              <p className="text-sm">Select a P&ID record to view</p>
+              <p className="text-sm">Select a P&amp;ID record to view</p>
             </div>
           ) : (
             <>
@@ -315,11 +446,14 @@ export default function PID() {
                     </ToolBtn>
                   </>
                 )}
+                <TbDivider />
+                <ToolBtn title="Back to list" onClick={() => setDisplayMode("list")}>
+                  <LayoutList className="w-4 h-4" />
+                </ToolBtn>
               </aside>
 
               {/* Main viewer */}
               <div className="flex-1 flex flex-col overflow-hidden">
-                {/* Top bar */}
                 <div className="h-10 bg-[#0f0f1a] border-b border-white/10 flex items-center px-4 gap-3 shrink-0">
                   <GitBranch className="w-4 h-4 text-indigo-400 shrink-0" />
                   <div className="flex-1 min-w-0">
@@ -346,7 +480,6 @@ export default function PID() {
                   )}
                 </div>
 
-                {/* PDF viewer */}
                 <div
                   ref={containerRef}
                   className={`flex-1 overflow-auto flex justify-center pt-4 pb-8 ${BG_CLASSES[bgPreset]}`}
