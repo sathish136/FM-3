@@ -6,7 +6,7 @@ import {
   PanelRight, Info, Layers, Clock, Sparkles, ListChecks,
   CheckCircle2, XCircle, Copy, Table2,
 } from "lucide-react";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, type RefObject } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -105,7 +105,8 @@ function exportBomCsv(items: BOMItem[], pidName: string) {
   a.href = url;
   a.download = `BOM_${pidName}_${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
-  URL.revokeObjectURL(url);
+  // Fix #4: delay revocation so browser has time to start the download
+  setTimeout(() => URL.revokeObjectURL(url), 150);
 }
 
 // ── Full-screen PDF viewer ────────────────────────────────────────────────────
@@ -121,6 +122,8 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [copiedBom, setCopiedBom] = useState(false);
+  // Fix #3: use React ref instead of document.querySelector to capture the PDF canvas
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const key = `pid-views-${record.name}`;
@@ -141,10 +144,12 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
     setActiveTab("ai");
 
     try {
-      const canvas = document.querySelector(".react-pdf__Page__canvas") as HTMLCanvasElement | null;
-      if (!canvas) throw new Error("Could not capture the current page. Make sure a PDF is visible.");
+      // Fix #3: use canvasRef (attached to <Page>) instead of document.querySelector
+      // Fix #6: use PNG — preserves fine lines, thin text, and instrument symbols in P&IDs
+      const canvas = canvasRef.current;
+      if (!canvas) throw new Error("Could not capture the current page. Wait for the PDF to finish rendering, then try again.");
 
-      const imageBase64 = canvas.toDataURL("image/jpeg", 0.85);
+      const imageBase64 = canvas.toDataURL("image/png");
 
       const res = await fetch(`${BASE}/api/pid/analyze`, {
         method: "POST",
@@ -287,7 +292,8 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
                 </div>
               }
             >
-              <Page pageNumber={page} scale={scale} renderTextLayer={true} renderAnnotationLayer={false} className="shadow-2xl" />
+              {/* Fix #3: canvasRef wired here so analyzeCurrentPage can read the rendered pixels */}
+              <Page pageNumber={page} scale={scale} renderTextLayer={true} renderAnnotationLayer={false} className="shadow-2xl" canvasRef={canvasRef as RefObject<HTMLCanvasElement>} />
             </Document>
           )}
         </div>
@@ -442,7 +448,26 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
               {/* AI tab */}
               {activeTab === "ai" && (
                 <div className="flex flex-col h-full">
-                  {/* State: idle / no result */}
+
+                  {/* State: analyzing (covers everything) */}
+                  {analyzing && (
+                    <div className="flex flex-col items-center justify-center flex-1 p-6 text-center gap-4">
+                      <div className="w-14 h-14 rounded-2xl bg-indigo-900/50 border border-indigo-700/50 flex items-center justify-center">
+                        <Sparkles className="w-7 h-7 text-indigo-400 animate-pulse" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-white mb-1">Analyzing P&amp;ID…</p>
+                        <p className="text-xs text-gray-400">AI is scanning page {page} for components</p>
+                      </div>
+                      <div className="flex gap-1.5">
+                        {[0, 1, 2].map(i => (
+                          <div key={i} className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* State: idle — no result, no error */}
                   {!analyzing && !analysisResult && !analysisError && (
                     <div className="flex flex-col items-center justify-center flex-1 p-6 text-center gap-4">
                       <div className="w-14 h-14 rounded-2xl bg-indigo-900/50 border border-indigo-700/50 flex items-center justify-center">
@@ -464,26 +489,8 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
                     </div>
                   )}
 
-                  {/* State: analyzing */}
-                  {analyzing && (
-                    <div className="flex flex-col items-center justify-center flex-1 p-6 text-center gap-4">
-                      <div className="w-14 h-14 rounded-2xl bg-indigo-900/50 border border-indigo-700/50 flex items-center justify-center">
-                        <Sparkles className="w-7 h-7 text-indigo-400 animate-pulse" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-white mb-1">Analyzing P&amp;ID…</p>
-                        <p className="text-xs text-gray-400">AI is scanning page {page} for components</p>
-                      </div>
-                      <div className="flex gap-1.5">
-                        {[0, 1, 2].map(i => (
-                          <div key={i} className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* State: error */}
-                  {analysisError && !analyzing && (
+                  {/* State: error only (no previous result to show) */}
+                  {!analyzing && analysisError && !analysisResult && (
                     <div className="p-4 space-y-3">
                       <div className="flex items-start gap-2 p-3 rounded-lg bg-red-900/30 border border-red-800/50">
                         <XCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
@@ -501,11 +508,31 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
                     </div>
                   )}
 
-                  {/* State: result */}
-                  {analysisResult && !analyzing && (
+                  {/* State: result (with optional error banner above) */}
+                  {/* Fix #5: error shows as a dismissable banner; previous BOM stays visible underneath */}
+                  {!analyzing && analysisResult && (
                     <div className="flex flex-col flex-1 min-h-0">
+
+                      {/* Error banner when re-analyze fails but old result still exists */}
+                      {analysisError && (
+                        <div className="flex items-start gap-2 px-3 py-2.5 bg-red-900/30 border-b border-red-800/50 flex-shrink-0">
+                          <XCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] font-semibold text-red-300">Re-analysis failed — showing previous result</p>
+                            <p className="text-[9px] text-red-400 leading-snug mt-0.5 truncate">{analysisError}</p>
+                          </div>
+                          <button
+                            onClick={() => setAnalysisError(null)}
+                            className="text-red-500 hover:text-red-300 flex-shrink-0 ml-1"
+                            title="Dismiss"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+
                       {/* Result header */}
-                      <div className="p-3 border-b border-gray-800 space-y-2">
+                      <div className="p-3 border-b border-gray-800 space-y-2 flex-shrink-0">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5">
                             <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
@@ -514,13 +541,12 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
                             </span>
                           </div>
                           <span className="text-[9px] text-gray-500">
-                            Page {analysisResult.analyzedPage} · {formatViewTime(analysisResult.timestamp)}
+                            Pg {analysisResult.analyzedPage} · {formatViewTime(analysisResult.timestamp)}
                           </span>
                         </div>
                         {analysisResult.summary && (
                           <p className="text-[10px] text-gray-400 leading-relaxed">{analysisResult.summary}</p>
                         )}
-                        {/* Type breakdown chips */}
                         <div className="flex flex-wrap gap-1 pt-1">
                           {Object.entries(bomSummaryByType).slice(0, 8).map(([type, count]) => (
                             <span key={type} className={typeBadge(type)}>
@@ -531,7 +557,7 @@ function PdfViewer({ src, record }: { src: string; record: PIDRecord }) {
                       </div>
 
                       {/* Action buttons */}
-                      <div className="flex gap-1.5 p-2 border-b border-gray-800">
+                      <div className="flex gap-1.5 p-2 border-b border-gray-800 flex-shrink-0">
                         <button
                           onClick={() => exportBomCsv(analysisResult.items, record.name)}
                           className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-[10px] text-gray-300 transition-colors"
