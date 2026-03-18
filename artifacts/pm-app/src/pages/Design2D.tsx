@@ -1172,7 +1172,7 @@ export default function Design2DPage() {
                       <div className="flex justify-end">
                         {isViewable ? (
                           <span className="px-2.5 py-1 rounded-lg text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200">
-                            View
+                            View 2D
                           </span>
                         ) : (
                           <span className="text-xs text-gray-300">—</span>
