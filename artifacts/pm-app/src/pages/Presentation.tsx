@@ -2,8 +2,10 @@ import { Layout } from "@/components/Layout";
 import {
   Layers, Eye, Share2, Plus, Loader2, FolderOpen,
   AlertCircle, Maximize2, Download, RefreshCw, ExternalLink, X,
+  ChevronLeft, ChevronRight, Play, Pause, Clock, Monitor, Film,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import JSZip from "jszip";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -16,26 +18,28 @@ interface Presentation {
   modified: string;
 }
 
+interface SlideData {
+  index: number;
+  title: string;
+  body: string[];
+  bgColor: string;
+  hasContent: boolean;
+}
+
 const PALETTE = [
-  { bg: "#1a56db", text: "#ffffff" },
-  { bg: "#6d28d9", text: "#ffffff" },
-  { bg: "#047857", text: "#ffffff" },
-  { bg: "#b45309", text: "#ffffff" },
-  { bg: "#0e7490", text: "#ffffff" },
-  { bg: "#be185d", text: "#ffffff" },
+  { bg: "#1a56db" }, { bg: "#6d28d9" }, { bg: "#047857" },
+  { bg: "#b45309" }, { bg: "#0e7490" }, { bg: "#be185d" },
 ];
 
 function fileExt(f: string) { return (f.split(".").pop() || "").toLowerCase(); }
 
 function proxyAbsUrl(fileUrl: string): string {
   const origin = window.location.origin;
-  const base = BASE;
-  return `${origin}${base}/api/file-proxy?url=${encodeURIComponent(fileUrl)}`;
+  return `${origin}${BASE}/api/file-proxy?url=${encodeURIComponent(fileUrl)}`;
 }
 
 function officeViewerUrl(fileUrl: string): string {
-  const abs = proxyAbsUrl(fileUrl);
-  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(abs)}`;
+  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(proxyAbsUrl(fileUrl))}`;
 }
 
 function formatDate(iso: string) {
@@ -54,49 +58,148 @@ function formatDate(iso: string) {
   } catch { return iso; }
 }
 
-function DeckListItem({
-  pres, index, active, onClick,
-}: { pres: Presentation; index: number; active: boolean; onClick: () => void }) {
-  const MOCK_VIEWS = [24, 67, 142, 89];
-  const views = MOCK_VIEWS[index % MOCK_VIEWS.length];
-  const date = pres.modified ? formatDate(pres.modified) : "—";
-  const palette = PALETTE[index % PALETTE.length];
-  const ext = pres.file_upload ? fileExt(pres.file_upload) : "";
+// ── PPTX Parser ───────────────────────────────────────────────────────────────
+function byLocalName(doc: Document | Element, name: string): Element[] {
+  return Array.from(doc.getElementsByTagNameNS("*", name));
+}
+
+async function parsePptx(url: string): Promise<SlideData[]> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Failed to fetch file");
+  const buf = await res.arrayBuffer();
+  const zip = await JSZip.loadAsync(buf);
+
+  const slideFiles = Object.keys(zip.files)
+    .filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f))
+    .sort((a, b) => {
+      const na = parseInt(a.match(/(\d+)/)?.[1] || "0");
+      const nb = parseInt(b.match(/(\d+)/)?.[1] || "0");
+      return na - nb;
+    });
+
+  const slides: SlideData[] = [];
+
+  for (let i = 0; i < slideFiles.length; i++) {
+    const xml = await zip.files[slideFiles[i]].async("string");
+    const doc = new DOMParser().parseFromString(xml, "text/xml");
+
+    // Background color — check theme/slide background
+    let bgColor = "";
+    const solidFills = byLocalName(doc, "solidFill");
+    for (const sf of solidFills) {
+      const clr = sf.getElementsByTagNameNS("*", "srgbClr")[0];
+      if (clr) { bgColor = `#${clr.getAttribute("val") || ""}`; break; }
+    }
+
+    // Extract text from ALL shapes (placeholders + regular)
+    let title = "";
+    const body: string[] = [];
+    const allShapes = byLocalName(doc, "sp");
+
+    for (const sp of allShapes) {
+      const ph = byLocalName(sp, "ph")[0];
+      const phType = ph?.getAttribute("type") || "";
+
+      const runs = byLocalName(sp, "t")
+        .map(t => t.textContent?.trim())
+        .filter(Boolean);
+      if (!runs.length) continue;
+
+      const joined = runs.join(" ");
+
+      if (phType === "title" || phType === "ctrTitle") {
+        title = joined;
+      } else if (phType === "subTitle" || phType === "body" || phType === "") {
+        body.push(joined);
+      } else {
+        body.push(joined);
+      }
+    }
+
+    // Also pick up free text boxes (txBox)
+    const txBoxes = byLocalName(doc, "txBody");
+    for (const tb of txBoxes) {
+      const runs = byLocalName(tb, "t")
+        .map(t => t.textContent?.trim())
+        .filter(Boolean);
+      if (runs.length) {
+        const joined = runs.join(" ");
+        if (!title && !body.includes(joined)) body.push(joined);
+      }
+    }
+
+    slides.push({
+      index: i,
+      title,
+      body: [...new Set(body)].slice(0, 5),
+      bgColor: bgColor || PALETTE[i % PALETTE.length].bg,
+      hasContent: !!(title || body.length),
+    });
+  }
+
+  return slides;
+}
+
+// ── Hook: load + parse PPTX slides ───────────────────────────────────────────
+function usePptxSlides(fileUrl: string | null, ext: string) {
+  const [slides, setSlides] = useState<SlideData[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!fileUrl || (ext !== "pptx" && ext !== "ppt")) { setSlides([]); return; }
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    setSlides([]);
+    parsePptx(`${BASE}/api/file-proxy?url=${encodeURIComponent(fileUrl)}`)
+      .then(s => { if (!cancelled) { setSlides(s); setLoading(false); } })
+      .catch(e => { if (!cancelled) { setError(e.message); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [fileUrl, ext]);
+
+  return { slides, loading, error };
+}
+
+// ── Slide Card ────────────────────────────────────────────────────────────────
+function SlideCard({ slide, pres, deckIdx, scale = 1 }: {
+  slide: SlideData; pres: Presentation; deckIdx: number; scale?: number;
+}) {
+  const bg = slide.bgColor || PALETTE[deckIdx % PALETTE.length].bg;
+  const isLight = /^#[ef][ef]/i.test(bg) || bg === "#ffffff";
+  const textColor = isLight ? "#111" : "#fff";
+  const subColor = isLight ? "#555" : "rgba(255,255,255,0.72)";
 
   return (
-    <button
-      onClick={onClick}
-      className={`w-full flex items-center justify-between p-3 rounded-xl transition-all text-left ${
-        active ? "bg-blue-50 border border-blue-200" : "hover:bg-gray-50 border border-transparent"
-      }`}
+    <div
+      className="w-full h-full flex flex-col items-center justify-center overflow-hidden select-none px-6"
+      style={{ background: bg }}
     >
-      <div className="flex items-center gap-3 min-w-0">
-        <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{ background: active ? "#dbeafe" : `${palette.bg}22` }}
-        >
-          <Layers className="w-4 h-4" style={{ color: active ? "#2563eb" : palette.bg }} />
-        </div>
-        <div className="min-w-0">
-          <p className={`text-sm font-medium leading-snug truncate ${active ? "text-blue-700" : "text-gray-800"}`}>
-            {pres.presentation_name || pres.name}
-          </p>
-          <p className="text-xs text-gray-400 mt-0.5 uppercase tracking-wide">
-            {ext.toUpperCase() || "FILE"} · {date}
-          </p>
-        </div>
+      <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-3"
+        style={{ background: "rgba(255,255,255,0.18)" }}>
+        <Layers className="w-4 h-4" style={{ color: isLight ? "#333" : "#fff" }} />
       </div>
-      <div className="flex items-center gap-1 text-xs text-gray-400 flex-shrink-0 ml-2">
-        <Eye className="w-3 h-3" />
-        <span>{views}</span>
-      </div>
-    </button>
+      <h2 className="font-bold text-center leading-snug mb-2 max-w-xs"
+        style={{ color: textColor, fontSize: `${1.3 * scale}em` }}>
+        {slide.title || pres.presentation_name || pres.name}
+      </h2>
+      {slide.body.slice(0, 3).map((line, li) => (
+        <p key={li} className="text-center leading-snug mb-1 max-w-xs"
+          style={{ color: subColor, fontSize: `${0.78 * scale}em` }}>
+          {line}
+        </p>
+      ))}
+      {!slide.hasContent && (
+        <p style={{ color: subColor, fontSize: `${0.7 * scale}em` }} className="mt-1">
+          Slide {slide.index + 1}
+        </p>
+      )}
+    </div>
   );
 }
 
-function FullscreenViewer({
-  pres, onClose,
-}: { pres: Presentation; onClose: () => void }) {
+// ── Fullscreen Viewer (Office Online) ────────────────────────────────────────
+function FullscreenViewer({ pres, onClose }: { pres: Presentation; onClose: () => void }) {
   const ext = pres.file_upload ? fileExt(pres.file_upload) : "";
   const isPptx = ext === "pptx" || ext === "ppt";
   const viewerUrl = pres.file_upload && isPptx ? officeViewerUrl(pres.file_upload) : null;
@@ -104,37 +207,24 @@ function FullscreenViewer({
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black">
       <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-950 border-b border-gray-800 flex-shrink-0">
-        <button
-          onClick={onClose}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors"
-        >
+        <button onClick={onClose}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors">
           <X className="w-4 h-4" /> Exit
         </button>
         <div className="h-4 w-px bg-gray-700" />
-        <p className="text-sm font-semibold text-white truncate flex-1">
-          {pres.presentation_name || pres.name}
-        </p>
-        {pres.project_name && (
-          <p className="text-xs text-gray-400 uppercase tracking-wide">{pres.project_name}</p>
-        )}
+        <p className="text-sm font-semibold text-white truncate flex-1">{pres.presentation_name || pres.name}</p>
+        {pres.project_name && <p className="text-xs text-gray-400 uppercase tracking-wide">{pres.project_name}</p>}
         {pres.file_upload && (
-          <a
-            href={proxyAbsUrl(pres.file_upload)}
-            download
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors"
-          >
+          <a href={proxyAbsUrl(pres.file_upload)} download
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors">
             <Download className="w-4 h-4" /> Download
           </a>
         )}
       </div>
       <div className="flex-1 overflow-hidden bg-gray-900">
         {viewerUrl ? (
-          <iframe
-            src={viewerUrl}
-            className="w-full h-full border-0"
-            title={pres.presentation_name || pres.name}
-            allow="fullscreen"
-          />
+          <iframe src={viewerUrl} className="w-full h-full border-0"
+            title={pres.presentation_name || pres.name} allow="fullscreen" />
         ) : (
           <div className="flex items-center justify-center h-full text-gray-500 text-sm">
             No preview available for this file type.
@@ -145,28 +235,70 @@ function FullscreenViewer({
   );
 }
 
+// ── Deck List Item ────────────────────────────────────────────────────────────
+function DeckListItem({ pres, index, active, numSlides, onClick }: {
+  pres: Presentation; index: number; active: boolean; numSlides: number; onClick: () => void;
+}) {
+  const views = [24, 67, 142, 89][index % 4];
+  const date = pres.modified ? formatDate(pres.modified) : "—";
+  const palette = PALETTE[index % PALETTE.length];
+
+  return (
+    <button onClick={onClick}
+      className={`w-full flex items-center justify-between p-3 rounded-xl transition-all text-left ${
+        active ? "bg-blue-50 border border-blue-200" : "hover:bg-gray-50 border border-transparent"
+      }`}>
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={{ background: active ? "#dbeafe" : `${palette.bg}22` }}>
+          <Layers className="w-4 h-4" style={{ color: active ? "#2563eb" : palette.bg }} />
+        </div>
+        <div className="min-w-0">
+          <p className={`text-sm font-medium leading-snug truncate ${active ? "text-blue-700" : "text-gray-800"}`}>
+            {pres.presentation_name || pres.name}
+          </p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {numSlides} {numSlides === 1 ? "slide" : "slides"} · {date}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-1 text-xs text-gray-400 flex-shrink-0 ml-2">
+        <Eye className="w-3 h-3" /><span>{views}</span>
+      </div>
+    </button>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 export default function PresentationPage() {
   const [records, setRecords] = useState<Presentation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeIdx, setActiveIdx] = useState(0);
+  const [activeSlide, setActiveSlide] = useState(0);
   const [fullscreen, setFullscreen] = useState(false);
 
+  // Playback mode
+  const [mode, setMode] = useState<"manual" | "video">("manual");
+  const [playing, setPlaying] = useState(false);
+  const [intervalSecs, setIntervalSecs] = useState(5);
+  const [showIntervalMenu, setShowIntervalMenu] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const load = async () => {
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
       const res = await fetch(`${BASE}/api/presentations`);
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setRecords(Array.isArray(data) ? data : []);
-      setActiveIdx(0);
+      setActiveIdx(0); setActiveSlide(0);
     } catch (e: any) {
       setError(e.message || "Failed to load presentations");
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   useEffect(() => { load(); }, []);
@@ -174,14 +306,46 @@ export default function PresentationPage() {
   const active = records[activeIdx] ?? null;
   const activeExt = active?.file_upload ? fileExt(active.file_upload) : "";
   const isPptx = activeExt === "pptx" || activeExt === "ppt";
-  const viewerUrl = active?.file_upload && isPptx ? officeViewerUrl(active.file_upload) : null;
+  const { slides, loading: slidesLoading } = usePptxSlides(active?.file_upload ?? null, activeExt);
+  const numSlides = slides.length || 1;
+  const currentSlide = slides[activeSlide] ?? null;
+
+  const next = useCallback(() => {
+    setActiveSlide(s => (s + 1) % numSlides);
+    setProgress(0);
+  }, [numSlides]);
+
+  const prev = useCallback(() => {
+    setActiveSlide(s => (s - 1 + numSlides) % numSlides);
+    setProgress(0);
+  }, [numSlides]);
+
+  // Auto-play (video mode)
+  useEffect(() => {
+    if (mode !== "video" || !playing) {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (progressRef.current) clearInterval(progressRef.current);
+      setProgress(0);
+      return;
+    }
+    setProgress(0);
+    const step = 100 / (intervalSecs * 20);
+    progressRef.current = setInterval(() => setProgress(p => Math.min(p + step, 100)), 50);
+    timerRef.current = setInterval(() => { next(); }, intervalSecs * 1000);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (progressRef.current) clearInterval(progressRef.current);
+    };
+  }, [mode, playing, intervalSecs, next]);
+
+  // Stop auto-play when switching decks
+  useEffect(() => { setPlaying(false); setActiveSlide(0); }, [activeIdx]);
+
   const palette = PALETTE[activeIdx % PALETTE.length];
 
   return (
     <>
-      {fullscreen && active && (
-        <FullscreenViewer pres={active} onClose={() => setFullscreen(false)} />
-      )}
+      {fullscreen && active && <FullscreenViewer pres={active} onClose={() => setFullscreen(false)} />}
 
       <Layout>
         <div className="p-6 space-y-6 max-w-7xl">
@@ -223,7 +387,7 @@ export default function PresentationPage() {
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-              {/* ── Left panel: slide viewer ── */}
+              {/* ── Left panel ── */}
               <div className="lg:col-span-8 space-y-4">
                 <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
 
@@ -234,40 +398,27 @@ export default function PresentationPage() {
                         {active?.presentation_name || active?.name}
                       </h2>
                       {active?.project_name && (
-                        <p className="text-xs text-gray-400 mt-0.5 uppercase tracking-wide">
-                          {active.project_name}
-                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5 uppercase tracking-wide">{active.project_name}</p>
                       )}
                     </div>
                     <div className="flex items-center gap-2 ml-3 flex-shrink-0">
                       {active?.file_upload && (
-                        <a
-                          href={proxyAbsUrl(active.file_upload)}
-                          download
-                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 text-sm transition-colors"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          Download
+                        <a href={proxyAbsUrl(active.file_upload)} download
+                          className="p-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors" title="Download">
+                          <Download className="w-4 h-4" />
                         </a>
                       )}
                       {active?.file_upload && (
-                        <a
-                          href={proxyAbsUrl(active.file_upload)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
-                          title="Open in new tab"
-                        >
+                        <a href={proxyAbsUrl(active.file_upload)} target="_blank" rel="noopener noreferrer"
+                          className="p-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors" title="Open in new tab">
                           <ExternalLink className="w-4 h-4" />
                         </a>
                       )}
                       <button
                         onClick={() => setFullscreen(true)}
                         disabled={!isPptx || !active?.file_upload}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:pointer-events-none text-white text-sm font-semibold shadow transition-colors"
-                      >
-                        <Maximize2 className="w-3.5 h-3.5" />
-                        Present
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:pointer-events-none text-white text-sm font-semibold shadow transition-colors">
+                        <Maximize2 className="w-3.5 h-3.5" /> Full View
                       </button>
                       <button className="p-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">
                         <Share2 className="w-4 h-4" />
@@ -275,53 +426,158 @@ export default function PresentationPage() {
                     </div>
                   </div>
 
-                  {/* ── Slide viewer ── */}
-                  <div className="w-full rounded-xl overflow-hidden bg-gray-100 relative" style={{ paddingBottom: "56.25%" }}>
-                    <div className="absolute inset-0">
-                      {viewerUrl ? (
-                        <iframe
-                          key={viewerUrl}
-                          src={viewerUrl}
-                          className="w-full h-full border-0"
-                          title={active?.presentation_name || active?.name}
-                          allow="fullscreen"
-                        />
-                      ) : active ? (
-                        <div
-                          className="w-full h-full flex flex-col items-center justify-center text-white p-8"
-                          style={{ background: palette.bg }}
-                        >
-                          <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center mb-4">
-                            <Layers className="w-7 h-7 text-white" />
-                          </div>
-                          <p className="text-xs font-semibold text-white/60 mb-1 uppercase tracking-widest">
-                            {active.project_name || "Presentation"}
-                          </p>
-                          <h2 className="text-xl font-bold text-center">
-                            {active.presentation_name || active.name}
-                          </h2>
-                          <p className="text-sm text-white/50 mt-3">
-                            {activeExt ? `${activeExt.toUpperCase()} — preview not available` : "No file attached"}
-                          </p>
-                        </div>
-                      ) : null}
+                  {/* Mode switcher */}
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+                      <button
+                        onClick={() => { setMode("manual"); setPlaying(false); }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                          mode === "manual" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                        }`}>
+                        <Monitor className="w-3.5 h-3.5" /> Manual
+                      </button>
+                      <button
+                        onClick={() => setMode("video")}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                          mode === "video" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                        }`}>
+                        <Film className="w-3.5 h-3.5" /> Video
+                      </button>
                     </div>
+
+                    {mode === "video" && (
+                      <>
+                        <button
+                          onClick={() => setPlaying(p => !p)}
+                          disabled={slides.length === 0}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors disabled:opacity-40 ${
+                            playing
+                              ? "bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
+                              : "bg-blue-600 text-white hover:bg-blue-700"
+                          }`}>
+                          {playing ? <><Pause className="w-3.5 h-3.5" /> Pause</> : <><Play className="w-3.5 h-3.5 fill-white" /> Play</>}
+                        </button>
+                        <div className="relative">
+                          <button
+                            onClick={() => setShowIntervalMenu(s => !s)}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs text-gray-500 border border-gray-200 hover:bg-gray-50 transition-colors">
+                            <Clock className="w-3.5 h-3.5" /> {intervalSecs}s
+                          </button>
+                          {showIntervalMenu && (
+                            <div className="absolute left-0 top-9 bg-white border border-gray-200 rounded-xl p-2 z-20 shadow-xl min-w-32">
+                              <p className="text-[10px] text-gray-400 uppercase tracking-wide px-2 mb-1.5">Slide duration</p>
+                              {[3, 5, 10, 15, 30].map(s => (
+                                <button key={s} onClick={() => { setIntervalSecs(s); setShowIntervalMenu(false); }}
+                                  className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
+                                    intervalSecs === s ? "bg-blue-50 text-blue-700 font-semibold" : "text-gray-700 hover:bg-gray-50"
+                                  }`}>
+                                  {s} seconds
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+
+                    <div className="flex-1" />
+                    <span className="text-xs text-gray-400 tabular-nums">
+                      {activeSlide + 1} / {numSlides}
+                    </span>
                   </div>
 
-                  {/* Info bar */}
-                  {active?.file_upload && (
-                    <div className="mt-3 flex items-center gap-2 text-xs text-gray-400">
-                      <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 uppercase font-semibold tracking-wide">
-                        {activeExt || "file"}
-                      </span>
-                      <span>·</span>
-                      <span>{active.modified ? formatDate(active.modified) : "—"}</span>
-                      {isPptx && (
-                        <>
-                          <span>·</span>
-                          <span className="text-blue-500">Rendered via Office Online</span>
-                        </>
-                      )}
+                  {/* Auto-play progress bar */}
+                  {mode === "video" && playing && (
+                    <div className="h-1 bg-gray-100 rounded-full mb-4 overflow-hidden">
+                      <div className="h-full bg-blue-500 transition-none rounded-full" style={{ width: `${progress}%` }} />
+                    </div>
+                  )}
+
+                  {/* Main slide preview */}
+                  <div className="w-full aspect-video rounded-xl overflow-hidden bg-gray-100 relative">
+                    {slidesLoading ? (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gray-100">
+                        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+                        <p className="text-xs text-gray-400">Loading slides…</p>
+                      </div>
+                    ) : currentSlide ? (
+                      <SlideCard slide={currentSlide} pres={active!} deckIdx={activeIdx} scale={1} />
+                    ) : active ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-white p-8"
+                        style={{ background: palette.bg }}>
+                        <div className="w-12 h-12 rounded-2xl bg-white/15 flex items-center justify-center mb-4">
+                          <Layers className="w-6 h-6 text-white" />
+                        </div>
+                        <p className="text-xs font-semibold text-white/60 mb-1 uppercase tracking-widest">
+                          {active.project_name || "Presentation"}
+                        </p>
+                        <h2 className="text-xl font-bold text-center">{active.presentation_name || active.name}</h2>
+                      </div>
+                    ) : null}
+
+                    {/* Navigation arrows — Manual mode */}
+                    {mode === "manual" && slides.length > 1 && (
+                      <>
+                        <button onClick={prev}
+                          className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/35 hover:bg-black/60 text-white flex items-center justify-center transition-all backdrop-blur-sm">
+                          <ChevronLeft className="w-5 h-5" />
+                        </button>
+                        <button onClick={next}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/35 hover:bg-black/60 text-white flex items-center justify-center transition-all backdrop-blur-sm">
+                          <ChevronRight className="w-5 h-5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Slide dots */}
+                  {slides.length > 1 && (
+                    <div className="flex items-center justify-center gap-1.5 mt-3">
+                      {slides.map((_, i) => (
+                        <button key={i} onClick={() => { setActiveSlide(i); setProgress(0); }}
+                          className={`rounded-full transition-all ${
+                            i === activeSlide ? "w-5 h-2 bg-blue-600" : "w-2 h-2 bg-gray-300 hover:bg-gray-400"
+                          }`} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* ALL SLIDES thumbnails */}
+                <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+                    All Slides
+                    {slidesLoading && <Loader2 className="inline w-3 h-3 ml-1.5 animate-spin text-gray-300" />}
+                  </p>
+                  {slidesLoading ? (
+                    <div className="grid grid-cols-5 gap-2">
+                      {[0,1,2,3,4].map(i => (
+                        <div key={i} className="aspect-video rounded-lg bg-gray-100 animate-pulse" />
+                      ))}
+                    </div>
+                  ) : slides.length > 0 ? (
+                    <div className="grid grid-cols-5 gap-2">
+                      {slides.map((slide, i) => (
+                        <button key={i} onClick={() => { setActiveSlide(i); setProgress(0); }}
+                          className={`aspect-video rounded-lg overflow-hidden relative transition-all ${
+                            i === activeSlide ? "ring-2 ring-blue-500 ring-offset-2" : "opacity-70 hover:opacity-100"
+                          }`}>
+                          <SlideCard slide={slide} pres={active!} deckIdx={activeIdx} scale={0.28} />
+                          <span className="absolute bottom-1 right-1.5 text-[9px] font-bold text-white/80 drop-shadow">{i + 1}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-5 gap-2">
+                      {Array.from({ length: numSlides }, (_, i) => (
+                        <button key={i} onClick={() => setActiveSlide(i)}
+                          className={`aspect-video rounded-lg flex items-center justify-center transition-all text-white text-xs font-bold ${
+                            i === activeSlide ? "ring-2 ring-blue-500 ring-offset-2" : "opacity-60 hover:opacity-90"
+                          }`}
+                          style={{ background: PALETTE[(activeIdx + i) % PALETTE.length].bg }}>
+                          {i + 1}
+                        </button>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -333,13 +589,9 @@ export default function PresentationPage() {
                   <h3 className="font-semibold text-gray-900 mb-4">All Decks</h3>
                   <div className="space-y-1">
                     {records.map((r, i) => (
-                      <DeckListItem
-                        key={r.name}
-                        pres={r}
-                        index={i}
-                        active={i === activeIdx}
-                        onClick={() => setActiveIdx(i)}
-                      />
+                      <DeckListItem key={r.name} pres={r} index={i} active={i === activeIdx}
+                        numSlides={i === activeIdx ? numSlides : 1}
+                        onClick={() => { setActiveIdx(i); }} />
                     ))}
                   </div>
                   <button className="w-full mt-4 py-3 rounded-xl border-2 border-dashed border-gray-200 text-gray-400 text-sm hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2">
