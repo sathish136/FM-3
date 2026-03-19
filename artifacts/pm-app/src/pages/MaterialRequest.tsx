@@ -67,19 +67,44 @@ function formatDate(d: string | null) {
 
 function today() { return new Date().toISOString().slice(0, 10); }
 
-type StatusCfg = { label: string; dot: string; row: string; badge: string; pill: string };
+type StatusCfg = { label: string; dot: string; row: string; badge: string; pill: string; solid: string };
 
 function statusCfg(status: string): StatusCfg {
   const s = (status || "").toLowerCase();
   if (s === "approved" || s === "submitted")
-    return { label: status, dot: "bg-emerald-500", row: "hover:bg-emerald-50/40", badge: "text-emerald-700 bg-emerald-50 border-emerald-200", pill: "bg-emerald-500" };
+    return { label: status, dot: "bg-emerald-500", row: "hover:bg-emerald-50/40", badge: "text-emerald-700 bg-emerald-50 border-emerald-200", pill: "bg-emerald-500", solid: "bg-emerald-500 text-white" };
   if (s === "pending")
-    return { label: status, dot: "bg-amber-500",  row: "hover:bg-amber-50/30",   badge: "text-amber-700 bg-amber-50 border-amber-200",   pill: "bg-amber-500"  };
+    return { label: status, dot: "bg-amber-400",  row: "hover:bg-amber-50/30",   badge: "text-amber-700 bg-amber-50 border-amber-200",   pill: "bg-amber-400",  solid: "bg-amber-400 text-white"  };
   if (s === "stopped" || s === "cancelled")
-    return { label: status, dot: "bg-red-500",    row: "hover:bg-red-50/30",     badge: "text-red-700 bg-red-50 border-red-200",         pill: "bg-red-500"    };
+    return { label: status, dot: "bg-red-400",    row: "hover:bg-red-50/30",     badge: "text-red-700 bg-red-50 border-red-200",         pill: "bg-red-400",    solid: "bg-red-400 text-white"    };
   if (s === "ordered")
-    return { label: status, dot: "bg-blue-500",   row: "hover:bg-blue-50/30",    badge: "text-blue-700 bg-blue-50 border-blue-200",      pill: "bg-blue-500"   };
-  return   { label: status || "Draft", dot: "bg-slate-400", row: "hover:bg-slate-50/60",  badge: "text-slate-600 bg-slate-100 border-slate-200",   pill: "bg-slate-400"  };
+    return { label: status, dot: "bg-blue-500",   row: "hover:bg-blue-50/30",    badge: "text-blue-700 bg-blue-50 border-blue-200",      pill: "bg-blue-500",   solid: "bg-blue-500 text-white"   };
+  return   { label: status || "Draft", dot: "bg-slate-400", row: "hover:bg-slate-50/60",  badge: "text-slate-600 bg-slate-100 border-slate-200",   pill: "bg-slate-400",  solid: "bg-slate-200 text-slate-700"  };
+}
+
+// ── Avatar ────────────────────────────────────────────────────────────────────
+const AVATAR_COLORS = [
+  "bg-violet-500","bg-indigo-500","bg-blue-500","bg-cyan-500",
+  "bg-teal-500","bg-emerald-500","bg-amber-500","bg-orange-500",
+  "bg-rose-500","bg-pink-500",
+];
+function avatarColor(name: string) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+function initials(email: string) {
+  const u = email.split("@")[0].replace(/[._-]/g, " ");
+  const parts = u.split(" ").filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return u.slice(0, 2).toUpperCase();
+}
+function UserAvatar({ email, size = "w-7 h-7" }: { email: string; size?: string }) {
+  return (
+    <div className={`${size} ${avatarColor(email)} rounded-full flex items-center justify-center shrink-0`}>
+      <span className="text-[10px] font-bold text-white leading-none">{initials(email)}</span>
+    </div>
+  );
 }
 
 function typeBadge(type: string) {
@@ -538,7 +563,8 @@ export default function MaterialRequestPage() {
 
                         {/* Status */}
                         <td className="px-3 py-3">
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold border ${st.badge}`}>
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${st.solid}`}>
+                            <span className="w-1.5 h-1.5 rounded-full bg-white/60 shrink-0" />
                             {st.label}
                           </span>
                         </td>
@@ -572,9 +598,12 @@ export default function MaterialRequestPage() {
                         {/* Created By */}
                         <td className="px-3 py-3">
                           {mr.owner ? (
-                            <span className="text-xs text-gray-600 truncate max-w-[130px] block" title={mr.owner}>
-                              {mr.owner.split("@")[0]}
-                            </span>
+                            <div className="flex items-center gap-2" title={mr.owner}>
+                              <UserAvatar email={mr.owner} />
+                              <span className="text-xs text-gray-600 truncate max-w-[100px]">
+                                {mr.owner.split("@")[0].replace(/[._-]/g, " ")}
+                              </span>
+                            </div>
                           ) : <span className="text-xs text-gray-300">—</span>}
                         </td>
 
