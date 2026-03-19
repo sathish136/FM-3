@@ -5,7 +5,7 @@ import {
   Filter, ChevronDown, ChevronRight, ChevronUp, Package,
   TrendingUp, CheckCircle2, Clock, AlertTriangle, XCircle,
   ChevronsUpDown, ArrowUpDown, CalendarDays, SlidersHorizontal,
-  Expand, Shrink, Eye, EyeOff, Printer,
+  Expand, Shrink, Eye, EyeOff,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -294,23 +294,6 @@ export default function ProjectBoard() {
   return (
     <Layout hideChrome={isReport}>
       <div className={`${isReport ? "min-h-full" : "h-full"} flex flex-col bg-slate-100 ${isReport ? "" : "overflow-hidden"}`}>
-
-        {/* ── Report print bar ── */}
-        {isReport && (
-          <div className="bg-blue-600 text-white px-6 py-2.5 flex items-center gap-3 shrink-0 print:hidden">
-            <LayoutGrid className="w-4 h-4 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <span className="text-sm font-bold">Project Board — Full Report</span>
-              {project && <span className="text-blue-200 text-xs ml-2">{project} · {selectedProjectName}</span>}
-              {remarks && <span className="text-blue-200 text-xs ml-1">· {remarks}</span>}
-            </div>
-            <span className="text-blue-200 text-xs">{new Date().toLocaleDateString()}</span>
-            <button onClick={() => window.print()}
-              className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
-              <Printer className="w-3.5 h-3.5" /> Print / Save PDF
-            </button>
-          </div>
-        )}
 
         {/* ── Header ── */}
         <div className="bg-white border-b border-gray-200 px-5 py-3 flex items-center gap-3 shrink-0">
