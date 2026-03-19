@@ -1,8 +1,8 @@
 import { Layout } from "@/components/Layout";
 import {
   Users, Search, RefreshCw, Loader2, Calendar,
-  UserCheck, UserX, Clock, Briefcase, Phone,
-  Building2, ChevronDown, ExternalLink,
+  UserCheck, Briefcase, Phone,
+  Building2, ChevronDown, ExternalLink, Mail,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -52,14 +52,23 @@ function fmtShortDate(d: string) {
 
 function EmpAvatar({ emp, size = "md" }: { emp: Employee; size?: "sm" | "md" | "lg" }) {
   const [err, setErr] = useState(false);
-  const dim = size === "lg" ? "w-14 h-14 text-lg" : size === "sm" ? "w-7 h-7 text-[10px]" : "w-10 h-10 text-sm";
-  const src = emp.image ? (emp.image.startsWith("http") ? emp.image : `${ERP_URL}${emp.image}`) : null;
+  const dim = size === "lg" ? "w-14 h-14 text-lg" : size === "sm" ? "w-8 h-8 text-[10px]" : "w-10 h-10 text-sm";
+  const src = emp.image
+    ? emp.image.startsWith("http") ? emp.image : `${ERP_URL}${emp.image}`
+    : null;
   if (src && !err) {
-    return <img src={src} alt={emp.employee_name} onError={() => setErr(true)}
-      className={`${dim} rounded-full object-cover shrink-0 ring-2 ring-white`} />;
+    return (
+      <img
+        src={src}
+        alt={emp.employee_name}
+        onError={() => setErr(true)}
+        crossOrigin="anonymous"
+        className={`${dim} rounded-full object-cover shrink-0`}
+      />
+    );
   }
   return (
-    <div className={`${dim} ${avatarColor(emp.name)} rounded-full flex items-center justify-center font-bold text-white shrink-0 ring-2 ring-white`}>
+    <div className={`${dim} ${avatarColor(emp.name)} rounded-full flex items-center justify-center font-bold text-white shrink-0`}>
       {initials(emp.employee_name)}
     </div>
   );
@@ -89,11 +98,11 @@ function StatusPill({ status, type }: { status: string; type: "employee" | "leav
     return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-200 text-gray-600">{status}</span>;
   }
   if (type === "attendance") {
-    if (s === "present")          return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500 text-white">Present</span>;
-    if (s === "absent")           return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-400 text-white">Absent</span>;
-    if (s === "on leave")         return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-400 text-white">On Leave</span>;
-    if (s === "half day")         return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-400 text-white">Half Day</span>;
-    if (s === "work from home")   return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-500 text-white">WFH</span>;
+    if (s === "present")        return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500 text-white">Present</span>;
+    if (s === "absent")         return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-400 text-white">Absent</span>;
+    if (s === "on leave")       return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-400 text-white">On Leave</span>;
+    if (s === "half day")       return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-400 text-white">Half Day</span>;
+    if (s === "work from home") return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-500 text-white">WFH</span>;
     return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-200 text-gray-600">{status}</span>;
   }
   return null;
@@ -111,7 +120,7 @@ export default function HRMS() {
   const [loading, setLoading]       = useState(false);
   const [search, setSearch]         = useState("");
   const [deptFilter, setDeptFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("Active");
   const [viewEmp, setViewEmp]       = useState<Employee | null>(null);
 
   const fetchTab = useCallback(async (t: Tab) => {
@@ -139,7 +148,10 @@ export default function HRMS() {
 
   useEffect(() => {
     fetchTab(tab);
-    setSearch(""); setDeptFilter(""); setStatusFilter(""); setViewEmp(null);
+    setSearch("");
+    setDeptFilter("");
+    setStatusFilter(tab === "employees" ? "Active" : "");
+    setViewEmp(null);
   }, [tab, fetchTab]);
 
   // Derived
@@ -148,8 +160,8 @@ export default function HRMS() {
   const onLeaveCount = leaves.filter(l => l.status === "Approved").length;
 
   const filteredEmps = employees.filter(e =>
-    (!search      || e.employee_name.toLowerCase().includes(search.toLowerCase()) || e.name.toLowerCase().includes(search.toLowerCase()) || (e.designation || "").toLowerCase().includes(search.toLowerCase())) &&
-    (!deptFilter  || e.department === deptFilter) &&
+    (!search       || e.employee_name.toLowerCase().includes(search.toLowerCase()) || e.name.toLowerCase().includes(search.toLowerCase()) || (e.designation || "").toLowerCase().includes(search.toLowerCase())) &&
+    (!deptFilter   || e.department === deptFilter) &&
     (!statusFilter || e.status === statusFilter)
   );
 
@@ -165,9 +177,9 @@ export default function HRMS() {
   );
 
   const TABS: { key: Tab; label: string; count: number; icon: React.ElementType }[] = [
-    { key: "employees",  label: "Employees",         count: employees.length,  icon: Users },
-    { key: "leave",      label: "Leave Applications", count: leaves.length,    icon: Calendar },
-    { key: "attendance", label: "Attendance",          count: attendance.length, icon: UserCheck },
+    { key: "employees",  label: "Employees",          count: employees.length,  icon: Users },
+    { key: "leave",      label: "Leave Applications",  count: leaves.length,    icon: Calendar },
+    { key: "attendance", label: "Attendance",           count: attendance.length, icon: UserCheck },
   ];
 
   return (
@@ -194,10 +206,10 @@ export default function HRMS() {
         {/* Stat pills */}
         <div className="px-6 pt-3 pb-0 flex gap-2 shrink-0 flex-wrap">
           {[
-            { label: "Total Employees", value: employees.length, color: "bg-blue-500" },
-            { label: "Active",          value: activeCount,       color: "bg-emerald-500" },
-            { label: "Approved Leaves", value: onLeaveCount,      color: "bg-amber-400" },
-            { label: "Attendance Records", value: attendance.length, color: "bg-violet-500" },
+            { label: "Total Employees",    value: employees.length,   color: "bg-blue-500" },
+            { label: "Active",             value: activeCount,        color: "bg-emerald-500" },
+            { label: "Approved Leaves",    value: onLeaveCount,       color: "bg-amber-400" },
+            { label: "Attendance Records", value: attendance.length,  color: "bg-violet-500" },
           ].map(s => (
             <div key={s.label} className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
               <span className={`w-2 h-2 rounded-full ${s.color} shrink-0`} />
@@ -208,7 +220,7 @@ export default function HRMS() {
         </div>
 
         {/* Tabs + filters */}
-        <div className="px-6 pt-3 pb-2 flex items-center gap-4 shrink-0 flex-wrap">
+        <div className="px-6 pt-3 pb-2 flex items-center gap-3 shrink-0 flex-wrap">
           <div className="flex gap-1 bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
             {TABS.map(t => {
               const Icon = t.icon;
@@ -228,7 +240,7 @@ export default function HRMS() {
           </div>
 
           {/* Search */}
-          <div className="relative flex-1 min-w-[180px] max-w-xs">
+          <div className="relative flex-1 min-w-[160px] max-w-xs">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
             <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder={tab === "employees" ? "Search name, ID, designation…" : tab === "leave" ? "Search employee, leave type…" : "Search employee…"}
@@ -236,7 +248,7 @@ export default function HRMS() {
             />
           </div>
 
-          {/* Dept filter (employees + attendance) */}
+          {/* Dept filter */}
           {(tab === "employees" || tab === "attendance") && depts.length > 0 && (
             <div className="relative">
               <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
@@ -264,46 +276,77 @@ export default function HRMS() {
         {/* Content */}
         <div className="flex-1 overflow-hidden flex min-h-0">
 
-          {/* ── Employees ── */}
+          {/* ── Employees (List View) ── */}
           {tab === "employees" && (
             <div className="flex-1 flex min-h-0 overflow-hidden">
-              {/* Card grid */}
               <div className={`flex-1 overflow-y-auto px-6 pb-6 pt-2 ${viewEmp ? "hidden md:block" : ""}`}>
                 {loading ? (
                   <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-indigo-400" /></div>
                 ) : filteredEmps.length === 0 ? (
                   <div className="text-center py-20 text-sm text-gray-400">No employees found</div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                    {filteredEmps.map(emp => (
-                      <button key={emp.name} onClick={() => setViewEmp(viewEmp?.name === emp.name ? null : emp)}
-                        className={`text-left bg-white rounded-2xl border p-4 shadow-[0_1px_3px_rgba(0,0,0,0.06)] hover:shadow-md transition-all ${
-                          viewEmp?.name === emp.name ? "border-indigo-400 ring-2 ring-indigo-200" : "border-gray-100 hover:border-gray-200"
-                        }`}>
-                        <div className="flex items-start gap-3 mb-3">
-                          <EmpAvatar emp={emp} size="md" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-gray-900 leading-snug truncate">{emp.employee_name}</p>
-                            <p className="text-[10px] text-gray-400 font-mono">{emp.name}</p>
-                          </div>
-                        </div>
-                        {emp.designation && (
-                          <p className="text-[11px] font-semibold text-indigo-600 truncate mb-1">{emp.designation}</p>
-                        )}
-                        {emp.department && (
-                          <div className="flex items-center gap-1 mb-2">
-                            <Building2 className="w-3 h-3 text-gray-400" />
-                            <span className="text-[10px] text-gray-500 truncate">{emp.department}</span>
-                          </div>
-                        )}
-                        <div className="flex items-center justify-between mt-2">
-                          <StatusPill status={emp.status} type="employee" />
-                          {emp.date_of_joining && (
-                            <span className="text-[9px] text-gray-400">Joined {fmtDate(emp.date_of_joining)}</span>
-                          )}
-                        </div>
-                      </button>
-                    ))}
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.06)] overflow-hidden">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="border-b border-gray-100 bg-gray-50/60">
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400 w-8">#</th>
+                          <th className="px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Employee</th>
+                          <th className="px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Designation</th>
+                          <th className="px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Department</th>
+                          <th className="px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Company</th>
+                          <th className="px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Joined</th>
+                          <th className="px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">Status</th>
+                          <th className="px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredEmps.map((emp, i) => (
+                          <tr
+                            key={emp.name}
+                            onClick={() => setViewEmp(viewEmp?.name === emp.name ? null : emp)}
+                            className={`border-b border-gray-50 hover:bg-indigo-50/40 transition-colors cursor-pointer ${
+                              viewEmp?.name === emp.name ? "bg-indigo-50 border-l-2 border-l-indigo-400" : i % 2 === 1 ? "bg-gray-50/20" : "bg-white"
+                            }`}
+                          >
+                            <td className="px-4 py-2.5 text-[10px] text-gray-400 font-mono">{i + 1}</td>
+                            <td className="px-3 py-2.5">
+                              <div className="flex items-center gap-2.5">
+                                <EmpAvatar emp={emp} size="sm" />
+                                <div>
+                                  <p className="text-xs font-semibold text-gray-800 leading-tight">{emp.employee_name}</p>
+                                  <p className="text-[10px] text-gray-400 font-mono leading-tight">{emp.name}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <span className="text-xs font-medium text-indigo-600">{emp.designation || "—"}</span>
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <div className="flex items-center gap-1">
+                                {emp.department && <Building2 className="w-3 h-3 text-gray-300 shrink-0" />}
+                                <span className="text-xs text-gray-600">{emp.department || "—"}</span>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <span className="text-xs text-gray-500">{emp.company || "—"}</span>
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <span className="text-xs text-gray-500">{fmtDate(emp.date_of_joining)}</span>
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <StatusPill status={emp.status} type="employee" />
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <a href={`${ERP_URL}/app/employee/${emp.name}`} target="_blank" rel="noopener noreferrer"
+                                onClick={e => e.stopPropagation()}
+                                className="text-gray-300 hover:text-indigo-500 transition-colors" title="Open in ERPNext">
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
@@ -317,21 +360,21 @@ export default function HRMS() {
                       <ChevronDown className="w-4 h-4 rotate-[-90deg]" />
                     </button>
                   </div>
-                  <div className="px-5 py-4 flex flex-col items-center text-center border-b border-gray-50">
+                  <div className="px-5 py-5 flex flex-col items-center text-center border-b border-gray-50">
                     <EmpAvatar emp={viewEmp} size="lg" />
                     <p className="mt-3 text-sm font-bold text-gray-900">{viewEmp.employee_name}</p>
                     <p className="text-[10px] text-gray-400 font-mono mt-0.5">{viewEmp.name}</p>
                     {viewEmp.designation && <p className="text-xs text-indigo-600 font-semibold mt-1">{viewEmp.designation}</p>}
                     <div className="mt-2"><StatusPill status={viewEmp.status} type="employee" /></div>
                   </div>
-                  <div className="px-4 py-3 space-y-3">
+                  <div className="px-4 py-4 space-y-3.5">
                     {[
-                      { icon: Building2, label: "Department",     value: viewEmp.department },
-                      { icon: Briefcase, label: "Company",        value: viewEmp.company },
+                      { icon: Building2, label: "Department",      value: viewEmp.department },
+                      { icon: Briefcase, label: "Company",         value: viewEmp.company },
                       { icon: Calendar,  label: "Date of Joining", value: fmtDate(viewEmp.date_of_joining) },
                       { icon: Phone,     label: "Phone",           value: viewEmp.cell_number },
                       { icon: Users,     label: "Gender",          value: viewEmp.gender },
-                    ].map(row => row.value && (
+                    ].map(row => row.value && row.value !== "—" && (
                       <div key={row.label} className="flex items-start gap-2.5">
                         <row.icon className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
                         <div>
@@ -342,7 +385,7 @@ export default function HRMS() {
                     ))}
                     {viewEmp.user_id && (
                       <div className="flex items-start gap-2.5">
-                        <UserCheck className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
+                        <Mail className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
                         <div>
                           <p className="text-[9px] text-gray-400 uppercase tracking-wider font-semibold">System User</p>
                           <p className="text-xs text-gray-700 font-medium truncate">{viewEmp.user_id}</p>
@@ -404,7 +447,7 @@ export default function HRMS() {
                           </td>
                           <td className="px-3 py-3"><StatusPill status={l.status} type="leave" /></td>
                           <td className="px-3 py-3">
-                            <a href={`${ERP_URL}/app/leave-application/${l.name}`} target="_blank" rel="noopener noreferrer"
+                            <a href={`${ERP_URL}/app/leave-request/${l.name}`} target="_blank" rel="noopener noreferrer"
                               className="text-gray-300 hover:text-indigo-500 transition-colors" title="Open in ERPNext">
                               <ExternalLink className="w-3.5 h-3.5" />
                             </a>
@@ -466,6 +509,7 @@ export default function HRMS() {
               )}
             </div>
           )}
+
         </div>
       </div>
     </Layout>
