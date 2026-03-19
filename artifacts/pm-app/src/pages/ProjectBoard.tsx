@@ -167,13 +167,14 @@ export default function ProjectBoard() {
     else { setSortKey(k); setSortDir("asc"); }
   };
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
     setLoading(true);
     setExpanded(new Set());
     try {
       const p = new URLSearchParams();
       if (project) p.set("project", project);
       if (remarks) p.set("mr_remarks", remarks);
+      if (force)   p.set("refresh", "1");
       const r = await fetch(`${BASE}/api/project-board?${p}`);
       if (!r.ok) throw new Error(await r.text());
       setRows(await r.json());
@@ -282,6 +283,11 @@ export default function ProjectBoard() {
             <h1 className="text-sm font-bold text-gray-900 leading-none">Project Board</h1>
             {project && <p className="text-[11px] text-blue-500 mt-0.5 truncate">{selectedProjectName}</p>}
           </div>
+          {/* Force refresh (bypass cache) */}
+          <button onClick={() => loadData(true)} disabled={loading} title="Force refresh from server"
+            className="p-1.5 rounded-lg text-gray-400 hover:bg-blue-50 hover:text-blue-600 transition-colors disabled:opacity-40">
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+          </button>
           {/* Expand / Collapse */}
           <button onClick={expandAll} title="Expand all"
             className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors">
