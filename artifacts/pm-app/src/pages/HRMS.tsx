@@ -196,9 +196,7 @@ export default function HRMS() {
       const deptSet = new Set(userScope.departments);
       return employees.filter(e => e.department && deptSet.has(e.department));
     }
-    // "self" scope: show all employees in the same department as this user
-    const empDept = userScope.employee?.department;
-    if (empDept) return employees.filter(e => e.department === empDept);
+    // "self" scope: regular employee — only their own record
     return userScope.employee ? [userScope.employee] : [];
   }, [employees, userScope]);
 
@@ -253,7 +251,7 @@ export default function HRMS() {
     ? { label: "All Employees", color: "bg-blue-50 border-blue-100 text-blue-700" }
     : userScope.scope === "department"
     ? { label: `Dept: ${userScope.departments.join(", ")}`, color: "bg-emerald-50 border-emerald-100 text-emerald-700" }
-    : { label: `Dept: ${userScope.employee?.department ?? "My Department"}`, color: "bg-violet-50 border-violet-100 text-violet-700" };
+    : { label: userScope.employee?.employee_name ?? "Self", color: "bg-violet-50 border-violet-100 text-violet-700" };
 
   return (
     <Layout>
