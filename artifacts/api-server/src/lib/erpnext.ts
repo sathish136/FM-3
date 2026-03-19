@@ -651,6 +651,20 @@ export async function fetchErpNextUserDepartmentPermissions(email: string): Prom
   return ((data.data || []) as any[]).map((d: any) => d.for_value as string).filter(Boolean);
 }
 
+// Check if an employee has any subordinates (employees with reports_to = employeeId)
+// This is used to determine HOD/manager status when role API is restricted
+export async function fetchErpNextSubordinates(employeeId: string): Promise<{ name: string; department: string | null }[]> {
+  if (!ERPNEXT_URL) return [];
+  const fields = JSON.stringify(["name", "department"]);
+  const filters = JSON.stringify([["Employee", "reports_to", "=", employeeId], ["Employee", "status", "=", "Active"]]);
+  const params = new URLSearchParams({ fields, filters, limit_page_length: "200" });
+  const url = `${ERPNEXT_URL}/api/resource/Employee?${params}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader() } });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return (data.data || []) as { name: string; department: string | null }[];
+}
+
 export async function fetchErpNextManagedDepartments(employeeId: string): Promise<string[]> {
   if (!ERPNEXT_URL) return [];
   const fields = JSON.stringify(["name", "department_name"]);

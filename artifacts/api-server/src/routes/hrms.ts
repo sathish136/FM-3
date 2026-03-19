@@ -6,6 +6,7 @@ import {
   fetchErpNextUserRoles,
   fetchErpNextManagedDepartments,
   fetchErpNextUserDepartmentPermissions,
+  fetchErpNextSubordinates,
 } from "../lib/erpnext";
 
 const ERPNEXT_URL = process.env.ERPNEXT_URL?.replace(/\/$/, "");
@@ -42,26 +43,29 @@ router.get("/hrms/user-scope", async (req, res) => {
       return;
     }
 
-    // HOD role in ERPNext → fetch their User Permission department restrictions
+    // HOD check via ERPNext role (may return [] if API key lacks permission)
     const isHOD = roles.includes("HOD");
-    if (isHOD) {
-      // First check ERPNext User Permissions (Department restriction set on their user)
+    if (isHOD && employee.department) {
       const permDepts = await fetchErpNextUserDepartmentPermissions(email);
-      if (permDepts.length > 0) {
-        res.json({ scope: "department", employee, departments: permDepts, roles });
-        return;
-      }
-      // Fallback: use employee's own department if no explicit restriction set
-      if (employee.department) {
-        res.json({ scope: "department", employee, departments: [employee.department], roles });
-        return;
-      }
+      const depts = permDepts.length > 0 ? permDepts : [employee.department];
+      res.json({ scope: "department", employee, departments: depts, roles });
+      return;
     }
 
     // Check if this employee is listed as department_manager for any department
     const managedDepts = await fetchErpNextManagedDepartments(employee.name);
     if (managedDepts.length > 0) {
       res.json({ scope: "department", employee, departments: managedDepts, roles });
+      return;
+    }
+
+    // Fallback: check if anyone reports_to this employee (manager/HOD via org chart)
+    const subordinates = await fetchErpNextSubordinates(employee.name);
+    if (subordinates.length > 0 && employee.department) {
+      // Collect distinct departments of subordinates, defaulting to employee's own dept
+      const subDepts = [...new Set(subordinates.map(s => s.department).filter(Boolean) as string[])];
+      const depts = subDepts.length > 0 ? subDepts : [employee.department];
+      res.json({ scope: "department", employee, departments: depts, roles });
       return;
     }
 
