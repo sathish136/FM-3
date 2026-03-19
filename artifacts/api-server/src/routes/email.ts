@@ -2,6 +2,8 @@ import { Router } from "express";
 import nodemailer from "nodemailer";
 import { ImapFlow } from "imapflow";
 import pg from "pg";
+import { simpleParser } from "mailparser";
+import OpenAI from "openai";
 
 const { Pool } = pg;
 
@@ -330,19 +332,20 @@ router.get("/email/:uid/body", async (req, res) => {
       return res.json({ html: cached.rows[0].body_html, text: cached.rows[0].body_text });
     }
 
-    // Fetch from IMAP
+    // Fetch from IMAP using download + mailparser
     const result = await withImap(account.gmailUser, account.gmailAppPassword, async (client) => {
       await client.mailboxOpen(folderPath);
-      let html = "";
-      let text = "";
-      for await (const msg of client.fetch({ uid }, { bodyParts: ["TEXT", "1", "1.1", "1.2", "2"] }, { uid: true })) {
-        for (const [, content] of msg.bodyParts ?? []) {
-          const str = content.toString();
-          if (str.trim().startsWith("<") || str.includes("<html")) html = str;
-          else if (!text) text = str;
-        }
-      }
-      return { html: html || null, text: text || null };
+      const dl = await client.download(uid, undefined, { uid: true });
+      if (!dl) return { html: null, text: null };
+      const chunks: Buffer[] = [];
+      for await (const chunk of dl.content) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      const raw = Buffer.concat(chunks);
+      const parsed = await simpleParser(raw);
+      return {
+        html: parsed.html || null,
+        text: parsed.text || null,
+        subject: parsed.subject || null,
+      };
     });
 
     // Cache the body
@@ -352,9 +355,57 @@ router.get("/email/:uid/body", async (req, res) => {
       [result.html, result.text, account.id, folderPath, uid]
     );
 
-    res.json(result);
+    res.json({ html: result.html, text: result.text });
   } catch (err: any) {
     console.error("body error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/email/:uid/ai-summary — AI summarize email body
+router.post("/email/:uid/ai-summary", async (req, res) => {
+  const { bodyText, bodyHtml, subject } = req.body;
+  const text = bodyText || (bodyHtml ? bodyHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "");
+  if (!text) return res.status(400).json({ error: "No body content provided" });
+  try {
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      max_tokens: 300,
+      messages: [
+        { role: "system", content: "You are an email assistant. Summarize the email concisely in 2-3 sentences. Focus on key points, action items, and important details." },
+        { role: "user", content: `Subject: ${subject || "No subject"}\n\n${text.slice(0, 3000)}` },
+      ],
+    });
+    res.json({ summary: completion.choices[0]?.message?.content || "" });
+  } catch (err: any) {
+    console.error("ai-summary error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/email/:uid/ai-reply — AI generate reply suggestions
+router.post("/email/:uid/ai-reply", async (req, res) => {
+  const { bodyText, bodyHtml, subject, from } = req.body;
+  const text = bodyText || (bodyHtml ? bodyHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "");
+  if (!text) return res.status(400).json({ error: "No body content provided" });
+  try {
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      max_tokens: 500,
+      messages: [
+        { role: "system", content: 'Generate 3 short, professional reply options for this email. Return a JSON array of strings like ["reply1", "reply2", "reply3"]. Each reply should be concise (1-3 sentences) and different in tone.' },
+        { role: "user", content: `From: ${from}\nSubject: ${subject || "No subject"}\n\n${text.slice(0, 2000)}` },
+      ],
+      response_format: { type: "json_object" },
+    });
+    const raw = completion.choices[0]?.message?.content || '{"replies":[]}';
+    const parsed = JSON.parse(raw);
+    const replies = parsed.replies || parsed.options || parsed.suggestions || Object.values(parsed)[0] || [];
+    res.json({ replies: Array.isArray(replies) ? replies.slice(0, 3) : [] });
+  } catch (err: any) {
+    console.error("ai-reply error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -422,6 +473,48 @@ router.delete("/email/:uid", async (req, res) => {
     res.json({ ok: true });
   } catch (err: any) {
     console.error("delete error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/email/:uid/archive — move to All Mail (archive)
+router.post("/email/:uid/archive", async (req, res) => {
+  const uid = parseInt(req.params.uid);
+  const folderPath = (req.query.mailbox as string) || "INBOX";
+  try {
+    const account = await getAccount(req.query.user as string | undefined);
+    await withImap(account.gmailUser, account.gmailAppPassword, async (client) => {
+      await client.mailboxOpen(folderPath);
+      await client.messageMove({ uid }, "[Gmail]/All Mail", { uid: true });
+    });
+    await emailPool.query(
+      "DELETE FROM email_cache WHERE account_id=$1 AND folder_path=$2 AND uid=$3",
+      [account.id, folderPath, uid]
+    );
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error("archive error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/email/ai-compose — AI improve draft
+router.post("/email/ai-compose", async (req, res) => {
+  const { subject, body, to } = req.body;
+  if (!body && !subject) return res.status(400).json({ error: "No content provided" });
+  try {
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      max_tokens: 600,
+      messages: [
+        { role: "system", content: "You are a professional email writing assistant. Improve the user's email draft to be clearer, more professional, and polished. Preserve the intent and key information. Return only the improved email body text, no subject or extra commentary." },
+        { role: "user", content: `To: ${to||""}\nSubject: ${subject||""}\n\nDraft:\n${body||""}` },
+      ],
+    });
+    res.json({ draft: completion.choices[0]?.message?.content || body });
+  } catch (err: any) {
+    console.error("ai-compose error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
