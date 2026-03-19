@@ -72,6 +72,87 @@ function Section({ label }: { label: string }) {
   return <div className="text-[9px] text-gray-400 uppercase tracking-widest px-1 mt-2 mb-0.5 select-none">{label}</div>;
 }
 
+const CUBE_SIZE = 72;
+
+type CameraView = "front" | "back" | "top" | "bottom" | "left" | "right" | "iso";
+
+const CUBE_FACES: { view: CameraView; label: string; transform: string; bg: string; hi: string }[] = [
+  { view: "front",  label: "FRONT",  transform: `translateZ(${CUBE_SIZE / 2}px)`,                             bg: "#1e3a8a", hi: "#3b82f6" },
+  { view: "back",   label: "BACK",   transform: `rotateY(180deg) translateZ(${CUBE_SIZE / 2}px)`,             bg: "#134e4a", hi: "#14b8a6" },
+  { view: "right",  label: "RIGHT",  transform: `rotateY(90deg) translateZ(${CUBE_SIZE / 2}px)`,              bg: "#14532d", hi: "#22c55e" },
+  { view: "left",   label: "LEFT",   transform: `rotateY(-90deg) translateZ(${CUBE_SIZE / 2}px)`,             bg: "#3b0764", hi: "#a855f7" },
+  { view: "top",    label: "TOP",    transform: `rotateX(-90deg) translateZ(${CUBE_SIZE / 2}px)`,             bg: "#7f1d1d", hi: "#ef4444" },
+  { view: "bottom", label: "BTM",    transform: `rotateX(90deg) translateZ(${CUBE_SIZE / 2}px)`,              bg: "#78350f", hi: "#f97316" },
+];
+
+function ViewCube({
+  cameraQuat,
+  onFaceClick,
+}: {
+  cameraQuat: THREE.Quaternion | null;
+  onFaceClick: (view: CameraView) => void;
+}) {
+  const [hovered, setHovered] = useState<CameraView | null>(null);
+
+  const matrixStr = (() => {
+    if (!cameraQuat) return "none";
+    const m = new THREE.Matrix4().makeRotationFromQuaternion(cameraQuat.clone().conjugate());
+    const e = m.elements;
+    return `matrix3d(${e[0].toFixed(5)},${e[1].toFixed(5)},${e[2].toFixed(5)},0,${e[4].toFixed(5)},${e[5].toFixed(5)},${e[6].toFixed(5)},0,${e[8].toFixed(5)},${e[9].toFixed(5)},${e[10].toFixed(5)},0,0,0,0,1)`;
+  })();
+
+  return (
+    <div
+      className="absolute bottom-14 right-3 select-none pointer-events-auto"
+      style={{ perspective: "250px", perspectiveOrigin: "50% 50%" }}
+    >
+      <div
+        style={{
+          width: `${CUBE_SIZE}px`,
+          height: `${CUBE_SIZE}px`,
+          position: "relative",
+          transformStyle: "preserve-3d",
+          transform: matrixStr,
+        }}
+      >
+        {CUBE_FACES.map(face => (
+          <div
+            key={face.view}
+            title={face.label}
+            onMouseEnter={() => setHovered(face.view)}
+            onMouseLeave={() => setHovered(null)}
+            onClick={() => onFaceClick(face.view)}
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transform: face.transform,
+              background: hovered === face.view ? face.hi : face.bg,
+              border: `1px solid rgba(255,255,255,${hovered === face.view ? 0.6 : 0.25})`,
+              cursor: "pointer",
+              transition: "background 0.12s, border-color 0.12s",
+              backfaceVisibility: "hidden",
+            }}
+          >
+            <span style={{ color: "white", fontSize: "8px", fontWeight: 700, letterSpacing: "0.07em", textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}>
+              {face.label}
+            </span>
+          </div>
+        ))}
+      </div>
+      <button
+        title="Isometric"
+        onClick={() => onFaceClick("iso")}
+        className="mt-1.5 w-full flex items-center justify-center gap-1 py-1 rounded text-[9px] font-bold tracking-widest text-gray-300 bg-white/10 border border-white/20 hover:bg-blue-600/80 hover:text-white hover:border-blue-400/60 transition-colors"
+      >
+        ISO
+      </button>
+    </div>
+  );
+}
+
 function ModelViewer({
   record,
   filtered,
@@ -100,6 +181,7 @@ function ModelViewer({
   const [measureResult, setMeasureResult] = useState<{
     dist: number; p1: THREE.Vector3; p2: THREE.Vector3;
   } | null>(null);
+  const [cameraQuat, setCameraQuat] = useState<THREE.Quaternion | null>(null);
 
   const viewerRef = useRef<ViewerRef>(null);
 
@@ -340,8 +422,16 @@ function ModelViewer({
                 showAxes={showAxes}
                 measureMode={measureMode}
                 onMeasureResult={handleMeasureResult}
+                onCameraChange={setCameraQuat}
               />
             </Suspense>
+          )}
+
+          {status === "loaded" && (
+            <ViewCube
+              cameraQuat={cameraQuat}
+              onFaceClick={(view) => viewerRef.current?.setCamera(view)}
+            />
           )}
 
           {/* File / record badge */}

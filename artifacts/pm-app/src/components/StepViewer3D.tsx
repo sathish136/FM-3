@@ -23,6 +23,7 @@ interface StepViewer3DProps {
   hiddenMeshes: Set<number>;
   measureMode: boolean;
   onMeasureResult: (dist: number | null, p1: THREE.Vector3 | null, p2: THREE.Vector3 | null) => void;
+  onCameraChange?: (q: THREE.Quaternion) => void;
 }
 
 const BG_COLORS: Record<BgColor, number> = {
@@ -38,7 +39,7 @@ const palette = [
 ];
 
 const StepViewer3D = forwardRef<ViewerRef, StepViewer3DProps>(function StepViewer3D(
-  { meshes, viewMode, showGrid, showAxes, bgColor, hiddenMeshes, measureMode, onMeasureResult },
+  { meshes, viewMode, showGrid, showAxes, bgColor, hiddenMeshes, measureMode, onMeasureResult, onCameraChange },
   ref
 ) {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -57,6 +58,8 @@ const StepViewer3D = forwardRef<ViewerRef, StepViewer3DProps>(function StepViewe
   const measureGrpRef = useRef<THREE.Group | null>(null);
   const measureModeRef = useRef(measureMode);
   measureModeRef.current = measureMode;
+  const onCameraChangeRef = useRef(onCameraChange);
+  onCameraChangeRef.current = onCameraChange;
 
   useImperativeHandle(ref, () => ({
     setCamera(view) {
@@ -162,6 +165,11 @@ const StepViewer3D = forwardRef<ViewerRef, StepViewer3DProps>(function StepViewe
     controls.screenSpacePanning = true;
     controlsRef.current = controls;
 
+    const onCtrlChange = () => {
+      onCameraChangeRef.current?.(camera.quaternion.clone());
+    };
+    controls.addEventListener("change", onCtrlChange);
+
     const grid = new THREE.GridHelper(200, 100, 0x334466, 0x223344);
     (grid.material as THREE.Material).opacity = 0.4;
     (grid.material as THREE.Material).transparent = true;
@@ -191,6 +199,7 @@ const StepViewer3D = forwardRef<ViewerRef, StepViewer3DProps>(function StepViewe
 
     return () => {
       window.removeEventListener("resize", handleResize);
+      controls.removeEventListener("change", onCtrlChange);
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
       controls.dispose();
       renderer.dispose();
