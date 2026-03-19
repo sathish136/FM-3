@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, numeric, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, numeric, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -112,3 +112,13 @@ export const spreadsheetsTable = pgTable("spreadsheets", {
 export const insertSpreadsheetSchema = createInsertSchema(spreadsheetsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertSpreadsheet = z.infer<typeof insertSpreadsheetSchema>;
 export type Spreadsheet = typeof spreadsheetsTable.$inferSelect;
+
+export const userPermissionsTable = pgTable("user_permissions", {
+  email: text("email").primaryKey(),
+  fullName: text("full_name"),
+  hasAccess: boolean("has_access").notNull().default(true),
+  modules: text("modules").notNull().default("[]"),
+  allowedProjects: text("allowed_projects").notNull().default("[]"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type UserPermission = typeof userPermissionsTable.$inferSelect;

@@ -27,6 +27,7 @@ import Gallery from "@/pages/Gallery";
 import Settings from "@/pages/Settings";
 import Profile from "@/pages/Profile";
 import MaterialRequest from "@/pages/MaterialRequest";
+import UserManagement from "@/pages/UserManagement";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -74,6 +75,7 @@ function ProtectedRoutes() {
       <Route path="/settings" component={Settings} />
       <Route path="/profile" component={Profile} />
       <Route path="/material-request" component={MaterialRequest} />
+      <Route path="/user-management" component={UserManagement} />
       <Route component={NotFound} />
     </Switch>
   );

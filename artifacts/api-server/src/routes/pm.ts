@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import {
   projectsTable, tasksTable, campaignsTable, leadsTable, teamMembersTable,
+  userPermissionsTable,
 } from "@workspace/db/schema";
 import { eq, sql } from "drizzle-orm";
 import {
@@ -18,6 +19,7 @@ import {
   fetchErpNextMaterialRequestItems,
   fetchErpNextWarehouses,
   fetchErpNextCompanies,
+  fetchErpNextUsers,
 } from "../lib/erpnext";
 
 const router = Router();
@@ -351,6 +353,57 @@ router.get("/companies", async (_req, res) => {
   try {
     const companies = await fetchErpNextCompanies();
     res.json(companies);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── User Management ─────────────────────────────────────────────────────────
+
+router.get("/erpnext-users", async (_req, res) => {
+  try {
+    const users = await fetchErpNextUsers();
+    res.json(users);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get("/user-permissions", async (_req, res) => {
+  try {
+    const rows = await db.select().from(userPermissionsTable);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.put("/user-permissions/:email", async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { fullName, hasAccess, modules, allowedProjects } = req.body;
+    const [row] = await db
+      .insert(userPermissionsTable)
+      .values({
+        email,
+        fullName: fullName ?? null,
+        hasAccess: hasAccess ?? true,
+        modules: JSON.stringify(modules ?? []),
+        allowedProjects: JSON.stringify(allowedProjects ?? []),
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: userPermissionsTable.email,
+        set: {
+          fullName: fullName ?? null,
+          hasAccess: hasAccess ?? true,
+          modules: JSON.stringify(modules ?? []),
+          allowedProjects: JSON.stringify(allowedProjects ?? []),
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    res.json(row);
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

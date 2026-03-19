@@ -427,3 +427,27 @@ export async function fetchErpNextProjects(): Promise<ErpProject[]> {
     createdAt: p.creation || new Date().toISOString(),
   }));
 }
+
+export interface ErpUser {
+  email: string;
+  full_name: string;
+  user_image: string | null;
+  enabled: number;
+}
+
+export async function fetchErpNextUsers(): Promise<ErpUser[]> {
+  if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
+  const fields = JSON.stringify(["name", "full_name", "user_image", "enabled"]);
+  const filters = JSON.stringify([["User", "user_type", "=", "System User"]]);
+  const params = new URLSearchParams({ fields, filters, limit_page_length: "500", order_by: "full_name asc" });
+  const url = `${ERPNEXT_URL}/api/resource/User?${params.toString()}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader() } });
+  if (!res.ok) throw new Error(`ERPNext users: ${res.status}`);
+  const data = await res.json();
+  return (data.data ?? []).map((u: any) => ({
+    email: u.name,
+    full_name: u.full_name || u.name,
+    user_image: u.user_image || null,
+    enabled: u.enabled ?? 1,
+  }));
+}
