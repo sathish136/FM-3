@@ -128,6 +128,70 @@ authRouter.get("/auth/me", async (req, res) => {
   }
 });
 
+// Full profile: User + Employee data from ERPNext
+authRouter.get("/auth/profile", async (req, res) => {
+  const email = req.query.email as string;
+  if (!email) return res.status(400).json({ error: "Missing email" });
+
+  const headers = { Accept: "application/json", Authorization: `token ${API_KEY}:${API_SECRET}` };
+
+  try {
+    // Fetch User doc
+    const userRes = await fetch(
+      `${ERP_URL}/api/resource/User/${encodeURIComponent(email)}?fields=["full_name","email","user_image","mobile_no","phone","username","creation","last_login","language","time_zone","enabled"]`,
+      { headers }
+    );
+    const userData = userRes.ok ? (await safeJson(userRes) as any)?.data || {} : {};
+
+    // Fetch linked Employee doc
+    const empRes = await fetch(
+      `${ERP_URL}/api/resource/Employee?filters=[["user_id","=","${email}"]]&fields=["employee_name","employee_number","designation","department","company","branch","date_of_joining","employment_type","gender","date_of_birth","cell_number","personal_email","status","image","reports_to","grade"]&limit=1`,
+      { headers }
+    );
+    const empList = empRes.ok ? ((await safeJson(empRes) as any)?.data || []) : [];
+    const emp = empList[0] || {};
+
+    // Resolve photo URL via proxy
+    const rawPhoto = userData.user_image || emp.image || null;
+    let photo: string | null = null;
+    if (rawPhoto) {
+      const abs = String(rawPhoto).startsWith("http") ? rawPhoto : `${ERP_URL}${rawPhoto}`;
+      photo = abs;
+    }
+
+    return res.json({
+      // User
+      email: userData.email || email,
+      full_name: userData.full_name || emp.employee_name || email,
+      photo,
+      mobile_no: userData.mobile_no || emp.cell_number || null,
+      phone: userData.phone || null,
+      username: userData.username || null,
+      language: userData.language || null,
+      time_zone: userData.time_zone || null,
+      last_login: userData.last_login || null,
+      enabled: userData.enabled ?? 1,
+      // Employee
+      employee_number: emp.employee_number || null,
+      designation: emp.designation || null,
+      department: emp.department || null,
+      company: emp.company || null,
+      branch: emp.branch || null,
+      date_of_joining: emp.date_of_joining || null,
+      employment_type: emp.employment_type || null,
+      gender: emp.gender || null,
+      date_of_birth: emp.date_of_birth || null,
+      employee_status: emp.status || null,
+      reports_to: emp.reports_to || null,
+      grade: emp.grade || null,
+      personal_email: emp.personal_email || null,
+    });
+  } catch (err) {
+    console.error("Profile error:", err);
+    return res.status(500).json({ error: "Failed to fetch profile" });
+  }
+});
+
 // Proxy ERPNext user images so browser doesn't need direct access
 authRouter.get("/auth/photo", async (req, res) => {
   const url = req.query.url as string;
