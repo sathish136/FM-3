@@ -84,12 +84,14 @@ function groupFolders(folders: ImapFolder[]) {
 }
 
 // ─── Compose Modal ────────────────────────────────────────────────────────────
-function ToolbarBtn({ onClick, title, active, children }: { onClick?: () => void; title?: string; active?: boolean; children: React.ReactNode }) {
+const EMOJI_LIST = ["😊","😂","❤️","👍","🎉","🙏","😍","🔥","✅","💯","👋","🤔","😅","🙌","💪","📧","📎","🔗","⭐","✨"];
+
+function ToolbarBtn({ onAction, title, active, children }: { onAction?: () => void; title?: string; active?: boolean; children: React.ReactNode }) {
   return (
     <button
-      onMouseDown={e => { e.preventDefault(); onClick?.(); }}
+      onMouseDown={e => { e.preventDefault(); onAction?.(); }}
       title={title}
-      className={`p-1.5 rounded transition-colors shrink-0 ${active ? "bg-blue-100 text-blue-700" : "text-gray-500 hover:bg-gray-200 hover:text-gray-700"}`}
+      className={`p-1.5 rounded transition-colors shrink-0 ${active ? "bg-blue-100 text-blue-700" : "text-gray-600 hover:bg-gray-200 hover:text-gray-800"}`}
     >
       {children}
     </button>
@@ -119,8 +121,14 @@ function ComposeModal({ onClose, defaultTo="", defaultCc="", defaultSubject="", 
   const [aiWriting, setAiWriting] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [maximized, setMaximized] = useState(false);
-  const [fontSize, setFontSize] = useState("14px");
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [fontSize, setFontSize] = useState("3");
+
   const editorRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const savedRangeRef = useRef<Range | null>(null);
 
   const windowTitle = mode === "reply" ? `Re: ${defaultSubject}` :
     mode === "replyAll" ? `Re: ${defaultSubject}` :
@@ -129,13 +137,83 @@ function ComposeModal({ onClose, defaultTo="", defaultCc="", defaultSubject="", 
   useEffect(() => {
     if (editorRef.current && defaultBody) {
       editorRef.current.innerText = defaultBody;
+      setBody(defaultBody);
     }
   }, []);
 
+  const saveSelection = () => {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+  };
+
+  const restoreSelection = () => {
+    const sel = window.getSelection();
+    if (sel && savedRangeRef.current) {
+      sel.removeAllRanges();
+      sel.addRange(savedRangeRef.current);
+    }
+  };
+
   const execCmd = useCallback((cmd: string, value?: string) => {
-    document.execCommand(cmd, false, value);
     editorRef.current?.focus();
+    document.execCommand(cmd, false, value);
   }, []);
+
+  const insertAtCursor = (html: string) => {
+    editorRef.current?.focus();
+    restoreSelection();
+    document.execCommand("insertHTML", false, html);
+  };
+
+  const handleFontSize = (val: string) => {
+    setFontSize(val);
+    execCmd("fontSize", val);
+  };
+
+  const handleLink = () => {
+    saveSelection();
+    const url = window.prompt("Enter URL (include https://):");
+    if (url) {
+      restoreSelection();
+      execCmd("createLink", url);
+    }
+  };
+
+  const handleAttach = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    setAttachments(prev => [...prev, ...files]);
+    e.target.value = "";
+  };
+
+  const handleImageInsert = () => {
+    saveSelection();
+    imageInputRef.current?.click();
+  };
+
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const src = ev.target?.result as string;
+      restoreSelection();
+      insertAtCursor(`<img src="${src}" alt="${file.name}" style="max-width:100%;border-radius:4px;margin:4px 0;" />`);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const handleEmoji = (emoji: string) => {
+    restoreSelection();
+    insertAtCursor(emoji);
+    setShowEmoji(false);
+  };
+
+  const removeAttachment = (idx: number) => setAttachments(prev => prev.filter((_, i) => i !== idx));
 
   const aiAssist = async () => {
     const currentBody = editorRef.current?.innerText || body;
@@ -180,6 +258,7 @@ function ComposeModal({ onClose, defaultTo="", defaultCc="", defaultSubject="", 
         >
           <Mail className="w-3.5 h-3.5 opacity-70"/>
           <span className="text-sm font-medium flex-1 truncate">{windowTitle}</span>
+          {attachments.length > 0 && <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full">{attachments.length} file{attachments.length>1?"s":""}</span>}
           <button onMouseDown={e=>{e.stopPropagation();setMinimized(false);}} className="p-1 hover:bg-white/20 rounded"><Maximize2 className="w-3.5 h-3.5"/></button>
           <button onMouseDown={e=>{e.stopPropagation();onClose();}} className="p-1 hover:bg-white/20 rounded"><X className="w-3.5 h-3.5"/></button>
         </div>
@@ -191,15 +270,19 @@ function ComposeModal({ onClose, defaultTo="", defaultCc="", defaultSubject="", 
     ? "fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
     : "fixed inset-0 z-50 flex items-end justify-end p-5 pointer-events-none";
 
-  const windowCls = maximized
-    ? "w-[92vw] h-[92vh] rounded-2xl"
-    : "w-[640px] rounded-2xl";
+  const windowCls = maximized ? "w-[92vw] h-[92vh] rounded-2xl" : "w-[660px] rounded-2xl";
 
   return (
-    <div className={wrapperCls}>
-      <div className={`pointer-events-auto bg-white flex flex-col shadow-[0_20px_60px_rgba(0,0,0,0.25)] border border-gray-200/80 overflow-hidden ${windowCls}`}
-        style={maximized ? {} : { maxHeight: "88vh" }}>
+    <div className={wrapperCls} onClick={() => setShowEmoji(false)}>
+      {/* Hidden file inputs */}
+      <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileChange}/>
+      <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFileChange}/>
 
+      <div
+        className={`pointer-events-auto bg-white flex flex-col shadow-[0_20px_60px_rgba(0,0,0,0.28)] border border-gray-200/80 overflow-hidden ${windowCls}`}
+        style={maximized ? {} : { maxHeight: "90vh" }}
+        onClick={e => e.stopPropagation()}
+      >
         {/* ── Header ── */}
         <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-[#0d47a1] to-[#1976d2] text-white shrink-0 select-none">
           <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center shrink-0">
@@ -209,166 +292,170 @@ function ComposeModal({ onClose, defaultTo="", defaultCc="", defaultSubject="", 
             <p className="text-sm font-semibold leading-tight truncate">{windowTitle}</p>
             {userEmail && <p className="text-[10px] text-blue-200 truncate">{userEmail}</p>}
           </div>
-          <button onClick={() => setMinimized(true)} title="Minimize" className="p-1.5 rounded-lg hover:bg-white/20 transition-colors">
-            <Minimize2 className="w-3.5 h-3.5"/>
-          </button>
-          <button onClick={() => setMaximized(v => !v)} title={maximized ? "Restore" : "Maximize"} className="p-1.5 rounded-lg hover:bg-white/20 transition-colors">
-            <Maximize2 className="w-3.5 h-3.5"/>
-          </button>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-red-500/70 transition-colors">
-            <X className="w-3.5 h-3.5"/>
-          </button>
+          <button onClick={() => setMinimized(true)} title="Minimize" className="p-1.5 rounded-lg hover:bg-white/20 transition-colors"><Minimize2 className="w-3.5 h-3.5"/></button>
+          <button onClick={() => setMaximized(v => !v)} title={maximized ? "Restore" : "Maximize"} className="p-1.5 rounded-lg hover:bg-white/20 transition-colors"><Maximize2 className="w-3.5 h-3.5"/></button>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-red-500/70 transition-colors"><X className="w-3.5 h-3.5"/></button>
         </div>
 
-        {/* ── Fields ── */}
-        <div className="shrink-0 bg-[#fafbfc]">
-          {/* From (read-only indicator) */}
+        {/* ── Address Fields ── */}
+        <div className="shrink-0 bg-[#fafbfc] border-b border-gray-200">
           {userEmail && (
             <div className="flex items-center px-4 py-2 border-b border-gray-100">
-              <span className="text-xs font-semibold text-gray-400 w-16 shrink-0 uppercase tracking-wide">From</span>
+              <span className="text-[11px] font-bold text-gray-400 w-16 shrink-0 uppercase tracking-widest">From</span>
               <span className="text-sm text-gray-600 flex-1">{userEmail}</span>
             </div>
           )}
-
-          {/* To */}
-          <div className="flex items-center px-4 py-2 border-b border-gray-100 gap-2 group focus-within:bg-blue-50/30 transition-colors">
-            <span className="text-xs font-semibold text-gray-400 w-16 shrink-0 uppercase tracking-wide">To</span>
-            <input
-              value={to} onChange={e => setTo(e.target.value)}
-              placeholder="Add recipients"
-              className="flex-1 text-sm text-gray-800 outline-none bg-transparent placeholder-gray-300 min-w-0"
-            />
+          <div className="flex items-center px-4 py-2 border-b border-gray-100 gap-2 focus-within:bg-blue-50/40 transition-colors">
+            <span className="text-[11px] font-bold text-gray-400 w-16 shrink-0 uppercase tracking-widest">To</span>
+            <input value={to} onChange={e => setTo(e.target.value)} placeholder="Add recipients"
+              className="flex-1 text-sm text-gray-800 outline-none bg-transparent placeholder-gray-300 min-w-0"/>
             <div className="flex gap-1 shrink-0">
               <button onClick={() => setShowCc(v => !v)}
-                className={`text-[11px] px-2 py-0.5 rounded-full font-semibold transition-colors ${showCc ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-200 hover:text-gray-700 border border-gray-200"}`}>
-                Cc
-              </button>
+                className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold transition-colors ${showCc ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-200 border border-gray-200"}`}>Cc</button>
               <button onClick={() => setShowBcc(v => !v)}
-                className={`text-[11px] px-2 py-0.5 rounded-full font-semibold transition-colors ${showBcc ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-200 hover:text-gray-700 border border-gray-200"}`}>
-                Bcc
-              </button>
+                className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold transition-colors ${showBcc ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-gray-200 border border-gray-200"}`}>Bcc</button>
             </div>
           </div>
-
-          {/* Cc */}
           {showCc && (
-            <div className="flex items-center px-4 py-2 border-b border-gray-100 gap-2 focus-within:bg-blue-50/30 transition-colors">
-              <span className="text-xs font-semibold text-gray-400 w-16 shrink-0 uppercase tracking-wide">Cc</span>
+            <div className="flex items-center px-4 py-2 border-b border-gray-100 gap-2 focus-within:bg-blue-50/40 transition-colors">
+              <span className="text-[11px] font-bold text-gray-400 w-16 shrink-0 uppercase tracking-widest">Cc</span>
               <input value={cc} onChange={e => setCc(e.target.value)} placeholder="Add Cc recipients"
                 className="flex-1 text-sm text-gray-800 outline-none bg-transparent placeholder-gray-300"/>
             </div>
           )}
-
-          {/* Bcc */}
           {showBcc && (
-            <div className="flex items-center px-4 py-2 border-b border-gray-100 gap-2 focus-within:bg-blue-50/30 transition-colors">
-              <span className="text-xs font-semibold text-gray-400 w-16 shrink-0 uppercase tracking-wide">Bcc</span>
+            <div className="flex items-center px-4 py-2 border-b border-gray-100 gap-2 focus-within:bg-blue-50/40 transition-colors">
+              <span className="text-[11px] font-bold text-gray-400 w-16 shrink-0 uppercase tracking-widest">Bcc</span>
               <input value={bcc} onChange={e => setBcc(e.target.value)} placeholder="Add Bcc recipients"
                 className="flex-1 text-sm text-gray-800 outline-none bg-transparent placeholder-gray-300"/>
             </div>
           )}
-
-          {/* Subject */}
-          <div className="flex items-center px-4 py-2.5 border-b border-gray-200 gap-2 focus-within:bg-blue-50/30 transition-colors">
-            <span className="text-xs font-semibold text-gray-400 w-16 shrink-0 uppercase tracking-wide">Subject</span>
+          <div className="flex items-center px-4 py-2.5 gap-2 focus-within:bg-blue-50/40 transition-colors">
+            <span className="text-[11px] font-bold text-gray-400 w-16 shrink-0 uppercase tracking-widest">Subject</span>
             <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Write a subject…"
               className="flex-1 text-sm font-semibold text-gray-800 outline-none bg-transparent placeholder-gray-300"/>
           </div>
         </div>
 
         {/* ── Formatting Toolbar ── */}
-        <div className="flex items-center gap-0.5 px-3 py-1.5 bg-[#f0f2f5] border-b border-gray-200 shrink-0 flex-wrap">
-          {/* Font size */}
+        <div className="flex items-center gap-0.5 px-2 py-1.5 bg-[#f0f3f7] border-b border-gray-200 shrink-0 flex-wrap">
           <select
             value={fontSize}
-            onChange={e => { setFontSize(e.target.value); execCmd("fontSize", e.target.value === "12px" ? "1" : e.target.value === "14px" ? "2" : e.target.value === "16px" ? "3" : e.target.value === "18px" ? "4" : "5"); }}
-            className="text-xs text-gray-600 bg-white border border-gray-200 rounded px-1.5 py-1 outline-none cursor-pointer mr-1 h-7"
+            onMouseDown={e => e.preventDefault()}
+            onChange={e => handleFontSize(e.target.value)}
+            className="text-xs text-gray-700 bg-white border border-gray-300 rounded px-1.5 py-1 outline-none cursor-pointer h-7 mr-1"
           >
-            <option value="12px">12</option>
-            <option value="14px">14</option>
-            <option value="16px">16</option>
-            <option value="18px">18</option>
-            <option value="24px">24</option>
+            <option value="1">10</option>
+            <option value="2">12</option>
+            <option value="3">14</option>
+            <option value="4">16</option>
+            <option value="5">18</option>
+            <option value="6">24</option>
+            <option value="7">32</option>
           </select>
 
           <div className="w-px h-5 bg-gray-300 mx-0.5"/>
-
-          <ToolbarBtn onClick={() => execCmd("bold")} title="Bold (Ctrl+B)"><Bold className="w-3.5 h-3.5"/></ToolbarBtn>
-          <ToolbarBtn onClick={() => execCmd("italic")} title="Italic (Ctrl+I)"><Italic className="w-3.5 h-3.5"/></ToolbarBtn>
-          <ToolbarBtn onClick={() => execCmd("underline")} title="Underline (Ctrl+U)"><Underline className="w-3.5 h-3.5"/></ToolbarBtn>
-          <ToolbarBtn onClick={() => execCmd("strikethrough")} title="Strikethrough"><Strikethrough className="w-3.5 h-3.5"/></ToolbarBtn>
-
-          <div className="w-px h-5 bg-gray-300 mx-0.5"/>
-
-          <ToolbarBtn onClick={() => execCmd("justifyLeft")} title="Align Left"><AlignLeft className="w-3.5 h-3.5"/></ToolbarBtn>
-          <ToolbarBtn onClick={() => execCmd("justifyCenter")} title="Align Center"><AlignCenter className="w-3.5 h-3.5"/></ToolbarBtn>
-          <ToolbarBtn onClick={() => execCmd("justifyRight")} title="Align Right"><AlignRight className="w-3.5 h-3.5"/></ToolbarBtn>
+          <ToolbarBtn onAction={() => execCmd("bold")} title="Bold"><Bold className="w-3.5 h-3.5"/></ToolbarBtn>
+          <ToolbarBtn onAction={() => execCmd("italic")} title="Italic"><Italic className="w-3.5 h-3.5"/></ToolbarBtn>
+          <ToolbarBtn onAction={() => execCmd("underline")} title="Underline"><Underline className="w-3.5 h-3.5"/></ToolbarBtn>
+          <ToolbarBtn onAction={() => execCmd("strikeThrough")} title="Strikethrough"><Strikethrough className="w-3.5 h-3.5"/></ToolbarBtn>
 
           <div className="w-px h-5 bg-gray-300 mx-0.5"/>
-
-          <ToolbarBtn onClick={() => execCmd("insertUnorderedList")} title="Bullet List"><List className="w-3.5 h-3.5"/></ToolbarBtn>
-          <ToolbarBtn onClick={() => execCmd("insertOrderedList")} title="Numbered List"><ListOrdered className="w-3.5 h-3.5"/></ToolbarBtn>
-          <ToolbarBtn onClick={() => execCmd("formatBlock", "blockquote")} title="Quote"><Quote className="w-3.5 h-3.5"/></ToolbarBtn>
+          <ToolbarBtn onAction={() => execCmd("justifyLeft")} title="Align Left"><AlignLeft className="w-3.5 h-3.5"/></ToolbarBtn>
+          <ToolbarBtn onAction={() => execCmd("justifyCenter")} title="Align Center"><AlignCenter className="w-3.5 h-3.5"/></ToolbarBtn>
+          <ToolbarBtn onAction={() => execCmd("justifyRight")} title="Align Right"><AlignRight className="w-3.5 h-3.5"/></ToolbarBtn>
 
           <div className="w-px h-5 bg-gray-300 mx-0.5"/>
+          <ToolbarBtn onAction={() => execCmd("insertUnorderedList")} title="Bullet List"><List className="w-3.5 h-3.5"/></ToolbarBtn>
+          <ToolbarBtn onAction={() => execCmd("insertOrderedList")} title="Numbered List"><ListOrdered className="w-3.5 h-3.5"/></ToolbarBtn>
+          <ToolbarBtn onAction={() => execCmd("formatBlock", "blockquote")} title="Blockquote"><Quote className="w-3.5 h-3.5"/></ToolbarBtn>
 
-          <ToolbarBtn onClick={() => { const url=window.prompt("Enter URL:"); if(url) execCmd("createLink", url); }} title="Insert Link"><Link className="w-3.5 h-3.5"/></ToolbarBtn>
-          <ToolbarBtn title="Attach file"><AttachIcon className="w-3.5 h-3.5"/></ToolbarBtn>
-          <ToolbarBtn title="Insert image"><ImageIcon className="w-3.5 h-3.5"/></ToolbarBtn>
-          <ToolbarBtn onClick={() => execCmd("removeFormat")} title="Clear formatting"><Type className="w-3.5 h-3.5"/></ToolbarBtn>
+          <div className="w-px h-5 bg-gray-300 mx-0.5"/>
+          <ToolbarBtn onAction={handleLink} title="Insert Link"><Link className="w-3.5 h-3.5"/></ToolbarBtn>
+
+          <ToolbarBtn onAction={handleImageInsert} title="Insert Image"><ImageIcon className="w-3.5 h-3.5"/></ToolbarBtn>
+
+          {/* Emoji picker */}
+          <div className="relative">
+            <ToolbarBtn onAction={() => { saveSelection(); setShowEmoji(v => !v); }} title="Insert Emoji"><Smile className="w-3.5 h-3.5"/></ToolbarBtn>
+            {showEmoji && (
+              <div className="absolute bottom-full left-0 mb-1 bg-white border border-gray-200 rounded-xl shadow-xl p-2 z-20 w-52">
+                <div className="grid grid-cols-10 gap-0.5">
+                  {EMOJI_LIST.map(e => (
+                    <button key={e} onMouseDown={ev => { ev.preventDefault(); handleEmoji(e); }}
+                      className="text-base hover:bg-blue-50 rounded p-0.5 transition-colors leading-none">{e}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <ToolbarBtn onAction={() => execCmd("removeFormat")} title="Clear Formatting"><Type className="w-3.5 h-3.5"/></ToolbarBtn>
+
+          <div className="flex-1"/>
+
+          {/* Attach file button in toolbar */}
+          <button
+            onMouseDown={e => { e.preventDefault(); handleAttach(); }}
+            title="Attach File"
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-600 hover:bg-gray-200 transition-colors font-medium"
+          >
+            <AttachIcon className="w-3.5 h-3.5"/> Attach
+          </button>
         </div>
 
         {/* ── Editor Body ── */}
-        <div className="flex-1 overflow-y-auto bg-white min-h-0 relative">
+        <div className="flex-1 overflow-y-auto bg-white min-h-0">
           <div
             ref={editorRef}
             contentEditable
             suppressContentEditableWarning
             onInput={() => setBody(editorRef.current?.innerHTML || "")}
-            className="compose-editor w-full h-full min-h-full px-6 py-4 text-sm text-gray-800 outline-none leading-relaxed"
-            style={{
-              fontFamily: "'Inter', 'Segoe UI', sans-serif",
-              minHeight: maximized ? "400px" : "220px",
-            }}
+            onBlur={saveSelection}
+            className="compose-editor w-full min-h-full px-6 py-4 text-sm text-gray-800 outline-none leading-relaxed"
+            style={{ fontFamily: "'Inter','Segoe UI',sans-serif", minHeight: maximized ? "360px" : "200px" }}
             data-placeholder="Write your message here…"
           />
         </div>
 
-        {/* ── Signature divider ── */}
-        <div className="px-6 pb-2 bg-white shrink-0">
-          <div className="border-t border-gray-200 pt-2">
-            <p className="text-xs text-gray-400 italic">— Sent via FlowMatriX</p>
+        {/* ── Attachments strip ── */}
+        {attachments.length > 0 && (
+          <div className="px-4 py-2 bg-[#f8fafc] border-t border-gray-100 flex flex-wrap gap-1.5 shrink-0">
+            {attachments.map((f, i) => (
+              <div key={i} className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-2.5 py-1 text-xs text-gray-700 shadow-sm">
+                <AttachIcon className="w-3 h-3 text-blue-500 shrink-0"/>
+                <span className="max-w-[120px] truncate font-medium">{f.name}</span>
+                <span className="text-gray-400 shrink-0">({(f.size/1024).toFixed(0)} KB)</span>
+                <button onClick={() => removeAttachment(i)} className="ml-0.5 text-gray-400 hover:text-red-500 transition-colors"><X className="w-3 h-3"/></button>
+              </div>
+            ))}
           </div>
+        )}
+
+        {/* ── Signature ── */}
+        <div className="px-6 pb-2 pt-1 bg-white border-t border-dashed border-gray-200 shrink-0">
+          <p className="text-xs text-gray-400 italic">— Sent via FlowMatriX</p>
         </div>
 
         {/* ── Action bar ── */}
         <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-200 bg-[#f7f9fc] shrink-0">
-          {/* Send button with dropdown */}
           <div className="flex items-center shrink-0">
-            <button
-              onClick={handleSend}
-              disabled={sending || sent}
-              className="flex items-center gap-2 pl-4 pr-3 py-2 bg-[#1565c0] hover:bg-[#0d47a1] disabled:opacity-60 text-white rounded-l-lg text-sm font-semibold transition-colors shadow-sm"
-            >
+            <button onClick={handleSend} disabled={sending || sent}
+              className="flex items-center gap-2 pl-4 pr-3 py-2 bg-[#1565c0] hover:bg-[#0d47a1] disabled:opacity-60 text-white rounded-l-lg text-sm font-semibold transition-colors shadow-sm">
               {sending ? <Loader2 className="w-4 h-4 animate-spin"/> : <Send className="w-4 h-4"/>}
               {sending ? "Sending…" : sent ? "✓ Sent!" : "Send"}
             </button>
-            <button className="flex items-center px-2 py-2 bg-[#1976d2] hover:bg-[#1565c0] text-white rounded-r-lg border-l border-blue-700/40 text-sm transition-colors shadow-sm">
+            <button className="flex items-center px-2 py-2 bg-[#1976d2] hover:bg-[#1565c0] text-white rounded-r-lg border-l border-blue-700/40 transition-colors shadow-sm">
               <ChevronDown className="w-4 h-4"/>
             </button>
           </div>
 
-          {/* AI Improve */}
-          <button
-            onClick={aiAssist}
-            disabled={aiWriting}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors border bg-white border-purple-200 text-purple-700 hover:bg-purple-50 shadow-sm"
-          >
+          <button onClick={aiAssist} disabled={aiWriting}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border bg-white border-purple-200 text-purple-700 hover:bg-purple-50 shadow-sm transition-colors">
             {aiWriting ? <Loader2 className="w-3.5 h-3.5 animate-spin"/> : <Wand2 className="w-3.5 h-3.5"/>}
             AI Improve
           </button>
 
-          {/* Save draft */}
           <button className="text-xs text-gray-500 hover:text-gray-800 font-medium px-2 py-2 rounded-lg hover:bg-gray-200 transition-colors">
             Save Draft
           </button>
@@ -382,13 +469,8 @@ function ComposeModal({ onClose, defaultTo="", defaultCc="", defaultSubject="", 
           )}
           {sent && <p className="text-xs text-green-600 font-semibold bg-green-50 border border-green-200 px-2.5 py-1 rounded-lg">✓ Message sent!</p>}
 
-          {/* Right actions */}
-          <button className="p-2 rounded-lg hover:bg-gray-200 text-gray-400 transition-colors" title="More options">
-            <MoreHorizontal className="w-4 h-4"/>
-          </button>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-red-100 hover:text-red-500 text-gray-400 transition-colors" title="Discard draft">
-            <Trash2 className="w-4 h-4"/>
-          </button>
+          <button className="p-2 rounded-lg hover:bg-gray-200 text-gray-400 transition-colors" title="More options"><MoreHorizontal className="w-4 h-4"/></button>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-red-100 hover:text-red-500 text-gray-400 transition-colors" title="Discard draft"><Trash2 className="w-4 h-4"/></button>
         </div>
       </div>
     </div>
