@@ -685,7 +685,7 @@ export default function MeetingMinutes() {
                 </div>
 
                 {/* Form card */}
-                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm">
 
                   {/* Section: Basic Info */}
                   <div className="px-6 pt-5 pb-4 border-b border-gray-100">
