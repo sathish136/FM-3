@@ -4,8 +4,7 @@ import {
   RefreshCw, AlertCircle, Trash2, Star, Paperclip, Search,
   Eye, EyeOff, CornerUpLeft, Forward, Archive, Tag, Bookmark,
   ShieldAlert, FileText, FolderOpen, ChevronDown, ChevronRight,
-  Sparkles, Printer, MoreHorizontal, CheckSquare, Clock,
-  ArrowRight, Copy, Ban, Wand2,
+  Sparkles, Printer, Clock, Wand2, Users,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
