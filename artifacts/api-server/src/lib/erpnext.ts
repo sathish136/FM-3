@@ -647,6 +647,38 @@ export async function fetchErpNextManagedDepartments(employeeId: string): Promis
   return ((data.data || []) as any[]).map((d: any) => d.name as string);
 }
 
+export interface ErpDepartment {
+  name: string;
+  department_name: string;
+  parent_department: string | null;
+  department_manager: string | null;
+  department_manager_name: string | null;
+  company: string | null;
+  is_group: number;
+  disabled: number;
+}
+
+export async function fetchErpNextDepartments(): Promise<ErpDepartment[]> {
+  if (!ERPNEXT_URL) return [];
+  const fields = JSON.stringify([
+    "name", "department_name", "parent_department",
+    "department_manager", "department_manager_name",
+    "company", "is_group", "disabled",
+  ]);
+  const filters = JSON.stringify([["Department", "disabled", "=", 0]]);
+  const params = new URLSearchParams({
+    fields,
+    filters,
+    limit_page_length: "500",
+    order_by: "department_name asc",
+  });
+  const url = `${ERPNEXT_URL}/api/resource/Department?${params}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader() } });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return (data.data || []) as ErpDepartment[];
+}
+
 export async function fetchErpNextUsers(): Promise<ErpUser[]> {
   if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
   const fields = JSON.stringify(["name", "full_name", "user_image", "enabled"]);
