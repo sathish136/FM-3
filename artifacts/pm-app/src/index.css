@@ -246,3 +246,35 @@
     @apply block text-sm font-medium text-gray-700 mb-1.5;
   }
 }
+
+/* ─── Compose editor ─────────────────────────────────────────────────────── */
+.compose-editor:empty::before {
+  content: attr(data-placeholder);
+  color: #9ca3af;
+  pointer-events: none;
+  font-style: italic;
+}
+
+.compose-editor blockquote {
+  border-left: 3px solid #d1d5db;
+  margin: 8px 0;
+  padding: 4px 12px;
+  color: #6b7280;
+  background: #f9fafb;
+  border-radius: 0 4px 4px 0;
+}
+
+.compose-editor a {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
+.compose-editor ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+}
+
+.compose-editor ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+}
