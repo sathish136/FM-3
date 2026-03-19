@@ -5,6 +5,17 @@ import pg from "pg";
 import { simpleParser } from "mailparser";
 import OpenAI from "openai";
 
+let _openai: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!_openai) {
+    _openai = new OpenAI({
+      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    });
+  }
+  return _openai;
+}
+
 const { Pool } = pg;
 
 const emailPool = new Pool({
@@ -368,10 +379,9 @@ router.post("/email/:uid/ai-summary", async (req, res) => {
   const text = bodyText || (bodyHtml ? bodyHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "");
   if (!text) return res.status(400).json({ error: "No body content provided" });
   try {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      max_tokens: 300,
+    const completion = await getOpenAI().chat.completions.create({
+      model: "gpt-5-mini",
+      max_completion_tokens: 400,
       messages: [
         { role: "system", content: "You are an email assistant. Summarize the email concisely in 2-3 sentences. Focus on key points, action items, and important details." },
         { role: "user", content: `Subject: ${subject || "No subject"}\n\n${text.slice(0, 3000)}` },
@@ -390,12 +400,11 @@ router.post("/email/:uid/ai-reply", async (req, res) => {
   const text = bodyText || (bodyHtml ? bodyHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "");
   if (!text) return res.status(400).json({ error: "No body content provided" });
   try {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      max_tokens: 500,
+    const completion = await getOpenAI().chat.completions.create({
+      model: "gpt-5-mini",
+      max_completion_tokens: 600,
       messages: [
-        { role: "system", content: 'Generate 3 short, professional reply options for this email. Return a JSON array of strings like ["reply1", "reply2", "reply3"]. Each reply should be concise (1-3 sentences) and different in tone.' },
+        { role: "system", content: 'Generate 3 short, professional reply options for this email. Return a JSON object with a "replies" key containing an array of 3 strings. Each reply should be concise (1-3 sentences) and differ in tone (formal, friendly, brief).' },
         { role: "user", content: `From: ${from}\nSubject: ${subject || "No subject"}\n\n${text.slice(0, 2000)}` },
       ],
       response_format: { type: "json_object" },
@@ -503,10 +512,9 @@ router.post("/email/ai-compose", async (req, res) => {
   const { subject, body, to } = req.body;
   if (!body && !subject) return res.status(400).json({ error: "No content provided" });
   try {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      max_tokens: 600,
+    const completion = await getOpenAI().chat.completions.create({
+      model: "gpt-5-mini",
+      max_completion_tokens: 700,
       messages: [
         { role: "system", content: "You are a professional email writing assistant. Improve the user's email draft to be clearer, more professional, and polished. Preserve the intent and key information. Return only the improved email body text, no subject or extra commentary." },
         { role: "user", content: `To: ${to||""}\nSubject: ${subject||""}\n\nDraft:\n${body||""}` },
