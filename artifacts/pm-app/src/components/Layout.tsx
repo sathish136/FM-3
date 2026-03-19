@@ -234,9 +234,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* Footer */}
       <div className="relative border-t border-white/[0.07] p-3 space-y-2">
         {/* User card */}
-        <Link href="/profile" className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/[0.07] transition-all cursor-pointer group">
-          <UserAvatar user={user} size="md" />
-          <Settings className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400 transition-colors shrink-0 ml-auto" />
+        <Link href="/profile" className="flex items-center justify-center p-2.5 rounded-xl hover:bg-white/[0.07] transition-all cursor-pointer group">
+          <Settings className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400 transition-colors shrink-0" />
         </Link>
 
         {/* Sign out */}
