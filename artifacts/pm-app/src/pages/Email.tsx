@@ -276,7 +276,7 @@ function EmailDetail({
         {/* Subject */}
         <h1 className="text-xl font-bold text-gray-900 mb-4 leading-snug flex items-start gap-2">
           <span className="flex-1">{email.subject}</span>
-          {email.hasAttachment && <Paperclip className="w-4 h-4 text-gray-400 shrink-0 mt-1" title="Has attachment" />}
+          {email.hasAttachment && <span title="Has attachment"><Paperclip className="w-4 h-4 text-gray-400 shrink-0 mt-1" /></span>}
         </h1>
 
         {/* Sender row */}

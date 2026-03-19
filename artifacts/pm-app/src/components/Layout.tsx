@@ -106,7 +106,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const { user, logout } = useAuth();
 
-  // Auto-collapse sidebar when email page is active for more reading space
+  // Auto-collapse sidebar when on email — gives full reading width
   useEffect(() => {
     if (location === "/email") {
       setCollapsed(true);
