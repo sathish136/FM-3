@@ -254,6 +254,139 @@ export async function fetchErpNextDesign2D(department?: string): Promise<ErpDesi
   return (json.data || []) as ErpDesign2D[];
 }
 
+// ── Material Request ──────────────────────────────────────────────────────────
+
+export interface ErpMaterialRequestItem {
+  name: string;
+  item_code: string;
+  item_name: string;
+  description: string | null;
+  qty: number;
+  uom: string;
+  warehouse: string | null;
+  schedule_date: string | null;
+}
+
+export interface ErpMaterialRequest {
+  name: string;
+  title: string | null;
+  material_request_type: string;
+  status: string;
+  transaction_date: string;
+  schedule_date: string | null;
+  company: string | null;
+  requested_by: string | null;
+  items?: ErpMaterialRequestItem[];
+}
+
+export async function fetchErpNextMaterialRequests(filters?: { status?: string; type?: string }): Promise<ErpMaterialRequest[]> {
+  const fields = JSON.stringify([
+    "name", "title", "material_request_type", "status",
+    "transaction_date", "schedule_date", "company", "requested_by",
+  ]);
+
+  const fArr: any[] = [];
+  if (filters?.status) fArr.push(["Material Request", "status", "=", filters.status]);
+  if (filters?.type)   fArr.push(["Material Request", "material_request_type", "=", filters.type]);
+
+  const params = new URLSearchParams({
+    fields,
+    limit_page_length: "500",
+    order_by: "modified desc",
+  });
+  if (fArr.length) params.set("filters", JSON.stringify(fArr));
+
+  const url = `${ERPNEXT_URL}/api/resource/Material Request?${params.toString()}`;
+  const res = await fetch(url, {
+    headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`ERPNext Material Request API error ${res.status}: ${body}`);
+  }
+  const json = await res.json();
+  return (json.data || []) as ErpMaterialRequest[];
+}
+
+export async function fetchErpNextMaterialRequest(name: string): Promise<ErpMaterialRequest> {
+  const url = `${ERPNEXT_URL}/api/resource/Material Request/${encodeURIComponent(name)}`;
+  const res = await fetch(url, {
+    headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`ERPNext Material Request fetch error ${res.status}: ${body}`);
+  }
+  const json = await res.json();
+  return json.data as ErpMaterialRequest;
+}
+
+export async function createErpNextMaterialRequest(payload: {
+  title: string;
+  material_request_type: string;
+  schedule_date: string;
+  company?: string;
+  requested_by?: string;
+  items: Array<{
+    item_code: string;
+    item_name?: string;
+    qty: number;
+    uom?: string;
+    warehouse?: string;
+    schedule_date?: string;
+  }>;
+}): Promise<ErpMaterialRequest> {
+  const url = `${ERPNEXT_URL}/api/resource/Material Request`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`ERPNext create Material Request error ${res.status}: ${body}`);
+  }
+  const json = await res.json();
+  return json.data as ErpMaterialRequest;
+}
+
+export async function fetchErpNextMaterialRequestItems(): Promise<string[]> {
+  const fields = JSON.stringify(["name", "item_name"]);
+  const params = new URLSearchParams({ fields, limit_page_length: "500", order_by: "item_name asc" });
+  const url = `${ERPNEXT_URL}/api/resource/Item?${params.toString()}`;
+  const res = await fetch(url, {
+    headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+  });
+  if (!res.ok) return [];
+  const json = await res.json();
+  return ((json.data || []) as any[]).map((i: any) => i.name);
+}
+
+export async function fetchErpNextWarehouses(): Promise<string[]> {
+  const fields = JSON.stringify(["name"]);
+  const params = new URLSearchParams({ fields, limit_page_length: "200", order_by: "name asc" });
+  const url = `${ERPNEXT_URL}/api/resource/Warehouse?${params.toString()}`;
+  const res = await fetch(url, {
+    headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+  });
+  if (!res.ok) return [];
+  const json = await res.json();
+  return ((json.data || []) as any[]).map((w: any) => w.name);
+}
+
+export async function fetchErpNextCompanies(): Promise<string[]> {
+  const fields = JSON.stringify(["name"]);
+  const params = new URLSearchParams({ fields, limit_page_length: "50" });
+  const url = `${ERPNEXT_URL}/api/resource/Company?${params.toString()}`;
+  const res = await fetch(url, {
+    headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+  });
+  if (!res.ok) return [];
+  const json = await res.json();
+  return ((json.data || []) as any[]).map((c: any) => c.name);
+}
+
 export async function fetchErpNextProjects(): Promise<ErpProject[]> {
   const fields = JSON.stringify([
     "name", "project_name", "status", "priority",

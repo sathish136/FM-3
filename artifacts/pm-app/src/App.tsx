@@ -26,6 +26,7 @@ import PID from "@/pages/PID";
 import Gallery from "@/pages/Gallery";
 import Settings from "@/pages/Settings";
 import Profile from "@/pages/Profile";
+import MaterialRequest from "@/pages/MaterialRequest";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -72,6 +73,7 @@ function ProtectedRoutes() {
       <Route path="/gallery" component={Gallery} />
       <Route path="/settings" component={Settings} />
       <Route path="/profile" component={Profile} />
+      <Route path="/material-request" component={MaterialRequest} />
       <Route component={NotFound} />
     </Switch>
   );

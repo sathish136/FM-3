@@ -4,7 +4,21 @@ import {
   projectsTable, tasksTable, campaignsTable, leadsTable, teamMembersTable,
 } from "@workspace/db/schema";
 import { eq, sql } from "drizzle-orm";
-import { isErpNextConfigured, fetchErpNextProjects, fetchErpNextDrawings, fetchErpNextDesign3D, fetchErpNextDesign2D, fetchErpNextPresentations, fetchErpNextPID } from "../lib/erpnext";
+import {
+  isErpNextConfigured,
+  fetchErpNextProjects,
+  fetchErpNextDrawings,
+  fetchErpNextDesign3D,
+  fetchErpNextDesign2D,
+  fetchErpNextPresentations,
+  fetchErpNextPID,
+  fetchErpNextMaterialRequests,
+  fetchErpNextMaterialRequest,
+  createErpNextMaterialRequest,
+  fetchErpNextMaterialRequestItems,
+  fetchErpNextWarehouses,
+  fetchErpNextCompanies,
+} from "../lib/erpnext";
 
 const router = Router();
 
@@ -278,6 +292,66 @@ router.get("/design-3d", async (req, res) => {
     res.json(records);
   } catch (e) {
     console.error("Design 3D fetch error:", e);
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── Material Requests ────────────────────────────────────────────────────────
+
+router.get("/material-requests", async (req, res) => {
+  try {
+    const { status, type } = req.query as { status?: string; type?: string };
+    const records = await fetchErpNextMaterialRequests({ status, type });
+    res.json(records);
+  } catch (e) {
+    console.error("Material Request fetch error:", e);
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get("/material-requests/:name", async (req, res) => {
+  try {
+    const record = await fetchErpNextMaterialRequest(req.params.name);
+    res.json(record);
+  } catch (e) {
+    console.error("Material Request detail fetch error:", e);
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.post("/material-requests", async (req, res) => {
+  try {
+    const record = await createErpNextMaterialRequest(req.body);
+    res.status(201).json(record);
+  } catch (e) {
+    console.error("Material Request create error:", e);
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get("/material-request-items", async (_req, res) => {
+  try {
+    const items = await fetchErpNextMaterialRequestItems();
+    res.json(items);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get("/warehouses", async (_req, res) => {
+  try {
+    const warehouses = await fetchErpNextWarehouses();
+    res.json(warehouses);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get("/companies", async (_req, res) => {
+  try {
+    const companies = await fetchErpNextCompanies();
+    res.json(companies);
+  } catch (e) {
     res.status(500).json({ error: String(e) });
   }
 });
