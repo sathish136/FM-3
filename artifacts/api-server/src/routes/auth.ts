@@ -23,6 +23,102 @@ async function safeJson(response: Response): Promise<Record<string, unknown>> {
   }
 }
 
+const erpHeaders = () => ({
+  Accept: "application/json",
+  Authorization: `token ${API_KEY}:${API_SECRET}`,
+});
+
+// Resolve a login ID (username OR email) to the User document from ERPNext.
+// ERPNext User docs are keyed by email. If the login ID is a username (no @),
+// we search by the `username` field first to get the actual email.
+async function resolveUserDoc(loginId: string): Promise<Record<string, any>> {
+  const fields = `["full_name","email","user_image","mobile_no","phone","username","creation","last_login","language","time_zone","enabled"]`;
+
+  // If it looks like an email, try direct lookup first
+  if (loginId.includes("@")) {
+    const r = await fetch(
+      `${ERP_URL}/api/resource/User/${encodeURIComponent(loginId)}?fields=${encodeURIComponent(fields)}`,
+      { headers: erpHeaders() }
+    );
+    if (r.ok) {
+      const d = (await safeJson(r) as any)?.data;
+      if (d?.email) return d;
+    }
+  }
+
+  // Fall back: search by username field
+  const searchRes = await fetch(
+    `${ERP_URL}/api/resource/User?filters=${encodeURIComponent(`[["username","=","${loginId}"]]`)}&fields=${encodeURIComponent(fields)}&limit=1`,
+    { headers: erpHeaders() }
+  );
+  if (searchRes.ok) {
+    const list = (await safeJson(searchRes) as any)?.data || [];
+    if (list.length > 0) return list[0];
+  }
+
+  // Last fallback: try direct lookup with login ID as-is
+  const r2 = await fetch(
+    `${ERP_URL}/api/resource/User/${encodeURIComponent(loginId)}?fields=${encodeURIComponent(fields)}`,
+    { headers: erpHeaders() }
+  );
+  if (r2.ok) {
+    const d = (await safeJson(r2) as any)?.data;
+    if (d) return d;
+  }
+
+  return {};
+}
+
+// Fetch the linked Employee document — tries multiple strategies
+async function resolveEmployeeDoc(actualEmail: string, username?: string): Promise<Record<string, any>> {
+  const fields = `["employee_name","employee_number","designation","department","company","branch","date_of_joining","employment_type","gender","date_of_birth","cell_number","personal_email","status","image","reports_to","grade","user_id","name"]`;
+  const hdr = erpHeaders();
+
+  // Strategy 1: filter by user_id = actual email
+  const r1 = await fetch(
+    `${ERP_URL}/api/resource/Employee?filters=${encodeURIComponent(`[["user_id","=","${actualEmail}"]]`)}&fields=${encodeURIComponent(fields)}&limit=1`,
+    { headers: hdr }
+  );
+  if (r1.ok) {
+    const list = (await safeJson(r1) as any)?.data || [];
+    if (list.length > 0) return list[0];
+  }
+
+  // Strategy 2: direct lookup by employee name = username (ERPNext often names employee WTT1194)
+  if (username) {
+    const r2 = await fetch(
+      `${ERP_URL}/api/resource/Employee/${encodeURIComponent(username.toUpperCase())}?fields=${encodeURIComponent(fields)}`,
+      { headers: hdr }
+    );
+    if (r2.ok) {
+      const d = (await safeJson(r2) as any)?.data;
+      if (d) return d;
+    }
+    // Also try lowercase
+    const r2b = await fetch(
+      `${ERP_URL}/api/resource/Employee/${encodeURIComponent(username)}?fields=${encodeURIComponent(fields)}`,
+      { headers: hdr }
+    );
+    if (r2b.ok) {
+      const d = (await safeJson(r2b) as any)?.data;
+      if (d) return d;
+    }
+  }
+
+  // Strategy 3: search by employee_name contains email prefix
+  const emailPrefix = actualEmail.split("@")[0];
+  const r3 = await fetch(
+    `${ERP_URL}/api/resource/Employee?filters=${encodeURIComponent(`[["user_id","like","%${emailPrefix}%"]]`)}&fields=${encodeURIComponent(fields)}&limit=1`,
+    { headers: hdr }
+  );
+  if (r3.ok) {
+    const list = (await safeJson(r3) as any)?.data || [];
+    if (list.length > 0) return list[0];
+  }
+
+  return {};
+}
+
 authRouter.post("/auth/login", async (req, res) => {
   const { usr, pwd } = req.body;
   if (!usr || !pwd) {
@@ -50,33 +146,19 @@ authRouter.post("/auth/login", async (req, res) => {
       return res.status(401).json({ error: msg });
     }
 
-    const loginFullName = (data as any)?.full_name || usr;
-    let fullName = loginFullName;
-    let email = typeof usr === "string" ? usr : String(usr);
+    const loginId = typeof usr === "string" ? usr : String(usr);
+    let fullName: string = (data as any)?.full_name || loginId;
+    let email = loginId;
     let photo: string | null = null;
 
     try {
-      const profileRes = await fetch(
-        `${ERP_URL}/api/resource/User/${encodeURIComponent(email)}`,
-        {
-          headers: {
-            Accept: "application/json",
-            Authorization: `token ${API_KEY}:${API_SECRET}`,
-          },
-        }
-      );
-      if (profileRes.ok) {
-        const profile = await safeJson(profileRes);
-        const d = (profile as any)?.data;
-        if (d) {
-          if (d.full_name) fullName = d.full_name;
-          if (d.email) email = d.email;
-          if (d.user_image) {
-            photo = String(d.user_image).startsWith("http")
-              ? d.user_image
-              : `${ERP_URL}${d.user_image}`;
-          }
-        }
+      // Resolve user by username OR email — handles username-only logins
+      const userDoc = await resolveUserDoc(loginId);
+      if (userDoc.full_name) fullName = userDoc.full_name;
+      if (userDoc.email) email = userDoc.email;
+      if (userDoc.user_image) {
+        const img = String(userDoc.user_image);
+        photo = img.startsWith("http") ? img : `${ERP_URL}${img}`;
       }
     } catch (profileErr) {
       console.warn("Could not fetch user profile:", profileErr);
@@ -95,33 +177,17 @@ authRouter.post("/auth/logout", (_req, res) => {
 
 // Refresh current user's profile (name + photo) from ERPNext
 authRouter.get("/auth/me", async (req, res) => {
-  const email = req.query.email as string;
-  if (!email) return res.status(400).json({ error: "Missing email" });
+  const loginId = req.query.email as string;
+  if (!loginId) return res.status(400).json({ error: "Missing email" });
   try {
-    const profileRes = await fetch(
-      `${ERP_URL}/api/resource/User/${encodeURIComponent(email)}`,
-      {
-        headers: {
-          Accept: "application/json",
-          Authorization: `token ${API_KEY}:${API_SECRET}`,
-        },
-      }
-    );
-    if (!profileRes.ok) return res.status(profileRes.status).json({ error: "Not found" });
-    const profile = await safeJson(profileRes);
-    const d = (profile as any)?.data;
-    if (!d) return res.status(404).json({ error: "No data" });
+    const d = await resolveUserDoc(loginId);
+    if (!d.email) return res.status(404).json({ error: "Not found" });
     let photo: string | null = null;
     if (d.user_image) {
-      photo = String(d.user_image).startsWith("http")
-        ? d.user_image
-        : `${ERP_URL}${d.user_image}`;
+      const img = String(d.user_image);
+      photo = img.startsWith("http") ? img : `${ERP_URL}${img}`;
     }
-    return res.json({
-      email: d.email || email,
-      full_name: d.full_name || email,
-      photo,
-    });
+    return res.json({ email: d.email, full_name: d.full_name || loginId, photo });
   } catch (err) {
     console.error("Me error:", err);
     return res.status(500).json({ error: "Failed to fetch profile" });
@@ -130,26 +196,16 @@ authRouter.get("/auth/me", async (req, res) => {
 
 // Full profile: User + Employee data from ERPNext
 authRouter.get("/auth/profile", async (req, res) => {
-  const email = req.query.email as string;
-  if (!email) return res.status(400).json({ error: "Missing email" });
-
-  const headers = { Accept: "application/json", Authorization: `token ${API_KEY}:${API_SECRET}` };
+  const loginId = req.query.email as string;
+  if (!loginId) return res.status(400).json({ error: "Missing email" });
 
   try {
-    // Fetch User doc
-    const userRes = await fetch(
-      `${ERP_URL}/api/resource/User/${encodeURIComponent(email)}?fields=["full_name","email","user_image","mobile_no","phone","username","creation","last_login","language","time_zone","enabled"]`,
-      { headers }
-    );
-    const userData = userRes.ok ? (await safeJson(userRes) as any)?.data || {} : {};
+    // Step 1: resolve User doc (handles username OR email as login ID)
+    const userData = await resolveUserDoc(loginId);
+    const actualEmail = userData.email || loginId;
 
-    // Fetch linked Employee doc
-    const empRes = await fetch(
-      `${ERP_URL}/api/resource/Employee?filters=[["user_id","=","${email}"]]&fields=["employee_name","employee_number","designation","department","company","branch","date_of_joining","employment_type","gender","date_of_birth","cell_number","personal_email","status","image","reports_to","grade"]&limit=1`,
-      { headers }
-    );
-    const empList = empRes.ok ? ((await safeJson(empRes) as any)?.data || []) : [];
-    const emp = empList[0] || {};
+    // Step 2: fetch Employee — pass username as fallback key (e.g. WTT1194 often = employee name)
+    const emp = await resolveEmployeeDoc(actualEmail, userData.username || undefined);
 
     // Resolve photo URL via proxy
     const rawPhoto = userData.user_image || emp.image || null;
@@ -161,8 +217,8 @@ authRouter.get("/auth/profile", async (req, res) => {
 
     return res.json({
       // User
-      email: userData.email || email,
-      full_name: userData.full_name || emp.employee_name || email,
+      email: actualEmail,
+      full_name: userData.full_name || emp.employee_name || loginId,
       photo,
       mobile_no: userData.mobile_no || emp.cell_number || null,
       phone: userData.phone || null,
