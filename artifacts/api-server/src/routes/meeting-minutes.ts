@@ -17,9 +17,14 @@ async function resolveProjectId(rawId: any): Promise<number | null> {
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+
+let _openai: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!_openai) {
+    _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+  return _openai;
+}
 
 router.get("/meeting-minutes", async (_req, res) => {
   try {
@@ -74,7 +79,7 @@ router.post("/transcribe", upload.single("audio"), async (req, res) => {
       : baseMime.includes("wav") ? "wav"
       : "webm";
     const audioFile = await toFile(req.file.buffer, `audio.${ext}`, { type: baseMime });
-    const result = await openai.audio.transcriptions.create({ model: "gpt-4o-mini-transcribe", file: audioFile, response_format: "json" });
+    const result = await getOpenAI().audio.transcriptions.create({ model: "gpt-4o-mini-transcribe", file: audioFile, response_format: "json" });
     res.json({ transcript: result.text });
   } catch (e) {
     console.error("Transcription error:", e);
@@ -94,7 +99,7 @@ router.post("/meeting-minutes/:id/transcribe", upload.single("audio"), async (re
 
     const audioFile = await toFile(req.file.buffer, `audio.${ext}`, { type: req.file.mimetype });
 
-    const result = await openai.audio.transcriptions.create({
+    const result = await getOpenAI().audio.transcriptions.create({
       model: "gpt-4o-mini-transcribe",
       file: audioFile,
       response_format: "json",
@@ -148,7 +153,7 @@ Format your response as:
 - [ ] [action 1] — Owner: [name if mentioned]
 - [ ] [action 2] — Owner: [name if mentioned]`;
 
-    const stream = await openai.chat.completions.create({
+    const stream = await getOpenAI().chat.completions.create({
       model: "gpt-4o",
       max_completion_tokens: 2048,
       messages: [{ role: "user", content: prompt }],

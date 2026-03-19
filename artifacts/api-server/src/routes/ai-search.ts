@@ -2,9 +2,14 @@ import { Router } from "express";
 import OpenAI from "openai";
 
 const router = Router();
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+
+let _openai: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!_openai) {
+    _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+  return _openai;
+}
 
 const MODULE_DESCRIPTIONS: Record<string, string> = {
   "Dashboard":               "The Dashboard shows high-level KPIs, project summaries, recent activity, and key metrics across the system.",
@@ -93,7 +98,7 @@ router.post("/ai-search", async (req, res) => {
       { role: "user", content: query },
     ];
 
-    const completion = await openai.chat.completions.create({
+    const completion = await getOpenAI().chat.completions.create({
       model: "gpt-4o-mini",
       messages,
       max_tokens: 1024,
