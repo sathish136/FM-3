@@ -6,10 +6,9 @@ import { eq } from "drizzle-orm";
 
 const { Pool } = pg;
 
-// Use the configured DATABASE_URL (local Replit DB) for email settings storage
+// Connect to the external project database for email settings storage
 const emailPool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes("sslmode=disable") ? false : undefined,
+  connectionString: "postgresql://postgres:wtt%40adm123@122.165.225.42:5432/flowmatrix",
 });
 const db = drizzle(emailPool, { schema: { emailAccountsTable } });
 
