@@ -6,6 +6,7 @@ import spreadsheetsRouter from "./spreadsheets";
 import authRouter from "./auth";
 import pidAnalyzeRouter from "./pid-analyze";
 import aiSearchRouter from "./ai-search";
+import hrmsRouter from "./hrms";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(meetingMinutesRouter);
 router.use("/spreadsheets", spreadsheetsRouter);
 router.use(pidAnalyzeRouter);
 router.use(aiSearchRouter);
+router.use(hrmsRouter);
 
 export default router;

@@ -435,6 +435,97 @@ export interface ErpUser {
   enabled: number;
 }
 
+// ── HRMS ─────────────────────────────────────────────────────────────────────
+
+export interface ErpEmployee {
+  name: string;
+  employee_name: string;
+  department: string | null;
+  designation: string | null;
+  status: string;
+  date_of_joining: string | null;
+  user_id: string | null;
+  image: string | null;
+  gender: string | null;
+  cell_number: string | null;
+  company: string | null;
+}
+
+export interface ErpLeaveApplication {
+  name: string;
+  employee: string;
+  employee_name: string;
+  leave_type: string;
+  from_date: string;
+  to_date: string;
+  total_leave_days: number;
+  status: string;
+  description: string | null;
+}
+
+export interface ErpAttendance {
+  name: string;
+  employee: string;
+  employee_name: string;
+  attendance_date: string;
+  status: string;
+  department: string | null;
+}
+
+export async function fetchErpNextEmployees(filters?: { status?: string; department?: string }): Promise<ErpEmployee[]> {
+  if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
+  const fields = JSON.stringify([
+    "name", "employee_name", "department", "designation",
+    "status", "date_of_joining", "user_id", "image",
+    "gender", "cell_number", "company",
+  ]);
+  const fArr: any[] = [];
+  if (filters?.status)     fArr.push(["Employee", "status", "=", filters.status]);
+  if (filters?.department) fArr.push(["Employee", "department", "like", `%${filters.department}%`]);
+  const params = new URLSearchParams({ fields, limit_page_length: "500", order_by: "employee_name asc" });
+  if (fArr.length) params.set("filters", JSON.stringify(fArr));
+  const url = `${ERPNEXT_URL}/api/resource/Employee?${params}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader() } });
+  if (!res.ok) throw new Error(`ERPNext employees: ${res.status}`);
+  const data = await res.json();
+  return data.data ?? [];
+}
+
+export async function fetchErpNextLeaveApplications(filters?: { status?: string; employee?: string }): Promise<ErpLeaveApplication[]> {
+  if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
+  const fields = JSON.stringify([
+    "name", "employee", "employee_name", "leave_type",
+    "from_date", "to_date", "total_leave_days", "status", "description",
+  ]);
+  const fArr: any[] = [];
+  if (filters?.status)   fArr.push(["Leave Application", "status", "=", filters.status]);
+  if (filters?.employee) fArr.push(["Leave Application", "employee_name", "like", `%${filters.employee}%`]);
+  const params = new URLSearchParams({ fields, limit_page_length: "200", order_by: "from_date desc" });
+  if (fArr.length) params.set("filters", JSON.stringify(fArr));
+  const url = `${ERPNEXT_URL}/api/resource/Leave Application?${params}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader() } });
+  if (!res.ok) throw new Error(`ERPNext leave: ${res.status}`);
+  const data = await res.json();
+  return data.data ?? [];
+}
+
+export async function fetchErpNextAttendance(filters?: { status?: string; department?: string }): Promise<ErpAttendance[]> {
+  if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
+  const fields = JSON.stringify([
+    "name", "employee", "employee_name", "attendance_date", "status", "department",
+  ]);
+  const fArr: any[] = [];
+  if (filters?.status)     fArr.push(["Attendance", "status", "=", filters.status]);
+  if (filters?.department) fArr.push(["Attendance", "department", "like", `%${filters.department}%`]);
+  const params = new URLSearchParams({ fields, limit_page_length: "200", order_by: "attendance_date desc" });
+  if (fArr.length) params.set("filters", JSON.stringify(fArr));
+  const url = `${ERPNEXT_URL}/api/resource/Attendance?${params}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader() } });
+  if (!res.ok) throw new Error(`ERPNext attendance: ${res.status}`);
+  const data = await res.json();
+  return data.data ?? [];
+}
+
 export async function fetchErpNextUsers(): Promise<ErpUser[]> {
   if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
   const fields = JSON.stringify(["name", "full_name", "user_image", "enabled"]);
