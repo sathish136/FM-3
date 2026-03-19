@@ -41,14 +41,22 @@ router.get("/hrms/user-scope", async (req, res) => {
       return;
     }
 
+    // HOD role in ERPNext → can see all employees in their own department
+    const isHOD = roles.includes("HOD");
+    if (isHOD && employee.department) {
+      res.json({ scope: "department", employee, departments: [employee.department], roles });
+      return;
+    }
+
     // Check if this employee is listed as department_manager for any department
     const managedDepts = await fetchErpNextManagedDepartments(employee.name);
-
     if (managedDepts.length > 0) {
       res.json({ scope: "department", employee, departments: managedDepts, roles });
-    } else {
-      res.json({ scope: "self", employee, departments: employee.department ? [employee.department] : [], roles });
+      return;
     }
+
+    // Regular employee — self only
+    res.json({ scope: "self", employee, departments: employee.department ? [employee.department] : [], roles });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
