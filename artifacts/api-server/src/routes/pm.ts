@@ -300,8 +300,8 @@ router.get("/design-3d", async (req, res) => {
 
 router.get("/material-requests", async (req, res) => {
   try {
-    const { status, type } = req.query as { status?: string; type?: string };
-    const records = await fetchErpNextMaterialRequests({ status, type });
+    const { status, type, project } = req.query as { status?: string; type?: string; project?: string };
+    const records = await fetchErpNextMaterialRequests({ status, type, project });
     res.json(records);
   } catch (e) {
     console.error("Material Request fetch error:", e);

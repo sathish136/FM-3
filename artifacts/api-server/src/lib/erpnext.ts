@@ -276,18 +276,21 @@ export interface ErpMaterialRequest {
   schedule_date: string | null;
   company: string | null;
   requested_by: string | null;
+  project: string | null;
+  modified: string | null;
   items?: ErpMaterialRequestItem[];
 }
 
-export async function fetchErpNextMaterialRequests(filters?: { status?: string; type?: string }): Promise<ErpMaterialRequest[]> {
+export async function fetchErpNextMaterialRequests(filters?: { status?: string; type?: string; project?: string }): Promise<ErpMaterialRequest[]> {
   const fields = JSON.stringify([
     "name", "title", "material_request_type", "status",
-    "transaction_date", "schedule_date", "company",
+    "transaction_date", "schedule_date", "company", "project", "modified",
   ]);
 
   const fArr: any[] = [];
-  if (filters?.status) fArr.push(["Material Request", "status", "=", filters.status]);
-  if (filters?.type)   fArr.push(["Material Request", "material_request_type", "=", filters.type]);
+  if (filters?.status)  fArr.push(["Material Request", "status", "=", filters.status]);
+  if (filters?.type)    fArr.push(["Material Request", "material_request_type", "=", filters.type]);
+  if (filters?.project) fArr.push(["Material Request", "project", "like", `%${filters.project}%`]);
 
   const params = new URLSearchParams({
     fields,
