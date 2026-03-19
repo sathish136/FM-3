@@ -5,7 +5,6 @@ import {
   fetchErpNextAttendance,
   fetchErpNextUserRoles,
   fetchErpNextManagedDepartments,
-  fetchErpNextDepartments,
 } from "../lib/erpnext";
 
 const ERPNEXT_URL = process.env.ERPNEXT_URL?.replace(/\/$/, "");
@@ -85,21 +84,6 @@ router.get("/hrms/attendance", async (req, res) => {
   }
 });
 
-router.get("/hrms/departments", async (req, res) => {
-  try {
-    const depts = await fetchErpNextDepartments();
-    // Include employee count per department
-    const allEmps = await fetchErpNextEmployees();
-    const countMap: Record<string, number> = {};
-    for (const e of allEmps) {
-      if (e.department) countMap[e.department] = (countMap[e.department] ?? 0) + 1;
-    }
-    const result = depts.map(d => ({ ...d, employee_count: countMap[d.name] ?? 0 }));
-    res.json(result);
-  } catch (e) {
-    res.status(500).json({ error: String(e) });
-  }
-});
 
 router.get("/hrms/image-proxy", async (req, res) => {
   try {
