@@ -1,11 +1,22 @@
 import { Router } from "express";
-import { db, pool, emailAccountsTable } from "@workspace/db";
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
+import { emailAccountsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+
+const { Pool } = pg;
+
+// Use the configured DATABASE_URL (local Replit DB) for email settings storage
+const emailPool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL?.includes("sslmode=disable") ? false : undefined,
+});
+const db = drizzle(emailPool, { schema: { emailAccountsTable } });
 
 const router = Router();
 
-// Ensure table exists on first load
-pool.query(`
+// Ensure table exists
+emailPool.query(`
   CREATE TABLE IF NOT EXISTS email_accounts (
     id SERIAL PRIMARY KEY,
     display_name TEXT NOT NULL,
