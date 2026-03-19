@@ -196,43 +196,45 @@ router.get("/erpnext/status", (_req, res) => {
 // ─── Analytics Summary ────────────────────────────────────────────────────────
 
 router.get("/analytics/summary", async (_req, res) => {
-  try {
-    const [leadStats] = await db.select({
-      totalLeads: sql<number>`count(*)::int`,
-      totalConversions: sql<number>`sum(case when status = 'converted' then 1 else 0 end)::int`,
-    }).from(leadsTable);
+  const safeQuery = async <T>(fn: () => Promise<T>, fallback: T): Promise<T> => {
+    try { return await fn(); } catch { return fallback; }
+  };
 
-    const [campaignStats] = await db.select({
-      totalBudget: sql<number>`coalesce(sum(budget::numeric), 0)::float`,
-      totalSpent: sql<number>`coalesce(sum(spent::numeric), 0)::float`,
-      activeCampaigns: sql<number>`sum(case when status = 'active' then 1 else 0 end)::int`,
-    }).from(campaignsTable);
+  const [leadStats] = await safeQuery(() => db.select({
+    totalLeads: sql<number>`count(*)::int`,
+    totalConversions: sql<number>`sum(case when status = 'converted' then 1 else 0 end)::int`,
+  }).from(leadsTable), [{ totalLeads: 0, totalConversions: 0 }]);
 
-    const [projectStats] = await db.select({
-      activeProjects: sql<number>`sum(case when status = 'active' then 1 else 0 end)::int`,
-    }).from(projectsTable);
+  const [campaignStats] = await safeQuery(() => db.select({
+    totalBudget: sql<number>`coalesce(sum(budget::numeric), 0)::float`,
+    totalSpent: sql<number>`coalesce(sum(spent::numeric), 0)::float`,
+    activeCampaigns: sql<number>`sum(case when status = 'active' then 1 else 0 end)::int`,
+  }).from(campaignsTable), [{ totalBudget: 0, totalSpent: 0, activeCampaigns: 0 }]);
 
-    const [taskStats] = await db.select({
-      completedTasks: sql<number>`sum(case when status = 'done' then 1 else 0 end)::int`,
-      pendingTasks: sql<number>`sum(case when status != 'done' then 1 else 0 end)::int`,
-    }).from(tasksTable);
+  const [projectStats] = await safeQuery(() => db.select({
+    activeProjects: sql<number>`sum(case when status = 'active' then 1 else 0 end)::int`,
+  }).from(projectsTable), [{ activeProjects: 0 }]);
 
-    const totalLeads = leadStats.totalLeads || 0;
-    const totalConversions = leadStats.totalConversions || 0;
+  const [taskStats] = await safeQuery(() => db.select({
+    completedTasks: sql<number>`sum(case when status = 'done' then 1 else 0 end)::int`,
+    pendingTasks: sql<number>`sum(case when status != 'done' then 1 else 0 end)::int`,
+  }).from(tasksTable), [{ completedTasks: 0, pendingTasks: 0 }]);
 
-    res.json({
-      totalLeads,
-      totalConversions,
-      totalBudget: campaignStats.totalBudget || 0,
-      totalSpent: campaignStats.totalSpent || 0,
-      activeCampaigns: campaignStats.activeCampaigns || 0,
-      activeProjects: projectStats.activeProjects || 0,
-      completedTasks: taskStats.completedTasks || 0,
-      pendingTasks: taskStats.pendingTasks || 0,
-      conversionRate: totalLeads > 0 ? (totalConversions / totalLeads) * 100 : 0,
-      monthlyLeads: [],
-    });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  const totalLeads = leadStats?.totalLeads || 0;
+  const totalConversions = leadStats?.totalConversions || 0;
+
+  res.json({
+    totalLeads,
+    totalConversions,
+    totalBudget: campaignStats?.totalBudget || 0,
+    totalSpent: campaignStats?.totalSpent || 0,
+    activeCampaigns: campaignStats?.activeCampaigns || 0,
+    activeProjects: projectStats?.activeProjects || 0,
+    completedTasks: taskStats?.completedTasks || 0,
+    pendingTasks: taskStats?.pendingTasks || 0,
+    conversionRate: totalLeads > 0 ? (totalConversions / totalLeads) * 100 : 0,
+    monthlyLeads: [],
+  });
 });
 
 // ─── Drawings ────────────────────────────────────────────────────────────────

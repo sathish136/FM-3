@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { Layout } from "@/components/Layout";
 import {
   LayoutGrid, Search, RefreshCw, Loader2, ExternalLink,
@@ -275,9 +276,9 @@ export default function ProjectBoard() {
                       const hasChildren = (row.child_rows || []).length > 0;
                       const agingPending = (row.aging || "").toLowerCase().includes("pending");
                       return (
-                        <>
+                        <Fragment key={i}>
                           {/* Parent row */}
-                          <tr key={`p-${i}`}
+                          <tr
                             onClick={() => hasChildren && toggleRow(i)}
                             className={`border-b border-gray-50 transition-colors ${hasChildren ? "cursor-pointer" : ""} ${i % 2 === 1 ? "bg-gray-50/30" : "bg-white"} hover:bg-blue-50/30`}>
                             <td className="px-2.5 py-2.5 whitespace-nowrap">
@@ -327,7 +328,7 @@ export default function ProjectBoard() {
 
                           {/* Child rows */}
                           {isOpen && (row.child_rows || []).map((c, j) => (
-                            <tr key={`c-${i}-${j}`} className="bg-blue-50/20 border-b border-blue-50">
+                            <tr key={`${i}-${j}`} className="bg-blue-50/20 border-b border-blue-50">
                               <td className="px-2.5 py-2 pl-8" />
                               <td className="px-2.5 py-2 min-w-[200px] max-w-[280px]">
                                 <p className="text-[11px] italic text-gray-500 whitespace-normal leading-snug">{c.technical_description || "—"}</p>
@@ -352,7 +353,7 @@ export default function ProjectBoard() {
                               <td className="px-2.5 py-2"><Links val={c.po_no} doctype="purchase-order" /></td>
                             </tr>
                           ))}
-                        </>
+                        </Fragment>
                       );
                     })}
                   </tbody>
