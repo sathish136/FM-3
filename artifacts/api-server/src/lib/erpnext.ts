@@ -509,7 +509,7 @@ export async function fetchErpNextLeaveApplications(filters?: { status?: string;
   return data.data ?? [];
 }
 
-export async function fetchErpNextAttendance(filters?: { status?: string; department?: string }): Promise<ErpAttendance[]> {
+export async function fetchErpNextAttendance(filters?: { status?: string; department?: string; employee?: string }): Promise<ErpAttendance[]> {
   if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
   const fields = JSON.stringify([
     "name", "employee", "employee_name", "attendance_date", "status", "department",
@@ -517,6 +517,7 @@ export async function fetchErpNextAttendance(filters?: { status?: string; depart
   const fArr: any[] = [];
   if (filters?.status)     fArr.push(["Attendance", "status", "=", filters.status]);
   if (filters?.department) fArr.push(["Attendance", "department", "like", `%${filters.department}%`]);
+  if (filters?.employee)   fArr.push(["Attendance", "employee", "=", filters.employee]);
   const params = new URLSearchParams({ fields, limit_page_length: "200", order_by: "attendance_date desc" });
   if (fArr.length) params.set("filters", JSON.stringify(fArr));
   const url = `${ERPNEXT_URL}/api/resource/Attendance?${params}`;

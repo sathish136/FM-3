@@ -4,8 +4,9 @@ import {
   UserCheck, Briefcase, Phone,
   Building2, ChevronDown, ExternalLink, Mail,
 } from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const ERP_URL = "https://erp.wttint.com";
@@ -58,12 +59,8 @@ function EmpAvatar({ emp, size = "md" }: { emp: Employee; size?: "sm" | "md" | "
     : null;
   if (src && !err) {
     return (
-      <img
-        src={src}
-        alt={emp.employee_name}
-        onError={() => setErr(true)}
-        className={`${dim} rounded-full object-cover shrink-0`}
-      />
+      <img src={src} alt={emp.employee_name} onError={() => setErr(true)}
+        className={`${dim} rounded-full object-cover shrink-0`} />
     );
   }
   return (
@@ -90,9 +87,9 @@ function StatusPill({ status, type }: { status: string; type: "employee" | "leav
     return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-200 text-gray-600">{status}</span>;
   }
   if (type === "leave") {
-    if (s === "approved") return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500 text-white">Approved</span>;
-    if (s === "open")     return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-400 text-white">Open</span>;
-    if (s === "rejected") return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-400 text-white">Rejected</span>;
+    if (s === "approved")  return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500 text-white">Approved</span>;
+    if (s === "open")      return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-400 text-white">Open</span>;
+    if (s === "rejected")  return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-400 text-white">Rejected</span>;
     if (s === "cancelled") return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-400 text-white">Cancelled</span>;
     return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-200 text-gray-600">{status}</span>;
   }
@@ -112,6 +109,8 @@ type Tab = "employees" | "leave" | "attendance";
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function HRMS() {
   const { toast } = useToast();
+  const { user } = useAuth();
+
   const [tab, setTab]               = useState<Tab>("employees");
   const [employees, setEmployees]   = useState<Employee[]>([]);
   const [leaves, setLeaves]         = useState<LeaveApp[]>([]);
@@ -122,19 +121,43 @@ export default function HRMS() {
   const [statusFilter, setStatusFilter] = useState("Active");
   const [viewEmp, setViewEmp]       = useState<Employee | null>(null);
 
-  const fetchTab = useCallback(async (t: Tab) => {
+  // The employee record that belongs to the logged-in user.
+  // null  = resolved, no match found (admin/no-record user → show all)
+  // undefined = not yet resolved
+  const [myEmployee, setMyEmployee] = useState<Employee | null | undefined>(undefined);
+  const empsFetchedRef = useRef(false);
+
+  // Always fetch all employees first so we can identify myEmployee.
+  const fetchEmployees = useCallback(async (): Promise<Employee[]> => {
+    const r = await fetch(`${BASE}/api/hrms/employees`);
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  }, []);
+
+  const fetchTab = useCallback(async (t: Tab, empId?: string) => {
     setLoading(true);
     try {
       if (t === "employees") {
-        const r = await fetch(`${BASE}/api/hrms/employees`);
-        if (!r.ok) throw new Error(await r.text());
-        setEmployees(await r.json());
+        const emps = await fetchEmployees();
+        setEmployees(emps);
+        // Identify which employee belongs to the logged-in user
+        const me = user?.email
+          ? emps.find(e => e.user_id?.toLowerCase() === user.email.toLowerCase()) ?? null
+          : null;
+        setMyEmployee(me);
+        empsFetchedRef.current = true;
+        // Auto-open the panel if only one employee is visible
+        if (me) setViewEmp(me);
       } else if (t === "leave") {
-        const r = await fetch(`${BASE}/api/hrms/leave-applications`);
+        const params = new URLSearchParams();
+        if (empId) params.set("employee", empId);
+        const r = await fetch(`${BASE}/api/hrms/leave-applications?${params}`);
         if (!r.ok) throw new Error(await r.text());
         setLeaves(await r.json());
       } else {
-        const r = await fetch(`${BASE}/api/hrms/attendance`);
+        const params = new URLSearchParams();
+        if (empId) params.set("employee", empId);
+        const r = await fetch(`${BASE}/api/hrms/attendance?${params}`);
         if (!r.ok) throw new Error(await r.text());
         setAttendance(await r.json());
       }
@@ -143,22 +166,53 @@ export default function HRMS() {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, user, fetchEmployees]);
 
+  // On tab change: fetch employees first if not yet fetched, then fetch the tab data
   useEffect(() => {
-    fetchTab(tab);
-    setSearch("");
-    setDeptFilter("");
+    setSearch(""); setDeptFilter("");
     setStatusFilter(tab === "employees" ? "Active" : "");
     setViewEmp(null);
-  }, [tab, fetchTab]);
 
-  // Derived
-  const depts = [...new Set(employees.map(e => e.department).filter(Boolean) as string[])].sort();
-  const activeCount  = employees.filter(e => e.status === "Active").length;
+    const run = async () => {
+      if (tab === "employees") {
+        fetchTab("employees");
+      } else {
+        // Ensure employees are loaded so we know myEmployee
+        if (!empsFetchedRef.current) {
+          setLoading(true);
+          try {
+            const emps = await fetchEmployees();
+            setEmployees(emps);
+            const me = user?.email
+              ? emps.find(e => e.user_id?.toLowerCase() === user.email.toLowerCase()) ?? null
+              : null;
+            setMyEmployee(me);
+            empsFetchedRef.current = true;
+            fetchTab(tab, me?.name);
+          } catch (e) {
+            toast({ title: "Failed to load employees", description: String(e), variant: "destructive" });
+            setLoading(false);
+          }
+        } else {
+          fetchTab(tab, myEmployee?.name ?? undefined);
+        }
+      }
+    };
+    run();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  // Derived — apply employee scope to display data
+  const scopedEmps = myEmployee !== undefined
+    ? (myEmployee ? [myEmployee] : employees)
+    : employees;
+
+  const depts = [...new Set(scopedEmps.map(e => e.department).filter(Boolean) as string[])].sort();
+  const activeCount  = scopedEmps.filter(e => e.status === "Active").length;
   const onLeaveCount = leaves.filter(l => l.status === "Approved").length;
 
-  const filteredEmps = employees.filter(e =>
+  const filteredEmps = scopedEmps.filter(e =>
     (!search       || e.employee_name.toLowerCase().includes(search.toLowerCase()) || e.name.toLowerCase().includes(search.toLowerCase()) || (e.designation || "").toLowerCase().includes(search.toLowerCase())) &&
     (!deptFilter   || e.department === deptFilter) &&
     (!statusFilter || e.status === statusFilter)
@@ -176,10 +230,16 @@ export default function HRMS() {
   );
 
   const TABS: { key: Tab; label: string; count: number; icon: React.ElementType }[] = [
-    { key: "employees",  label: "Employees",          count: employees.length,  icon: Users },
-    { key: "leave",      label: "Leave Applications",  count: leaves.length,    icon: Calendar },
+    { key: "employees",  label: "Employees",          count: scopedEmps.length,  icon: Users },
+    { key: "leave",      label: "Leave Applications",  count: leaves.length,     icon: Calendar },
     { key: "attendance", label: "Attendance",           count: attendance.length, icon: UserCheck },
   ];
+
+  const handleRefresh = () => {
+    empsFetchedRef.current = false;
+    setMyEmployee(undefined);
+    fetchTab(tab, myEmployee?.name ?? undefined);
+  };
 
   return (
     <Layout>
@@ -192,11 +252,18 @@ export default function HRMS() {
             <h1 className="text-sm font-bold text-gray-900">HRMS</h1>
             <span className="text-xs text-gray-400 ml-1">Human Resource Management — ERPNext</span>
           </div>
+          {myEmployee && (
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-100">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+              <span className="text-xs font-semibold text-emerald-700">{myEmployee.employee_name}</span>
+              <span className="text-[10px] text-emerald-500 font-mono">{myEmployee.name}</span>
+            </div>
+          )}
           <a href={`${ERP_URL}/app/employee`} target="_blank" rel="noopener noreferrer"
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-colors">
             <ExternalLink className="w-3.5 h-3.5" /> ERPNext
           </a>
-          <button onClick={() => fetchTab(tab)} disabled={loading}
+          <button onClick={handleRefresh} disabled={loading}
             className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors">
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
@@ -205,7 +272,7 @@ export default function HRMS() {
         {/* Stat pills */}
         <div className="px-6 pt-3 pb-0 flex gap-2 shrink-0 flex-wrap">
           {[
-            { label: "Total Employees",    value: employees.length,   color: "bg-blue-500" },
+            { label: "Total Employees",    value: scopedEmps.length,  color: "bg-blue-500" },
             { label: "Active",             value: activeCount,        color: "bg-emerald-500" },
             { label: "Approved Leaves",    value: onLeaveCount,       color: "bg-amber-400" },
             { label: "Attendance Records", value: attendance.length,  color: "bg-violet-500" },
@@ -238,17 +305,19 @@ export default function HRMS() {
             })}
           </div>
 
-          {/* Search */}
-          <div className="relative flex-1 min-w-[160px] max-w-xs">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-            <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder={tab === "employees" ? "Search name, ID, designation…" : tab === "leave" ? "Search employee, leave type…" : "Search employee…"}
-              className="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
-            />
-          </div>
+          {/* Search — only show when there is more than one record to search */}
+          {(tab !== "employees" || filteredEmps.length > 1) && (
+            <div className="relative flex-1 min-w-[160px] max-w-xs">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder={tab === "employees" ? "Search name, ID, designation…" : tab === "leave" ? "Search employee, leave type…" : "Search employee…"}
+                className="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              />
+            </div>
+          )}
 
           {/* Dept filter */}
-          {(tab === "employees" || tab === "attendance") && depts.length > 0 && (
+          {(tab === "employees" || tab === "attendance") && depts.length > 1 && (
             <div className="relative">
               <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
                 className="appearance-none pl-3 pr-7 py-2 text-xs rounded-xl border border-gray-200 bg-white text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-300">
@@ -304,7 +373,9 @@ export default function HRMS() {
                             key={emp.name}
                             onClick={() => setViewEmp(viewEmp?.name === emp.name ? null : emp)}
                             className={`border-b border-gray-50 hover:bg-indigo-50/40 transition-colors cursor-pointer ${
-                              viewEmp?.name === emp.name ? "bg-indigo-50 border-l-2 border-l-indigo-400" : i % 2 === 1 ? "bg-gray-50/20" : "bg-white"
+                              viewEmp?.name === emp.name
+                                ? "bg-indigo-50 border-l-2 border-l-indigo-400"
+                                : i % 2 === 1 ? "bg-gray-50/20" : "bg-white"
                             }`}
                           >
                             <td className="px-4 py-2.5 text-[10px] text-gray-400 font-mono">{i + 1}</td>
@@ -436,9 +507,7 @@ export default function HRMS() {
                               </div>
                             </div>
                           </td>
-                          <td className="px-3 py-3">
-                            <span className="text-xs font-medium text-gray-700">{l.leave_type}</span>
-                          </td>
+                          <td className="px-3 py-3"><span className="text-xs font-medium text-gray-700">{l.leave_type}</span></td>
                           <td className="px-3 py-3"><span className="text-xs text-gray-600">{fmtShortDate(l.from_date)}</span></td>
                           <td className="px-3 py-3"><span className="text-xs text-gray-600">{fmtShortDate(l.to_date)}</span></td>
                           <td className="px-3 py-3 text-center">

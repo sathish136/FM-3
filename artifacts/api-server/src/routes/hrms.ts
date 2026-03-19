@@ -33,8 +33,8 @@ router.get("/hrms/leave-applications", async (req, res) => {
 
 router.get("/hrms/attendance", async (req, res) => {
   try {
-    const { status, department } = req.query as Record<string, string>;
-    const data = await fetchErpNextAttendance({ status, department });
+    const { status, department, employee } = req.query as Record<string, string>;
+    const data = await fetchErpNextAttendance({ status, department, employee });
     res.json(data);
   } catch (e) {
     res.status(500).json({ error: String(e) });
