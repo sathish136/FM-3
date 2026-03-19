@@ -739,7 +739,6 @@ export default function ProjectBoard() {
           )}
         </div>
       </div>
-    </div>
     </Layout>
   );
 }
