@@ -123,3 +123,19 @@ export const userPermissionsTable = pgTable("user_permissions", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 export type UserPermission = typeof userPermissionsTable.$inferSelect;
+
+export const emailAccountsTable = pgTable("email_accounts", {
+  id: serial("id").primaryKey(),
+  displayName: text("display_name").notNull(),
+  emailAddress: text("email_address").notNull(),
+  gmailUser: text("gmail_user").notNull(),
+  gmailAppPassword: text("gmail_app_password").notNull(),
+  assignedTo: text("assigned_to"),
+  isDefault: boolean("is_default").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertEmailAccountSchema = createInsertSchema(emailAccountsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertEmailAccount = z.infer<typeof insertEmailAccountSchema>;
+export type EmailAccount = typeof emailAccountsTable.$inferSelect;

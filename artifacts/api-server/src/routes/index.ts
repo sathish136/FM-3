@@ -9,6 +9,7 @@ import aiSearchRouter from "./ai-search";
 import hrmsRouter from "./hrms";
 import projectBoardRouter from "./project-board";
 import emailRouter from "./email";
+import emailSettingsRouter from "./emailSettings";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use(aiSearchRouter);
 router.use(hrmsRouter);
 router.use(projectBoardRouter);
 router.use(emailRouter);
+router.use(emailSettingsRouter);
 
 export default router;

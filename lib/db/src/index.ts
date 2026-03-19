@@ -4,7 +4,7 @@ import * as schema from "./schema";
 
 const { Pool } = pg;
 
-const DATABASE_URL = "postgresql://postgres:wtt%40adm@122.165.225.42:5432/flowmatrix";
+const DATABASE_URL = process.env.DATABASE_URL ?? "postgresql://postgres:wtt%40adm@122.165.225.42:5432/flowmatrix";
 
 export const pool = new Pool({ connectionString: DATABASE_URL });
 export const db = drizzle(pool, { schema });

@@ -5,7 +5,7 @@ import {
   ChevronRight, LogOut, ChevronLeft, ChevronRight as ChevronRightIcon, Menu,
   MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, Users, UserCircle, LayoutGrid, Mail,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth, type AuthUser } from "@/hooks/useAuth";
 import { AISearch } from "@/components/AISearch";
@@ -73,6 +73,7 @@ const navGroups: { label?: string; items: NavItem[] }[] = [
       { path: "/project-board", label: "Project Board", icon: LayoutGrid, color: "text-blue-400" },
       { path: "/meeting-minutes", label: "Meeting Minutes", icon: FileText, color: "text-teal-400" },
       { path: "/email", label: "Email", icon: Mail, color: "text-sky-400" },
+      { path: "/email-settings", label: "Email Settings", icon: Settings, color: "text-sky-400" },
       { path: "/sheets", label: "Sheets", icon: Table2, color: "text-lime-400" },
     ],
   },
@@ -104,6 +105,13 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   const [collapsed, setCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const { user, logout } = useAuth();
+
+  // Auto-collapse sidebar when email page is active for more reading space
+  useEffect(() => {
+    if (location === "/email") {
+      setCollapsed(true);
+    }
+  }, [location]);
 
   const toggleExpand = (path: string) => {
     setExpandedItems(prev =>
