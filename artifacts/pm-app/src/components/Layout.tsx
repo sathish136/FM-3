@@ -236,11 +236,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {/* User card */}
         <Link href="/profile" className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/[0.07] transition-all cursor-pointer group">
           <UserAvatar user={user} size="md" />
-          <div className="flex-1 min-w-0">
-            <p className="text-white text-xs font-semibold truncate leading-tight">{user?.full_name ?? "User"}</p>
-            <p className="text-slate-500 text-[10px] truncate leading-tight mt-0.5">{user?.email ?? ""}</p>
-          </div>
-          <Settings className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400 transition-colors shrink-0" />
+          <Settings className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400 transition-colors shrink-0 ml-auto" />
         </Link>
 
         {/* Sign out */}
