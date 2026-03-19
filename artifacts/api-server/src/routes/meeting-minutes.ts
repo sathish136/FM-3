@@ -1,11 +1,19 @@
 import { Router } from "express";
 import multer from "multer";
 import { db } from "@workspace/db";
-import { meetingMinutesTable } from "@workspace/db/schema";
+import { meetingMinutesTable, projectsTable } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
 import OpenAI from "openai";
 import { toFile } from "openai";
 import { Readable } from "stream";
+
+async function resolveProjectId(rawId: any): Promise<number | null> {
+  if (!rawId) return null;
+  const id = Number(rawId);
+  if (!Number.isFinite(id)) return null;
+  const [row] = await db.select({ id: projectsTable.id }).from(projectsTable).where(eq(projectsTable.id, id));
+  return row ? id : null;
+}
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -23,7 +31,9 @@ router.get("/meeting-minutes", async (_req, res) => {
 
 router.post("/meeting-minutes", async (req, res) => {
   try {
-    const [row] = await db.insert(meetingMinutesTable).values(req.body).returning();
+    const { projectId, ...rest } = req.body;
+    const safeProjectId = await resolveProjectId(projectId);
+    const [row] = await db.insert(meetingMinutesTable).values({ ...rest, projectId: safeProjectId }).returning();
     res.status(201).json(row);
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
@@ -38,7 +48,10 @@ router.get("/meeting-minutes/:id", async (req, res) => {
 
 router.patch("/meeting-minutes/:id", async (req, res) => {
   try {
-    const [row] = await db.update(meetingMinutesTable).set(req.body).where(eq(meetingMinutesTable.id, Number(req.params.id))).returning();
+    const { projectId, ...rest } = req.body;
+    const updates: Record<string, any> = { ...rest };
+    if (projectId !== undefined) updates.projectId = await resolveProjectId(projectId);
+    const [row] = await db.update(meetingMinutesTable).set(updates).where(eq(meetingMinutesTable.id, Number(req.params.id))).returning();
     if (!row) return res.status(404).json({ error: "Not found" });
     res.json(row);
   } catch (e) { res.status(500).json({ error: String(e) }); }
