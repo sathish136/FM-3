@@ -135,6 +135,29 @@ router.get("/hrms/image-proxy", async (req, res) => {
   }
 });
 
+router.get("/employees", async (req, res) => {
+  try {
+    const { q = "" } = req.query as Record<string, string>;
+    const employees = await fetchErpNextEmployees({ status: "Active" });
+    const filtered = employees
+      .filter(e => {
+        const name = (e.employee_name || "").toLowerCase();
+        return !q || name.includes(q.toLowerCase());
+      })
+      .slice(0, 30)
+      .map(e => ({
+        id: e.name,
+        name: e.employee_name,
+        designation: e.designation || "",
+        department: e.department || "",
+        avatar: e.image ? `${ERPNEXT_URL}${e.image}` : null,
+      }));
+    res.json(filtered);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 router.get("/users/mention", async (req, res) => {
   try {
     const { q = "" } = req.query as Record<string, string>;

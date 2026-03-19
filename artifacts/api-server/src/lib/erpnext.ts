@@ -709,6 +709,36 @@ export async function fetchErpNextDepartments(): Promise<ErpDepartment[]> {
   return (data.data || []) as ErpDepartment[];
 }
 
+export async function createErpNextTaskAllocation(data: {
+  employee: string;
+  date: string;
+  tasks: { task_name: string; description?: string; expected_hours?: number; expected_end_date?: string }[];
+}): Promise<{ name: string }> {
+  if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
+  const body = {
+    employee: data.employee,
+    date: data.date,
+    tasks: data.tasks.map(t => ({
+      task_name: t.task_name,
+      description: t.description || "",
+      expected_hours: t.expected_hours ?? 1,
+      expected_end_date: t.expected_end_date || data.date,
+      status: "Open",
+    })),
+  };
+  const res = await fetch(`${ERPNEXT_URL}/api/resource/Task Allocation`, {
+    method: "POST",
+    headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`ERPNext Task Allocation: ${res.status} — ${err}`);
+  }
+  const result = await res.json();
+  return { name: result.data?.name || result.name || "created" };
+}
+
 export async function fetchErpNextUsers(): Promise<ErpUser[]> {
   if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
   const fields = JSON.stringify(["name", "full_name", "user_image", "enabled"]);
