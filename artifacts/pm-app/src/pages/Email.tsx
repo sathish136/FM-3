@@ -4,7 +4,9 @@ import {
   RefreshCw, AlertCircle, Trash2, Star, Paperclip, Search,
   Eye, EyeOff, CornerUpLeft, Forward, Archive, Tag, Bookmark,
   ShieldAlert, FileText, FolderOpen, ChevronDown, ChevronRight,
-  Sparkles, Printer, Clock, Wand2, Users,
+  Sparkles, Printer, Clock, Wand2, Users, Minimize2, Maximize2,
+  Bold, Italic, Underline, Link, AlignLeft, List, Image as ImageIcon,
+  Smile, MoreHorizontal,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
@@ -81,14 +83,33 @@ function groupFolders(folders: ImapFolder[]) {
 }
 
 // ─── Compose Modal ────────────────────────────────────────────────────────────
-function ComposeModal({ onClose, defaultTo="", defaultSubject="", defaultBody="", onSent, userEmail }: {
-  onClose: () => void; defaultTo?: string; defaultSubject?: string; defaultBody?: string; onSent?: () => void; userEmail?: string;
+function ComposeModal({ onClose, defaultTo="", defaultCc="", defaultSubject="", defaultBody="", onSent, userEmail, mode="compose" }: {
+  onClose: () => void;
+  defaultTo?: string;
+  defaultCc?: string;
+  defaultSubject?: string;
+  defaultBody?: string;
+  onSent?: () => void;
+  userEmail?: string;
+  mode?: "compose" | "reply" | "replyAll" | "forward";
 }) {
-  const [to,setTo]=useState(defaultTo); const [cc,setCc]=useState(""); const [bcc,setBcc]=useState("");
-  const [subject,setSubject]=useState(defaultSubject); const [body,setBody]=useState(defaultBody);
-  const [showCc,setShowCc]=useState(false); const [showBcc,setShowBcc]=useState(false);
-  const [sending,setSending]=useState(false); const [error,setError]=useState(""); const [sent,setSent]=useState(false);
-  const [aiWriting,setAiWriting]=useState(false);
+  const [to, setTo] = useState(defaultTo);
+  const [cc, setCc] = useState(defaultCc);
+  const [bcc, setBcc] = useState("");
+  const [subject, setSubject] = useState(defaultSubject);
+  const [body, setBody] = useState(defaultBody);
+  const [showCc, setShowCc] = useState(!!defaultCc);
+  const [showBcc, setShowBcc] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const [sent, setSent] = useState(false);
+  const [aiWriting, setAiWriting] = useState(false);
+  const [minimized, setMinimized] = useState(false);
+  const [maximized, setMaximized] = useState(false);
+
+  const windowTitle = mode === "reply" ? `Reply: ${defaultSubject}` :
+    mode === "replyAll" ? `Reply All: ${defaultSubject}` :
+    mode === "forward" ? `Forward: ${defaultSubject}` : "New Message";
 
   const aiAssist = async () => {
     if (!subject && !body) return;
@@ -108,53 +129,166 @@ function ComposeModal({ onClose, defaultTo="", defaultSubject="", defaultBody=""
     if (!to.trim() || !subject.trim()) { setError("To and Subject are required."); return; }
     setSending(true); setError("");
     try {
-      await apiFetch("/email/send", { method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ to, cc:cc||undefined, bcc:bcc||undefined, subject, body, user:userEmail }) });
+      await apiFetch("/email/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to, cc: cc || undefined, bcc: bcc || undefined, subject, body, user: userEmail }),
+      });
       setSent(true);
-      setTimeout(() => { onSent?.(); onClose(); }, 1200);
-    } catch(e:any) { setError(e.message||"Failed to send"); }
+      setTimeout(() => { onSent?.(); onClose(); }, 1500);
+    } catch (e: any) { setError(e.message || "Failed to send"); }
     setSending(false);
   };
 
+  if (minimized) {
+    return (
+      <div className="fixed bottom-0 right-6 z-50">
+        <div
+          className="flex items-center gap-2 px-4 py-2 bg-[#1a2332] text-white rounded-t-xl shadow-2xl cursor-pointer select-none min-w-[260px]"
+          onClick={() => setMinimized(false)}
+        >
+          <span className="text-sm font-medium flex-1 truncate">{windowTitle}</span>
+          <button onClick={e => { e.stopPropagation(); setMinimized(false); }} className="p-0.5 hover:bg-white/10 rounded"><Maximize2 className="w-3.5 h-3.5"/></button>
+          <button onClick={e => { e.stopPropagation(); onClose(); }} className="p-0.5 hover:bg-white/10 rounded"><X className="w-3.5 h-3.5"/></button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-end p-4 pointer-events-none">
-      <div className="pointer-events-auto w-full max-w-lg bg-white rounded-xl shadow-2xl border border-gray-200 flex flex-col" style={{maxHeight:"80vh"}}>
-        <div className="flex items-center justify-between px-4 py-2.5 bg-gray-800 text-white rounded-t-xl">
-          <span className="font-semibold text-sm">New Message</span>
-          <button onClick={onClose} className="p-1 rounded hover:bg-white/10"><X className="w-3.5 h-3.5"/></button>
+    <div className={`fixed z-50 ${maximized ? "inset-0 flex items-center justify-center bg-black/30" : "inset-0 flex items-end justify-end p-4 pointer-events-none"}`}>
+      <div
+        className={`pointer-events-auto bg-white flex flex-col shadow-2xl border border-gray-200 ${
+          maximized
+            ? "w-[90vw] h-[90vh] rounded-xl"
+            : "w-[580px] rounded-xl"
+        }`}
+        style={maximized ? {} : { maxHeight: "86vh" }}
+      >
+        {/* Header */}
+        <div className="flex items-center gap-2 px-4 py-2.5 bg-[#1a2332] text-white rounded-t-xl shrink-0">
+          <span className="text-sm font-semibold flex-1 truncate">{windowTitle}</span>
+          <button onClick={() => setMinimized(true)} title="Minimize" className="p-1 rounded hover:bg-white/10 transition-colors">
+            <Minimize2 className="w-3.5 h-3.5"/>
+          </button>
+          <button onClick={() => setMaximized(v => !v)} title={maximized ? "Restore" : "Maximize"} className="p-1 rounded hover:bg-white/10 transition-colors">
+            {maximized ? <Minimize2 className="w-3.5 h-3.5"/> : <Maximize2 className="w-3.5 h-3.5"/>}
+          </button>
+          <button onClick={onClose} className="p-1 rounded hover:bg-white/10 transition-colors">
+            <X className="w-3.5 h-3.5"/>
+          </button>
         </div>
-        <div className="flex flex-col divide-y divide-gray-100 flex-1 overflow-hidden">
-          {[["To",to,setTo,"recipients@example.com"],["Subject",subject,setSubject,"Subject"]].map(([label,val,set,ph])=>(
-            <div key={label as string} className="flex items-center px-3 py-1.5 gap-2">
-              <span className="text-xs text-gray-400 w-12 shrink-0">{label as string}</span>
-              <input value={val as string} onChange={e=>(set as any)(e.target.value)} placeholder={ph as string}
-                className="flex-1 text-sm text-gray-800 outline-none bg-transparent"/>
-              {label==="To" && (
-                <div className="flex gap-2">
-                  <button onClick={()=>setShowCc(v=>!v)} className={`text-[10px] ${showCc?"text-blue-600 font-bold":"text-gray-400"}`}>Cc</button>
-                  <button onClick={()=>setShowBcc(v=>!v)} className={`text-[10px] ${showBcc?"text-blue-600 font-bold":"text-gray-400"}`}>Bcc</button>
-                </div>
-              )}
+
+        {/* Fields */}
+        <div className="flex flex-col shrink-0 border-b border-gray-200">
+          {/* To */}
+          <div className="flex items-center px-4 py-2 border-b border-gray-100 gap-2">
+            <span className="text-xs font-medium text-gray-500 w-14 shrink-0">To</span>
+            <input
+              value={to} onChange={e => setTo(e.target.value)}
+              placeholder="Recipients"
+              className="flex-1 text-sm text-gray-800 outline-none placeholder-gray-400"
+            />
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={() => setShowCc(v => !v)}
+                className={`text-xs px-2 py-0.5 rounded font-medium transition-colors ${showCc ? "bg-blue-100 text-blue-700" : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"}`}
+              >Cc</button>
+              <button
+                onClick={() => setShowBcc(v => !v)}
+                className={`text-xs px-2 py-0.5 rounded font-medium transition-colors ${showBcc ? "bg-blue-100 text-blue-700" : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"}`}
+              >Bcc</button>
             </div>
-          ))}
-          {showCc && <div className="flex items-center px-3 py-1.5 gap-2"><span className="text-xs text-gray-400 w-12">Cc</span><input value={cc} onChange={e=>setCc(e.target.value)} placeholder="cc@example.com" className="flex-1 text-sm outline-none bg-transparent"/></div>}
-          {showBcc && <div className="flex items-center px-3 py-1.5 gap-2"><span className="text-xs text-gray-400 w-12">Bcc</span><input value={bcc} onChange={e=>setBcc(e.target.value)} placeholder="bcc@example.com" className="flex-1 text-sm outline-none bg-transparent"/></div>}
-          <textarea value={body} onChange={e=>setBody(e.target.value)} placeholder="Write your message…"
-            className="flex-1 px-3 py-2.5 text-sm text-gray-700 outline-none resize-none bg-white min-h-[160px]"/>
+          </div>
+
+          {/* Cc */}
+          {showCc && (
+            <div className="flex items-center px-4 py-2 border-b border-gray-100 gap-2">
+              <span className="text-xs font-medium text-gray-500 w-14 shrink-0">Cc</span>
+              <input value={cc} onChange={e => setCc(e.target.value)} placeholder="Cc recipients"
+                className="flex-1 text-sm text-gray-800 outline-none placeholder-gray-400"/>
+            </div>
+          )}
+
+          {/* Bcc */}
+          {showBcc && (
+            <div className="flex items-center px-4 py-2 border-b border-gray-100 gap-2">
+              <span className="text-xs font-medium text-gray-500 w-14 shrink-0">Bcc</span>
+              <input value={bcc} onChange={e => setBcc(e.target.value)} placeholder="Bcc recipients"
+                className="flex-1 text-sm text-gray-800 outline-none placeholder-gray-400"/>
+            </div>
+          )}
+
+          {/* Subject */}
+          <div className="flex items-center px-4 py-2 gap-2">
+            <span className="text-xs font-medium text-gray-500 w-14 shrink-0">Subject</span>
+            <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject"
+              className="flex-1 text-sm text-gray-800 outline-none placeholder-gray-400 font-medium"/>
+          </div>
         </div>
-        <div className="px-3 py-2 border-t border-gray-100 flex items-center gap-2 bg-gray-50">
-          <button onClick={handleSend} disabled={sending||sent}
-            className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-lg text-sm font-semibold transition-colors">
-            {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin"/> : <Send className="w-3.5 h-3.5"/>}
-            {sending?"Sending…":sent?"Sent!":"Send"}
+
+        {/* Body */}
+        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+          <textarea
+            value={body}
+            onChange={e => setBody(e.target.value)}
+            placeholder="Write your message here…"
+            className="flex-1 px-4 py-3 text-sm text-gray-700 outline-none resize-none bg-white leading-relaxed"
+            style={{ minHeight: maximized ? "300px" : "200px" }}
+          />
+        </div>
+
+        {/* Formatting toolbar */}
+        <div className="flex items-center gap-0.5 px-3 py-1.5 border-t border-gray-100 bg-gray-50/80 shrink-0">
+          {[Bold, Italic, Underline].map((Icon, i) => (
+            <button key={i} className="p-1.5 rounded hover:bg-gray-200 text-gray-500 transition-colors">
+              <Icon className="w-3.5 h-3.5"/>
+            </button>
+          ))}
+          <div className="w-px h-4 bg-gray-200 mx-1"/>
+          {[AlignLeft, List, Link].map((Icon, i) => (
+            <button key={i} className="p-1.5 rounded hover:bg-gray-200 text-gray-500 transition-colors">
+              <Icon className="w-3.5 h-3.5"/>
+            </button>
+          ))}
+          <div className="w-px h-4 bg-gray-200 mx-1"/>
+          <button className="p-1.5 rounded hover:bg-gray-200 text-gray-500 transition-colors"><ImageIcon className="w-3.5 h-3.5"/></button>
+          <button className="p-1.5 rounded hover:bg-gray-200 text-gray-500 transition-colors"><Paperclip className="w-3.5 h-3.5"/></button>
+          <button className="p-1.5 rounded hover:bg-gray-200 text-gray-500 transition-colors"><Smile className="w-3.5 h-3.5"/></button>
+        </div>
+
+        {/* Action bar */}
+        <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-200 bg-white shrink-0 rounded-b-xl">
+          <button
+            onClick={handleSend}
+            disabled={sending || sent}
+            className="flex items-center gap-2 px-5 py-2 bg-[#1a6de0] hover:bg-[#1558c0] disabled:opacity-60 text-white rounded-lg text-sm font-semibold transition-colors shadow-sm"
+          >
+            {sending ? <Loader2 className="w-4 h-4 animate-spin"/> : <Send className="w-4 h-4"/>}
+            {sending ? "Sending…" : sent ? "Sent!" : "Send"}
           </button>
-          <button onClick={aiAssist} disabled={aiWriting} title="AI improve draft"
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold transition-colors">
-            {aiWriting ? <Loader2 className="w-3 h-3 animate-spin"/> : <Wand2 className="w-3 h-3"/>} AI Improve
+
+          <button
+            onClick={aiAssist}
+            disabled={aiWriting}
+            title="AI improve draft"
+            className="flex items-center gap-1.5 px-3 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg text-sm font-medium transition-colors border border-purple-200"
+          >
+            {aiWriting ? <Loader2 className="w-3.5 h-3.5 animate-spin"/> : <Wand2 className="w-3.5 h-3.5"/>}
+            AI Improve
           </button>
+
           <div className="flex-1"/>
-          {error && <p className="text-xs text-red-500">{error}</p>}
-          {sent && <p className="text-xs text-green-600 font-semibold">✓ Sent!</p>}
+
+          {error && <p className="text-xs text-red-500 font-medium">{error}</p>}
+          {sent && <p className="text-xs text-green-600 font-semibold">✓ Message sent!</p>}
+
+          <button className="p-2 rounded hover:bg-gray-100 text-gray-400 transition-colors">
+            <MoreHorizontal className="w-4 h-4"/>
+          </button>
+          <button onClick={onClose} className="p-2 rounded hover:bg-gray-100 text-gray-400 transition-colors" title="Discard">
+            <Trash2 className="w-4 h-4"/>
+          </button>
         </div>
       </div>
     </div>
@@ -166,9 +300,9 @@ function AIPanel({ uid, body, subject, from, onReply }: {
   uid: number; body: EmailBody | null; subject: string; from: string;
   onReply: (draft: string) => void;
 }) {
-  const [summary,setSummary]=useState(""); const [summaryLoading,setSummaryLoading]=useState(false);
-  const [replies,setReplies]=useState<string[]>([]); const [repliesLoading,setRepliesLoading]=useState(false);
-  const [tab,setTab]=useState<"summary"|"reply">("summary");
+  const [summary, setSummary] = useState(""); const [summaryLoading, setSummaryLoading] = useState(false);
+  const [replies, setReplies] = useState<string[]>([]); const [repliesLoading, setRepliesLoading] = useState(false);
+  const [tab, setTab] = useState<"summary"|"reply">("summary");
 
   const loadSummary = async () => {
     setSummaryLoading(true);
@@ -252,21 +386,22 @@ function AIPanel({ uid, body, subject, from, onReply }: {
 }
 
 // ─── Email Detail ─────────────────────────────────────────────────────────────
-function EmailDetail({ email, folderPath, onBack, onReply, onDelete, onToggleStar, onToggleSeen, onArchive, userEmail }: {
+function EmailDetail({ email, folderPath, onBack, onReply, onReplyAll, onDelete, onToggleStar, onToggleSeen, onArchive, userEmail }: {
   email: EmailItem; folderPath: string; onBack: () => void;
   onReply: (to: string, subject: string, body: string) => void;
+  onReplyAll: (to: string, cc: string, subject: string, body: string) => void;
   onDelete: (uid: number) => void; onToggleStar: (uid: number, cur: boolean) => void;
   onToggleSeen: (uid: number, cur: boolean) => void; onArchive: (uid: number) => void;
   userEmail?: string;
 }) {
-  const [body,setBody]=useState<EmailBody|null>(null);
-  const [loading,setLoading]=useState(true);
-  const [deleting,setDeleting]=useState(false);
-  const [headerExpanded,setHeaderExpanded]=useState(false);
-  const [showAI,setShowAI]=useState(false);
-  const iframeRef=useRef<HTMLIFrameElement>(null);
+  const [body, setBody] = useState<EmailBody|null>(null);
+  const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
+  const [headerExpanded, setHeaderExpanded] = useState(false);
+  const [showAI, setShowAI] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const userParam = userEmail ? `&user=${encodeURIComponent(userEmail)}` : "";
-  const isTrash = folderPath==="[Gmail]/Trash";
+  const isTrash = folderPath === "[Gmail]/Trash";
 
   useEffect(()=>{
     setLoading(true); setBody(null); setShowAI(false);
@@ -283,8 +418,23 @@ function EmailDetail({ email, folderPath, onBack, onReply, onDelete, onToggleSta
 
   const buildQuoted = () => {
     const dateStr = email.date ? new Date(email.date).toLocaleString("en-IN") : "";
-    const plain = body?.text || (body?.html?body.html.replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim():"");
+    const plain = body?.text || (body?.html ? body.html.replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim() : "");
     return `\n\n— On ${dateStr}, ${senderName(email.from)} wrote:\n${plain.split("\n").map(l=>`> ${l}`).join("\n")}`;
+  };
+
+  const buildReplyAllCc = () => {
+    const allAddresses = [email.to, email.cc].filter(Boolean).join(",");
+    const parts = allAddresses.split(/[,;]/).map(s => s.trim()).filter(Boolean);
+    const filtered = parts.filter(addr => {
+      if (!userEmail) return true;
+      return !addr.toLowerCase().includes(userEmail.toLowerCase());
+    });
+    const fromEmail = email.from.match(/<(.+?)>/) ? email.from.match(/<(.+?)>/)![1] : email.from;
+    const uniqueSet = new Set(filtered.filter(a => {
+      const e = a.match(/<(.+?)>/) ? a.match(/<(.+?)>/)![1] : a;
+      return e.toLowerCase() !== fromEmail.toLowerCase();
+    }));
+    return Array.from(uniqueSet).join(", ");
   };
 
   const handleDelete = async () => {
@@ -337,13 +487,23 @@ function EmailDetail({ email, folderPath, onBack, onReply, onDelete, onToggleSta
 
         <div className="flex-1"/>
 
-        <button onClick={()=>onReply(email.from,`Re: ${email.subject}`,buildQuoted())}
-          className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded transition-colors">
-          <CornerUpLeft className="w-3 h-3"/> Reply
+        <button
+          onClick={()=>onReply(email.from, `Re: ${email.subject}`, buildQuoted())}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 rounded-lg transition-colors border border-transparent hover:border-gray-200"
+        >
+          <CornerUpLeft className="w-3.5 h-3.5"/> Reply
         </button>
-        <button onClick={()=>onReply("",`Fwd: ${email.subject}`,buildQuoted())}
-          className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded transition-colors">
-          <Forward className="w-3 h-3"/> Forward
+        <button
+          onClick={()=>onReplyAll(email.from, buildReplyAllCc(), `Re: ${email.subject}`, buildQuoted())}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 rounded-lg transition-colors border border-transparent hover:border-gray-200"
+        >
+          <Users className="w-3.5 h-3.5"/> Reply All
+        </button>
+        <button
+          onClick={()=>onReply("", `Fwd: ${email.subject}`, buildQuoted())}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 rounded-lg transition-colors border border-transparent hover:border-gray-200"
+        >
+          <Forward className="w-3.5 h-3.5"/> Forward
         </button>
         <button onClick={handlePrint} title="Print" className="p-1.5 rounded hover:bg-gray-100 text-gray-500 transition-colors ml-1">
           <Printer className="w-3.5 h-3.5"/>
@@ -360,7 +520,7 @@ function EmailDetail({ email, folderPath, onBack, onReply, onDelete, onToggleSta
 
           {/* Sender card */}
           <div className="flex items-start gap-2.5 mb-4">
-            <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${avatarColor(email.from)} flex items-center justify-center text-white font-bold text-xs shrink-0`}>
+            <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${avatarColor(email.from)} flex items-center justify-center text-white font-bold text-xs shrink-0`}>
               {senderInitial(email.from)}
             </div>
             <div className="min-w-0 flex-1">
@@ -403,16 +563,28 @@ function EmailDetail({ email, folderPath, onBack, onReply, onDelete, onToggleSta
         {/* Quick reply bar */}
         {!loading && (
           <div className="px-6 py-3 border-t border-gray-100 flex gap-2 flex-wrap">
-            <button onClick={()=>onReply(email.from,`Re: ${email.subject}`,buildQuoted())}
-              className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 hover:border-gray-400 text-gray-700 rounded-full text-xs font-medium transition-colors">
+            <button
+              onClick={()=>onReply(email.from, `Re: ${email.subject}`, buildQuoted())}
+              className="flex items-center gap-1.5 px-4 py-1.5 border border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 text-gray-700 rounded-full text-xs font-medium transition-colors"
+            >
               <CornerUpLeft className="w-3 h-3"/> Reply
             </button>
-            <button onClick={()=>onReply("",`Fwd: ${email.subject}`,buildQuoted())}
-              className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 hover:border-gray-400 text-gray-700 rounded-full text-xs font-medium transition-colors">
+            <button
+              onClick={()=>onReplyAll(email.from, buildReplyAllCc(), `Re: ${email.subject}`, buildQuoted())}
+              className="flex items-center gap-1.5 px-4 py-1.5 border border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 text-gray-700 rounded-full text-xs font-medium transition-colors"
+            >
+              <Users className="w-3 h-3"/> Reply All
+            </button>
+            <button
+              onClick={()=>onReply("", `Fwd: ${email.subject}`, buildQuoted())}
+              className="flex items-center gap-1.5 px-4 py-1.5 border border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 text-gray-700 rounded-full text-xs font-medium transition-colors"
+            >
               <Forward className="w-3 h-3"/> Forward
             </button>
-            <button onClick={()=>setShowAI(v=>!v)}
-              className="flex items-center gap-1.5 px-3 py-1.5 border border-blue-200 hover:border-blue-400 text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-full text-xs font-medium transition-colors">
+            <button
+              onClick={()=>setShowAI(v=>!v)}
+              className="flex items-center gap-1.5 px-4 py-1.5 border border-purple-200 hover:border-purple-400 text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-full text-xs font-medium transition-colors"
+            >
               <Sparkles className="w-3 h-3"/> Smart Reply
             </button>
           </div>
@@ -428,21 +600,21 @@ export default function Email() {
   const userEmail = user?.email;
   const userParam = userEmail ? `&user=${encodeURIComponent(userEmail)}` : "";
 
-  const [folders,setFolders]=useState<ImapFolder[]>([]);
-  const [foldersLoading,setFoldersLoading]=useState(false);
-  const [activeFolderPath,setActiveFolderPath]=useState("INBOX");
-  const [labelsOpen,setLabelsOpen]=useState(false);
+  const [folders, setFolders] = useState<ImapFolder[]>([]);
+  const [foldersLoading, setFoldersLoading] = useState(false);
+  const [activeFolderPath, setActiveFolderPath] = useState("INBOX");
+  const [labelsOpen, setLabelsOpen] = useState(false);
 
-  const [emails,setEmails]=useState<EmailItem[]>([]);
-  const [loading,setLoading]=useState(false);
-  const [syncing,setSyncing]=useState(false);
-  const [lastSynced,setLastSynced]=useState<Date|null>(null);
-  const [error,setError]=useState("");
-  const [selected,setSelected]=useState<EmailItem|null>(null);
-  const [composing,setComposing]=useState(false);
-  const [composeDefaults,setComposeDefaults]=useState({to:"",subject:"",body:""});
-  const [search,setSearch]=useState("");
-  const [checkedUids,setCheckedUids]=useState<Set<number>>(new Set());
+  const [emails, setEmails] = useState<EmailItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSynced, setLastSynced] = useState<Date|null>(null);
+  const [error, setError] = useState("");
+  const [selected, setSelected] = useState<EmailItem|null>(null);
+  const [composing, setComposing] = useState(false);
+  const [composeDefaults, setComposeDefaults] = useState({ to:"", cc:"", subject:"", body:"", mode:"compose" as "compose"|"reply"|"replyAll"|"forward" });
+  const [search, setSearch] = useState("");
+  const [checkedUids, setCheckedUids] = useState<Set<number>>(new Set());
 
   const loadFolders = async () => {
     if(!userEmail) return;
@@ -484,32 +656,41 @@ export default function Email() {
 
   useEffect(()=>{ load(activeFolderPath); setCheckedUids(new Set()); },[activeFolderPath]);
 
-  const handleReply=(to:string,subject:string,body:string)=>{ setComposeDefaults({to,subject,body}); setComposing(true); };
-  const handleDelete=(uid:number)=>{ setEmails(p=>p.filter(e=>e.uid!==uid)); setSelected(null); };
-  const handleArchive=(uid:number)=>{ setEmails(p=>p.filter(e=>e.uid!==uid)); setSelected(null); };
+  const handleReply = (to: string, subject: string, body: string) => {
+    setComposeDefaults({ to, cc:"", subject, body, mode: to ? "reply" : "forward" });
+    setComposing(true);
+  };
 
-  const handleToggleStar=async(uid:number,cur:boolean)=>{
-    const v=!cur;
+  const handleReplyAll = (to: string, cc: string, subject: string, body: string) => {
+    setComposeDefaults({ to, cc, subject, body, mode: "replyAll" });
+    setComposing(true);
+  };
+
+  const handleDelete = (uid: number) => { setEmails(p=>p.filter(e=>e.uid!==uid)); setSelected(null); };
+  const handleArchive = (uid: number) => { setEmails(p=>p.filter(e=>e.uid!==uid)); setSelected(null); };
+
+  const handleToggleStar = async (uid: number, cur: boolean) => {
+    const v = !cur;
     setEmails(p=>p.map(e=>e.uid===uid?{...e,starred:v}:e));
     if(selected?.uid===uid) setSelected(s=>s?{...s,starred:v}:s);
     try { await apiFetch(`/email/${uid}/flags?mailbox=${encodeURIComponent(activeFolderPath)}${userParam}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({starred:v})}); }
     catch { setEmails(p=>p.map(e=>e.uid===uid?{...e,starred:cur}:e)); }
   };
 
-  const handleToggleSeen=async(uid:number,cur:boolean)=>{
-    const v=!cur;
+  const handleToggleSeen = async (uid: number, cur: boolean) => {
+    const v = !cur;
     setEmails(p=>p.map(e=>e.uid===uid?{...e,seen:v}:e));
     if(selected?.uid===uid) setSelected(s=>s?{...s,seen:v}:s);
     try { await apiFetch(`/email/${uid}/flags?mailbox=${encodeURIComponent(activeFolderPath)}${userParam}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({seen:v})}); }
     catch { setEmails(p=>p.map(e=>e.uid===uid?{...e,seen:cur}:e)); }
   };
 
-  const toggleCheck=(uid:number)=>{
+  const toggleCheck = (uid: number) => {
     setCheckedUids(prev=>{const n=new Set(prev); n.has(uid)?n.delete(uid):n.add(uid); return n;});
   };
 
-  const unread=emails.filter(e=>!e.seen).length;
-  const filtered=search.trim()
+  const unread = emails.filter(e=>!e.seen).length;
+  const filtered = search.trim()
     ? emails.filter(e=>e.subject.toLowerCase().includes(search.toLowerCase())||e.from.toLowerCase().includes(search.toLowerCase()))
     : emails;
 
@@ -522,8 +703,10 @@ export default function Email() {
         {/* ── Sidebar ── */}
         <div className="w-52 flex-shrink-0 bg-white border-r border-gray-100 flex flex-col overflow-y-auto">
           <div className="px-3 pt-3 pb-2">
-            <button onClick={()=>{setComposing(true);setComposeDefaults({to:"",subject:"",body:""}); }}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-sm font-semibold shadow-sm transition-colors">
+            <button
+              onClick={()=>{ setComposing(true); setComposeDefaults({to:"",cc:"",subject:"",body:"",mode:"compose"}); }}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#1a6de0] hover:bg-[#1558c0] text-white rounded-2xl text-sm font-semibold shadow-sm transition-colors"
+            >
               <Pencil className="w-3.5 h-3.5"/> Compose
             </button>
           </div>
@@ -532,8 +715,8 @@ export default function Email() {
 
           <nav className="px-1.5 flex-1">
             {mainFolders.map(f=>{
-              const isActive=activeFolderPath===f.path;
-              const colorClass=isActive?"text-blue-700":FOLDER_META[f.path]?.color||"text-gray-500";
+              const isActive = activeFolderPath===f.path;
+              const colorClass = isActive?"text-blue-700":FOLDER_META[f.path]?.color||"text-gray-500";
               return (
                 <button key={f.path} onClick={()=>setActiveFolderPath(f.path)}
                   className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-sm font-medium transition-colors ${isActive?"bg-blue-50 text-blue-700":"text-gray-700 hover:bg-gray-50"}`}>
@@ -630,8 +813,8 @@ export default function Email() {
             )}
 
             {!loading && filtered.map(email=>{
-              const isSelected=selected?.uid===email.uid;
-              const isChecked=checkedUids.has(email.uid);
+              const isSelected = selected?.uid===email.uid;
+              const isChecked = checkedUids.has(email.uid);
               return (
                 <div key={email.uid}
                   className={`group flex items-center gap-0 border-b border-gray-50 cursor-pointer transition-colors
@@ -682,9 +865,18 @@ export default function Email() {
         {/* ── Email Detail ── */}
         {selected ? (
           <div className="flex-1 min-w-0">
-            <EmailDetail email={selected} folderPath={activeFolderPath} onBack={()=>setSelected(null)}
-              onReply={handleReply} onDelete={handleDelete} onArchive={handleArchive}
-              onToggleStar={handleToggleStar} onToggleSeen={handleToggleSeen} userEmail={userEmail}/>
+            <EmailDetail
+              email={selected}
+              folderPath={activeFolderPath}
+              onBack={()=>setSelected(null)}
+              onReply={handleReply}
+              onReplyAll={handleReplyAll}
+              onDelete={handleDelete}
+              onArchive={handleArchive}
+              onToggleStar={handleToggleStar}
+              onToggleSeen={handleToggleSeen}
+              userEmail={userEmail}
+            />
           </div>
         ) : (
           <div className="flex-1 hidden md:flex flex-col items-center justify-center text-center px-8 bg-[#f8fafc]">
@@ -698,10 +890,16 @@ export default function Email() {
       </div>
 
       {composing && (
-        <ComposeModal defaultTo={composeDefaults.to} defaultSubject={composeDefaults.subject}
-          defaultBody={composeDefaults.body} onClose={()=>setComposing(false)}
+        <ComposeModal
+          defaultTo={composeDefaults.to}
+          defaultCc={composeDefaults.cc}
+          defaultSubject={composeDefaults.subject}
+          defaultBody={composeDefaults.body}
+          mode={composeDefaults.mode}
+          onClose={()=>setComposing(false)}
           onSent={()=>{ if(activeFolderPath==="[Gmail]/Sent Mail") load(activeFolderPath); }}
-          userEmail={userEmail}/>
+          userEmail={userEmail}
+        />
       )}
     </Layout>
   );
