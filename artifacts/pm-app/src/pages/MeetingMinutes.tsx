@@ -3,6 +3,7 @@ import {
   FileText, Plus, Trash2, Sparkles, Calendar, Users,
   X, Save, Loader2, CheckCircle, Clock, Mic,
   Square, Type, Radio, MapPin, Search, FolderOpen,
+  Printer,
 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useListProjects } from "@workspace/api-client-react";
@@ -551,12 +552,204 @@ function ManualView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: Mee
   );
 }
 
+// ─── Report Helpers ──────────────────────────────────────────────────────────
+function parseSections(text: string | null): Record<string, string[]> {
+  if (!text) return {};
+  const sections: Record<string, string[]> = {};
+  let cur = "";
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (line.startsWith("## ")) {
+      cur = line.slice(3).trim();
+      sections[cur] = [];
+    } else if (cur && line.startsWith("- ")) {
+      sections[cur].push(line.slice(2).replace(/^(\[x\]|\[ \])\s*/, "").trim());
+    } else if (cur && line && !line.startsWith("#")) {
+      sections[cur].push(line);
+    }
+  }
+  return sections;
+}
+
+type ActionRow = { task: string; person: string; deadline: string };
+function parseActionRows(text: string | null): ActionRow[] {
+  if (!text) return [];
+  return text.split("\n")
+    .filter(l => l.trim().startsWith("- "))
+    .map(l => {
+      const content = l.trim().slice(2).replace(/^(\[x\]|\[ \])\s*/, "").trim();
+      const parts = content.split(/\s*[|\-–]\s*/);
+      if (parts.length >= 3) return { task: parts[0], person: parts[1], deadline: parts[2] };
+      if (parts.length === 2) return { task: parts[0], person: parts[1], deadline: "—" };
+      return { task: content, person: "—", deadline: "—" };
+    });
+}
+
+function formatDate(d: string) {
+  try {
+    return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" });
+  } catch { return d; }
+}
+
+// ─── Meeting Report Component ────────────────────────────────────────────────
+function MeetingReport({ meeting, onClose }: { meeting: Meeting; onClose: () => void }) {
+  const sections = parseSections(meeting.aiSummary);
+  const actionRows = parseActionRows(meeting.actionItems);
+  const attendeesList = (meeting.attendees || "").split(",").map(s => s.trim()).filter(Boolean);
+  const today = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" });
+
+  const sectionOrder = ["Agenda", "Discussion Points", "Discussions", "Key Points", "Summary", "Decisions Made", "Decisions", "Next Steps"];
+  const orderedKeys = [
+    ...sectionOrder.filter(k => sections[k]),
+    ...Object.keys(sections).filter(k => !sectionOrder.includes(k)),
+  ];
+
+  const handlePrint = () => window.print();
+
+  return (
+    <div className="fixed inset-0 z-50 bg-gray-950/70 backdrop-blur-sm flex items-start justify-center overflow-y-auto py-8 px-4 print:p-0 print:bg-white print:block">
+      {/* Toolbar */}
+      <div className="w-full max-w-3xl">
+        <div className="flex items-center justify-between mb-4 print:hidden">
+          <span className="text-white font-semibold text-sm tracking-wide">Minutes of Meeting Preview</span>
+          <div className="flex items-center gap-2">
+            <button onClick={handlePrint}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold shadow transition-colors">
+              <Printer className="w-4 h-4" /> Print / Save PDF
+            </button>
+            <button onClick={onClose}
+              className="p-2 text-white/60 hover:text-white hover:bg-white/10 rounded-lg transition-colors">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* ── Document ── */}
+        <div id="mom-report" className="bg-white rounded-2xl shadow-2xl overflow-hidden print:rounded-none print:shadow-none">
+          {/* Company / Title Banner */}
+          <div className="bg-gradient-to-r from-blue-700 to-indigo-600 px-10 py-8 text-white print:bg-blue-700">
+            <p className="text-xs font-bold tracking-widest text-blue-200 uppercase mb-1">WTT International India</p>
+            <h1 className="text-2xl font-extrabold tracking-tight">Minutes of Meeting</h1>
+            <h2 className="text-base font-medium text-blue-100 mt-1">{meeting.title}</h2>
+          </div>
+
+          <div className="px-10 py-8">
+            {/* Meta Info */}
+            <div className="grid grid-cols-2 gap-x-8 gap-y-2 mb-8 pb-6 border-b border-gray-100 text-sm">
+              <div className="flex gap-2">
+                <span className="font-semibold text-gray-600 w-24 flex-shrink-0">Date</span>
+                <span className="text-gray-800">{formatDate(meeting.date)}</span>
+              </div>
+              {meeting.venue && (
+                <div className="flex gap-2">
+                  <span className="font-semibold text-gray-600 w-24 flex-shrink-0">Location</span>
+                  <span className="text-gray-800">{meeting.venue}</span>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <span className="font-semibold text-gray-600 w-24 flex-shrink-0">Report Date</span>
+                <span className="text-gray-500">{today}</span>
+              </div>
+            </div>
+
+            {/* Attendees */}
+            {attendeesList.length > 0 && (
+              <div className="mb-7">
+                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest mb-3 flex items-center gap-2">
+                  <span className="w-6 h-0.5 bg-blue-500 rounded-full inline-block" />
+                  Attendees
+                </h3>
+                <ul className="space-y-1.5 pl-2">
+                  {attendeesList.map((a, i) => (
+                    <li key={i} className="flex items-center gap-2.5 text-sm text-gray-700">
+                      <span className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0" />
+                      {a}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* AI-generated sections */}
+            {orderedKeys.map(key => (
+              sections[key]?.length > 0 && (
+                <div key={key} className="mb-7">
+                  <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <span className="w-6 h-0.5 bg-blue-500 rounded-full inline-block" />
+                    {key}
+                  </h3>
+                  <ul className="space-y-1.5 pl-2">
+                    {sections[key].map((item, i) => (
+                      <li key={i} className="flex items-start gap-2.5 text-sm text-gray-700 leading-relaxed">
+                        <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-gray-400 flex-shrink-0" />
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )
+            ))}
+
+            {/* Raw Notes fallback when no AI summary */}
+            {!meeting.aiSummary && meeting.rawNotes && (
+              <div className="mb-7">
+                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest mb-3 flex items-center gap-2">
+                  <span className="w-6 h-0.5 bg-blue-500 rounded-full inline-block" />
+                  Notes
+                </h3>
+                <p className="text-sm text-gray-700 whitespace-pre-wrap pl-2 leading-relaxed">{meeting.rawNotes}</p>
+              </div>
+            )}
+
+            {/* Action Items Table */}
+            {actionRows.length > 0 && (
+              <div className="mb-7">
+                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest mb-3 flex items-center gap-2">
+                  <span className="w-6 h-0.5 bg-blue-500 rounded-full inline-block" />
+                  Action Items
+                </h3>
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="bg-blue-50">
+                      <th className="border border-blue-100 px-4 py-2.5 text-left font-semibold text-blue-900">#</th>
+                      <th className="border border-blue-100 px-4 py-2.5 text-left font-semibold text-blue-900">Task</th>
+                      <th className="border border-blue-100 px-4 py-2.5 text-left font-semibold text-blue-900">Responsible Person</th>
+                      <th className="border border-blue-100 px-4 py-2.5 text-left font-semibold text-blue-900">Deadline</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {actionRows.map((row, i) => (
+                      <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                        <td className="border border-gray-200 px-4 py-2.5 text-gray-500 font-medium">{i + 1}</td>
+                        <td className="border border-gray-200 px-4 py-2.5 text-gray-800">{row.task}</td>
+                        <td className="border border-gray-200 px-4 py-2.5 text-gray-700">{row.person}</td>
+                        <td className="border border-gray-200 px-4 py-2.5 text-gray-700">{row.deadline}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Footer */}
+            <div className="mt-10 pt-5 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
+              <span>FlowMatriX · WTT International India</span>
+              <span>Generated on {today}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ──────────────────────────────────────────────────────────────
 export default function MeetingMinutes() {
   const [meetings, setMeetings] = useState<Meeting[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Meeting | null>(null);
   const [showNew, setShowNew] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   const [newMode, setNewMode] = useState<"record" | "manual">("record");
   const [form, setForm] = useState({ title: "", date: new Date().toISOString().slice(0, 10), venue: "", projectId: "" });
   const [selectedAttendees, setSelectedAttendees] = useState<MentionUser[]>([]);
@@ -633,7 +826,7 @@ export default function MeetingMinutes() {
               </div>
             )}
             {meetings?.map(m => (
-              <div key={m.id} onClick={() => { setSelected(m); setShowNew(false); }}
+              <div key={m.id} onClick={() => { setSelected(m); setShowNew(false); setShowReport(false); }}
                 className={`w-full text-left px-3 py-2.5 rounded-xl mb-1 transition-all group cursor-pointer ${selected?.id === m.id ? "bg-blue-50 ring-1 ring-blue-200" : "hover:bg-gray-50"}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
@@ -812,26 +1005,39 @@ export default function MeetingMinutes() {
           {selected && !showNew && (
             <div className="flex-1 overflow-y-auto">
               <div className="max-w-3xl mx-auto w-full p-6 space-y-4">
-              <div className="flex items-start gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                    <ModeBadge mode={modeOf(selected)} />
-                    <StatusBadge status={selected.status} />
+                <div className="flex items-start gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                      <ModeBadge mode={modeOf(selected)} />
+                      <StatusBadge status={selected.status} />
+                    </div>
+                    <h1 className="text-xl font-bold text-gray-900">{selected.title}</h1>
+                    <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-gray-400">
+                      <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{selected.date}</span>
+                      {selected.venue && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{selected.venue}</span>}
+                      {selected.attendees && <span className="flex items-center gap-1"><Users className="w-3 h-3" />{selected.attendees}</span>}
+                    </div>
                   </div>
-                  <h1 className="text-xl font-bold text-gray-900">{selected.title}</h1>
-                  <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-gray-400">
-                    <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{selected.date}</span>
-                    {selected.venue && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{selected.venue}</span>}
-                    {selected.attendees && <span className="flex items-center gap-1"><Users className="w-3 h-3" />{selected.attendees}</span>}
-                  </div>
+                  {/* Generate Report button */}
+                  <button
+                    onClick={() => setShowReport(true)}
+                    className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:opacity-90 text-white rounded-xl text-sm font-semibold shadow-sm transition-all"
+                  >
+                    <FileText className="w-4 h-4" />
+                    Generate Report
+                  </button>
                 </div>
-              </div>
 
-              {modeOf(selected) === "record"
-                ? <RecordingView meeting={selected} onUpdate={handleUpdate} />
-                : <ManualView meeting={selected} onUpdate={handleUpdate} />}
+                {modeOf(selected) === "record"
+                  ? <RecordingView meeting={selected} onUpdate={handleUpdate} />
+                  : <ManualView meeting={selected} onUpdate={handleUpdate} />}
+              </div>
             </div>
-            </div>
+          )}
+
+          {/* REPORT MODAL */}
+          {showReport && selected && (
+            <MeetingReport meeting={selected} onClose={() => setShowReport(false)} />
           )}
 
           {/* EMPTY STATE */}
