@@ -10,6 +10,7 @@ import hrmsRouter from "./hrms";
 import projectBoardRouter from "./project-board";
 import emailRouter from "./email";
 import emailSettingsRouter from "./emailSettings";
+import chatRouter from "./chat";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use(hrmsRouter);
 router.use(projectBoardRouter);
 router.use(emailRouter);
 router.use(emailSettingsRouter);
+router.use(chatRouter);
 
 export default router;
