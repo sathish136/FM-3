@@ -1,5 +1,13 @@
 # Workspace
 
+## Email Feature (Gmail)
+- Email page at `/email` — inbox, sent, compose, reply, forward
+- Backend: `artifacts/api-server/src/routes/email.ts` — nodemailer (SMTP send) + imapflow (IMAP read)
+- Requires two secrets in Replit Secrets panel:
+  - `GMAIL_USER` — full Gmail address
+  - `GMAIL_APP_PASSWORD` — 16-char App Password from myaccount.google.com/apppasswords
+- Gmail IMAP: imap.gmail.com:993 (TLS); Gmail SMTP: smtp.gmail.com:587 (STARTTLS)
+
 ## Overview
 
 pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
