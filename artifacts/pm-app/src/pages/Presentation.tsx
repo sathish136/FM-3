@@ -207,50 +207,63 @@ function PptxViewer({ fileUrl }: { fileUrl: string }) {
     let cancelled = false;
     setStatus("loading");
 
-    // Measure from the wrapper (which is always visible and has proper dimensions)
-    const wrapper = wrapperRef.current;
-    const w = wrapper.clientWidth || window.innerWidth;
-    const h = wrapper.clientHeight || window.innerHeight - 48;
+    const run = () => {
+      if (cancelled || !containerRef.current || !wrapperRef.current) return;
 
-    // Clear any previous render
-    containerRef.current.innerHTML = "";
+      const wrapper = wrapperRef.current;
+      const w = wrapper.clientWidth || window.innerWidth;
+      const h = wrapper.clientHeight || (window.innerHeight - 48);
 
-    let viewer: ReturnType<typeof initPptxPreview>;
-    try {
-      viewer = initPptxPreview(containerRef.current, { width: w, height: h });
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.error("pptx-preview init error:", e);
-      if (!cancelled) { setErrorMsg(msg); setStatus("error"); }
-      return;
-    }
+      containerRef.current.innerHTML = "";
 
-    fetch(fileUrl)
-      .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.arrayBuffer();
-      })
-      .then(async buf => {
-        if (cancelled) return;
-        // preview() returns a Promise that resolves when all slides are rendered
-        await (viewer.preview(buf) as unknown as Promise<unknown>);
-        if (!cancelled) setStatus("ready");
-      })
-      .catch(err => {
-        if (cancelled) return;
-        console.error("pptx-preview error:", err);
-        setErrorMsg(err.message || "Failed to render presentation");
-        setStatus("error");
-      });
+      let viewer: ReturnType<typeof initPptxPreview>;
+      try {
+        viewer = initPptxPreview(containerRef.current, { width: w, height: h });
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("pptx-preview init error:", e);
+        if (!cancelled) { setErrorMsg(msg); setStatus("error"); }
+        return;
+      }
+
+      fetch(fileUrl)
+        .then(r => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.arrayBuffer();
+        })
+        .then(buf => {
+          if (cancelled) return;
+          try {
+            const result = viewer.preview(buf);
+            if (result && typeof (result as unknown as Promise<unknown>).then === "function") {
+              (result as unknown as Promise<unknown>)
+                .then(() => { if (!cancelled) setStatus("ready"); })
+                .catch(() => { if (!cancelled) setStatus("ready"); });
+            } else {
+              setTimeout(() => { if (!cancelled) setStatus("ready"); }, 800);
+            }
+          } catch (e2: unknown) {
+            console.error("pptx-preview render error:", e2);
+            setTimeout(() => { if (!cancelled) setStatus("ready"); }, 800);
+          }
+        })
+        .catch(err => {
+          if (cancelled) return;
+          console.error("pptx-preview fetch error:", err);
+          setErrorMsg(err.message || "Failed to load presentation");
+          setStatus("error");
+        });
+    };
+
+    requestAnimationFrame(() => requestAnimationFrame(run));
 
     return () => { cancelled = true; };
   }, [fileUrl]);
 
   return (
     <div ref={wrapperRef} className="w-full h-full relative bg-white overflow-auto">
-      {/* Loading overlay — sits on top of the container so container dimensions are unaffected */}
       {status === "loading" && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-400 z-10 bg-gray-950 pointer-events-none">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-10 bg-gray-950 pointer-events-none">
           <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
           <p className="text-sm font-medium text-gray-300">Rendering slides…</p>
           <p className="text-xs text-gray-500">Parsing PPTX content</p>
@@ -266,11 +279,10 @@ function PptxViewer({ fileUrl }: { fileUrl: string }) {
           </a>
         </div>
       )}
-      {/* Container is always in DOM so pptx-preview can measure it */}
       <div
         ref={containerRef}
         className="w-full"
-        style={{ opacity: status === "ready" ? 1 : 0, transition: "opacity 0.3s ease" }}
+        style={{ visibility: status === "loading" ? "hidden" : "visible" }}
       />
     </div>
   );
