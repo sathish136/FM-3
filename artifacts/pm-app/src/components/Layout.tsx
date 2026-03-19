@@ -397,7 +397,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
             </div>
           </div>
           <div className="flex-1 flex justify-center px-4">
-            <AISearch />
+            <AISearch currentPath={location} />
           </div>
           <div className="flex items-center gap-2.5">
             <div className="flex items-center gap-2">

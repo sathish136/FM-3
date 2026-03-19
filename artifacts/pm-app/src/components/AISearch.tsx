@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Search, Mic, MicOff, X, Send, Bot, Loader2, ChevronDown } from "lucide-react";
+import { Search, Mic, MicOff, X, Send, Bot, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "").replace("/pm-app", "") + "/api";
@@ -16,7 +16,29 @@ declare global {
   }
 }
 
-export function AISearch() {
+const MODULE_HINTS: Record<string, string> = {
+  "/":                   "Dashboard – project overview, KPIs, and recent activity",
+  "/drawings":           "Drawings – mechanical, electrical, and civil engineering drawings",
+  "/drawings/mechanical":"Drawings – mechanical design drawings",
+  "/drawings/electrical":"Drawings – electrical design drawings",
+  "/drawings/civil":     "Drawings – civil design drawings",
+  "/design-2d":          "Design 2D – 2D CAD drawing viewer and annotator",
+  "/design-3d":          "Design 3D – 3D mechanical model viewer (STEP/IGES files)",
+  "/pid":                "P&ID Process – piping and instrumentation diagrams",
+  "/presentation":       "Presentation – slide deck viewer and manager",
+  "/projects":           "Projects – project list and management",
+  "/project-board":      "Project Board – kanban-style project tracking board",
+  "/meeting-minutes":    "Meeting Minutes – meeting notes and records",
+  "/sheets":             "Sheets – collaborative spreadsheet editor",
+  "/material-request":   "Material Request – procurement and material request workflow",
+  "/hrms":               "HRMS – employee directory, attendance, leave management, and HR data pulled from ERPNext",
+  "/user-management":    "User Management – admin panel for managing user access and module permissions",
+  "/campaigns":          "Campaigns – marketing campaign tracking",
+  "/leads":              "Leads – CRM lead management and follow-ups",
+  "/team":               "Team – team member directory",
+};
+
+export function AISearch({ currentPath }: { currentPath?: string }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -26,6 +48,9 @@ export function AISearch() {
   const inputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+
+  const moduleHint = currentPath ? (MODULE_HINTS[currentPath] ?? "") : "";
+  const moduleLabel = moduleHint.split("–")[0]?.trim() ?? "";
 
   useEffect(() => {
     if (open) {
@@ -79,11 +104,8 @@ export function AISearch() {
   }, []);
 
   const toggleVoice = useCallback(() => {
-    if (listening) {
-      stopListening();
-    } else {
-      startListening();
-    }
+    if (listening) stopListening();
+    else startListening();
   }, [listening, startListening, stopListening]);
 
   const sendQuery = useCallback(async (text: string) => {
@@ -104,6 +126,7 @@ export function AISearch() {
         body: JSON.stringify({
           query: text.trim(),
           history: messages,
+          module: moduleHint,
         }),
       });
 
@@ -114,7 +137,7 @@ export function AISearch() {
     } finally {
       setLoading(false);
     }
-  }, [loading, listening, messages, stopListening]);
+  }, [loading, listening, messages, stopListening, moduleHint]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -129,6 +152,22 @@ export function AISearch() {
     setQuery("");
     inputRef.current?.focus();
   };
+
+  const moduleSuggestions: Record<string, string[]> = {
+    "/hrms":           ["Show me who is on leave today", "List employees in my department", "What is the attendance status?"],
+    "/projects":       ["What projects are in progress?", "Show overdue projects", "Which projects need attention?"],
+    "/project-board":  ["What tasks are pending?", "Show blocked tasks", "Summarize the board status"],
+    "/material-request":["What materials are requested?", "Show pending approvals", "List recent material requests"],
+    "/meeting-minutes":["Summarize recent meetings", "What were the action items?", "Show last week's meetings"],
+    "/drawings":       ["How do I upload a drawing?", "What drawing types are supported?", "How do I annotate a drawing?"],
+    "/design-2d":      ["How do I open a DWG file?", "What tools are available?", "How do I zoom in?"],
+    "/pid":            ["What is a P&ID diagram?", "How do I add a valve?", "Explain the P&ID symbols"],
+    "/sheets":         ["How do I create a formula?", "How do I share a sheet?", "How do I import data?"],
+  };
+
+  const suggestions = (currentPath && moduleSuggestions[currentPath])
+    ? moduleSuggestions[currentPath]
+    : ["What projects are in progress?", "Summarize my deadlines", "How do I create a PID?"];
 
   return (
     <>
@@ -157,7 +196,11 @@ export function AISearch() {
             <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50">
               <Bot className="w-4 h-4 text-blue-600 shrink-0" />
               <span className="text-sm font-semibold text-gray-800">AI Assistant</span>
-              <span className="text-xs text-gray-400 ml-1">— ask anything about your projects</span>
+              {moduleLabel && (
+                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium ml-1">
+                  {moduleLabel}
+                </span>
+              )}
               <div className="ml-auto flex items-center gap-1">
                 {messages.length > 0 && (
                   <button
@@ -181,10 +224,16 @@ export function AISearch() {
                 <div className="w-12 h-12 rounded-2xl bg-blue-100 flex items-center justify-center mb-3">
                   <Bot className="w-6 h-6 text-blue-600" />
                 </div>
-                <p className="text-sm font-medium text-gray-700 mb-1">How can I help you?</p>
-                <p className="text-xs text-gray-400">Ask about your projects, tasks, deadlines, or anything work-related.</p>
+                <p className="text-sm font-medium text-gray-700 mb-1">
+                  {moduleLabel ? `Ask me anything about ${moduleLabel}` : "How can I help you?"}
+                </p>
+                <p className="text-xs text-gray-400">
+                  {moduleHint
+                    ? `You're on: ${moduleHint}`
+                    : "Ask about your projects, tasks, deadlines, or anything work-related."}
+                </p>
                 <div className="flex flex-wrap gap-2 mt-4 justify-center">
-                  {["What projects are in progress?", "Summarize my deadlines", "How do I create a PID?"].map((s) => (
+                  {suggestions.map((s) => (
                     <button
                       key={s}
                       onClick={() => sendQuery(s)}
@@ -253,7 +302,7 @@ export function AISearch() {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Type your question or use the mic…"
+                  placeholder={moduleLabel ? `Ask about ${moduleLabel}…` : "Type your question or use the mic…"}
                   className="flex-1 text-sm outline-none bg-transparent text-gray-800 placeholder:text-gray-400"
                   disabled={loading}
                 />

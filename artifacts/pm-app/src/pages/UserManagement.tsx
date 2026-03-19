@@ -17,9 +17,11 @@ const APP_MODULES = [
   { key: "pid",              label: "P&ID Process",      group: "Design & Engineering" },
   { key: "presentation",     label: "Presentation",      group: "Workspace" },
   { key: "projects",         label: "Projects",          group: "Workspace" },
+  { key: "project-board",    label: "Project Board",     group: "Workspace" },
   { key: "meeting-minutes",  label: "Meeting Minutes",   group: "Workspace" },
   { key: "sheets",           label: "Sheets",            group: "Workspace" },
   { key: "material-request", label: "Material Request",  group: "Procurement" },
+  { key: "hrms",             label: "HRMS",              group: "HR" },
 ];
 
 const MODULE_GROUPS = [...new Set(APP_MODULES.map(m => m.group))];
