@@ -123,50 +123,81 @@ async function fetchMessages(mailbox: string, user: string, pass: string, limit 
   });
 }
 
-// GET /api/email/inbox
+// GET /api/email/folders — list all IMAP mailboxes
+router.get("/email/folders", async (req, res) => {
+  try {
+    const { user, pass } = await getGmailConfigForUser(req.query.user as string | undefined);
+    const client = new ImapFlow({
+      host: "imap.gmail.com",
+      port: 993,
+      secure: true,
+      auth: { user, pass },
+      logger: false,
+    });
+    await client.connect();
+    const list = await client.list();
+    await client.logout();
+    const folders = list.map((f: any) => ({
+      path: f.path,
+      name: f.name,
+      delimiter: f.delimiter,
+      flags: Array.from(f.flags || []),
+      subscribed: f.subscribed,
+    }));
+    res.json(folders);
+  } catch (err: any) {
+    console.error("IMAP folders error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email/messages?mailbox=PATH&user=EMAIL — generic fetch from any mailbox
+router.get("/email/messages", async (req, res) => {
+  const mailbox = (req.query.mailbox as string) || "INBOX";
+  try {
+    const { user, pass } = await getGmailConfigForUser(req.query.user as string | undefined);
+    const messages = await fetchMessages(mailbox, user, pass, 50);
+    res.json(messages);
+  } catch (err: any) {
+    console.error("IMAP messages error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Legacy single-folder routes kept for compatibility
 router.get("/email/inbox", async (req, res) => {
   try {
     const { user, pass } = await getGmailConfigForUser(req.query.user as string | undefined);
     const messages = await fetchMessages("INBOX", user, pass, 50);
     res.json(messages);
   } catch (err: any) {
-    console.error("IMAP inbox error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
-
-// GET /api/email/sent
 router.get("/email/sent", async (req, res) => {
   try {
     const { user, pass } = await getGmailConfigForUser(req.query.user as string | undefined);
     const messages = await fetchMessages("[Gmail]/Sent Mail", user, pass, 50);
     res.json(messages);
   } catch (err: any) {
-    console.error("IMAP sent error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
-
-// GET /api/email/starred
 router.get("/email/starred", async (req, res) => {
   try {
     const { user, pass } = await getGmailConfigForUser(req.query.user as string | undefined);
     const messages = await fetchMessages("[Gmail]/Starred", user, pass, 50);
     res.json(messages);
   } catch (err: any) {
-    console.error("IMAP starred error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
-
-// GET /api/email/trash
 router.get("/email/trash", async (req, res) => {
   try {
     const { user, pass } = await getGmailConfigForUser(req.query.user as string | undefined);
     const messages = await fetchMessages("[Gmail]/Trash", user, pass, 50);
     res.json(messages);
   } catch (err: any) {
-    console.error("IMAP trash error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
