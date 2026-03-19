@@ -4,7 +4,7 @@ import {
   UserCheck, Briefcase, Phone,
   Building2, ChevronDown, ExternalLink, Mail,
 } from "lucide-react";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -107,6 +107,13 @@ function StatusPill({ status, type }: { status: string; type: "employee" | "leav
 type Tab = "employees" | "leave" | "attendance";
 
 // ── Main page ─────────────────────────────────────────────────────────────────
+interface UserScope {
+  scope: "all" | "department" | "self";
+  employee: Employee | null;
+  departments: string[];
+  roles: string[];
+}
+
 export default function HRMS() {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -116,101 +123,97 @@ export default function HRMS() {
   const [leaves, setLeaves]         = useState<LeaveApp[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [loading, setLoading]       = useState(false);
+  const [scopeLoading, setScopeLoading] = useState(true);
   const [search, setSearch]         = useState("");
   const [deptFilter, setDeptFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("Active");
   const [viewEmp, setViewEmp]       = useState<Employee | null>(null);
+  const [userScope, setUserScope]   = useState<UserScope>({ scope: "all", employee: null, departments: [], roles: [] });
 
-  // The employee record that belongs to the logged-in user.
-  // null  = resolved, no match found (admin/no-record user → show all)
-  // undefined = not yet resolved
-  const [myEmployee, setMyEmployee] = useState<Employee | null | undefined>(undefined);
-  const empsFetchedRef = useRef(false);
+  // On mount: resolve user scope from the API, then load initial data
+  useEffect(() => {
+    if (!user?.email) return;
+    setScopeLoading(true);
+    fetch(`${BASE}/api/hrms/user-scope?email=${encodeURIComponent(user.email)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((sc: UserScope | null) => {
+        const resolved = sc ?? { scope: "all" as const, employee: null, departments: [], roles: [] };
+        setUserScope(resolved);
+        setScopeLoading(false);
+      })
+      .catch(() => setScopeLoading(false));
+  }, [user?.email]);
 
-  // Always fetch all employees first so we can identify myEmployee.
-  const fetchEmployees = useCallback(async (): Promise<Employee[]> => {
-    const r = await fetch(`${BASE}/api/hrms/employees`);
-    if (!r.ok) throw new Error(await r.text());
-    return r.json();
-  }, []);
-
-  const fetchTab = useCallback(async (t: Tab, empId?: string) => {
+  const loadEmployees = useCallback(async () => {
     setLoading(true);
     try {
-      if (t === "employees") {
-        const emps = await fetchEmployees();
-        setEmployees(emps);
-        // Identify which employee belongs to the logged-in user
-        const me = user?.email
-          ? emps.find(e => e.user_id?.toLowerCase() === user.email.toLowerCase()) ?? null
-          : null;
-        setMyEmployee(me);
-        empsFetchedRef.current = true;
-        // Auto-open the panel if only one employee is visible
-        if (me) setViewEmp(me);
-      } else if (t === "leave") {
-        const params = new URLSearchParams();
-        if (empId) params.set("employee", empId);
-        const r = await fetch(`${BASE}/api/hrms/leave-applications?${params}`);
-        if (!r.ok) throw new Error(await r.text());
-        setLeaves(await r.json());
-      } else {
-        const params = new URLSearchParams();
-        if (empId) params.set("employee", empId);
-        const r = await fetch(`${BASE}/api/hrms/attendance?${params}`);
-        if (!r.ok) throw new Error(await r.text());
-        setAttendance(await r.json());
-      }
+      const r = await fetch(`${BASE}/api/hrms/employees`);
+      if (!r.ok) throw new Error(await r.text());
+      setEmployees(await r.json());
     } catch (e) {
-      toast({ title: `Failed to load ${t}`, description: String(e), variant: "destructive" });
-    } finally {
-      setLoading(false);
-    }
-  }, [toast, user, fetchEmployees]);
+      toast({ title: "Failed to load employees", description: String(e), variant: "destructive" });
+    } finally { setLoading(false); }
+  }, [toast]);
 
-  // On tab change: fetch employees first if not yet fetched, then fetch the tab data
+  const loadLeaves = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${BASE}/api/hrms/leave-applications`);
+      if (!r.ok) throw new Error(await r.text());
+      setLeaves(await r.json());
+    } catch (e) {
+      toast({ title: "Failed to load leave applications", description: String(e), variant: "destructive" });
+    } finally { setLoading(false); }
+  }, [toast]);
+
+  const loadAttendance = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${BASE}/api/hrms/attendance`);
+      if (!r.ok) throw new Error(await r.text());
+      setAttendance(await r.json());
+    } catch (e) {
+      toast({ title: "Failed to load attendance", description: String(e), variant: "destructive" });
+    } finally { setLoading(false); }
+  }, [toast]);
+
+  // Load data when scope is resolved and tab changes
   useEffect(() => {
+    if (scopeLoading) return;
     setSearch(""); setDeptFilter("");
     setStatusFilter(tab === "employees" ? "Active" : "");
     setViewEmp(null);
+    if (tab === "employees") loadEmployees();
+    else if (tab === "leave") loadLeaves();
+    else loadAttendance();
+  }, [tab, scopeLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const run = async () => {
-      if (tab === "employees") {
-        fetchTab("employees");
-      } else {
-        // Ensure employees are loaded so we know myEmployee
-        if (!empsFetchedRef.current) {
-          setLoading(true);
-          try {
-            const emps = await fetchEmployees();
-            setEmployees(emps);
-            const me = user?.email
-              ? emps.find(e => e.user_id?.toLowerCase() === user.email.toLowerCase()) ?? null
-              : null;
-            setMyEmployee(me);
-            empsFetchedRef.current = true;
-            fetchTab(tab, me?.name);
-          } catch (e) {
-            toast({ title: "Failed to load employees", description: String(e), variant: "destructive" });
-            setLoading(false);
-          }
-        } else {
-          fetchTab(tab, myEmployee?.name ?? undefined);
-        }
-      }
-    };
-    run();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  // Apply permission scope to narrow the displayed data
+  const scopedEmps = useMemo(() => {
+    if (userScope.scope === "all") return employees;
+    if (userScope.scope === "department") {
+      const deptSet = new Set(userScope.departments);
+      return employees.filter(e => e.department && deptSet.has(e.department));
+    }
+    return userScope.employee ? [userScope.employee] : [];
+  }, [employees, userScope]);
 
-  // Derived — apply employee scope to display data
-  const scopedEmps = myEmployee !== undefined
-    ? (myEmployee ? [myEmployee] : employees)
-    : employees;
+  const scopedEmpIds = useMemo(() => new Set(scopedEmps.map(e => e.name)), [scopedEmps]);
 
-  const depts = [...new Set(scopedEmps.map(e => e.department).filter(Boolean) as string[])].sort();
+  const scopedLeaves = useMemo(() =>
+    userScope.scope === "all" ? leaves : leaves.filter(l => scopedEmpIds.has(l.employee)),
+    [leaves, userScope.scope, scopedEmpIds]);
+
+  const scopedAtt = useMemo(() =>
+    userScope.scope === "all" ? attendance : attendance.filter(a => scopedEmpIds.has(a.employee)),
+    [attendance, userScope.scope, scopedEmpIds]);
+
+  const depts = useMemo(() =>
+    [...new Set(scopedEmps.map(e => e.department).filter(Boolean) as string[])].sort(),
+    [scopedEmps]);
+
   const activeCount  = scopedEmps.filter(e => e.status === "Active").length;
-  const onLeaveCount = leaves.filter(l => l.status === "Approved").length;
+  const onLeaveCount = scopedLeaves.filter(l => l.status === "Approved").length;
 
   const filteredEmps = scopedEmps.filter(e =>
     (!search       || e.employee_name.toLowerCase().includes(search.toLowerCase()) || e.name.toLowerCase().includes(search.toLowerCase()) || (e.designation || "").toLowerCase().includes(search.toLowerCase())) &&
@@ -218,28 +221,35 @@ export default function HRMS() {
     (!statusFilter || e.status === statusFilter)
   );
 
-  const filteredLeaves = leaves.filter(l =>
+  const filteredLeaves = scopedLeaves.filter(l =>
     (!search       || l.employee_name.toLowerCase().includes(search.toLowerCase()) || l.leave_type.toLowerCase().includes(search.toLowerCase())) &&
     (!statusFilter || l.status === statusFilter)
   );
 
-  const filteredAtt = attendance.filter(a =>
+  const filteredAtt = scopedAtt.filter(a =>
     (!search       || a.employee_name.toLowerCase().includes(search.toLowerCase()) || a.employee.toLowerCase().includes(search.toLowerCase())) &&
     (!deptFilter   || a.department === deptFilter) &&
     (!statusFilter || a.status.toLowerCase() === statusFilter.toLowerCase())
   );
 
   const TABS: { key: Tab; label: string; count: number; icon: React.ElementType }[] = [
-    { key: "employees",  label: "Employees",          count: scopedEmps.length,  icon: Users },
-    { key: "leave",      label: "Leave Applications",  count: leaves.length,     icon: Calendar },
-    { key: "attendance", label: "Attendance",           count: attendance.length, icon: UserCheck },
+    { key: "employees",  label: "Employees",          count: scopedEmps.length,   icon: Users },
+    { key: "leave",      label: "Leave Applications",  count: scopedLeaves.length, icon: Calendar },
+    { key: "attendance", label: "Attendance",           count: scopedAtt.length,   icon: UserCheck },
   ];
 
   const handleRefresh = () => {
-    empsFetchedRef.current = false;
-    setMyEmployee(undefined);
-    fetchTab(tab, myEmployee?.name ?? undefined);
+    if (tab === "employees") loadEmployees();
+    else if (tab === "leave") loadLeaves();
+    else loadAttendance();
   };
+
+  // Scope badge info
+  const scopeBadge = userScope.scope === "all"
+    ? { label: "All Employees", color: "bg-blue-50 border-blue-100 text-blue-700" }
+    : userScope.scope === "department"
+    ? { label: `Dept: ${userScope.departments.join(", ")}`, color: "bg-emerald-50 border-emerald-100 text-emerald-700" }
+    : { label: userScope.employee?.employee_name ?? "Self", color: "bg-violet-50 border-violet-100 text-violet-700" };
 
   return (
     <Layout>
@@ -252,11 +262,10 @@ export default function HRMS() {
             <h1 className="text-sm font-bold text-gray-900">HRMS</h1>
             <span className="text-xs text-gray-400 ml-1">Human Resource Management — ERPNext</span>
           </div>
-          {myEmployee && (
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-100">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-              <span className="text-xs font-semibold text-emerald-700">{myEmployee.employee_name}</span>
-              <span className="text-[10px] text-emerald-500 font-mono">{myEmployee.name}</span>
+          {!scopeLoading && (
+            <div className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold ${scopeBadge.color}`}>
+              <span className="w-2 h-2 rounded-full bg-current opacity-60 shrink-0" />
+              {scopeBadge.label}
             </div>
           )}
           <a href={`${ERP_URL}/app/employee`} target="_blank" rel="noopener noreferrer"

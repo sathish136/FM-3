@@ -3,6 +3,8 @@ import {
   fetchErpNextEmployees,
   fetchErpNextLeaveApplications,
   fetchErpNextAttendance,
+  fetchErpNextUserRoles,
+  fetchErpNextManagedDepartments,
 } from "../lib/erpnext";
 
 const ERPNEXT_URL = process.env.ERPNEXT_URL?.replace(/\/$/, "");
@@ -10,6 +12,47 @@ const ERPNEXT_API_KEY = process.env.ERPNEXT_API_KEY;
 const ERPNEXT_API_SECRET = process.env.ERPNEXT_API_SECRET;
 
 const router = Router();
+
+// Determine what data a user is allowed to see.
+// scope: "all" = HR Manager / System Manager
+//        "department" = Department Manager (can see their dept)
+//        "self" = regular employee (can see only themselves)
+router.get("/hrms/user-scope", async (req, res) => {
+  try {
+    const { email } = req.query as Record<string, string>;
+    if (!email) { res.status(400).json({ error: "email required" }); return; }
+
+    // Fetch all employees to find the one matching this user
+    const allEmps = await fetchErpNextEmployees();
+    const employee = allEmps.find(e => e.user_id?.toLowerCase() === email.toLowerCase()) ?? null;
+
+    // Fetch the user's ERPNext roles
+    const roles = await fetchErpNextUserRoles(email);
+    const ADMIN_ROLES = ["System Manager", "HR Manager", "HR User", "Administrator"];
+    const isAdmin = roles.some(r => ADMIN_ROLES.includes(r));
+
+    if (isAdmin) {
+      res.json({ scope: "all", employee, departments: [], roles });
+      return;
+    }
+
+    if (!employee) {
+      res.json({ scope: "self", employee: null, departments: [], roles });
+      return;
+    }
+
+    // Check if this employee is listed as department_manager for any department
+    const managedDepts = await fetchErpNextManagedDepartments(employee.name);
+
+    if (managedDepts.length > 0) {
+      res.json({ scope: "department", employee, departments: managedDepts, roles });
+    } else {
+      res.json({ scope: "self", employee, departments: employee.department ? [employee.department] : [], roles });
+    }
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
 
 router.get("/hrms/employees", async (req, res) => {
   try {

@@ -623,6 +623,30 @@ export async function fetchErpNextAttendance(filters?: { status?: string; depart
   return data.data ?? [];
 }
 
+export async function fetchErpNextUserRoles(email: string): Promise<string[]> {
+  if (!ERPNEXT_URL) return [];
+  const fields = JSON.stringify(["role"]);
+  const filters = JSON.stringify([["Has Role", "parent", "=", email]]);
+  const params = new URLSearchParams({ fields, filters, limit_page_length: "100" });
+  const url = `${ERPNEXT_URL}/api/resource/Has Role?${params}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader() } });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return ((data.data || []) as any[]).map((r: any) => r.role as string);
+}
+
+export async function fetchErpNextManagedDepartments(employeeId: string): Promise<string[]> {
+  if (!ERPNEXT_URL) return [];
+  const fields = JSON.stringify(["name", "department_name"]);
+  const filters = JSON.stringify([["Department", "department_manager", "=", employeeId]]);
+  const params = new URLSearchParams({ fields, filters, limit_page_length: "50" });
+  const url = `${ERPNEXT_URL}/api/resource/Department?${params}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader() } });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return ((data.data || []) as any[]).map((d: any) => d.name as string);
+}
+
 export async function fetchErpNextUsers(): Promise<ErpUser[]> {
   if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
   const fields = JSON.stringify(["name", "full_name", "user_image", "enabled"]);
