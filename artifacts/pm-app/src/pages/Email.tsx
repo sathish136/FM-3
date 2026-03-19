@@ -5,6 +5,7 @@ import {
   Paperclip, Search, CornerUpLeft, Eye, EyeOff, StarOff,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
+import { useAuth } from "@/hooks/useAuth";
 
 const BASE = "/api";
 
@@ -69,12 +70,14 @@ function ComposeModal({
   defaultSubject = "",
   defaultBody = "",
   onSent,
+  userEmail,
 }: {
   onClose: () => void;
   defaultTo?: string;
   defaultSubject?: string;
   defaultBody?: string;
   onSent?: () => void;
+  userEmail?: string;
 }) {
   const [to, setTo] = useState(defaultTo);
   const [cc, setCc] = useState("");
@@ -94,7 +97,7 @@ function ComposeModal({
       await apiFetch("/email/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to, cc: cc || undefined, bcc: bcc || undefined, subject, body }),
+        body: JSON.stringify({ to, cc: cc || undefined, bcc: bcc || undefined, subject, body, user: userEmail }),
       });
       setSent(true);
       setTimeout(() => { onSent?.(); onClose(); }, 1200);
@@ -175,6 +178,7 @@ function EmailDetail({
   onDelete,
   onToggleStar,
   onToggleSeen,
+  userEmail,
 }: {
   email: EmailItem;
   folder: Folder;
@@ -183,6 +187,7 @@ function EmailDetail({
   onDelete: (uid: number) => void;
   onToggleStar: (uid: number, current: boolean) => void;
   onToggleSeen: (uid: number, current: boolean) => void;
+  userEmail?: string;
 }) {
   const [body, setBody] = useState<EmailBody | null>(null);
   const [loading, setLoading] = useState(true);
@@ -196,7 +201,8 @@ function EmailDetail({
 
   useEffect(() => {
     setLoading(true); setBody(null);
-    apiFetch(`/email/${email.uid}/body?mailbox=${encodeURIComponent(mailboxParam)}`)
+    const userParam = userEmail ? `&user=${encodeURIComponent(userEmail)}` : "";
+    apiFetch(`/email/${email.uid}/body?mailbox=${encodeURIComponent(mailboxParam)}${userParam}`)
       .then(d => { setBody(d); setLoading(false); })
       .catch(() => setLoading(false));
   }, [email.uid, folder]);
@@ -221,7 +227,8 @@ function EmailDetail({
   const handleDelete = async () => {
     setDeleting(true);
     try {
-      await apiFetch(`/email/${email.uid}?mailbox=${encodeURIComponent(mailboxParam)}`, { method: "DELETE" });
+      const userParam = userEmail ? `&user=${encodeURIComponent(userEmail)}` : "";
+      await apiFetch(`/email/${email.uid}?mailbox=${encodeURIComponent(mailboxParam)}${userParam}`, { method: "DELETE" });
       onDelete(email.uid);
     } catch {
       setDeleting(false);
@@ -320,6 +327,9 @@ function EmailDetail({
 
 // ─── Main Email Page ──────────────────────────────────────────────────────────
 export default function Email() {
+  const { user } = useAuth();
+  const userEmail = user?.email;
+
   const [folder, setFolder] = useState<Folder>("inbox");
   const [emails, setEmails] = useState<EmailItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -333,7 +343,8 @@ export default function Email() {
   const load = async (f: Folder) => {
     setLoading(true); setError(""); setEmails([]); setSelected(null);
     try {
-      const data = await apiFetch(`/email/${f}`);
+      const userParam = userEmail ? `?user=${encodeURIComponent(userEmail)}` : "";
+      const data = await apiFetch(`/email/${f}${userParam}`);
       setEmails(Array.isArray(data) ? data : []);
     } catch (e: any) {
       setError(e.message || "Failed to load emails");
@@ -342,9 +353,10 @@ export default function Email() {
   };
 
   useEffect(() => {
-    apiFetch("/email/check").then(d => setConfigured(d.configured)).catch(() => setConfigured(false));
+    const userParam = userEmail ? `?user=${encodeURIComponent(userEmail)}` : "";
+    apiFetch(`/email/check${userParam}`).then(d => setConfigured(d.configured)).catch(() => setConfigured(false));
     load("inbox");
-  }, []);
+  }, [userEmail]);
 
   useEffect(() => { load(folder); }, [folder]);
 
@@ -362,7 +374,8 @@ export default function Email() {
     setEmails(prev => prev.map(e => e.uid === uid ? { ...e, starred: newVal } : e));
     if (selected?.uid === uid) setSelected(s => s ? { ...s, starred: newVal } : s);
     try {
-      await apiFetch(`/email/${uid}/flags?mailbox=${encodeURIComponent(mailbox)}`, {
+      const userParam = userEmail ? `&user=${encodeURIComponent(userEmail)}` : "";
+      await apiFetch(`/email/${uid}/flags?mailbox=${encodeURIComponent(mailbox)}${userParam}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ starred: newVal }),
@@ -382,7 +395,8 @@ export default function Email() {
     setEmails(prev => prev.map(e => e.uid === uid ? { ...e, seen: newVal } : e));
     if (selected?.uid === uid) setSelected(s => s ? { ...s, seen: newVal } : s);
     try {
-      await apiFetch(`/email/${uid}/flags?mailbox=${encodeURIComponent(mailbox)}`, {
+      const userParam = userEmail ? `&user=${encodeURIComponent(userEmail)}` : "";
+      await apiFetch(`/email/${uid}/flags?mailbox=${encodeURIComponent(mailbox)}${userParam}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ seen: newVal }),
@@ -450,7 +464,7 @@ export default function Email() {
           {configured === false && (
             <div className="mx-3 mb-4 p-3 bg-amber-50 rounded-xl border border-amber-200">
               <p className="text-[10px] text-amber-700 font-semibold leading-snug">
-                Set GMAIL_USER and GMAIL_APP_PASSWORD in Secrets to enable email.
+                No email account found for your user. Add one in Email Settings.
               </p>
             </div>
           )}
@@ -571,6 +585,7 @@ export default function Email() {
               onDelete={handleDelete}
               onToggleStar={handleToggleStar}
               onToggleSeen={handleToggleSeen}
+              userEmail={userEmail}
             />
           </div>
         ) : (
@@ -592,6 +607,7 @@ export default function Email() {
           defaultBody={composeDefaults.body}
           onClose={() => setComposing(false)}
           onSent={() => { if (folder === "sent") load("sent"); }}
+          userEmail={userEmail}
         />
       )}
     </Layout>
