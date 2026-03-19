@@ -523,7 +523,7 @@ export async function fetchErpNextMrRemarks(project?: string): Promise<string[]>
 export async function fetchErpNextProjectList(): Promise<{ name: string; project_name: string }[]> {
   if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
   const fields = JSON.stringify(["name", "project_name"]);
-  const params = new URLSearchParams({ fields, limit_page_length: "500", order_by: "project_name asc" });
+  const params = new URLSearchParams({ fields, limit_page_length: "2000", order_by: "project_name asc" });
   const url = `${ERPNEXT_URL}/api/resource/Project?${params}`;
   const res = await fetch(url, { headers: { Authorization: authHeader() } });
   if (!res.ok) return [];
