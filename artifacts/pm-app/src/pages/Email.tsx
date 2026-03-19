@@ -2,7 +2,7 @@ import { Layout } from "@/components/Layout";
 import {
   Mail, Send, Inbox, Pencil, X, ChevronLeft, Loader2,
   RefreshCw, AlertCircle, Reply, Forward, Trash2, Star,
-  Paperclip, ChevronDown, Search, CornerUpLeft,
+  Paperclip, Search, CornerUpLeft, Eye, EyeOff, StarOff,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 
@@ -17,12 +17,14 @@ type EmailItem = {
   cc?: string;
   date: string | null;
   seen: boolean;
+  starred: boolean;
   size: number;
+  hasAttachment: boolean;
 };
 
 type EmailBody = { html: string | null; text: string | null };
 
-type Folder = "inbox" | "sent";
+type Folder = "inbox" | "sent" | "starred" | "trash";
 
 async function apiFetch(path: string, opts?: RequestInit) {
   const r = await fetch(`${BASE}${path}`, opts);
@@ -41,7 +43,7 @@ function formatDate(iso: string | null) {
 }
 
 function senderName(from: string) {
-  const match = from.match(/^(.+?)\s*</) ;
+  const match = from.match(/^(.+?)\s*</);
   return match ? match[1].trim().replace(/^"/, "").replace(/"$/, "") : from.split("@")[0];
 }
 
@@ -76,9 +78,11 @@ function ComposeModal({
 }) {
   const [to, setTo] = useState(defaultTo);
   const [cc, setCc] = useState("");
+  const [bcc, setBcc] = useState("");
   const [subject, setSubject] = useState(defaultSubject);
   const [body, setBody] = useState(defaultBody);
   const [showCc, setShowCc] = useState(false);
+  const [showBcc, setShowBcc] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
@@ -90,7 +94,7 @@ function ComposeModal({
       await apiFetch("/email/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to, cc: cc || undefined, subject, body }),
+        body: JSON.stringify({ to, cc: cc || undefined, bcc: bcc || undefined, subject, body }),
       });
       setSent(true);
       setTimeout(() => { onSent?.(); onClose(); }, 1200);
@@ -102,7 +106,7 @@ function ComposeModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-end p-6 pointer-events-none">
-      <div className="pointer-events-auto w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden" style={{ maxHeight: "80vh" }}>
+      <div className="pointer-events-auto w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden" style={{ maxHeight: "82vh" }}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 bg-gray-800 text-white rounded-t-2xl">
           <span className="font-semibold text-sm">New Message</span>
@@ -112,17 +116,27 @@ function ComposeModal({
         </div>
 
         {/* Fields */}
-        <div className="flex flex-col divide-y divide-gray-100 flex-1 overflow-hidden">
+        <div className="flex flex-col divide-y divide-gray-100 overflow-hidden" style={{ flex: "1 1 auto" }}>
           <div className="flex items-center px-4 py-2.5 gap-2">
             <span className="text-xs text-gray-400 w-10 shrink-0">To</span>
             <input value={to} onChange={e => setTo(e.target.value)} placeholder="recipients@example.com"
               className="flex-1 text-sm text-gray-800 outline-none bg-transparent placeholder-gray-300" />
-            <button onClick={() => setShowCc(v => !v)} className="text-xs text-gray-400 hover:text-gray-600 shrink-0">Cc</button>
+            <div className="flex items-center gap-2 shrink-0">
+              <button onClick={() => setShowCc(v => !v)} className={`text-xs hover:text-gray-600 transition-colors ${showCc ? "text-blue-600 font-semibold" : "text-gray-400"}`}>Cc</button>
+              <button onClick={() => setShowBcc(v => !v)} className={`text-xs hover:text-gray-600 transition-colors ${showBcc ? "text-blue-600 font-semibold" : "text-gray-400"}`}>Bcc</button>
+            </div>
           </div>
           {showCc && (
             <div className="flex items-center px-4 py-2.5 gap-2">
               <span className="text-xs text-gray-400 w-10 shrink-0">Cc</span>
               <input value={cc} onChange={e => setCc(e.target.value)} placeholder="cc@example.com"
+                className="flex-1 text-sm text-gray-800 outline-none bg-transparent placeholder-gray-300" />
+            </div>
+          )}
+          {showBcc && (
+            <div className="flex items-center px-4 py-2.5 gap-2">
+              <span className="text-xs text-gray-400 w-10 shrink-0">Bcc</span>
+              <input value={bcc} onChange={e => setBcc(e.target.value)} placeholder="bcc@example.com"
                 className="flex-1 text-sm text-gray-800 outline-none bg-transparent placeholder-gray-300" />
             </div>
           )}
@@ -133,14 +147,14 @@ function ComposeModal({
           </div>
           <textarea value={body} onChange={e => setBody(e.target.value)}
             placeholder="Write your message here…"
-            className="flex-1 px-4 py-3 text-sm text-gray-700 outline-none resize-none bg-white min-h-[180px]" />
+            className="flex-1 px-4 py-3 text-sm text-gray-700 outline-none resize-none bg-white min-h-[200px]" />
         </div>
 
         {/* Footer */}
         <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between bg-gray-50">
           {error && <p className="text-xs text-red-500">{error}</p>}
           {sent && <p className="text-xs text-green-600 font-semibold">✓ Message sent!</p>}
-          {!error && !sent && <span />}
+          {!error && !sent && <span className="text-xs text-gray-400">{body.length > 0 ? `${body.length} chars` : ""}</span>}
           <button onClick={handleSend} disabled={sending || sent}
             className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl text-sm font-semibold shadow transition-colors">
             {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
@@ -158,20 +172,31 @@ function EmailDetail({
   folder,
   onBack,
   onReply,
+  onDelete,
+  onToggleStar,
+  onToggleSeen,
 }: {
   email: EmailItem;
   folder: Folder;
   onBack: () => void;
-  onReply: (to: string, subject: string) => void;
+  onReply: (to: string, subject: string, quotedBody: string) => void;
+  onDelete: (uid: number) => void;
+  onToggleStar: (uid: number, current: boolean) => void;
+  onToggleSeen: (uid: number, current: boolean) => void;
 }) {
   const [body, setBody] = useState<EmailBody | null>(null);
   const [loading, setLoading] = useState(true);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const mailboxParam = folder === "sent" ? "[Gmail]/Sent Mail"
+    : folder === "starred" ? "[Gmail]/Starred"
+    : folder === "trash" ? "[Gmail]/Trash"
+    : "INBOX";
 
   useEffect(() => {
     setLoading(true); setBody(null);
-    const mailbox = folder === "sent" ? "[Gmail]/Sent Mail" : "INBOX";
-    apiFetch(`/email/${email.uid}/body?mailbox=${encodeURIComponent(mailbox)}`)
+    apiFetch(`/email/${email.uid}/body?mailbox=${encodeURIComponent(mailboxParam)}`)
       .then(d => { setBody(d); setLoading(false); })
       .catch(() => setLoading(false));
   }, [email.uid, folder]);
@@ -187,6 +212,22 @@ function EmailDetail({
     }
   }, [body]);
 
+  const buildQuotedReply = () => {
+    const dateStr = email.date ? new Date(email.date).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+    const plain = body?.text || (body?.html ? body.html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "");
+    return `\n\n\n— On ${dateStr}, ${senderName(email.from)} wrote:\n${plain.split("\n").map(l => `> ${l}`).join("\n")}`;
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await apiFetch(`/email/${email.uid}?mailbox=${encodeURIComponent(mailboxParam)}`, { method: "DELETE" });
+      onDelete(email.uid);
+    } catch {
+      setDeleting(false);
+    }
+  };
+
   const senderAvatar = avatarColor(email.from);
   const name = senderName(email.from);
   const initial = senderInitial(email.from);
@@ -194,25 +235,49 @@ function EmailDetail({
   return (
     <div className="flex flex-col h-full bg-white">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 shrink-0">
-        <button onClick={onBack} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
+      <div className="flex items-center gap-1 px-4 py-3 border-b border-gray-100 shrink-0">
+        <button onClick={onBack} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors mr-1">
           <ChevronLeft className="w-4 h-4" />
         </button>
+
+        <button
+          onClick={() => onToggleStar(email.uid, email.starred)}
+          title={email.starred ? "Unstar" : "Star"}
+          className={`p-1.5 rounded-lg transition-colors ${email.starred ? "text-amber-400 hover:text-amber-500" : "text-gray-400 hover:text-amber-400 hover:bg-gray-100"}`}>
+          {email.starred ? <Star className="w-4 h-4 fill-current" /> : <Star className="w-4 h-4" />}
+        </button>
+
+        <button
+          onClick={() => onToggleSeen(email.uid, email.seen)}
+          title={email.seen ? "Mark as unread" : "Mark as read"}
+          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+          {email.seen ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </button>
+
         <div className="flex-1" />
-        <button onClick={() => onReply(email.from, `Re: ${email.subject}`)}
+
+        <button onClick={() => onReply(email.from, `Re: ${email.subject}`, buildQuotedReply())}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
           <CornerUpLeft className="w-3.5 h-3.5" /> Reply
         </button>
-        <button onClick={() => onReply("", `Fwd: ${email.subject}`)}
+        <button onClick={() => onReply("", `Fwd: ${email.subject}`, buildQuotedReply())}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
           <Forward className="w-3.5 h-3.5" /> Forward
+        </button>
+        <button onClick={handleDelete} disabled={deleting}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50">
+          {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+          {folder === "trash" ? "Delete" : "Trash"}
         </button>
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-6 py-5">
         {/* Subject */}
-        <h1 className="text-xl font-bold text-gray-900 mb-4 leading-snug">{email.subject}</h1>
+        <h1 className="text-xl font-bold text-gray-900 mb-4 leading-snug flex items-start gap-2">
+          <span className="flex-1">{email.subject}</span>
+          {email.hasAttachment && <Paperclip className="w-4 h-4 text-gray-400 shrink-0 mt-1" title="Has attachment" />}
+        </h1>
 
         {/* Sender row */}
         <div className="flex items-start gap-3 mb-5">
@@ -226,6 +291,7 @@ function EmailDetail({
             </div>
             <p className="text-xs text-gray-400 mt-0.5">To: {email.to}</p>
             {email.cc && <p className="text-xs text-gray-400">Cc: {email.cc}</p>}
+            <p className="text-xs text-gray-400">From: {email.from}</p>
           </div>
         </div>
 
@@ -260,7 +326,7 @@ export default function Email() {
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<EmailItem | null>(null);
   const [composing, setComposing] = useState(false);
-  const [composeDefaults, setComposeDefaults] = useState({ to: "", subject: "" });
+  const [composeDefaults, setComposeDefaults] = useState({ to: "", subject: "", body: "" });
   const [search, setSearch] = useState("");
   const [configured, setConfigured] = useState<boolean | null>(null);
 
@@ -282,10 +348,57 @@ export default function Email() {
 
   useEffect(() => { load(folder); }, [folder]);
 
-  const handleReply = (to: string, subject: string) => {
-    setComposeDefaults({ to, subject });
+  const handleReply = (to: string, subject: string, quotedBody: string = "") => {
+    setComposeDefaults({ to, subject, body: quotedBody });
     setComposing(true);
   };
+
+  const handleToggleStar = async (uid: number, current: boolean) => {
+    const mailbox = folder === "sent" ? "[Gmail]/Sent Mail"
+      : folder === "starred" ? "[Gmail]/Starred"
+      : folder === "trash" ? "[Gmail]/Trash"
+      : "INBOX";
+    const newVal = !current;
+    setEmails(prev => prev.map(e => e.uid === uid ? { ...e, starred: newVal } : e));
+    if (selected?.uid === uid) setSelected(s => s ? { ...s, starred: newVal } : s);
+    try {
+      await apiFetch(`/email/${uid}/flags?mailbox=${encodeURIComponent(mailbox)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ starred: newVal }),
+      });
+    } catch {
+      setEmails(prev => prev.map(e => e.uid === uid ? { ...e, starred: current } : e));
+      if (selected?.uid === uid) setSelected(s => s ? { ...s, starred: current } : s);
+    }
+  };
+
+  const handleToggleSeen = async (uid: number, current: boolean) => {
+    const mailbox = folder === "sent" ? "[Gmail]/Sent Mail"
+      : folder === "starred" ? "[Gmail]/Starred"
+      : folder === "trash" ? "[Gmail]/Trash"
+      : "INBOX";
+    const newVal = !current;
+    setEmails(prev => prev.map(e => e.uid === uid ? { ...e, seen: newVal } : e));
+    if (selected?.uid === uid) setSelected(s => s ? { ...s, seen: newVal } : s);
+    try {
+      await apiFetch(`/email/${uid}/flags?mailbox=${encodeURIComponent(mailbox)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seen: newVal }),
+      });
+    } catch {
+      setEmails(prev => prev.map(e => e.uid === uid ? { ...e, seen: current } : e));
+      if (selected?.uid === uid) setSelected(s => s ? { ...s, seen: current } : s);
+    }
+  };
+
+  const handleDelete = (uid: number) => {
+    setEmails(prev => prev.filter(e => e.uid !== uid));
+    setSelected(null);
+  };
+
+  const unreadCount = emails.filter(e => !e.seen).length;
 
   const filtered = search.trim()
     ? emails.filter(e =>
@@ -295,6 +408,13 @@ export default function Email() {
       )
     : emails;
 
+  const FOLDERS: { id: Folder; label: string; icon: any }[] = [
+    { id: "inbox", label: "Inbox", icon: Inbox },
+    { id: "sent", label: "Sent", icon: Send },
+    { id: "starred", label: "Starred", icon: Star },
+    { id: "trash", label: "Trash", icon: Trash2 },
+  ];
+
   return (
     <Layout>
       <div className="flex h-[calc(100vh-48px)] bg-[#f8fafc]">
@@ -303,7 +423,7 @@ export default function Email() {
         <div className="w-56 flex-shrink-0 bg-white border-r border-gray-100 flex flex-col">
           <div className="px-4 pt-4 pb-3">
             <button
-              onClick={() => { setComposing(true); setComposeDefaults({ to: "", subject: "" }); }}
+              onClick={() => { setComposing(true); setComposeDefaults({ to: "", subject: "", body: "" }); }}
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold shadow transition-colors"
             >
               <Pencil className="w-3.5 h-3.5" /> Compose
@@ -311,15 +431,17 @@ export default function Email() {
           </div>
 
           <nav className="flex-1 px-2 space-y-0.5">
-            {([
-              { id: "inbox", label: "Inbox", icon: Inbox },
-              { id: "sent", label: "Sent", icon: Send },
-            ] as { id: Folder; label: string; icon: any }[]).map(({ id, label, icon: Icon }) => (
+            {FOLDERS.map(({ id, label, icon: Icon }) => (
               <button key={id}
                 onClick={() => setFolder(id)}
                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${folder === id ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
-                <Icon className="w-4 h-4" />
-                {label}
+                <Icon className={`w-4 h-4 ${id === "starred" && folder !== "starred" ? "text-amber-400" : ""}`} />
+                <span className="flex-1 text-left">{label}</span>
+                {id === "inbox" && unreadCount > 0 && (
+                  <span className="text-[10px] font-bold bg-blue-600 text-white rounded-full px-1.5 py-0.5 min-w-[18px] text-center leading-tight">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
               </button>
             ))}
           </nav>
@@ -336,18 +458,30 @@ export default function Email() {
 
         {/* ── Email List ── */}
         <div className={`flex flex-col border-r border-gray-100 bg-white transition-all ${selected ? "w-80 flex-shrink-0" : "flex-1"}`}>
-          {/* Search + refresh */}
-          <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
-            <div className="flex-1 flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2">
-              <Search className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-              <input value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Search emails…"
-                className="flex-1 text-xs bg-transparent outline-none text-gray-700 placeholder-gray-400" />
+          {/* Header row */}
+          <div className="px-4 py-3 border-b border-gray-100">
+            <div className="flex items-center gap-2 mb-0">
+              <div className="flex-1 flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2">
+                <Search className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                <input value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder="Search emails…"
+                  className="flex-1 text-xs bg-transparent outline-none text-gray-700 placeholder-gray-400" />
+                {search && (
+                  <button onClick={() => setSearch("")} className="text-gray-300 hover:text-gray-500 transition-colors">
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+              <button onClick={() => load(folder)} disabled={loading}
+                className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+              </button>
             </div>
-            <button onClick={() => load(folder)} disabled={loading}
-              className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-            </button>
+            {search && (
+              <p className="text-[10px] text-gray-400 mt-1.5 ml-1">
+                {filtered.length} result{filtered.length !== 1 ? "s" : ""}
+              </p>
+            )}
           </div>
 
           {/* List */}
@@ -384,21 +518,43 @@ export default function Email() {
               const color = avatarColor(email.from);
 
               return (
-                <button key={email.uid}
-                  onClick={() => setSelected(email)}
-                  className={`w-full text-left px-4 py-3 border-b border-gray-50 flex gap-3 transition-colors ${isSelected ? "bg-blue-50" : email.seen ? "bg-white hover:bg-gray-50" : "bg-blue-50/30 hover:bg-blue-50/60"}`}>
-                  <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${color} flex items-center justify-center text-white font-bold text-xs shrink-0 mt-0.5`}>
-                    {initial}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline justify-between gap-1 mb-0.5">
-                      <span className={`text-sm truncate ${email.seen ? "text-gray-700" : "text-gray-900 font-semibold"}`}>{name}</span>
-                      <span className="text-[10px] text-gray-400 shrink-0">{formatDate(email.date)}</span>
+                <div key={email.uid} className="relative group">
+                  <button
+                    onClick={() => setSelected(email)}
+                    className={`w-full text-left px-4 py-3 border-b border-gray-50 flex gap-3 transition-colors ${isSelected ? "bg-blue-50" : email.seen ? "bg-white hover:bg-gray-50" : "bg-blue-50/30 hover:bg-blue-50/60"}`}>
+                    <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${color} flex items-center justify-center text-white font-bold text-xs shrink-0 mt-0.5`}>
+                      {initial}
                     </div>
-                    <p className={`text-xs truncate ${email.seen ? "text-gray-500" : "text-gray-800 font-medium"}`}>{email.subject}</p>
-                    {!email.seen && <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 mt-1" />}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline justify-between gap-1 mb-0.5">
+                        <span className={`text-sm truncate ${email.seen ? "text-gray-700" : "text-gray-900 font-semibold"}`}>{name}</span>
+                        <span className="text-[10px] text-gray-400 shrink-0">{formatDate(email.date)}</span>
+                      </div>
+                      <p className={`text-xs truncate ${email.seen ? "text-gray-500" : "text-gray-800 font-medium"}`}>{email.subject}</p>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        {!email.seen && <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500" />}
+                        {email.hasAttachment && <Paperclip className="w-3 h-3 text-gray-400" />}
+                        {email.starred && <Star className="w-3 h-3 text-amber-400 fill-current" />}
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Quick action buttons on hover */}
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-1 bg-white border border-gray-100 rounded-lg shadow-sm px-1 py-0.5">
+                    <button
+                      onClick={e => { e.stopPropagation(); handleToggleStar(email.uid, email.starred); }}
+                      title={email.starred ? "Unstar" : "Star"}
+                      className={`p-1 rounded transition-colors ${email.starred ? "text-amber-400" : "text-gray-300 hover:text-amber-400"}`}>
+                      <Star className={`w-3.5 h-3.5 ${email.starred ? "fill-current" : ""}`} />
+                    </button>
+                    <button
+                      onClick={e => { e.stopPropagation(); handleToggleSeen(email.uid, email.seen); }}
+                      title={email.seen ? "Mark unread" : "Mark read"}
+                      className="p-1 rounded text-gray-300 hover:text-blue-500 transition-colors">
+                      {email.seen ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -412,6 +568,9 @@ export default function Email() {
               folder={folder}
               onBack={() => setSelected(null)}
               onReply={handleReply}
+              onDelete={handleDelete}
+              onToggleStar={handleToggleStar}
+              onToggleSeen={handleToggleSeen}
             />
           </div>
         ) : (
@@ -430,6 +589,7 @@ export default function Email() {
         <ComposeModal
           defaultTo={composeDefaults.to}
           defaultSubject={composeDefaults.subject}
+          defaultBody={composeDefaults.body}
           onClose={() => setComposing(false)}
           onSent={() => { if (folder === "sent") load("sent"); }}
         />

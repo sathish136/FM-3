@@ -47,22 +47,19 @@ function parseAddresses(raw: any): string {
   return String(raw);
 }
 
-function extractBody(parsed: any): string {
-  if (!parsed) return "";
-  if (parsed.text) return parsed.text;
-  if (parsed.html) return parsed.html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-  if (parsed.childNodes) {
-    for (const child of parsed.childNodes) {
-      const body = extractBody(child);
-      if (body) return body;
-    }
+function detectAttachments(bodyStructure: any): boolean {
+  if (!bodyStructure) return false;
+  if (bodyStructure.disposition?.toLowerCase() === "attachment") return true;
+  if (bodyStructure.type?.toLowerCase() === "application") return true;
+  if (bodyStructure.childNodes) {
+    return bodyStructure.childNodes.some((child: any) => detectAttachments(child));
   }
-  return "";
+  return false;
 }
 
-async function fetchMessages(mailbox: string, limit = 30) {
+async function fetchMessages(mailbox: string, limit = 50) {
   return withImap(mailbox, async (client) => {
-    const status = await client.status(mailbox, { messages: true });
+    const status = await client.status(mailbox, { messages: true, unseen: true });
     const total = status.messages ?? 0;
     if (total === 0) return [];
 
@@ -87,8 +84,9 @@ async function fetchMessages(mailbox: string, limit = 30) {
         cc: parseAddresses(env.cc),
         date: (env.date || msg.internalDate)?.toISOString() ?? null,
         seen: msg.flags?.has("\\Seen") ?? false,
+        starred: msg.flags?.has("\\Flagged") ?? false,
         size: msg.size,
-        hasAttachment: false,
+        hasAttachment: detectAttachments(msg.bodyStructure),
       });
     }
     return messages;
@@ -98,7 +96,7 @@ async function fetchMessages(mailbox: string, limit = 30) {
 // GET /api/email/inbox
 router.get("/email/inbox", async (req, res) => {
   try {
-    const messages = await fetchMessages("INBOX", 30);
+    const messages = await fetchMessages("INBOX", 50);
     res.json(messages);
   } catch (err: any) {
     console.error("IMAP inbox error:", err.message);
@@ -109,10 +107,32 @@ router.get("/email/inbox", async (req, res) => {
 // GET /api/email/sent
 router.get("/email/sent", async (req, res) => {
   try {
-    const messages = await fetchMessages("[Gmail]/Sent Mail", 30);
+    const messages = await fetchMessages("[Gmail]/Sent Mail", 50);
     res.json(messages);
   } catch (err: any) {
     console.error("IMAP sent error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email/starred
+router.get("/email/starred", async (req, res) => {
+  try {
+    const messages = await fetchMessages("[Gmail]/Starred", 50);
+    res.json(messages);
+  } catch (err: any) {
+    console.error("IMAP starred error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email/trash
+router.get("/email/trash", async (req, res) => {
+  try {
+    const messages = await fetchMessages("[Gmail]/Trash", 50);
+    res.json(messages);
+  } catch (err: any) {
+    console.error("IMAP trash error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -141,9 +161,53 @@ router.get("/email/:uid/body", async (req, res) => {
   }
 });
 
+// PATCH /api/email/:uid/flags — toggle seen or starred
+router.patch("/email/:uid/flags", async (req, res) => {
+  const uid = parseInt(req.params.uid);
+  const mailbox = (req.query.mailbox as string) || "INBOX";
+  const { seen, starred } = req.body as { seen?: boolean; starred?: boolean };
+  try {
+    await withImap(mailbox, async (client) => {
+      if (seen !== undefined) {
+        if (seen) {
+          await client.messageFlagsAdd({ uid }, ["\\Seen"], { uid: true });
+        } else {
+          await client.messageFlagsRemove({ uid }, ["\\Seen"], { uid: true });
+        }
+      }
+      if (starred !== undefined) {
+        if (starred) {
+          await client.messageFlagsAdd({ uid }, ["\\Flagged"], { uid: true });
+        } else {
+          await client.messageFlagsRemove({ uid }, ["\\Flagged"], { uid: true });
+        }
+      }
+    });
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error("IMAP flags error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/email/:uid?mailbox=INBOX — move to trash
+router.delete("/email/:uid", async (req, res) => {
+  const uid = parseInt(req.params.uid);
+  const mailbox = (req.query.mailbox as string) || "INBOX";
+  try {
+    await withImap(mailbox, async (client) => {
+      await client.messageMove({ uid }, "[Gmail]/Trash", { uid: true });
+    });
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error("IMAP delete error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/email/send
 router.post("/email/send", async (req, res) => {
-  const { to, cc, subject, body, html } = req.body;
+  const { to, cc, bcc, subject, body, html } = req.body;
   if (!to || !subject) return res.status(400).json({ error: "to and subject are required" });
   try {
     const transporter = createTransporter();
@@ -151,6 +215,7 @@ router.post("/email/send", async (req, res) => {
       from: `FlowMatriX <${getGmailConfig().user}>`,
       to,
       cc: cc || undefined,
+      bcc: bcc || undefined,
       subject,
       text: body || "",
       html: html || undefined,
