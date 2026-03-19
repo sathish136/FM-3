@@ -2,9 +2,9 @@ import { Layout } from "@/components/Layout";
 import {
   ShoppingCart, Plus, RefreshCw, Search, ExternalLink, X,
   Loader2, AlertCircle, ChevronDown, Trash2, Package,
-  Calendar, CheckCircle2, Clock, FileText, Building2,
+  Calendar, Clock, FileText, Building2,
   ArrowUpDown, ChevronUp, ChevronDown as ChevronDownIcon,
-  Tag, Hash, LayoutList, BarChart3, TrendingUp,
+  Tag, Hash,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -96,43 +96,23 @@ type SortField = "title" | "status" | "project" | "name" | "modified";
 
 // ── Stat card ────────────────────────────────────────────────────────────────
 function StatCard({
-  label, count, total, color, icon: Icon, active, onClick,
+  label, count, active, onClick,
 }: {
-  label: string; count: number; total: number;
-  color: { bg: string; text: string; bar: string; ring: string };
-  icon: React.ElementType;
+  label: string; count: number;
   active?: boolean;
   onClick: () => void;
 }) {
-  const pct = total > 0 ? Math.round((count / total) * 100) : 0;
   return (
     <button
       onClick={onClick}
-      className={`flex-1 min-w-[120px] rounded-2xl p-4 text-left transition-all border ${
+      className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border text-left transition-all ${
         active
-          ? `ring-2 ${color.ring} border-transparent shadow-md`
-          : "bg-white border-gray-100 hover:border-gray-200 hover:shadow-sm"
+          ? "bg-indigo-600 border-indigo-600 shadow-sm"
+          : "bg-white border-gray-200 hover:border-gray-300 hover:shadow-sm"
       }`}
-      style={active ? { background: "white" } : {}}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">{label}</p>
-          <p className={`text-2xl font-black leading-none ${active ? color.text : "text-gray-800"}`}>{count}</p>
-        </div>
-        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${active ? color.bg : "bg-gray-50"}`}>
-          <Icon className={`w-4 h-4 ${active ? color.text : "text-gray-400"}`} />
-        </div>
-      </div>
-      <div className="mt-3">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-[10px] text-gray-400">of {total} total</span>
-          <span className={`text-[10px] font-semibold ${active ? color.text : "text-gray-500"}`}>{pct}%</span>
-        </div>
-        <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
-          <div className={`h-full rounded-full transition-all ${color.bar}`} style={{ width: `${pct}%` }} />
-        </div>
-      </div>
+      <span className={`text-lg font-black leading-none tabular-nums ${active ? "text-white" : "text-gray-800"}`}>{count}</span>
+      <span className={`text-[11px] font-medium leading-tight ${active ? "text-indigo-200" : "text-gray-500"}`}>{label}</span>
     </button>
   );
 }
@@ -350,7 +330,6 @@ export default function MaterialRequestPage() {
             </div>
             <div>
               <h1 className="text-base font-bold text-gray-900 leading-tight">Material Request</h1>
-              <p className="text-[10px] text-gray-400 font-mono mt-0.5">{ERPNEXT_URL}</p>
             </div>
           </div>
 
@@ -372,34 +351,24 @@ export default function MaterialRequestPage() {
         </div>
 
         {/* ── Stats row ───────────────────────────────────────────────────── */}
-        <div className="px-6 pt-4 pb-2 flex gap-3 shrink-0 overflow-x-auto">
-          <StatCard label="Total" count={total} total={total}
-            color={{ bg: "bg-indigo-50", text: "text-indigo-600", bar: "bg-indigo-500", ring: "ring-indigo-300" }}
-            icon={LayoutList}
+        <div className="px-6 pt-3 pb-2 flex gap-2 shrink-0 overflow-x-auto">
+          <StatCard label="All" count={total}
             active={!statusFilter}
             onClick={() => setStatusFilter("")}
           />
-          <StatCard label="Approved" count={statApp} total={total}
-            color={{ bg: "bg-emerald-50", text: "text-emerald-600", bar: "bg-emerald-500", ring: "ring-emerald-300" }}
-            icon={CheckCircle2}
+          <StatCard label="Approved" count={statApp}
             active={statusFilter === "Approved"}
             onClick={() => setStatusFilter(s => s === "Approved" ? "" : "Approved")}
           />
-          <StatCard label="Pending" count={statPend} total={total}
-            color={{ bg: "bg-amber-50", text: "text-amber-600", bar: "bg-amber-500", ring: "ring-amber-300" }}
-            icon={Clock}
+          <StatCard label="Pending" count={statPend}
             active={statusFilter === "Pending"}
             onClick={() => setStatusFilter(s => s === "Pending" ? "" : "Pending")}
           />
-          <StatCard label="Draft" count={statDraft} total={total}
-            color={{ bg: "bg-slate-50", text: "text-slate-600", bar: "bg-slate-400", ring: "ring-slate-300" }}
-            icon={FileText}
+          <StatCard label="Draft" count={statDraft}
             active={statusFilter === "Draft"}
             onClick={() => setStatusFilter(s => s === "Draft" ? "" : "Draft")}
           />
-          <StatCard label="Other" count={statOther} total={total}
-            color={{ bg: "bg-red-50", text: "text-red-600", bar: "bg-red-400", ring: "ring-red-300" }}
-            icon={TrendingUp}
+          <StatCard label="Stopped / Cancelled" count={statOther}
             active={["Stopped","Cancelled"].includes(statusFilter)}
             onClick={() => setStatusFilter(s => s === "Stopped" ? "" : "Stopped")}
           />
