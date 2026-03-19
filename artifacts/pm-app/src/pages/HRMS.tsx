@@ -54,7 +54,7 @@ function EmpAvatar({ emp, size = "md" }: { emp: Employee; size?: "sm" | "md" | "
   const [err, setErr] = useState(false);
   const dim = size === "lg" ? "w-14 h-14 text-lg" : size === "sm" ? "w-8 h-8 text-[10px]" : "w-10 h-10 text-sm";
   const src = emp.image
-    ? emp.image.startsWith("http") ? emp.image : `${ERP_URL}${emp.image}`
+    ? `${BASE}/api/hrms/image-proxy?path=${encodeURIComponent(emp.image)}`
     : null;
   if (src && !err) {
     return (
@@ -62,7 +62,6 @@ function EmpAvatar({ emp, size = "md" }: { emp: Employee; size?: "sm" | "md" | "
         src={src}
         alt={emp.employee_name}
         onError={() => setErr(true)}
-        crossOrigin="anonymous"
         className={`${dim} rounded-full object-cover shrink-0`}
       />
     );
