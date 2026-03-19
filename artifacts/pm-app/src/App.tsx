@@ -18,6 +18,7 @@ import MeetingMinutes from "@/pages/MeetingMinutes";
 import SheetsHome from "@/pages/SheetsHome";
 import Sheets from "@/pages/Sheets";
 import Presentation from "@/pages/Presentation";
+import PptxPreviewPage from "@/pages/PptxPreviewPage";
 import Design2D from "@/pages/Design2D";
 import Drawings from "@/pages/Drawings";
 import Design3D from "@/pages/Design3D";
@@ -77,12 +78,16 @@ function ProtectedRoutes() {
 }
 
 function App() {
+  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <TooltipProvider>
-          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-            <ProtectedRoutes />
+          <WouterRouter base={base}>
+            <Switch>
+              <Route path="/pptx-viewer" component={PptxPreviewPage} />
+              <Route component={ProtectedRoutes} />
+            </Switch>
           </WouterRouter>
           <Toaster />
         </TooltipProvider>

@@ -6,7 +6,6 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import JSZip from "jszip";
-import { init as initPptxPreview } from "pptx-preview";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -194,91 +193,26 @@ function SlideCard({ slide, pres, deckIdx, scale = 1 }: {
   );
 }
 
-// ── pptx-preview powered viewer ───────────────────────────────────────────────
+// ── pptx-preview powered viewer (iframe isolation) ────────────────────────────
 function PptxViewer({ fileUrl }: { fileUrl: string }) {
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const viewerRef = useRef<ReturnType<typeof initPptxPreview> | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [errorMsg, setErrorMsg] = useState("");
-
-  useEffect(() => {
-    if (!containerRef.current || !wrapperRef.current) return;
-
-    let cancelled = false;
-    setStatus("loading");
-
-    const run = async () => {
-      if (cancelled || !containerRef.current || !wrapperRef.current) return;
-
-      const wrapper = wrapperRef.current;
-      const w = Math.max(wrapper.clientWidth || window.innerWidth, 400);
-      const h = Math.max(wrapper.clientHeight || (window.innerHeight - 56), 300);
-
-      containerRef.current.innerHTML = "";
-
-      let viewer: ReturnType<typeof initPptxPreview>;
-      try {
-        viewer = initPptxPreview(containerRef.current, { width: w, height: h, mode: "slide" });
-        viewerRef.current = viewer;
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        console.error("pptx-preview init error:", e);
-        if (!cancelled) { setErrorMsg(msg); setStatus("error"); }
-        return;
-      }
-
-      try {
-        const res = await fetch(fileUrl);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const buf = await res.arrayBuffer();
-        if (cancelled) return;
-        await viewer.preview(buf);
-        if (!cancelled) setStatus("ready");
-      } catch (err: unknown) {
-        if (cancelled) return;
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error("pptx-preview error:", err);
-        setErrorMsg(msg || "Failed to render presentation");
-        setStatus("error");
-      }
-    };
-
-    requestAnimationFrame(() => requestAnimationFrame(() => { run(); }));
-
-    return () => {
-      cancelled = true;
-      try { viewerRef.current?.destroy(); } catch (_) {}
-      viewerRef.current = null;
-    };
-  }, [fileUrl]);
+  const [loaded, setLoaded] = useState(false);
+  const viewerUrl = `${BASE}/pptx-viewer?url=${encodeURIComponent(fileUrl)}`;
 
   return (
-    <div ref={wrapperRef} className="w-full h-full relative bg-gray-950 overflow-hidden">
-      {/* Loading overlay */}
-      {status === "loading" && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-10 bg-gray-950">
+    <div className="w-full h-full relative bg-gray-950">
+      {!loaded && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-10 bg-gray-950 pointer-events-none">
           <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
-          <p className="text-sm font-medium text-gray-300">Rendering slides…</p>
-          <p className="text-xs text-gray-500">Parsing PPTX content</p>
+          <p className="text-sm font-medium text-gray-300">Loading viewer…</p>
         </div>
       )}
-      {/* Error overlay */}
-      {status === "error" && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-gray-950 z-10">
-          <AlertCircle className="w-12 h-12 text-red-400" />
-          <p className="text-sm font-medium text-red-300">Could not render presentation</p>
-          <p className="text-xs text-gray-500 max-w-xs text-center">{errorMsg}</p>
-          <a href={fileUrl} download className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-gray-800 text-gray-200 hover:bg-gray-700 transition-colors">
-            <Download className="w-4 h-4" /> Download instead
-          </a>
-        </div>
-      )}
-      {/* Container — always in DOM; opacity hides it during load so canvas can still render */}
-      <div
-        ref={containerRef}
-        className="w-full h-full"
-        style={{ opacity: status === "loading" ? 0 : 1, transition: "opacity 0.3s ease" }}
+      <iframe
+        key={viewerUrl}
+        src={viewerUrl}
+        className="w-full h-full border-0"
+        onLoad={() => setLoaded(true)}
+        title="PPTX Preview"
+        allow="same-origin"
       />
     </div>
   );
