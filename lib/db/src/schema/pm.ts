@@ -87,6 +87,7 @@ export const meetingMinutesTable = pgTable("meeting_minutes", {
   title: text("title").notNull(),
   projectId: integer("project_id").references(() => projectsTable.id, { onDelete: "set null" }),
   attendees: text("attendees"),
+  venue: text("venue"),
   date: text("date").notNull(),
   rawNotes: text("raw_notes"),
   aiSummary: text("ai_summary"),

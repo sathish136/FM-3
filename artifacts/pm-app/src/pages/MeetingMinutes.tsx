@@ -2,14 +2,14 @@ import { Layout } from "@/components/Layout";
 import {
   FileText, Plus, Trash2, Sparkles, Calendar, Users,
   X, Save, Loader2, CheckCircle, Clock, Mic,
-  Square, Type, Radio,
+  Square, Type, Radio, MapPin, Search, FolderOpen,
 } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useListProjects } from "@workspace/api-client-react";
 
 type Meeting = {
   id: number; title: string; projectId: number | null;
-  attendees: string | null; date: string; rawNotes: string | null;
+  attendees: string | null; venue: string | null; date: string; rawNotes: string | null;
   aiSummary: string | null; actionItems: string | null;
   status: string; mode?: string; createdAt: string;
 };
@@ -299,6 +299,106 @@ function getAtQuery(text: string, cursor: number): { query: string; start: numbe
   return { query: match[1], start: before.lastIndexOf("@") };
 }
 
+// ─── Attendees Picker ────────────────────────────────────────────────────────
+function UserAvatar({ user, size = "md" }: { user: MentionUser; size?: "sm" | "md" }) {
+  const sz = size === "sm" ? "w-5 h-5 text-[9px]" : "w-7 h-7 text-[10px]";
+  return (
+    <div className={`${sz} rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white font-bold flex-shrink-0 overflow-hidden`}>
+      {user.avatar
+        ? <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+        : user.name.charAt(0).toUpperCase()}
+    </div>
+  );
+}
+
+function AttendeesPicker({ selected, onChange }: { selected: MentionUser[]; onChange: (users: MentionUser[]) => void }) {
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const [hoverIdx, setHoverIdx] = useState(0);
+  const { users, loading } = useMentionUsers(search, open);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const filteredUsers = users.filter(u => !selected.find(s => s.id === u.id));
+
+  const addUser = useCallback((user: MentionUser) => {
+    onChange([...selected, user]);
+    setSearch("");
+    inputRef.current?.focus();
+  }, [selected, onChange]);
+
+  const removeUser = (id: string) => onChange(selected.filter(s => s.id !== id));
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!open || filteredUsers.length === 0) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setHoverIdx(i => Math.min(i + 1, filteredUsers.length - 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setHoverIdx(i => Math.max(i - 1, 0)); }
+    else if (e.key === "Enter") { e.preventDefault(); if (filteredUsers[hoverIdx]) addUser(filteredUsers[hoverIdx]); }
+    else if (e.key === "Escape") setOpen(false);
+    else if (e.key === "Backspace" && !search && selected.length > 0) removeUser(selected[selected.length - 1].id);
+  };
+
+  useEffect(() => { setHoverIdx(0); }, [search]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <div
+        className="min-h-[42px] w-full px-3 py-2 border border-gray-200 rounded-xl bg-white flex flex-wrap gap-1.5 items-center cursor-text focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-400 transition-all"
+        onClick={() => { inputRef.current?.focus(); setOpen(true); }}
+      >
+        {selected.map(u => (
+          <span key={u.id} className="inline-flex items-center gap-1 pl-0.5 pr-1.5 py-0.5 bg-blue-50 border border-blue-200 text-blue-800 rounded-full text-xs font-medium">
+            <UserAvatar user={u} size="sm" />
+            <span className="max-w-[120px] truncate">{u.name}</span>
+            <button type="button" onClick={e => { e.stopPropagation(); removeUser(u.id); }} className="ml-0.5 text-blue-400 hover:text-blue-700 transition-colors">
+              <X className="w-3 h-3" />
+            </button>
+          </span>
+        ))}
+        <input
+          ref={inputRef}
+          value={search}
+          onChange={e => { setSearch(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onKeyDown={handleKeyDown}
+          placeholder={selected.length === 0 ? "Search ERPNext users…" : "Add more…"}
+          className="flex-1 min-w-[120px] outline-none text-sm text-gray-700 placeholder:text-gray-400 bg-transparent"
+        />
+        {loading && <Loader2 className="w-3.5 h-3.5 text-gray-400 animate-spin flex-shrink-0" />}
+      </div>
+
+      {open && (
+        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden max-h-52 overflow-y-auto">
+          {filteredUsers.length === 0 && !loading && (
+            <div className="px-4 py-3 text-xs text-gray-400 text-center">
+              {search ? "No users found" : "Start typing to search users"}
+            </div>
+          )}
+          {filteredUsers.map((u, i) => (
+            <button
+              key={u.id}
+              type="button"
+              onMouseDown={e => { e.preventDefault(); addUser(u); }}
+              onMouseEnter={() => setHoverIdx(i)}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${i === hoverIdx ? "bg-blue-50" : "hover:bg-gray-50"}`}
+            >
+              <UserAvatar user={u} />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-gray-800 truncate">{u.name}</p>
+                {(u.designation || u.department) && (
+                  <p className="text-[10px] text-gray-400 truncate">{u.designation}{u.designation && u.department ? " · " : ""}{u.department}</p>
+                )}
+              </div>
+              <CheckCircle className="w-3.5 h-3.5 text-blue-400 opacity-0 group-hover:opacity-100" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Manual Notes Mode ──────────────────────────────────────────────────────
 function ManualView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: Meeting) => void }) {
   const [notes, setNotes] = useState(meeting.rawNotes || "");
@@ -458,7 +558,8 @@ export default function MeetingMinutes() {
   const [selected, setSelected] = useState<Meeting | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [newMode, setNewMode] = useState<"record" | "manual">("record");
-  const [form, setForm] = useState({ title: "", date: new Date().toISOString().slice(0, 10), attendees: "", projectId: "" });
+  const [form, setForm] = useState({ title: "", date: new Date().toISOString().slice(0, 10), venue: "", projectId: "" });
+  const [selectedAttendees, setSelectedAttendees] = useState<MentionUser[]>([]);
   const { data: projects = [] } = useListProjects();
 
   useEffect(() => {
@@ -472,14 +573,24 @@ export default function MeetingMinutes() {
 
   const handleCreate = async () => {
     if (!form.title || !form.date) return;
+    const attendeesStr = selectedAttendees.length > 0 ? selectedAttendees.map(u => u.name).join(", ") : null;
     const created = await apiFetch("/meeting-minutes", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: form.title, date: form.date, attendees: form.attendees || null, projectId: form.projectId ? Number(form.projectId) : null, status: "draft", mode: newMode }),
+      body: JSON.stringify({
+        title: form.title,
+        date: form.date,
+        venue: form.venue || null,
+        attendees: attendeesStr,
+        projectId: form.projectId ? Number(form.projectId) : null,
+        status: "draft",
+        mode: newMode,
+      }),
     }).then(r => r.json());
     setMeetings(prev => [created, ...(prev || [])]);
     setSelected({ ...created, mode: newMode });
     setShowNew(false);
-    setForm({ title: "", date: new Date().toISOString().slice(0, 10), attendees: "", projectId: "" });
+    setForm({ title: "", date: new Date().toISOString().slice(0, 10), venue: "", projectId: "" });
+    setSelectedAttendees([]);
   };
 
   const handleDelete = async (id: number, e: React.MouseEvent) => {
@@ -547,58 +658,140 @@ export default function MeetingMinutes() {
 
           {/* NEW MEETING FORM */}
           {showNew && (
-            <div className="max-w-xl mx-auto w-full p-8 space-y-5">
-              <div className="flex items-center gap-2">
-                <button onClick={() => setShowNew(false)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-white transition-colors"><X className="w-4 h-4" /></button>
-                <h2 className="text-xl font-bold text-gray-900">New Meeting</h2>
-              </div>
-
-              <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl w-fit">
-                <button onClick={() => setNewMode("record")}
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${newMode === "record" ? "bg-white text-red-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-                  <Mic className="w-3 h-3" /> Auto Record
-                </button>
-                <button onClick={() => setNewMode("manual")}
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${newMode === "manual" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-                  <Type className="w-3 h-3" /> Manual Notes
-                </button>
-              </div>
-
-              <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-3.5 shadow-sm">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Meeting Title *</label>
-                  <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                    placeholder="e.g. Weekly Project Review"
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1">Date *</label>
-                    <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1">Project</label>
-                    <select value={form.projectId} onChange={e => setForm(f => ({ ...f, projectId: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                      <option value="">No project</option>
-                      {(projects as any[]).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1"><Users className="inline w-3 h-3 mr-1" />Attendees</label>
-                  <input value={form.attendees} onChange={e => setForm(f => ({ ...f, attendees: e.target.value }))}
-                    placeholder="John, Jane, Bob…"
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div className="flex justify-end gap-2 pt-1">
-                  <button onClick={() => setShowNew(false)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                  <button onClick={handleCreate} disabled={!form.title || !form.date}
-                    className={`px-4 py-2 text-sm font-semibold text-white rounded-lg disabled:opacity-50 transition-colors flex items-center gap-1.5 ${newMode === "record" ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700"}`}>
-                    {newMode === "record" ? <Mic className="w-3.5 h-3.5" /> : <Type className="w-3.5 h-3.5" />}
-                    Create & {newMode === "record" ? "Start Recording" : "Start Writing"}
+            <div className="flex-1 flex items-start justify-center p-6 overflow-y-auto">
+              <div className="w-full max-w-2xl">
+                {/* Header */}
+                <div className="flex items-center gap-3 mb-6">
+                  <button onClick={() => { setShowNew(false); setSelectedAttendees([]); setForm({ title: "", date: new Date().toISOString().slice(0, 10), venue: "", projectId: "" }); }}
+                    className="p-2 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-white border border-transparent hover:border-gray-200 transition-all">
+                    <X className="w-4 h-4" />
                   </button>
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-900">New Meeting</h2>
+                    <p className="text-xs text-gray-400 mt-0.5">Fill in the details to create a meeting record</p>
+                  </div>
+                </div>
+
+                {/* Mode toggle */}
+                <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl mb-5 w-fit">
+                  <button onClick={() => setNewMode("record")}
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${newMode === "record" ? "bg-white text-red-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+                    <Mic className="w-3.5 h-3.5" /> Auto Record
+                  </button>
+                  <button onClick={() => setNewMode("manual")}
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${newMode === "manual" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+                    <Type className="w-3.5 h-3.5" /> Manual Notes
+                  </button>
+                </div>
+
+                {/* Form card */}
+                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+
+                  {/* Section: Basic Info */}
+                  <div className="px-6 pt-5 pb-4 border-b border-gray-100">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-3">Meeting Details</p>
+                    <div className="space-y-3.5">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1.5">Meeting Title <span className="text-red-400">*</span></label>
+                        <input
+                          value={form.title}
+                          onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                          onKeyDown={e => e.key === "Enter" && form.title && form.date && handleCreate()}
+                          placeholder="e.g. Weekly Project Sync, Q1 Review…"
+                          autoFocus
+                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 transition-all placeholder:text-gray-300"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 mb-1.5"><Calendar className="inline w-3 h-3 mr-1 text-gray-400" />Date <span className="text-red-400">*</span></label>
+                          <input
+                            type="date"
+                            value={form.date}
+                            onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                            className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 transition-all"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 mb-1.5"><MapPin className="inline w-3 h-3 mr-1 text-gray-400" />Venue</label>
+                          <input
+                            value={form.venue}
+                            onChange={e => setForm(f => ({ ...f, venue: e.target.value }))}
+                            placeholder="e.g. Conference Room A, Zoom…"
+                            className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 transition-all placeholder:text-gray-300"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1.5"><FolderOpen className="inline w-3 h-3 mr-1 text-gray-400" />Project</label>
+                        <select
+                          value={form.projectId}
+                          onChange={e => setForm(f => ({ ...f, projectId: e.target.value }))}
+                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 bg-white transition-all"
+                        >
+                          <option value="">No project linked</option>
+                          {(projects as any[]).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section: Attendees */}
+                  <div className="px-6 pt-4 pb-5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-3">Attendees</p>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                      <Users className="inline w-3 h-3 mr-1 text-gray-400" />
+                      Select from ERPNext
+                      {selectedAttendees.length > 0 && (
+                        <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[10px] font-bold">
+                          {selectedAttendees.length} selected
+                        </span>
+                      )}
+                    </label>
+                    <AttendeesPicker selected={selectedAttendees} onChange={setSelectedAttendees} />
+                    {selectedAttendees.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {selectedAttendees.map((u, i) => (
+                          <div key={u.id} className="flex items-center gap-1.5 bg-gradient-to-r from-slate-50 to-blue-50 border border-blue-100 rounded-full pl-1 pr-2.5 py-1">
+                            <UserAvatar user={u} size="sm" />
+                            <div className="min-w-0">
+                              <p className="text-[11px] font-semibold text-gray-800 leading-none truncate max-w-[100px]">{u.name}</p>
+                              {u.designation && <p className="text-[9px] text-gray-400 leading-tight truncate max-w-[100px]">{u.designation}</p>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer actions */}
+                  <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
+                    <p className="text-[10px] text-gray-400">
+                      {newMode === "record" ? "Recording will start immediately after creation" : "You can add notes after creation"}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => { setShowNew(false); setSelectedAttendees([]); setForm({ title: "", date: new Date().toISOString().slice(0, 10), venue: "", projectId: "" }); }}
+                        className="px-4 py-2 text-sm text-gray-600 hover:bg-white hover:border-gray-200 border border-transparent rounded-xl transition-all"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleCreate}
+                        disabled={!form.title || !form.date}
+                        className={`px-5 py-2 text-sm font-semibold text-white rounded-xl disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-2 shadow-sm ${
+                          newMode === "record"
+                            ? "bg-red-600 hover:bg-red-700 shadow-red-200"
+                            : "bg-blue-600 hover:bg-blue-700 shadow-blue-200"
+                        }`}
+                      >
+                        {newMode === "record" ? <Mic className="w-3.5 h-3.5" /> : <Type className="w-3.5 h-3.5" />}
+                        Create & {newMode === "record" ? "Start Recording" : "Start Writing"}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -616,6 +809,7 @@ export default function MeetingMinutes() {
                   <h1 className="text-xl font-bold text-gray-900">{selected.title}</h1>
                   <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-gray-400">
                     <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{selected.date}</span>
+                    {selected.venue && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{selected.venue}</span>}
                     {selected.attendees && <span className="flex items-center gap-1"><Users className="w-3 h-3" />{selected.attendees}</span>}
                   </div>
                 </div>
