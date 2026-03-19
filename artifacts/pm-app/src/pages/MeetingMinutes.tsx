@@ -658,141 +658,133 @@ export default function MeetingMinutes() {
 
           {/* NEW MEETING FORM */}
           {showNew && (
-            <div className="flex-1 flex items-start justify-center p-6 overflow-y-auto">
-              <div className="w-full max-w-2xl">
-                {/* Header */}
-                <div className="flex items-center gap-3 mb-6">
+            <div className="flex-1 flex flex-col bg-white">
+              {/* Header bar */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${newMode === "record" ? "bg-red-50" : "bg-blue-50"}`}>
+                    {newMode === "record" ? <Mic className="w-4 h-4 text-red-500" /> : <Type className="w-4 h-4 text-blue-500" />}
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-gray-900">New Meeting</h2>
+                    <p className="text-[11px] text-gray-400">Create a meeting record</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {/* Mode toggle */}
+                  <div className="flex items-center gap-0.5 bg-gray-100 p-0.5 rounded-lg">
+                    <button onClick={() => setNewMode("record")}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${newMode === "record" ? "bg-white text-red-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+                      <Mic className="w-3 h-3" /> Record
+                    </button>
+                    <button onClick={() => setNewMode("manual")}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${newMode === "manual" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+                      <Type className="w-3 h-3" /> Manual
+                    </button>
+                  </div>
                   <button onClick={() => { setShowNew(false); setSelectedAttendees([]); setForm({ title: "", date: new Date().toISOString().slice(0, 10), venue: "", projectId: "" }); }}
-                    className="p-2 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-white border border-transparent hover:border-gray-200 transition-all">
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all">
                     <X className="w-4 h-4" />
                   </button>
+                </div>
+              </div>
+
+              {/* Form body */}
+              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+
+                {/* Title */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Meeting Title <span className="text-red-400">*</span></label>
+                  <input
+                    value={form.title}
+                    onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                    onKeyDown={e => e.key === "Enter" && form.title && form.date && handleCreate()}
+                    placeholder="e.g. Weekly Sync, Q1 Review…"
+                    autoFocus
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 transition-all placeholder:text-gray-300"
+                  />
+                </div>
+
+                {/* Date + Venue */}
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <h2 className="text-lg font-bold text-gray-900">New Meeting</h2>
-                    <p className="text-xs text-gray-400 mt-0.5">Fill in the details to create a meeting record</p>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5"><Calendar className="inline w-3 h-3 mr-1 text-gray-400" />Date <span className="text-red-400">*</span></label>
+                    <input
+                      type="date"
+                      value={form.date}
+                      onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5"><MapPin className="inline w-3 h-3 mr-1 text-gray-400" />Venue</label>
+                    <input
+                      value={form.venue}
+                      onChange={e => setForm(f => ({ ...f, venue: e.target.value }))}
+                      placeholder="Room A, Zoom…"
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 transition-all placeholder:text-gray-300"
+                    />
                   </div>
                 </div>
 
-                {/* Mode toggle */}
-                <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl mb-5 w-fit">
-                  <button onClick={() => setNewMode("record")}
-                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${newMode === "record" ? "bg-white text-red-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-                    <Mic className="w-3.5 h-3.5" /> Auto Record
-                  </button>
-                  <button onClick={() => setNewMode("manual")}
-                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${newMode === "manual" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-                    <Type className="w-3.5 h-3.5" /> Manual Notes
-                  </button>
+                {/* Project */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5"><FolderOpen className="inline w-3 h-3 mr-1 text-gray-400" />Project</label>
+                  <select
+                    value={form.projectId}
+                    onChange={e => setForm(f => ({ ...f, projectId: e.target.value }))}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 bg-white transition-all"
+                  >
+                    <option value="">No project linked</option>
+                    {(projects as any[]).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
                 </div>
 
-                {/* Form card */}
-                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm">
-
-                  {/* Section: Basic Info */}
-                  <div className="px-6 pt-5 pb-4 border-b border-gray-100">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-3">Meeting Details</p>
-                    <div className="space-y-3.5">
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-700 mb-1.5">Meeting Title <span className="text-red-400">*</span></label>
-                        <input
-                          value={form.title}
-                          onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                          onKeyDown={e => e.key === "Enter" && form.title && form.date && handleCreate()}
-                          placeholder="e.g. Weekly Project Sync, Q1 Review…"
-                          autoFocus
-                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 transition-all placeholder:text-gray-300"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-700 mb-1.5"><Calendar className="inline w-3 h-3 mr-1 text-gray-400" />Date <span className="text-red-400">*</span></label>
-                          <input
-                            type="date"
-                            value={form.date}
-                            onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-                            className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 transition-all"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-700 mb-1.5"><MapPin className="inline w-3 h-3 mr-1 text-gray-400" />Venue</label>
-                          <input
-                            value={form.venue}
-                            onChange={e => setForm(f => ({ ...f, venue: e.target.value }))}
-                            placeholder="e.g. Conference Room A, Zoom…"
-                            className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 transition-all placeholder:text-gray-300"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-700 mb-1.5"><FolderOpen className="inline w-3 h-3 mr-1 text-gray-400" />Project</label>
-                        <select
-                          value={form.projectId}
-                          onChange={e => setForm(f => ({ ...f, projectId: e.target.value }))}
-                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 bg-white transition-all"
-                        >
-                          <option value="">No project linked</option>
-                          {(projects as any[]).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Section: Attendees */}
-                  <div className="px-6 pt-4 pb-5">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-3">Attendees</p>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                      <Users className="inline w-3 h-3 mr-1 text-gray-400" />
-                      Select from ERPNext
-                      {selectedAttendees.length > 0 && (
-                        <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[10px] font-bold">
-                          {selectedAttendees.length} selected
-                        </span>
-                      )}
-                    </label>
-                    <AttendeesPicker selected={selectedAttendees} onChange={setSelectedAttendees} />
+                {/* Attendees */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                    <Users className="inline w-3 h-3 mr-1 text-gray-400" />
+                    Attendees
                     {selectedAttendees.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {selectedAttendees.map((u, i) => (
-                          <div key={u.id} className="flex items-center gap-1.5 bg-gradient-to-r from-slate-50 to-blue-50 border border-blue-100 rounded-full pl-1 pr-2.5 py-1">
-                            <UserAvatar user={u} size="sm" />
-                            <div className="min-w-0">
-                              <p className="text-[11px] font-semibold text-gray-800 leading-none truncate max-w-[100px]">{u.name}</p>
-                              {u.designation && <p className="text-[9px] text-gray-400 leading-tight truncate max-w-[100px]">{u.designation}</p>}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                      <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[10px] font-bold">
+                        {selectedAttendees.length}
+                      </span>
                     )}
-                  </div>
-
-                  {/* Footer actions */}
-                  <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
-                    <p className="text-[10px] text-gray-400">
-                      {newMode === "record" ? "Recording will start immediately after creation" : "You can add notes after creation"}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => { setShowNew(false); setSelectedAttendees([]); setForm({ title: "", date: new Date().toISOString().slice(0, 10), venue: "", projectId: "" }); }}
-                        className="px-4 py-2 text-sm text-gray-600 hover:bg-white hover:border-gray-200 border border-transparent rounded-xl transition-all"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleCreate}
-                        disabled={!form.title || !form.date}
-                        className={`px-5 py-2 text-sm font-semibold text-white rounded-xl disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-2 shadow-sm ${
-                          newMode === "record"
-                            ? "bg-red-600 hover:bg-red-700 shadow-red-200"
-                            : "bg-blue-600 hover:bg-blue-700 shadow-blue-200"
-                        }`}
-                      >
-                        {newMode === "record" ? <Mic className="w-3.5 h-3.5" /> : <Type className="w-3.5 h-3.5" />}
-                        Create & {newMode === "record" ? "Start Recording" : "Start Writing"}
-                      </button>
+                  </label>
+                  <AttendeesPicker selected={selectedAttendees} onChange={setSelectedAttendees} />
+                  {selectedAttendees.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {selectedAttendees.map((u) => (
+                        <div key={u.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-100 rounded-full pl-1 pr-2.5 py-0.5">
+                          <UserAvatar user={u} size="sm" />
+                          <p className="text-[11px] font-semibold text-blue-800 truncate max-w-[100px]">{u.name}</p>
+                        </div>
+                      ))}
                     </div>
-                  </div>
+                  )}
                 </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-3 border-t border-gray-100 bg-gray-50 flex items-center justify-end gap-2">
+                <button
+                  onClick={() => { setShowNew(false); setSelectedAttendees([]); setForm({ title: "", date: new Date().toISOString().slice(0, 10), venue: "", projectId: "" }); }}
+                  className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-white border border-transparent hover:border-gray-200 rounded-lg transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreate}
+                  disabled={!form.title || !form.date}
+                  className={`px-5 py-2 text-xs font-semibold text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1.5 ${
+                    newMode === "record"
+                      ? "bg-red-600 hover:bg-red-700"
+                      : "bg-blue-600 hover:bg-blue-700"
+                  }`}
+                >
+                  {newMode === "record" ? <Mic className="w-3.5 h-3.5" /> : <Type className="w-3.5 h-3.5" />}
+                  Create & {newMode === "record" ? "Start Recording" : "Start Writing"}
+                </button>
               </div>
             </div>
           )}
