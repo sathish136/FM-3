@@ -437,68 +437,87 @@ export interface ErpUser {
 
 // ── Project Board ─────────────────────────────────────────────────────────────
 
-export interface ErpProjectBoardRow {
-  name: string;
-  project: string | null;
-  project_remarks: string | null;
-  description: string | null;
-  mr_qty: number | null;
-  store_qty: number | null;
-  production_qty: number | null;
-  not_req_qty: number | null;
-  buy_qty: number | null;
-  po_required: string | null;
-  received_qty: number | null;
-  po_qty: number | null;
-  po_pending: number | null;
-  pr_pending: number | null;
+export interface ErpProjectBoardChildRow {
+  technical_description: string;
+  mr_qty: number;
+  store_qty: number;
+  production_qty: number;
+  not_req_qty: number;
+  buy_required: number;
+  po_qty: number;
+  received_qty: number;
+  po_pending: number;
+  pr_pending: number;
   delivery_from: string | null;
   delivery_to: string | null;
-  aging_mr_no: string | null;
-  po_no: string | null;
+  aging: string;
+  mr_no: string;
+  po_no: string;
+}
+
+export interface ErpProjectBoardRow {
+  description: string;
+  mr_qty: number;
+  store_qty: number;
+  production_qty: number;
+  not_req_qty: number;
+  buy_required: number;
+  po_qty: number;
+  received_qty: number;
+  po_pending: number;
+  pr_pending: number;
+  delivery_from: string | null;
+  delivery_to: string | null;
+  aging: string;
+  mr_no: string;
+  po_no: string;
+  child_rows: ErpProjectBoardChildRow[];
 }
 
 export async function fetchErpNextProjectBoard(filters?: {
   project?: string;
-  project_remarks?: string;
-  pending_only?: boolean;
-  po_not_created?: boolean;
-  due?: boolean;
+  mr_remarks?: string;
 }): Promise<ErpProjectBoardRow[]> {
   if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
 
-  const fields = JSON.stringify([
-    "name", "project", "project_remarks", "description",
-    "mr_qty", "store_qty", "production_qty", "not_req_qty", "buy_qty",
-    "po_required", "received_qty", "po_qty", "po_pending", "pr_pending",
-    "delivery_from", "delivery_to", "aging_mr_no", "po_no",
-  ]);
-
-  const fArr: any[] = [];
-  if (filters?.project)       fArr.push(["Project Board", "project", "like", `%${filters.project}%`]);
-  if (filters?.project_remarks) fArr.push(["Project Board", "project_remarks", "like", `%${filters.project_remarks}%`]);
-  if (filters?.pending_only)  fArr.push(["Project Board", "po_pending", ">", 0]);
-  if (filters?.po_not_created) fArr.push(["Project Board", "po_qty", "=", 0]);
-
   const params = new URLSearchParams({
-    fields,
-    limit_page_length: "500",
-    order_by: "modified desc",
+    method: "wtt_module.wtt_module.page.project_board.project_board.get_project_dashboard",
   });
-  if (fArr.length) params.set("filters", JSON.stringify(fArr));
+  const body: Record<string, string> = {};
+  if (filters?.project)    body["project"]    = filters.project;
+  if (filters?.mr_remarks) body["mr_remarks"] = filters.mr_remarks;
 
-  const url = `${ERPNEXT_URL}/api/resource/Project Board?${params}`;
+  const url = `${ERPNEXT_URL}/api/method/wtt_module.wtt_module.page.project_board.project_board.get_project_dashboard`;
   const res = await fetch(url, {
-    headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+    method: "POST",
+    headers: {
+      Authorization: authHeader(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`ERPNext Project Board API error ${res.status}: ${body}`);
+    const text = await res.text().catch(() => "");
+    throw new Error(`ERPNext Project Board API error ${res.status}: ${text}`);
   }
 
   const json = await res.json();
-  return (json.data || []) as ErpProjectBoardRow[];
+  return (json.message || []) as ErpProjectBoardRow[];
+}
+
+export async function fetchErpNextMrRemarks(project?: string): Promise<string[]> {
+  if (!ERPNEXT_URL) return [];
+  const fields = JSON.stringify(["name"]);
+  const fArr: any[] = [];
+  if (project) fArr.push(["MR Remarks", "project", "=", project]);
+  const params = new URLSearchParams({ fields, limit_page_length: "200", order_by: "name asc" });
+  if (fArr.length) params.set("filters", JSON.stringify(fArr));
+  const url = `${ERPNEXT_URL}/api/resource/MR Remarks?${params}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader() } });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return ((data.data || []) as any[]).map((r: any) => r.name);
 }
 
 export async function fetchErpNextProjectList(): Promise<{ name: string; project_name: string }[]> {
