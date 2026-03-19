@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Box, PenTool, GitBranch,
   Briefcase, ChevronDown, FileText,
   ChevronRight, LogOut, ChevronLeft, ChevronRight as ChevronRightIcon, Menu,
-  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, Users,
+  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, Users, UserCircle,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -78,6 +78,12 @@ const navGroups: { label?: string; items: NavItem[] }[] = [
     label: "Procurement",
     items: [
       { path: "/material-request", label: "Material Request", icon: ShoppingCart, color: "text-indigo-400" },
+    ],
+  },
+  {
+    label: "HR",
+    items: [
+      { path: "/hrms", label: "HRMS", icon: UserCircle, color: "text-emerald-400" },
     ],
   },
   {
