@@ -435,6 +435,83 @@ export interface ErpUser {
   enabled: number;
 }
 
+// ── Project Board ─────────────────────────────────────────────────────────────
+
+export interface ErpProjectBoardRow {
+  name: string;
+  project: string | null;
+  project_remarks: string | null;
+  description: string | null;
+  mr_qty: number | null;
+  store_qty: number | null;
+  production_qty: number | null;
+  not_req_qty: number | null;
+  buy_qty: number | null;
+  po_required: string | null;
+  received_qty: number | null;
+  po_qty: number | null;
+  po_pending: number | null;
+  pr_pending: number | null;
+  delivery_from: string | null;
+  delivery_to: string | null;
+  aging_mr_no: string | null;
+  po_no: string | null;
+}
+
+export async function fetchErpNextProjectBoard(filters?: {
+  project?: string;
+  project_remarks?: string;
+  pending_only?: boolean;
+  po_not_created?: boolean;
+  due?: boolean;
+}): Promise<ErpProjectBoardRow[]> {
+  if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
+
+  const fields = JSON.stringify([
+    "name", "project", "project_remarks", "description",
+    "mr_qty", "store_qty", "production_qty", "not_req_qty", "buy_qty",
+    "po_required", "received_qty", "po_qty", "po_pending", "pr_pending",
+    "delivery_from", "delivery_to", "aging_mr_no", "po_no",
+  ]);
+
+  const fArr: any[] = [];
+  if (filters?.project)       fArr.push(["Project Board", "project", "like", `%${filters.project}%`]);
+  if (filters?.project_remarks) fArr.push(["Project Board", "project_remarks", "like", `%${filters.project_remarks}%`]);
+  if (filters?.pending_only)  fArr.push(["Project Board", "po_pending", ">", 0]);
+  if (filters?.po_not_created) fArr.push(["Project Board", "po_qty", "=", 0]);
+
+  const params = new URLSearchParams({
+    fields,
+    limit_page_length: "500",
+    order_by: "modified desc",
+  });
+  if (fArr.length) params.set("filters", JSON.stringify(fArr));
+
+  const url = `${ERPNEXT_URL}/api/resource/Project Board?${params}`;
+  const res = await fetch(url, {
+    headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`ERPNext Project Board API error ${res.status}: ${body}`);
+  }
+
+  const json = await res.json();
+  return (json.data || []) as ErpProjectBoardRow[];
+}
+
+export async function fetchErpNextProjectList(): Promise<{ name: string; project_name: string }[]> {
+  if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
+  const fields = JSON.stringify(["name", "project_name"]);
+  const params = new URLSearchParams({ fields, limit_page_length: "500", order_by: "project_name asc" });
+  const url = `${ERPNEXT_URL}/api/resource/Project?${params}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader() } });
+  if (!res.ok) return [];
+  const json = await res.json();
+  return (json.data || []) as { name: string; project_name: string }[];
+}
+
 // ── HRMS ─────────────────────────────────────────────────────────────────────
 
 export interface ErpEmployee {

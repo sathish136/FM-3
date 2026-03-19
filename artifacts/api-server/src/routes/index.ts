@@ -7,6 +7,7 @@ import authRouter from "./auth";
 import pidAnalyzeRouter from "./pid-analyze";
 import aiSearchRouter from "./ai-search";
 import hrmsRouter from "./hrms";
+import projectBoardRouter from "./project-board";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use("/spreadsheets", spreadsheetsRouter);
 router.use(pidAnalyzeRouter);
 router.use(aiSearchRouter);
 router.use(hrmsRouter);
+router.use(projectBoardRouter);
 
 export default router;

@@ -29,6 +29,7 @@ import Profile from "@/pages/Profile";
 import MaterialRequest from "@/pages/MaterialRequest";
 import UserManagement from "@/pages/UserManagement";
 import HRMS from "@/pages/HRMS";
+import ProjectBoard from "@/pages/ProjectBoard";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -78,6 +79,7 @@ function ProtectedRoutes() {
       <Route path="/material-request" component={MaterialRequest} />
       <Route path="/user-management" component={UserManagement} />
       <Route path="/hrms" component={HRMS} />
+      <Route path="/project-board" component={ProjectBoard} />
       <Route component={NotFound} />
     </Switch>
   );
