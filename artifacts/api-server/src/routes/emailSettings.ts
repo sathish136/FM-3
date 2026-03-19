@@ -4,6 +4,11 @@ import pg from "pg";
 import { emailAccountsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
+const ERP_URL = process.env.ERPNEXT_URL || "https://erp.wttint.com";
+const API_KEY = process.env.ERPNEXT_API_KEY || "";
+const API_SECRET = process.env.ERPNEXT_API_SECRET || "";
+const erpHeaders = () => ({ Accept: "application/json", Authorization: `token ${API_KEY}:${API_SECRET}` });
+
 const { Pool } = pg;
 
 // Connect to the external project database for email settings storage
@@ -103,6 +108,30 @@ router.delete("/email-settings/:id", async (req, res) => {
   try {
     await db.delete(emailAccountsTable).where(eq(emailAccountsTable.id, id));
     res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/erpnext-users — list active ERPNext users (for assigned-to dropdown)
+router.get("/erpnext-users", async (_req, res) => {
+  try {
+    const fields = encodeURIComponent('["name","full_name","email"]');
+    const filters = encodeURIComponent('[["enabled","=","1"],["user_type","=","System User"]]');
+    const r = await fetch(
+      `${ERP_URL}/api/resource/User?filters=${filters}&fields=${fields}&limit=500&order_by=full_name+asc`,
+      { headers: erpHeaders() }
+    );
+    if (!r.ok) {
+      const txt = await r.text();
+      return res.status(502).json({ error: `ERPNext error: ${txt.slice(0, 200)}` });
+    }
+    const data: any = await r.json();
+    const users = (data?.data || []).map((u: any) => ({
+      email: u.name,
+      full_name: u.full_name || u.name,
+    }));
+    res.json(users);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

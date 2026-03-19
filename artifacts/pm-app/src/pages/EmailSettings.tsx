@@ -1,11 +1,14 @@
 import { Layout } from "@/components/Layout";
 import {
   Mail, Plus, Pencil, Trash2, Check, X, Loader2,
-  Star, User, Eye, EyeOff, ShieldCheck, AlertCircle,
+  Star, User, Eye, EyeOff, ShieldCheck, AlertCircle, ChevronDown,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useAuth } from "@/hooks/useAuth";
 
 const BASE = "/api";
+
+type ErpUser = { email: string; full_name: string };
 
 type EmailAccount = {
   id: number;
@@ -28,19 +31,95 @@ type FormState = {
   isDefault: boolean;
 };
 
-const EMPTY_FORM: FormState = {
-  displayName: "",
-  emailAddress: "",
-  gmailUser: "",
-  gmailAppPassword: "",
-  assignedTo: "",
-  isDefault: false,
-};
-
 async function apiFetch(path: string, opts?: RequestInit) {
   const r = await fetch(`${BASE}${path}`, opts);
   if (!r.ok) throw new Error(await r.text());
   return r.json();
+}
+
+function UserDropdown({
+  value,
+  onChange,
+  users,
+  loadingUsers,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  users: ErpUser[];
+  loadingUsers: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const filtered = users.filter(u =>
+    u.full_name.toLowerCase().includes(search.toLowerCase()) ||
+    u.email.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const selected = users.find(u => u.email === value);
+  const label = selected ? `${selected.full_name} (${selected.email})` : value || "Select a user…";
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 pr-8 outline-none bg-gray-50 text-left text-gray-700 hover:border-blue-400 focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition flex items-center gap-2">
+        <User className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+        <span className={`flex-1 truncate ${!selected && !value ? "text-gray-400" : ""}`}>{label}</span>
+        <ChevronDown className="w-3.5 h-3.5 text-gray-400 shrink-0 absolute right-3" />
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+          <div className="p-2 border-b border-gray-100">
+            <input
+              autoFocus
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search users…"
+              className="w-full text-sm px-2.5 py-1.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 bg-gray-50"
+            />
+          </div>
+          <div className="max-h-52 overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => { onChange(""); setOpen(false); setSearch(""); }}
+              className="w-full text-left px-3 py-2 text-xs text-gray-400 hover:bg-gray-50 italic">
+              — None / unassigned —
+            </button>
+            {loadingUsers && (
+              <div className="flex items-center gap-2 px-3 py-3 text-xs text-gray-400">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading users…
+              </div>
+            )}
+            {!loadingUsers && filtered.length === 0 && (
+              <p className="px-3 py-3 text-xs text-gray-400">No users found.</p>
+            )}
+            {filtered.map(u => (
+              <button
+                key={u.email}
+                type="button"
+                onClick={() => { onChange(u.email); setOpen(false); setSearch(""); }}
+                className={`w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors ${value === u.email ? "bg-blue-50" : ""}`}>
+                <p className="text-sm font-medium text-gray-800 truncate">{u.full_name}</p>
+                <p className="text-xs text-gray-400 truncate">{u.email}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function AccountForm({
@@ -48,11 +127,15 @@ function AccountForm({
   onSave,
   onCancel,
   isEdit,
+  users,
+  loadingUsers,
 }: {
   initial: FormState;
   onSave: (f: FormState) => Promise<void>;
   onCancel: () => void;
   isEdit: boolean;
+  users: ErpUser[];
+  loadingUsers: boolean;
 }) {
   const [form, setForm] = useState<FormState>(initial);
   const [showPass, setShowPass] = useState(false);
@@ -129,16 +212,15 @@ function AccountForm({
           </div>
         </div>
         <div>
-          <label className="block text-xs font-semibold text-gray-500 mb-1.5">Assigned User <span className="font-normal text-gray-400">(email, optional)</span></label>
-          <div className="relative">
-            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-            <input
-              value={form.assignedTo}
-              onChange={e => set("assignedTo", e.target.value)}
-              placeholder="user@company.com"
-              className="w-full text-sm border border-gray-200 rounded-xl pl-8 pr-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 bg-gray-50 transition"
-            />
-          </div>
+          <label className="block text-xs font-semibold text-gray-500 mb-1.5">
+            Assigned User <span className="font-normal text-gray-400">(from ERPNext)</span>
+          </label>
+          <UserDropdown
+            value={form.assignedTo}
+            onChange={v => set("assignedTo", v)}
+            users={users}
+            loadingUsers={loadingUsers}
+          />
         </div>
         <div className="flex items-center gap-3 pt-5">
           <button
@@ -178,7 +260,10 @@ function AccountForm({
 }
 
 export default function EmailSettings() {
+  const { user } = useAuth();
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
+  const [erpUsers, setErpUsers] = useState<ErpUser[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
@@ -196,7 +281,30 @@ export default function EmailSettings() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  const loadErpUsers = async () => {
+    setLoadingUsers(true);
+    try {
+      const data = await apiFetch("/erpnext-users");
+      setErpUsers(Array.isArray(data) ? data : []);
+    } catch {
+      setErpUsers([]);
+    }
+    setLoadingUsers(false);
+  };
+
+  useEffect(() => {
+    load();
+    loadErpUsers();
+  }, []);
+
+  const emptyForm = (): FormState => ({
+    displayName: "",
+    emailAddress: "",
+    gmailUser: "",
+    gmailAppPassword: "",
+    assignedTo: user?.email ?? "",
+    isDefault: false,
+  });
 
   const handleAdd = async (form: FormState) => {
     const row = await apiFetch("/email-settings", {
@@ -234,6 +342,9 @@ export default function EmailSettings() {
     setDeletingId(null);
   };
 
+  const findErpUser = (email: string | null) =>
+    email ? erpUsers.find(u => u.email === email) : null;
+
   return (
     <Layout>
       <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
@@ -246,7 +357,7 @@ export default function EmailSettings() {
               </div>
               Email Settings
             </h1>
-            <p className="text-sm text-gray-500 mt-1">Configure Gmail accounts and assign them to users. Credentials are stored securely in the database.</p>
+            <p className="text-sm text-gray-500 mt-1">Configure Gmail accounts and assign them to ERPNext users.</p>
           </div>
           {!adding && !editing && (
             <button
@@ -268,10 +379,12 @@ export default function EmailSettings() {
         {/* Add form */}
         {adding && (
           <AccountForm
-            initial={EMPTY_FORM}
+            initial={emptyForm()}
             onSave={handleAdd}
             onCancel={() => setAdding(false)}
             isEdit={false}
+            users={erpUsers}
+            loadingUsers={loadingUsers}
           />
         )}
 
@@ -290,7 +403,7 @@ export default function EmailSettings() {
           </div>
         )}
 
-        {/* Account list */}
+        {/* Empty state */}
         {!loading && !error && accounts.length === 0 && !adding && (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="w-14 h-14 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center mb-4">
@@ -301,77 +414,80 @@ export default function EmailSettings() {
           </div>
         )}
 
+        {/* Account list */}
         <div className="space-y-3">
-          {accounts.map(account => (
-            <div key={account.id}>
-              {editing?.id === account.id ? (
-                <AccountForm
-                  initial={{
-                    displayName: account.displayName,
-                    emailAddress: account.emailAddress,
-                    gmailUser: account.gmailUser,
-                    gmailAppPassword: account.gmailAppPassword,
-                    assignedTo: account.assignedTo ?? "",
-                    isDefault: account.isDefault,
-                  }}
-                  onSave={handleEdit}
-                  onCancel={() => setEditing(null)}
-                  isEdit={true}
-                />
-              ) : (
-                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 flex items-center gap-4">
-                  {/* Avatar */}
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
-                    {account.displayName.charAt(0).toUpperCase()}
-                  </div>
-
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <p className="font-semibold text-gray-900 text-sm truncate">{account.displayName}</p>
-                      {account.isDefault && (
-                        <span className="flex items-center gap-1 text-[10px] font-bold bg-amber-50 text-amber-600 border border-amber-200 rounded-full px-2 py-0.5">
-                          <Star className="w-2.5 h-2.5 fill-current" /> Default
-                        </span>
-                      )}
+          {accounts.map(account => {
+            const assignedUser = findErpUser(account.assignedTo);
+            return (
+              <div key={account.id}>
+                {editing?.id === account.id ? (
+                  <AccountForm
+                    initial={{
+                      displayName: account.displayName,
+                      emailAddress: account.emailAddress,
+                      gmailUser: account.gmailUser,
+                      gmailAppPassword: account.gmailAppPassword,
+                      assignedTo: account.assignedTo ?? "",
+                      isDefault: account.isDefault,
+                    }}
+                    onSave={handleEdit}
+                    onCancel={() => setEditing(null)}
+                    isEdit={true}
+                    users={erpUsers}
+                    loadingUsers={loadingUsers}
+                  />
+                ) : (
+                  <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
+                      {account.displayName.charAt(0).toUpperCase()}
                     </div>
-                    <p className="text-xs text-gray-500 truncate">{account.emailAddress}</p>
-                    <div className="flex items-center gap-3 mt-1.5 text-[11px] text-gray-400">
-                      <span>User: <span className="font-medium text-gray-600">{account.gmailUser}</span></span>
-                      {account.assignedTo && (
-                        <>
-                          <span className="text-gray-200">•</span>
-                          <span className="flex items-center gap-1">
-                            <User className="w-3 h-3" />
-                            {account.assignedTo}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <p className="font-semibold text-gray-900 text-sm truncate">{account.displayName}</p>
+                        {account.isDefault && (
+                          <span className="flex items-center gap-1 text-[10px] font-bold bg-amber-50 text-amber-600 border border-amber-200 rounded-full px-2 py-0.5">
+                            <Star className="w-2.5 h-2.5 fill-current" /> Default
                           </span>
-                        </>
-                      )}
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 truncate">{account.emailAddress}</p>
+                      <div className="flex items-center gap-3 mt-1.5 text-[11px] text-gray-400">
+                        <span>Gmail: <span className="font-medium text-gray-600">{account.gmailUser}</span></span>
+                        {account.assignedTo && (
+                          <>
+                            <span className="text-gray-200">•</span>
+                            <span className="flex items-center gap-1">
+                              <User className="w-3 h-3" />
+                              <span className="font-medium text-gray-600">
+                                {assignedUser ? assignedUser.full_name : account.assignedTo}
+                              </span>
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => setEditing(account)}
+                        className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
+                        title="Edit">
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(account.id)}
+                        disabled={deletingId === account.id}
+                        className="p-2 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50"
+                        title="Delete">
+                        {deletingId === account.id
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <Trash2 className="w-3.5 h-3.5" />}
+                      </button>
                     </div>
                   </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      onClick={() => setEditing(account)}
-                      className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
-                      title="Edit">
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(account.id)}
-                      disabled={deletingId === account.id}
-                      className="p-2 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50"
-                      title="Delete">
-                      {deletingId === account.id
-                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        : <Trash2 className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </Layout>
