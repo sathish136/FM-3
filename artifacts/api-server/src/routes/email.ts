@@ -9,63 +9,98 @@ const emailPool = new Pool({
   connectionString: "postgresql://postgres:wtt%40adm123@122.165.225.42:5432/flowmatrix",
 });
 
-async function getGmailConfigForUser(userEmail?: string): Promise<{ user: string; pass: string; fromEmail: string }> {
-  let row: any = null;
+// ─── DB setup ────────────────────────────────────────────────────────────────
+async function initTables() {
+  await emailPool.query(`
+    CREATE TABLE IF NOT EXISTS email_cache (
+      id SERIAL PRIMARY KEY,
+      account_id INTEGER NOT NULL,
+      folder_path TEXT NOT NULL,
+      uid INTEGER NOT NULL,
+      subject TEXT,
+      from_addr TEXT,
+      to_addr TEXT,
+      cc_addr TEXT,
+      email_date TIMESTAMPTZ,
+      seen BOOLEAN NOT NULL DEFAULT false,
+      starred BOOLEAN NOT NULL DEFAULT false,
+      size INTEGER DEFAULT 0,
+      has_attachment BOOLEAN NOT NULL DEFAULT false,
+      body_html TEXT,
+      body_text TEXT,
+      body_fetched BOOLEAN NOT NULL DEFAULT false,
+      synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(account_id, folder_path, uid)
+    )
+  `);
+  await emailPool.query(`
+    CREATE TABLE IF NOT EXISTS email_folders_cache (
+      id SERIAL PRIMARY KEY,
+      account_id INTEGER NOT NULL,
+      path TEXT NOT NULL,
+      name TEXT,
+      flags TEXT,
+      synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(account_id, path)
+    )
+  `);
+  await emailPool.query(`
+    CREATE INDEX IF NOT EXISTS idx_email_cache_account_folder ON email_cache(account_id, folder_path)
+  `);
+  console.log("email cache tables ready");
+}
+initTables().catch(e => console.error("email cache table init error:", e.message));
 
+// ─── Account lookup ───────────────────────────────────────────────────────────
+type Account = { id: number; gmailUser: string; gmailAppPassword: string; emailAddress: string };
+
+async function getAccount(userEmail?: string): Promise<Account> {
+  let row: any = null;
   if (userEmail) {
     const res = await emailPool.query(
-      "SELECT gmail_user, gmail_app_password, email_address FROM email_accounts WHERE assigned_to = $1 LIMIT 1",
+      "SELECT id, gmail_user, gmail_app_password, email_address FROM email_accounts WHERE assigned_to = $1 LIMIT 1",
       [userEmail]
     );
     row = res.rows[0] ?? null;
   }
-
   if (!row) {
     const res = await emailPool.query(
-      "SELECT gmail_user, gmail_app_password, email_address FROM email_accounts WHERE is_default = true LIMIT 1"
+      "SELECT id, gmail_user, gmail_app_password, email_address FROM email_accounts WHERE is_default = true LIMIT 1"
     );
     row = res.rows[0] ?? null;
   }
-
   if (!row) {
-    const user = process.env.GMAIL_USER;
-    const pass = process.env.GMAIL_APP_PASSWORD?.replace(/\s/g, "");
-    if (!user || !pass) throw new Error("No email account configured. Please add one in Email Settings.");
-    return { user, pass, fromEmail: user };
+    const envUser = process.env.GMAIL_USER;
+    const envPass = process.env.GMAIL_APP_PASSWORD?.replace(/\s/g, "");
+    if (!envUser || !envPass) throw new Error("No email account configured. Please add one in Email Settings.");
+    return { id: 0, gmailUser: envUser, gmailAppPassword: envPass, emailAddress: envUser };
   }
-
   return {
-    user: row.gmail_user,
-    pass: row.gmail_app_password?.replace(/\s/g, ""),
-    fromEmail: row.email_address || row.gmail_user,
+    id: row.id,
+    gmailUser: row.gmail_user,
+    gmailAppPassword: row.gmail_app_password?.replace(/\s/g, ""),
+    emailAddress: row.email_address || row.gmail_user,
   };
 }
 
-const router = Router();
-
-function createTransporter(user: string, pass: string) {
-  return nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
-    auth: { user, pass },
-  });
-}
-
-async function withImap<T>(mailbox: string, user: string, pass: string, fn: (client: ImapFlow) => Promise<T>): Promise<T> {
-  const client = new ImapFlow({
+// ─── IMAP helpers ─────────────────────────────────────────────────────────────
+function makeImapClient(user: string, pass: string) {
+  return new ImapFlow({
     host: "imap.gmail.com",
     port: 993,
     secure: true,
     auth: { user, pass },
     logger: false,
   });
+}
+
+async function withImap<T>(user: string, pass: string, fn: (client: ImapFlow) => Promise<T>): Promise<T> {
+  const client = makeImapClient(user, pass);
   await client.connect();
   try {
-    await client.mailboxOpen(mailbox);
     return await fn(client);
   } finally {
-    await client.logout();
+    await client.logout().catch(() => {});
   }
 }
 
@@ -81,134 +116,223 @@ function detectAttachments(bodyStructure: any): boolean {
   if (!bodyStructure) return false;
   if (bodyStructure.disposition?.toLowerCase() === "attachment") return true;
   if (bodyStructure.type?.toLowerCase() === "application") return true;
-  if (bodyStructure.childNodes) {
-    return bodyStructure.childNodes.some((child: any) => detectAttachments(child));
-  }
+  if (bodyStructure.childNodes) return bodyStructure.childNodes.some((c: any) => detectAttachments(c));
   return false;
 }
 
-async function fetchMessages(mailbox: string, user: string, pass: string, limit = 50) {
-  return withImap(mailbox, user, pass, async (client) => {
-    const status = await client.status(mailbox, { messages: true, unseen: true });
-    const total = status.messages ?? 0;
-    if (total === 0) return [];
+// ─── Sync IMAP folder → DB ────────────────────────────────────────────────────
+const syncInProgress = new Set<string>();
 
-    const from = Math.max(1, total - limit + 1);
-    const range = `${from}:${total}`;
-    const messages: any[] = [];
+async function syncFolder(account: Account, folderPath: string): Promise<void> {
+  const key = `${account.id}:${folderPath}`;
+  if (syncInProgress.has(key)) return;
+  syncInProgress.add(key);
+  try {
+    await withImap(account.gmailUser, account.gmailAppPassword, async (client) => {
+      await client.mailboxOpen(folderPath);
+      const status = await client.status(folderPath, { messages: true });
+      const total = status.messages ?? 0;
+      if (total === 0) return;
 
-    for await (const msg of client.fetch(range, {
-      envelope: true,
-      bodyStructure: true,
-      flags: true,
-      internalDate: true,
-      size: true,
-    })) {
-      const env = msg.envelope;
-      messages.unshift({
-        uid: msg.uid,
-        seq: msg.seq,
-        subject: env.subject || "(no subject)",
-        from: parseAddresses(env.from),
-        to: parseAddresses(env.to),
-        cc: parseAddresses(env.cc),
-        date: (env.date || msg.internalDate)?.toISOString() ?? null,
-        seen: msg.flags?.has("\\Seen") ?? false,
-        starred: msg.flags?.has("\\Flagged") ?? false,
-        size: msg.size,
-        hasAttachment: detectAttachments(msg.bodyStructure),
-      });
-    }
-    return messages;
-  });
+      const from = Math.max(1, total - 99);
+      const range = `${from}:${total}`;
+
+      const rows: any[] = [];
+      for await (const msg of client.fetch(range, {
+        envelope: true,
+        bodyStructure: true,
+        flags: true,
+        internalDate: true,
+        size: true,
+      })) {
+        const env = msg.envelope;
+        rows.push({
+          uid: msg.uid,
+          subject: env.subject || "(no subject)",
+          from_addr: parseAddresses(env.from),
+          to_addr: parseAddresses(env.to),
+          cc_addr: parseAddresses(env.cc),
+          email_date: env.date || msg.internalDate || null,
+          seen: msg.flags?.has("\\Seen") ?? false,
+          starred: msg.flags?.has("\\Flagged") ?? false,
+          size: msg.size ?? 0,
+          has_attachment: detectAttachments(msg.bodyStructure),
+        });
+      }
+
+      for (const r of rows) {
+        await emailPool.query(
+          `INSERT INTO email_cache
+            (account_id, folder_path, uid, subject, from_addr, to_addr, cc_addr, email_date, seen, starred, size, has_attachment, synced_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
+           ON CONFLICT (account_id, folder_path, uid) DO UPDATE SET
+             subject=$4, from_addr=$5, to_addr=$6, cc_addr=$7, email_date=$8,
+             seen=$9, starred=$10, size=$11, has_attachment=$12, synced_at=NOW()`,
+          [account.id, folderPath, r.uid, r.subject, r.from_addr, r.to_addr, r.cc_addr,
+           r.email_date, r.seen, r.starred, r.size, r.has_attachment]
+        );
+      }
+    });
+  } finally {
+    syncInProgress.delete(key);
+  }
 }
 
-// GET /api/email/folders — list all IMAP mailboxes
+async function syncFolders(account: Account): Promise<void> {
+  const key = `folders:${account.id}`;
+  if (syncInProgress.has(key)) return;
+  syncInProgress.add(key);
+  try {
+    const list = await withImap(account.gmailUser, account.gmailAppPassword, async (client) => client.list());
+    for (const f of list as any[]) {
+      await emailPool.query(
+        `INSERT INTO email_folders_cache (account_id, path, name, flags, synced_at)
+         VALUES ($1,$2,$3,$4,NOW())
+         ON CONFLICT (account_id, path) DO UPDATE SET name=$3, flags=$4, synced_at=NOW()`,
+        [account.id, f.path, f.name, JSON.stringify(Array.from(f.flags || []))]
+      );
+    }
+  } finally {
+    syncInProgress.delete(key);
+  }
+}
+
+// ─── DB read helpers ──────────────────────────────────────────────────────────
+async function getEmailsFromDb(accountId: number, folderPath: string) {
+  const res = await emailPool.query(
+    `SELECT uid, subject, from_addr, to_addr, cc_addr, email_date, seen, starred, size, has_attachment
+     FROM email_cache
+     WHERE account_id=$1 AND folder_path=$2
+     ORDER BY email_date DESC NULLS LAST, uid DESC
+     LIMIT 100`,
+    [accountId, folderPath]
+  );
+  return res.rows.map(r => ({
+    uid: r.uid,
+    seq: 0,
+    subject: r.subject,
+    from: r.from_addr,
+    to: r.to_addr,
+    cc: r.cc_addr || "",
+    date: r.email_date ? new Date(r.email_date).toISOString() : null,
+    seen: r.seen,
+    starred: r.starred,
+    size: r.size,
+    hasAttachment: r.has_attachment,
+  }));
+}
+
+async function getFoldersFromDb(accountId: number) {
+  const res = await emailPool.query(
+    `SELECT path, name, flags FROM email_folders_cache WHERE account_id=$1 ORDER BY path`,
+    [accountId]
+  );
+  return res.rows.map(r => ({
+    path: r.path,
+    name: r.name,
+    flags: JSON.parse(r.flags || "[]"),
+  }));
+}
+
+async function dbHasEmails(accountId: number, folderPath: string): Promise<boolean> {
+  const res = await emailPool.query(
+    "SELECT 1 FROM email_cache WHERE account_id=$1 AND folder_path=$2 LIMIT 1",
+    [accountId, folderPath]
+  );
+  return res.rows.length > 0;
+}
+
+async function dbHasFolders(accountId: number): Promise<boolean> {
+  const res = await emailPool.query(
+    "SELECT 1 FROM email_folders_cache WHERE account_id=$1 LIMIT 1",
+    [accountId]
+  );
+  return res.rows.length > 0;
+}
+
+// ─── Router ───────────────────────────────────────────────────────────────────
+const router = Router();
+
+// GET /api/email/folders
 router.get("/email/folders", async (req, res) => {
   try {
-    const { user, pass } = await getGmailConfigForUser(req.query.user as string | undefined);
-    const client = new ImapFlow({
-      host: "imap.gmail.com",
-      port: 993,
-      secure: true,
-      auth: { user, pass },
-      logger: false,
-    });
-    await client.connect();
-    const list = await client.list();
-    await client.logout();
-    const folders = list.map((f: any) => ({
-      path: f.path,
-      name: f.name,
-      delimiter: f.delimiter,
-      flags: Array.from(f.flags || []),
-      subscribed: f.subscribed,
-    }));
-    res.json(folders);
+    const account = await getAccount(req.query.user as string | undefined);
+    const cached = await dbHasFolders(account.id);
+
+    if (cached) {
+      const folders = await getFoldersFromDb(account.id);
+      res.json(folders);
+      // Background refresh
+      syncFolders(account).catch(e => console.error("bg folder sync:", e.message));
+    } else {
+      // First time — foreground sync
+      await syncFolders(account);
+      const folders = await getFoldersFromDb(account.id);
+      res.json(folders);
+    }
   } catch (err: any) {
-    console.error("IMAP folders error:", err.message);
+    console.error("folders error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/email/messages?mailbox=PATH&user=EMAIL — generic fetch from any mailbox
+// GET /api/email/messages?mailbox=PATH&user=EMAIL
 router.get("/email/messages", async (req, res) => {
-  const mailbox = (req.query.mailbox as string) || "INBOX";
+  const folderPath = (req.query.mailbox as string) || "INBOX";
   try {
-    const { user, pass } = await getGmailConfigForUser(req.query.user as string | undefined);
-    const messages = await fetchMessages(mailbox, user, pass, 50);
-    res.json(messages);
+    const account = await getAccount(req.query.user as string | undefined);
+    const cached = await dbHasEmails(account.id, folderPath);
+
+    if (cached) {
+      const emails = await getEmailsFromDb(account.id, folderPath);
+      res.json(emails);
+      // Background refresh
+      syncFolder(account, folderPath).catch(e => console.error("bg email sync:", e.message));
+    } else {
+      // First time — foreground sync
+      await syncFolder(account, folderPath);
+      const emails = await getEmailsFromDb(account.id, folderPath);
+      res.json(emails);
+    }
   } catch (err: any) {
-    console.error("IMAP messages error:", err.message);
+    console.error("messages error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Legacy single-folder routes kept for compatibility
-router.get("/email/inbox", async (req, res) => {
+// GET /api/email/sync?mailbox=PATH&user=EMAIL — manual force sync
+router.get("/email/sync", async (req, res) => {
+  const folderPath = (req.query.mailbox as string) || "INBOX";
   try {
-    const { user, pass } = await getGmailConfigForUser(req.query.user as string | undefined);
-    const messages = await fetchMessages("INBOX", user, pass, 50);
-    res.json(messages);
+    const account = await getAccount(req.query.user as string | undefined);
+    await syncFolder(account, folderPath);
+    const emails = await getEmailsFromDb(account.id, folderPath);
+    res.json(emails);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-router.get("/email/sent", async (req, res) => {
-  try {
-    const { user, pass } = await getGmailConfigForUser(req.query.user as string | undefined);
-    const messages = await fetchMessages("[Gmail]/Sent Mail", user, pass, 50);
-    res.json(messages);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-router.get("/email/starred", async (req, res) => {
-  try {
-    const { user, pass } = await getGmailConfigForUser(req.query.user as string | undefined);
-    const messages = await fetchMessages("[Gmail]/Starred", user, pass, 50);
-    res.json(messages);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-router.get("/email/trash", async (req, res) => {
-  try {
-    const { user, pass } = await getGmailConfigForUser(req.query.user as string | undefined);
-    const messages = await fetchMessages("[Gmail]/Trash", user, pass, 50);
-    res.json(messages);
-  } catch (err: any) {
+    console.error("sync error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/email/:uid/body?mailbox=INBOX&user=email
+// GET /api/email/:uid/body?mailbox=PATH&user=EMAIL
 router.get("/email/:uid/body", async (req, res) => {
   const uid = parseInt(req.params.uid);
-  const mailbox = (req.query.mailbox as string) || "INBOX";
+  const folderPath = (req.query.mailbox as string) || "INBOX";
   try {
-    const { user, pass } = await getGmailConfigForUser(req.query.user as string | undefined);
-    const result = await withImap(mailbox, user, pass, async (client) => {
+    const account = await getAccount(req.query.user as string | undefined);
+
+    // Check DB cache first
+    const cached = await emailPool.query(
+      "SELECT body_html, body_text, body_fetched FROM email_cache WHERE account_id=$1 AND folder_path=$2 AND uid=$3",
+      [account.id, folderPath, uid]
+    );
+    if (cached.rows[0]?.body_fetched) {
+      return res.json({ html: cached.rows[0].body_html, text: cached.rows[0].body_text });
+    }
+
+    // Fetch from IMAP
+    const result = await withImap(account.gmailUser, account.gmailAppPassword, async (client) => {
+      await client.mailboxOpen(folderPath);
       let html = "";
       let text = "";
       for await (const msg of client.fetch({ uid }, { bodyParts: ["TEXT", "1", "1.1", "1.2", "2"] }, { uid: true })) {
@@ -220,55 +344,84 @@ router.get("/email/:uid/body", async (req, res) => {
       }
       return { html: html || null, text: text || null };
     });
+
+    // Cache the body
+    await emailPool.query(
+      `UPDATE email_cache SET body_html=$1, body_text=$2, body_fetched=true
+       WHERE account_id=$3 AND folder_path=$4 AND uid=$5`,
+      [result.html, result.text, account.id, folderPath, uid]
+    );
+
     res.json(result);
   } catch (err: any) {
-    console.error("IMAP body error:", err.message);
+    console.error("body error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// PATCH /api/email/:uid/flags
+// PATCH /api/email/:uid/flags?mailbox=PATH&user=EMAIL
 router.patch("/email/:uid/flags", async (req, res) => {
   const uid = parseInt(req.params.uid);
-  const mailbox = (req.query.mailbox as string) || "INBOX";
+  const folderPath = (req.query.mailbox as string) || "INBOX";
   const { seen, starred } = req.body as { seen?: boolean; starred?: boolean };
   try {
-    const { user, pass } = await getGmailConfigForUser(req.query.user as string | undefined);
-    await withImap(mailbox, user, pass, async (client) => {
+    const account = await getAccount(req.query.user as string | undefined);
+
+    // Update IMAP
+    await withImap(account.gmailUser, account.gmailAppPassword, async (client) => {
+      await client.mailboxOpen(folderPath);
       if (seen !== undefined) {
-        if (seen) {
-          await client.messageFlagsAdd({ uid }, ["\\Seen"], { uid: true });
-        } else {
-          await client.messageFlagsRemove({ uid }, ["\\Seen"], { uid: true });
-        }
+        if (seen) await client.messageFlagsAdd({ uid }, ["\\Seen"], { uid: true });
+        else await client.messageFlagsRemove({ uid }, ["\\Seen"], { uid: true });
       }
       if (starred !== undefined) {
-        if (starred) {
-          await client.messageFlagsAdd({ uid }, ["\\Flagged"], { uid: true });
-        } else {
-          await client.messageFlagsRemove({ uid }, ["\\Flagged"], { uid: true });
-        }
+        if (starred) await client.messageFlagsAdd({ uid }, ["\\Flagged"], { uid: true });
+        else await client.messageFlagsRemove({ uid }, ["\\Flagged"], { uid: true });
       }
     });
+
+    // Update DB
+    const sets: string[] = [];
+    const vals: any[] = [];
+    if (seen !== undefined) { sets.push(`seen=$${sets.length + 1}`); vals.push(seen); }
+    if (starred !== undefined) { sets.push(`starred=$${sets.length + 1}`); vals.push(starred); }
+    if (sets.length > 0) {
+      vals.push(account.id, folderPath, uid);
+      await emailPool.query(
+        `UPDATE email_cache SET ${sets.join(",")} WHERE account_id=$${vals.length - 2} AND folder_path=$${vals.length - 1} AND uid=$${vals.length}`,
+        vals
+      );
+    }
+
     res.json({ ok: true });
   } catch (err: any) {
-    console.error("IMAP flags error:", err.message);
+    console.error("flags error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// DELETE /api/email/:uid?mailbox=INBOX
+// DELETE /api/email/:uid?mailbox=PATH&user=EMAIL
 router.delete("/email/:uid", async (req, res) => {
   const uid = parseInt(req.params.uid);
-  const mailbox = (req.query.mailbox as string) || "INBOX";
+  const folderPath = (req.query.mailbox as string) || "INBOX";
   try {
-    const { user, pass } = await getGmailConfigForUser(req.query.user as string | undefined);
-    await withImap(mailbox, user, pass, async (client) => {
+    const account = await getAccount(req.query.user as string | undefined);
+
+    // Move to trash in IMAP
+    await withImap(account.gmailUser, account.gmailAppPassword, async (client) => {
+      await client.mailboxOpen(folderPath);
       await client.messageMove({ uid }, "[Gmail]/Trash", { uid: true });
     });
+
+    // Remove from DB cache (or move to trash folder in cache)
+    await emailPool.query(
+      "DELETE FROM email_cache WHERE account_id=$1 AND folder_path=$2 AND uid=$3",
+      [account.id, folderPath, uid]
+    );
+
     res.json({ ok: true });
   } catch (err: any) {
-    console.error("IMAP delete error:", err.message);
+    console.error("delete error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -278,10 +431,15 @@ router.post("/email/send", async (req, res) => {
   const { to, cc, bcc, subject, body, html, user: reqUser } = req.body;
   if (!to || !subject) return res.status(400).json({ error: "to and subject are required" });
   try {
-    const { user, pass, fromEmail } = await getGmailConfigForUser(reqUser);
-    const transporter = createTransporter(user, pass);
+    const account = await getAccount(reqUser);
+    const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      auth: { user: account.gmailUser, pass: account.gmailAppPassword },
+    });
     const info = await transporter.sendMail({
-      from: `FlowMatriX <${fromEmail}>`,
+      from: `FlowMatriX <${account.emailAddress}>`,
       to,
       cc: cc || undefined,
       bcc: bcc || undefined,
@@ -291,19 +449,53 @@ router.post("/email/send", async (req, res) => {
     });
     res.json({ messageId: info.messageId, accepted: info.accepted });
   } catch (err: any) {
-    console.error("SMTP send error:", err.message);
+    console.error("send error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/email/check — verify credentials
+// GET /api/email/check
 router.get("/email/check", async (req, res) => {
   try {
-    await getGmailConfigForUser(req.query.user as string | undefined);
+    await getAccount(req.query.user as string | undefined);
     res.json({ configured: true });
   } catch {
     res.json({ configured: false });
   }
+});
+
+// GET /api/email/sync-status?mailbox=PATH&user=EMAIL
+router.get("/email/sync-status", async (req, res) => {
+  const folderPath = (req.query.mailbox as string) || "INBOX";
+  try {
+    const account = await getAccount(req.query.user as string | undefined);
+    const key = `${account.id}:${folderPath}`;
+    const syncing = syncInProgress.has(key);
+    const last = await emailPool.query(
+      "SELECT MAX(synced_at) as last FROM email_cache WHERE account_id=$1 AND folder_path=$2",
+      [account.id, folderPath]
+    );
+    res.json({ syncing, lastSynced: last.rows[0]?.last ?? null });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Legacy compatibility routes
+router.get("/email/inbox", async (req, res) => {
+  req.query.mailbox = "INBOX";
+  const folderPath = "INBOX";
+  try {
+    const account = await getAccount(req.query.user as string | undefined);
+    const cached = await dbHasEmails(account.id, folderPath);
+    if (cached) {
+      res.json(await getEmailsFromDb(account.id, folderPath));
+      syncFolder(account, folderPath).catch(() => {});
+    } else {
+      await syncFolder(account, folderPath);
+      res.json(await getEmailsFromDb(account.id, folderPath));
+    }
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
 export default router;

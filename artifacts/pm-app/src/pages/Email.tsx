@@ -359,6 +359,8 @@ export default function Email() {
 
   const [emails, setEmails] = useState<EmailItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSynced, setLastSynced] = useState<Date | null>(null);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<EmailItem | null>(null);
   const [composing, setComposing] = useState(false);
@@ -379,15 +381,34 @@ export default function Email() {
   };
 
   const load = async (path: string) => {
-    setLoading(true); setError(""); setEmails([]); setSelected(null);
+    setLoading(true); setError(""); setSelected(null);
     try {
       const userParam = userEmail ? `&user=${encodeURIComponent(userEmail)}` : "";
       const data = await apiFetch(`/email/messages?mailbox=${encodeURIComponent(path)}${userParam}`);
       setEmails(Array.isArray(data) ? data : []);
+      // Check sync status for last synced time
+      apiFetch(`/email/sync-status?mailbox=${encodeURIComponent(path)}${userParam}`)
+        .then(s => { if (s.lastSynced) setLastSynced(new Date(s.lastSynced)); })
+        .catch(() => {});
     } catch (e: any) {
       setError(e.message || "Failed to load emails");
     }
     setLoading(false);
+  };
+
+  const handleSync = async () => {
+    if (!userEmail || syncing) return;
+    setSyncing(true);
+    try {
+      const userParam = `&user=${encodeURIComponent(userEmail)}`;
+      const data = await apiFetch(`/email/sync?mailbox=${encodeURIComponent(activeFolderPath)}${userParam}`);
+      setEmails(Array.isArray(data) ? data : []);
+      setLastSynced(new Date());
+      setError("");
+    } catch (e: any) {
+      setError(e.message || "Sync failed");
+    }
+    setSyncing(false);
   };
 
   useEffect(() => {
@@ -539,14 +560,17 @@ export default function Email() {
                   </button>
                 )}
               </div>
-              <button onClick={() => load(activeFolderPath)} disabled={loading}
-                className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
-                <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+              <button onClick={handleSync} disabled={syncing || loading}
+                title="Sync from Gmail"
+                className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50">
+                <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
               </button>
             </div>
             <div className="flex items-center justify-between mt-2 px-1">
               <span className="text-xs font-semibold text-gray-700">{getFolderLabel(activeFolderPath)}</span>
-              {search && <p className="text-[10px] text-gray-400">{filtered.length} result{filtered.length !== 1 ? "s" : ""}</p>}
+              <span className="text-[10px] text-gray-400">
+                {syncing ? "Syncing…" : search ? `${filtered.length} result${filtered.length !== 1 ? "s" : ""}` : lastSynced ? `Synced ${lastSynced.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}` : ""}
+              </span>
             </div>
           </div>
 
