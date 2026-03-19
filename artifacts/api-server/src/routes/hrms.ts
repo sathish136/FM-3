@@ -5,6 +5,7 @@ import {
   fetchErpNextAttendance,
   fetchErpNextUserRoles,
   fetchErpNextManagedDepartments,
+  fetchErpNextUserDepartmentPermissions,
 } from "../lib/erpnext";
 
 const ERPNEXT_URL = process.env.ERPNEXT_URL?.replace(/\/$/, "");
@@ -41,11 +42,20 @@ router.get("/hrms/user-scope", async (req, res) => {
       return;
     }
 
-    // HOD role in ERPNext → can see all employees in their own department
+    // HOD role in ERPNext → fetch their User Permission department restrictions
     const isHOD = roles.includes("HOD");
-    if (isHOD && employee.department) {
-      res.json({ scope: "department", employee, departments: [employee.department], roles });
-      return;
+    if (isHOD) {
+      // First check ERPNext User Permissions (Department restriction set on their user)
+      const permDepts = await fetchErpNextUserDepartmentPermissions(email);
+      if (permDepts.length > 0) {
+        res.json({ scope: "department", employee, departments: permDepts, roles });
+        return;
+      }
+      // Fallback: use employee's own department if no explicit restriction set
+      if (employee.department) {
+        res.json({ scope: "department", employee, departments: [employee.department], roles });
+        return;
+      }
     }
 
     // Check if this employee is listed as department_manager for any department

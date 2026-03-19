@@ -635,6 +635,22 @@ export async function fetchErpNextUserRoles(email: string): Promise<string[]> {
   return ((data.data || []) as any[]).map((r: any) => r.role as string);
 }
 
+// Fetch ERPNext User Permission restrictions — returns allowed department names for the user
+export async function fetchErpNextUserDepartmentPermissions(email: string): Promise<string[]> {
+  if (!ERPNEXT_URL) return [];
+  const fields = JSON.stringify(["for_value"]);
+  const filters = JSON.stringify([
+    ["User Permission", "user", "=", email],
+    ["User Permission", "allow", "=", "Department"],
+  ]);
+  const params = new URLSearchParams({ fields, filters, limit_page_length: "50" });
+  const url = `${ERPNEXT_URL}/api/resource/User Permission?${params}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader() } });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return ((data.data || []) as any[]).map((d: any) => d.for_value as string).filter(Boolean);
+}
+
 export async function fetchErpNextManagedDepartments(employeeId: string): Promise<string[]> {
   if (!ERPNEXT_URL) return [];
   const fields = JSON.stringify(["name", "department_name"]);
