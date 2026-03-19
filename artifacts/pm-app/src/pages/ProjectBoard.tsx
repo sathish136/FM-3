@@ -158,6 +158,10 @@ export default function ProjectBoard() {
   const [deliveryTo,   setDeliveryTo]   = useState("");
   const [minPoPending, setMinPoPending] = useState("");
 
+  // ── Project dropdown search ──
+  const [projectSearch, setProjectSearch] = useState("");
+  const [projectOpen, setProjectOpen]     = useState(false);
+
   // ── Sort ──
   const [sortKey, setSortKey] = useState<SortKey>("description");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -320,9 +324,10 @@ export default function ProjectBoard() {
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 border border-gray-200 hover:bg-gray-50 transition-colors">
             <ExternalLink className="w-3.5 h-3.5" /> ERPNext
           </a>
-          <button onClick={loadData} disabled={loading}
-            className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors">
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          <button onClick={() => window.open(`${window.location.origin}/pm-app/project-board`, "_blank")}
+            title="Open full view"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 border border-gray-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-colors">
+            <Expand className="w-3.5 h-3.5" /> Full View
           </button>
         </div>
 
@@ -349,14 +354,57 @@ export default function ProjectBoard() {
           {/* Row 1: main filters */}
           <div className="bg-white rounded-xl border border-gray-200 px-4 py-2.5 flex flex-wrap items-center gap-2 shadow-sm">
 
-            {/* Project */}
+            {/* Project – searchable dropdown */}
             <div className="relative">
-              <select value={project} onChange={e => setProject(e.target.value)}
-                className="appearance-none pl-3 pr-7 py-1.5 text-xs font-medium rounded-lg border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-300 min-w-[190px] max-w-[260px]">
-                <option value="">All Projects</option>
-                {projects.map(p => <option key={p.name} value={p.name}>{p.project_name || p.name}</option>)}
-              </select>
-              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
+              <button
+                onClick={() => { setProjectOpen(v => !v); setProjectSearch(""); }}
+                className="flex items-center gap-2 pl-3 pr-7 py-1.5 text-xs font-medium rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-300 min-w-[220px] max-w-[300px] text-left relative">
+                <span className="truncate flex-1">
+                  {project
+                    ? <><span className="font-mono text-blue-600 mr-1">{project}</span>{projects.find(p => p.name === project)?.project_name || ""}</>
+                    : "All Projects"}
+                </span>
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
+              </button>
+              {projectOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setProjectOpen(false)} />
+                  <div className="absolute left-0 top-9 z-50 bg-white border border-gray-200 rounded-xl shadow-xl min-w-[280px] max-w-[340px]">
+                    <div className="p-2 border-b border-gray-100">
+                      <div className="flex items-center gap-1.5 bg-gray-50 rounded-lg px-2 py-1.5">
+                        <Search className="w-3 h-3 text-gray-400 shrink-0" />
+                        <input
+                          autoFocus
+                          value={projectSearch}
+                          onChange={e => setProjectSearch(e.target.value)}
+                          placeholder="Search project no. or name…"
+                          className="bg-transparent text-xs text-gray-700 placeholder:text-gray-400 outline-none w-full"
+                        />
+                      </div>
+                    </div>
+                    <div className="max-h-56 overflow-y-auto py-1">
+                      <button
+                        onClick={() => { setProject(""); setProjectOpen(false); }}
+                        className={`w-full text-left px-3 py-2 text-xs hover:bg-blue-50 transition-colors ${!project ? "font-semibold text-blue-600" : "text-gray-500"}`}>
+                        All Projects
+                      </button>
+                      {projects
+                        .filter(p => {
+                          const q = projectSearch.toLowerCase();
+                          return !q || p.name.toLowerCase().includes(q) || (p.project_name || "").toLowerCase().includes(q);
+                        })
+                        .map(p => (
+                          <button key={p.name}
+                            onClick={() => { setProject(p.name); setProjectOpen(false); setProjectSearch(""); }}
+                            className={`w-full text-left px-3 py-2 text-xs hover:bg-blue-50 transition-colors flex items-baseline gap-2 ${project === p.name ? "bg-blue-50 text-blue-700" : "text-gray-700"}`}>
+                            <span className="font-mono text-blue-500 shrink-0">{p.name}</span>
+                            <span className="truncate text-gray-600">{p.project_name}</span>
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Remarks */}
