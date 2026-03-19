@@ -286,6 +286,7 @@ function ModelViewer({
     dist: number; p1: THREE.Vector3; p2: THREE.Vector3;
   } | null>(null);
   const [cameraQuat, setCameraQuat] = useState<THREE.Quaternion | null>(null);
+  const [autoRotate, setAutoRotate] = useState(false);
 
   const viewerRef = useRef<ViewerRef>(null);
 
@@ -479,6 +480,21 @@ function ModelViewer({
               <circle cx="3" cy="17" r="1.5" fill="currentColor" /><circle cx="17" cy="3" r="1.5" fill="currentColor" />
             </svg>
           </ToolBtn>
+
+          <Divider />
+          <Section label="360°" />
+          <ToolBtn
+            title={autoRotate ? "Stop rotation" : "Auto-rotate 360°"}
+            active={autoRotate}
+            onClick={() => setAutoRotate(v => !v)}
+          >
+            <svg viewBox="0 0 20 20"
+              className={`w-4 h-4 ${autoRotate ? "animate-spin" : ""}`}
+              fill="none" stroke="currentColor" strokeWidth="1.4">
+              <path d="M10 3a7 7 0 1 1-4.95 2.05" strokeLinecap="round"/>
+              <polyline points="5,1 5,5 9,5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </ToolBtn>
         </div>
 
         {/* 3D viewport */}
@@ -527,6 +543,8 @@ function ModelViewer({
                 measureMode={measureMode}
                 onMeasureResult={handleMeasureResult}
                 onCameraChange={setCameraQuat}
+                autoRotate={autoRotate}
+                autoRotateSpeed={1.8}
               />
             </Suspense>
           )}

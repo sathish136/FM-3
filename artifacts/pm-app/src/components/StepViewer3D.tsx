@@ -24,6 +24,8 @@ interface StepViewer3DProps {
   measureMode: boolean;
   onMeasureResult: (dist: number | null, p1: THREE.Vector3 | null, p2: THREE.Vector3 | null) => void;
   onCameraChange?: (q: THREE.Quaternion) => void;
+  autoRotate?: boolean;
+  autoRotateSpeed?: number;
 }
 
 const BG_COLORS: Record<BgColor, number> = {
@@ -39,7 +41,7 @@ const palette = [
 ];
 
 const StepViewer3D = forwardRef<ViewerRef, StepViewer3DProps>(function StepViewer3D(
-  { meshes, viewMode, showGrid, showAxes, bgColor, hiddenMeshes, measureMode, onMeasureResult, onCameraChange },
+  { meshes, viewMode, showGrid, showAxes, bgColor, hiddenMeshes, measureMode, onMeasureResult, onCameraChange, autoRotate = false, autoRotateSpeed = 1.5 },
   ref
 ) {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -208,6 +210,13 @@ const StepViewer3D = forwardRef<ViewerRef, StepViewer3DProps>(function StepViewe
       }
     };
   }, []);
+
+  useEffect(() => {
+    const ctrl = controlsRef.current;
+    if (!ctrl) return;
+    ctrl.autoRotate = autoRotate;
+    ctrl.autoRotateSpeed = autoRotateSpeed;
+  }, [autoRotate, autoRotateSpeed]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
