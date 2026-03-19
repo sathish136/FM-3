@@ -2,8 +2,9 @@ import { Layout } from "@/components/Layout";
 import {
   ShoppingCart, Plus, RefreshCw, Search, ExternalLink, X,
   Loader2, AlertCircle, ChevronDown, Trash2, Package,
-  Calendar, Filter, SlidersHorizontal, CheckSquare, Square,
-  Clock, ArrowUpDown, ChevronUp, ChevronDown as ChevronDownIcon,
+  Calendar, CheckCircle2, Clock, FileText, Building2,
+  ArrowUpDown, ChevronUp, ChevronDown as ChevronDownIcon,
+  Tag, Hash, LayoutList, BarChart3, TrendingUp,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -34,22 +35,27 @@ interface MaterialRequest {
   items?: MRItem[];
 }
 
-const MR_TYPES = ["Purchase", "Material Transfer", "Material Issue", "Customer Provided", "Material Transfer for Manufacture"];
+const MR_TYPES = [
+  "Purchase",
+  "Material Transfer",
+  "Material Issue",
+  "Customer Provided",
+  "Material Transfer for Manufacture",
+];
 const MR_STATUSES = ["Draft", "Submitted", "Stopped", "Cancelled", "Pending", "Approved"];
 
 function timeAgo(iso: string | null) {
   if (!iso) return "—";
   const diff = Date.now() - new Date(iso).getTime();
   const s = Math.floor(diff / 1000);
-  if (s < 60)  return `${s}s`;
+  if (s < 60)  return `${s}s ago`;
   const m = Math.floor(s / 60);
-  if (m < 60)  return `${m}m`;
+  if (m < 60)  return `${m}m ago`;
   const h = Math.floor(m / 60);
-  if (h < 24)  return `${h}h`;
+  if (h < 24)  return `${h}h ago`;
   const d = Math.floor(h / 24);
-  if (d < 30)  return `${d}d`;
-  const mo = Math.floor(d / 30);
-  return `${mo}mo`;
+  if (d < 30)  return `${d}d ago`;
+  return `${Math.floor(d / 30)}mo ago`;
 }
 
 function formatDate(d: string | null) {
@@ -60,32 +66,85 @@ function formatDate(d: string | null) {
 
 function today() { return new Date().toISOString().slice(0, 10); }
 
-type StatusStyle = { dot: string; badge: string; label: string };
+type StatusCfg = { label: string; dot: string; row: string; badge: string; pill: string };
 
-function getStatusStyle(status: string): StatusStyle {
-  switch ((status || "").toLowerCase()) {
-    case "approved":    return { dot: "bg-green-500",  badge: "text-green-700 bg-green-50 border-green-200",  label: status };
-    case "submitted":   return { dot: "bg-green-500",  badge: "text-green-700 bg-green-50 border-green-200",  label: status };
-    case "draft":       return { dot: "bg-gray-400",   badge: "text-gray-600 bg-gray-100 border-gray-200",    label: "Draft" };
-    case "created":     return { dot: "bg-gray-400",   badge: "text-gray-600 bg-gray-100 border-gray-200",    label: "Created" };
-    case "pending":     return { dot: "bg-amber-500",  badge: "text-amber-700 bg-amber-50 border-amber-200",  label: "Pending" };
-    case "stopped":     return { dot: "bg-red-500",    badge: "text-red-700 bg-red-50 border-red-200",        label: "Stopped" };
-    case "cancelled":   return { dot: "bg-red-500",    badge: "text-red-700 bg-red-50 border-red-200",        label: "Cancelled" };
-    case "ordered":     return { dot: "bg-blue-500",   badge: "text-blue-700 bg-blue-50 border-blue-200",     label: "Ordered" };
-    case "transferred": return { dot: "bg-violet-500", badge: "text-violet-700 bg-violet-50 border-violet-200", label: "Transferred" };
-    default:            return { dot: "bg-gray-400",   badge: "text-gray-600 bg-gray-100 border-gray-200",    label: status };
-  }
+function statusCfg(status: string): StatusCfg {
+  const s = (status || "").toLowerCase();
+  if (s === "approved" || s === "submitted")
+    return { label: status, dot: "bg-emerald-500", row: "hover:bg-emerald-50/40", badge: "text-emerald-700 bg-emerald-50 border-emerald-200", pill: "bg-emerald-500" };
+  if (s === "pending")
+    return { label: status, dot: "bg-amber-500",  row: "hover:bg-amber-50/30",   badge: "text-amber-700 bg-amber-50 border-amber-200",   pill: "bg-amber-500"  };
+  if (s === "stopped" || s === "cancelled")
+    return { label: status, dot: "bg-red-500",    row: "hover:bg-red-50/30",     badge: "text-red-700 bg-red-50 border-red-200",         pill: "bg-red-500"    };
+  if (s === "ordered")
+    return { label: status, dot: "bg-blue-500",   row: "hover:bg-blue-50/30",    badge: "text-blue-700 bg-blue-50 border-blue-200",      pill: "bg-blue-500"   };
+  return   { label: status || "Draft", dot: "bg-slate-400", row: "hover:bg-slate-50/60",  badge: "text-slate-600 bg-slate-100 border-slate-200",   pill: "bg-slate-400"  };
+}
+
+function typeBadge(type: string) {
+  if (type === "Purchase")                            return "bg-violet-100 text-violet-700";
+  if (type === "Material Transfer")                   return "bg-sky-100 text-sky-700";
+  if (type === "Material Issue")                      return "bg-orange-100 text-orange-700";
+  if (type === "Customer Provided")                   return "bg-teal-100 text-teal-700";
+  if (type === "Material Transfer for Manufacture")   return "bg-indigo-100 text-indigo-700";
+  return "bg-gray-100 text-gray-600";
 }
 
 const EMPTY_ITEM: MRItem = { item_code: "", qty: 1, uom: "Nos" };
 
+type SortField = "title" | "status" | "project" | "name" | "modified";
+
+// ── Stat card ────────────────────────────────────────────────────────────────
+function StatCard({
+  label, count, total, color, icon: Icon, active, onClick,
+}: {
+  label: string; count: number; total: number;
+  color: { bg: string; text: string; bar: string; ring: string };
+  icon: React.ElementType;
+  active?: boolean;
+  onClick: () => void;
+}) {
+  const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+  return (
+    <button
+      onClick={onClick}
+      className={`flex-1 min-w-[120px] rounded-2xl p-4 text-left transition-all border ${
+        active
+          ? `ring-2 ${color.ring} border-transparent shadow-md`
+          : "bg-white border-gray-100 hover:border-gray-200 hover:shadow-sm"
+      }`}
+      style={active ? { background: "white" } : {}}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">{label}</p>
+          <p className={`text-2xl font-black leading-none ${active ? color.text : "text-gray-800"}`}>{count}</p>
+        </div>
+        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${active ? color.bg : "bg-gray-50"}`}>
+          <Icon className={`w-4 h-4 ${active ? color.text : "text-gray-400"}`} />
+        </div>
+      </div>
+      <div className="mt-3">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[10px] text-gray-400">of {total} total</span>
+          <span className={`text-[10px] font-semibold ${active ? color.text : "text-gray-500"}`}>{pct}%</span>
+        </div>
+        <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
+          <div className={`h-full rounded-full transition-all ${color.bar}`} style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+    </button>
+  );
+}
+
+// ── Item row in create form ──────────────────────────────────────────────────
 function ItemRow({ item, index, itemsList, warehouses, onChange, onRemove }: {
   item: MRItem; index: number; itemsList: string[]; warehouses: string[];
   onChange: (i: number, f: keyof MRItem, v: string | number) => void;
   onRemove: (i: number) => void;
 }) {
   return (
-    <tr className="border-b border-gray-100 hover:bg-indigo-50/30 transition-colors">
+    <tr className="group border-b border-gray-100 hover:bg-indigo-50/30 transition-colors">
       <td className="px-3 py-2 text-xs text-gray-400 text-center font-mono">{index + 1}</td>
       <td className="px-3 py-2">
         {itemsList.length > 0 ? (
@@ -129,7 +188,7 @@ function ItemRow({ item, index, itemsList, warehouses, onChange, onRemove }: {
       </td>
       <td className="px-3 py-2 text-center">
         <button onClick={() => onRemove(index)}
-          className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors">
+          className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100">
           <Trash2 className="w-3.5 h-3.5" />
         </button>
       </td>
@@ -137,58 +196,53 @@ function ItemRow({ item, index, itemsList, warehouses, onChange, onRemove }: {
   );
 }
 
-type SortField = "title" | "status" | "project" | "name" | "modified";
-
+// ── Main page ────────────────────────────────────────────────────────────────
 export default function MaterialRequestPage() {
   const { toast } = useToast();
 
-  const [records, setRecords] = useState<MaterialRequest[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [records,      setRecords]      = useState<MaterialRequest[]>([]);
+  const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState<string | null>(null);
 
-  const [search, setSearch]           = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [typeFilter, setTypeFilter]     = useState("");
-  const [projectFilter, setProjectFilter] = useState("");
-  const [projectInput, setProjectInput]   = useState("");
-  const projectDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [search,         setSearch]         = useState("");
+  const [statusFilter,   setStatusFilter]   = useState("");
+  const [typeFilter,     setTypeFilter]     = useState("");
+  const [projectFilter,  setProjectFilter]  = useState("");
+  const [projectInput,   setProjectInput]   = useState("");
+  const projectDebounce  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [sortField, setSortField]  = useState<SortField>("modified");
-  const [sortAsc, setSortAsc]      = useState(false);
-  const [selected, setSelected]    = useState<Set<string>>(new Set());
+  const [sortField, setSortField] = useState<SortField>("modified");
+  const [sortAsc,   setSortAsc]   = useState(false);
 
-  const [detail, setDetail]          = useState<MaterialRequest | null>(null);
+  const [detail,        setDetail]        = useState<MaterialRequest | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [showNew, setShowNew]        = useState(false);
+  const [showNew,       setShowNew]       = useState(false);
 
-  const [itemsList, setItemsList]    = useState<string[]>([]);
-  const [warehouses, setWarehouses]  = useState<string[]>([]);
-  const [companies, setCompanies]    = useState<string[]>([]);
+  const [itemsList,  setItemsList]  = useState<string[]>([]);
+  const [warehouses, setWarehouses] = useState<string[]>([]);
+  const [companies,  setCompanies]  = useState<string[]>([]);
 
-  const [formTitle, setFormTitle]         = useState("");
-  const [formType, setFormType]           = useState("Purchase");
+  const [formTitle,        setFormTitle]        = useState("");
+  const [formType,         setFormType]         = useState("Purchase");
   const [formScheduleDate, setFormScheduleDate] = useState(today());
-  const [formCompany, setFormCompany]     = useState("");
-  const [formProject, setFormProject]     = useState("");
-  const [formItems, setFormItems]         = useState<MRItem[]>([{ ...EMPTY_ITEM }]);
-  const [submitting, setSubmitting]       = useState(false);
+  const [formCompany,      setFormCompany]      = useState("");
+  const [formProject,      setFormProject]      = useState("");
+  const [formItems,        setFormItems]        = useState<MRItem[]>([{ ...EMPTY_ITEM }]);
+  const [submitting,       setSubmitting]       = useState(false);
 
+  // ── Fetch ──
   const fetchRecords = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
-      const params = new URLSearchParams();
-      if (statusFilter)  params.set("status", statusFilter);
-      if (typeFilter)    params.set("type", typeFilter);
-      if (projectFilter) params.set("project", projectFilter);
-      const res = await fetch(`${BASE}/api/material-requests?${params.toString()}`);
+      const p = new URLSearchParams();
+      if (statusFilter)  p.set("status", statusFilter);
+      if (typeFilter)    p.set("type", typeFilter);
+      if (projectFilter) p.set("project", projectFilter);
+      const res = await fetch(`${BASE}/api/material-requests?${p}`);
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       setRecords(await res.json());
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) { setError(String(e)); }
+    finally     { setLoading(false); }
   }, [statusFilter, typeFilter, projectFilter]);
 
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
@@ -202,19 +256,20 @@ export default function MaterialRequestPage() {
     }).catch(() => {});
   }, []);
 
+  // ── Detail ──
   const openDetail = async (mr: MaterialRequest) => {
-    setDetail(mr);
-    setDetailLoading(true);
+    if (detail?.name === mr.name) { setDetail(null); return; }
+    setDetail(mr); setDetailLoading(true);
     try {
       const res = await fetch(`${BASE}/api/material-requests/${encodeURIComponent(mr.name)}`);
-      if (!res.ok) throw new Error("Failed");
-      setDetail(await res.json());
-    } catch { }
+      if (res.ok) setDetail(await res.json());
+    } catch {}
     finally { setDetailLoading(false); }
   };
 
-  const updateItem = (i: number, field: keyof MRItem, val: string | number) =>
-    setFormItems(p => p.map((it, idx) => idx === i ? { ...it, [field]: val } : it));
+  // ── Create form ──
+  const updateItem = (i: number, f: keyof MRItem, v: string | number) =>
+    setFormItems(p => p.map((it, idx) => idx === i ? { ...it, [f]: v } : it));
   const removeItem = (i: number) => setFormItems(p => p.filter((_, idx) => idx !== i));
   const addItem    = () => setFormItems(p => [...p, { ...EMPTY_ITEM }]);
 
@@ -226,268 +281,327 @@ export default function MaterialRequestPage() {
       const res = await fetch(`${BASE}/api/material-requests`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: formTitle, material_request_type: formType, schedule_date: formScheduleDate, company: formCompany || undefined, project: formProject || undefined, items: formItems }),
+        body: JSON.stringify({
+          title: formTitle, material_request_type: formType,
+          schedule_date: formScheduleDate,
+          company: formCompany || undefined,
+          project: formProject || undefined,
+          items: formItems,
+        }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to create");
+      if (!res.ok) throw new Error(data.error || "Failed");
       toast({ title: `${data.name} created successfully!` });
       setShowNew(false);
-      setFormTitle(""); setFormType("Purchase"); setFormScheduleDate(today()); setFormItems([{ ...EMPTY_ITEM }]); setFormProject("");
+      setFormTitle(""); setFormType("Purchase"); setFormScheduleDate(today());
+      setFormItems([{ ...EMPTY_ITEM }]); setFormProject("");
       fetchRecords();
     } catch (e) {
-      toast({ title: "Error creating request", description: String(e), variant: "destructive" });
-    } finally {
-      setSubmitting(false);
-    }
+      toast({ title: "Error", description: String(e), variant: "destructive" });
+    } finally { setSubmitting(false); }
   };
 
-  const toggleSort = (field: SortField) => {
-    if (sortField === field) setSortAsc(a => !a);
-    else { setSortField(field); setSortAsc(true); }
+  // ── Sort & filter ──
+  const toggleSort = (f: SortField) => {
+    if (sortField === f) setSortAsc(a => !a);
+    else { setSortField(f); setSortAsc(true); }
   };
 
-  const toggleSelect = (name: string) =>
-    setSelected(prev => { const n = new Set(prev); n.has(name) ? n.delete(name) : n.add(name); return n; });
+  const filtered = records
+    .filter(r => {
+      if (!search) return true;
+      const s = search.toLowerCase();
+      return (r.name + r.title + r.project + r.company).toLowerCase().includes(s);
+    })
+    .sort((a, b) => {
+      const v = (r: MaterialRequest) => ({
+        title: r.title ?? "", status: r.status, project: r.project ?? "",
+        name: r.name, modified: r.modified ?? "",
+      })[sortField];
+      return sortAsc ? v(a).localeCompare(v(b)) : v(b).localeCompare(v(a));
+    });
 
-  const allSelected = records.length > 0 && records.every(r => selected.has(r.name));
-  const toggleAll   = () => setSelected(allSelected ? new Set() : new Set(records.map(r => r.name)));
+  // ── Stats ──
+  const total      = records.length;
+  const statDraft  = records.filter(r => ["draft","created"].includes(r.status.toLowerCase())).length;
+  const statApp    = records.filter(r => ["approved","submitted"].includes(r.status.toLowerCase())).length;
+  const statPend   = records.filter(r => r.status.toLowerCase() === "pending").length;
+  const statOther  = records.filter(r => ["stopped","cancelled","ordered","transferred"].includes(r.status.toLowerCase())).length;
 
-  const filtered = records.filter(r => {
-    if (!search) return true;
-    const s = search.toLowerCase();
-    return (
-      r.name.toLowerCase().includes(s) ||
-      (r.title ?? "").toLowerCase().includes(s) ||
-      (r.project ?? "").toLowerCase().includes(s) ||
-      (r.company ?? "").toLowerCase().includes(s)
-    );
-  }).sort((a, b) => {
-    let av = "", bv = "";
-    if (sortField === "title")    { av = a.title ?? ""; bv = b.title ?? ""; }
-    if (sortField === "status")   { av = a.status;       bv = b.status; }
-    if (sortField === "project")  { av = a.project ?? ""; bv = b.project ?? ""; }
-    if (sortField === "name")     { av = a.name;          bv = b.name; }
-    if (sortField === "modified") { av = a.modified ?? ""; bv = b.modified ?? ""; }
-    return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
-  });
-
-  const SortIcon = ({ field }: { field: SortField }) => (
-    sortField === field
-      ? (sortAsc ? <ChevronUp className="w-3 h-3 text-indigo-500" /> : <ChevronDownIcon className="w-3 h-3 text-indigo-500" />)
-      : <ArrowUpDown className="w-3 h-3 text-gray-300 group-hover:text-gray-500" />
+  const SortBtn = ({ field }: { field: SortField }) => (
+    <button onClick={() => toggleSort(field)} className="group inline-flex items-center gap-1">
+      {sortField === field
+        ? (sortAsc ? <ChevronUp className="w-3 h-3 text-indigo-500" /> : <ChevronDownIcon className="w-3 h-3 text-indigo-500" />)
+        : <ArrowUpDown className="w-3 h-3 text-gray-300 group-hover:text-gray-500" />}
+    </button>
   );
 
-  const activeFilters = [statusFilter, typeFilter, projectFilter].filter(Boolean).length;
+  const hasFilters = !!(statusFilter || typeFilter || projectFilter);
 
   return (
     <Layout>
-      <div className="h-full flex flex-col bg-[#f8fafc] overflow-hidden">
+      <div className="h-full flex flex-col bg-[#f1f5f9] overflow-hidden">
 
-        {/* ── Top header ── */}
-        <div className="bg-white border-b border-gray-200 px-5 py-3 flex items-center gap-3 shrink-0">
-          <SlidersHorizontal className="w-4 h-4 text-gray-400 shrink-0" />
-          <h1 className="text-sm font-bold text-gray-800 flex-1">Material Request</h1>
-
-          <a href={`${ERPNEXT_URL}/app/material-request`} target="_blank" rel="noopener noreferrer"
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:bg-gray-100 border border-gray-200 transition-colors">
-            <ExternalLink className="w-3.5 h-3.5" /> Open in ERPNext
-          </a>
-
-          <button onClick={fetchRecords} title="Refresh"
-            className={`p-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors ${loading ? "animate-pulse" : ""}`}>
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          </button>
-
-          <button onClick={() => setShowNew(true)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors shadow-sm">
-            <Plus className="w-3.5 h-3.5" /> Add Material Request
-          </button>
-        </div>
-
-        {/* ── Filter bar ── */}
-        <div className="bg-white border-b border-gray-200 px-5 py-2.5 flex flex-wrap items-center gap-2 shrink-0">
-
-          {/* Search */}
-          <div className="relative min-w-[160px] max-w-xs">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-            <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search…"
-              className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-50 focus:bg-white transition-colors" />
+        {/* ── Page header ─────────────────────────────────────────────────── */}
+        <div className="bg-white border-b border-gray-100 px-6 py-4 flex items-center gap-4 shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow shrink-0">
+              <ShoppingCart className="w-[18px] h-[18px] text-white" />
+            </div>
+            <div>
+              <h1 className="text-base font-bold text-gray-900 leading-tight">Material Request</h1>
+              <p className="text-[10px] text-gray-400 font-mono mt-0.5">{ERPNEXT_URL}</p>
+            </div>
           </div>
 
-          {/* Project filter */}
+          <div className="flex items-center gap-2">
+            <a href={`${ERPNEXT_URL}/app/material-request`} target="_blank" rel="noopener noreferrer"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-colors">
+              <ExternalLink className="w-3.5 h-3.5" /> ERPNext
+            </a>
+            <button onClick={fetchRecords}
+              className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+              title="Refresh">
+              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            </button>
+            <button onClick={() => setShowNew(true)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-semibold shadow-sm transition-colors">
+              <Plus className="w-3.5 h-3.5" /> New Request
+            </button>
+          </div>
+        </div>
+
+        {/* ── Stats row ───────────────────────────────────────────────────── */}
+        <div className="px-6 pt-4 pb-2 flex gap-3 shrink-0 overflow-x-auto">
+          <StatCard label="Total" count={total} total={total}
+            color={{ bg: "bg-indigo-50", text: "text-indigo-600", bar: "bg-indigo-500", ring: "ring-indigo-300" }}
+            icon={LayoutList}
+            active={!statusFilter}
+            onClick={() => setStatusFilter("")}
+          />
+          <StatCard label="Approved" count={statApp} total={total}
+            color={{ bg: "bg-emerald-50", text: "text-emerald-600", bar: "bg-emerald-500", ring: "ring-emerald-300" }}
+            icon={CheckCircle2}
+            active={statusFilter === "Approved"}
+            onClick={() => setStatusFilter(s => s === "Approved" ? "" : "Approved")}
+          />
+          <StatCard label="Pending" count={statPend} total={total}
+            color={{ bg: "bg-amber-50", text: "text-amber-600", bar: "bg-amber-500", ring: "ring-amber-300" }}
+            icon={Clock}
+            active={statusFilter === "Pending"}
+            onClick={() => setStatusFilter(s => s === "Pending" ? "" : "Pending")}
+          />
+          <StatCard label="Draft" count={statDraft} total={total}
+            color={{ bg: "bg-slate-50", text: "text-slate-600", bar: "bg-slate-400", ring: "ring-slate-300" }}
+            icon={FileText}
+            active={statusFilter === "Draft"}
+            onClick={() => setStatusFilter(s => s === "Draft" ? "" : "Draft")}
+          />
+          <StatCard label="Other" count={statOther} total={total}
+            color={{ bg: "bg-red-50", text: "text-red-600", bar: "bg-red-400", ring: "ring-red-300" }}
+            icon={TrendingUp}
+            active={["Stopped","Cancelled"].includes(statusFilter)}
+            onClick={() => setStatusFilter(s => s === "Stopped" ? "" : "Stopped")}
+          />
+        </div>
+
+        {/* ── Filter bar ──────────────────────────────────────────────────── */}
+        <div className="px-6 py-3 flex flex-wrap items-center gap-2 shrink-0">
+
           <div className="relative">
-            <input
-              value={projectInput}
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search title, project, ID…"
+              className="pl-9 pr-3 py-2 text-xs bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 w-52 shadow-sm" />
+          </div>
+
+          {/* Project pill */}
+          <div className="relative flex items-center">
+            <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
+            <input value={projectInput}
               onChange={e => {
                 setProjectInput(e.target.value);
                 if (projectDebounce.current) clearTimeout(projectDebounce.current);
-                projectDebounce.current = setTimeout(() => setProjectFilter(e.target.value), 400);
+                projectDebounce.current = setTimeout(() => setProjectFilter(e.target.value), 380);
               }}
-              placeholder="Project (e.g. WTT-1045)"
-              className={`pl-3 pr-7 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-50 focus:bg-white transition-colors w-44 ${projectFilter ? "border-indigo-400 bg-indigo-50" : "border-gray-200"}`}
+              placeholder="Filter by project…"
+              className={`pl-8 pr-7 py-2 text-xs bg-white border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 w-44 shadow-sm transition-colors ${projectFilter ? "border-indigo-400 bg-indigo-50/40 text-indigo-700 font-medium" : "border-gray-200"}`}
             />
             {projectInput && (
               <button onClick={() => { setProjectInput(""); setProjectFilter(""); }}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-600 transition-colors">
                 <X className="w-3 h-3" />
               </button>
             )}
           </div>
 
-          {/* Status */}
+          {/* Status select */}
           <div className="relative">
             <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-              className={`appearance-none pl-3 pr-7 py-1.5 text-xs border rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-colors ${statusFilter ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-gray-200"}`}>
+              className={`appearance-none pl-3 pr-7 py-2 text-xs bg-white border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 shadow-sm transition-colors ${statusFilter ? "border-indigo-400 bg-indigo-50/40 text-indigo-700 font-medium" : "border-gray-200 text-gray-600"}`}>
               <option value="">All Statuses</option>
-              {MR_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+              {MR_STATUSES.map(s => <option key={s}>{s}</option>)}
             </select>
             <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
           </div>
 
-          {/* Type */}
+          {/* Type select */}
           <div className="relative">
             <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
-              className={`appearance-none pl-3 pr-7 py-1.5 text-xs border rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-colors ${typeFilter ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-gray-200"}`}>
+              className={`appearance-none pl-3 pr-7 py-2 text-xs bg-white border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 shadow-sm transition-colors ${typeFilter ? "border-indigo-400 bg-indigo-50/40 text-indigo-700 font-medium" : "border-gray-200 text-gray-600"}`}>
               <option value="">All Types</option>
-              {MR_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              {MR_TYPES.map(t => <option key={t}>{t}</option>)}
             </select>
             <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
           </div>
 
-          {/* Clear filters */}
-          {activeFilters > 0 && (
+          {hasFilters && (
             <button onClick={() => { setStatusFilter(""); setTypeFilter(""); setProjectFilter(""); setProjectInput(""); }}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-500 hover:bg-red-50 border border-red-200 transition-colors">
-              <X className="w-3 h-3" /> Clear ({activeFilters})
+              className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-medium text-red-500 bg-red-50 hover:bg-red-100 border border-red-200 transition-colors">
+              <X className="w-3 h-3" /> Clear filters
             </button>
           )}
 
-          <span className="ml-auto text-xs text-gray-400 tabular-nums">
-            {filtered.length} of {records.length}
-          </span>
+          <div className="ml-auto flex items-center gap-1.5 text-xs text-gray-400">
+            <span className="font-semibold text-gray-600">{filtered.length}</span>
+            <span>record{filtered.length !== 1 ? "s" : ""}</span>
+          </div>
         </div>
 
-        {/* ── Main body ── */}
-        <div className="flex-1 overflow-hidden flex">
+        {/* ── Body ────────────────────────────────────────────────────────── */}
+        <div className="flex-1 overflow-hidden flex gap-0 px-6 pb-6">
 
-          {/* List/Table */}
-          <div className="flex-1 overflow-auto">
+          {/* Table panel */}
+          <div className={`flex-1 overflow-auto rounded-2xl border border-gray-200 bg-white shadow-sm transition-all ${detail ? "mr-4" : ""}`}>
 
-            {/* States */}
             {loading && (
               <div className="flex flex-col items-center justify-center h-64 gap-3 text-gray-400">
-                <Loader2 className="w-7 h-7 animate-spin text-indigo-400" />
+                <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
                 <p className="text-sm">Loading from ERPNext…</p>
               </div>
             )}
+
             {!loading && error && (
-              <div className="flex flex-col items-center justify-center h-64 gap-3 text-red-500">
-                <AlertCircle className="w-8 h-8" />
-                <p className="text-sm font-medium">Failed to load</p>
-                <p className="text-xs text-gray-400 max-w-sm text-center">{error}</p>
-                <button onClick={fetchRecords} className="px-4 py-2 rounded-lg bg-red-50 text-red-600 text-sm hover:bg-red-100 border border-red-200 transition-colors">Retry</button>
+              <div className="flex flex-col items-center justify-center h-64 gap-3">
+                <div className="w-14 h-14 rounded-2xl bg-red-50 flex items-center justify-center">
+                  <AlertCircle className="w-7 h-7 text-red-400" />
+                </div>
+                <p className="text-sm font-semibold text-gray-700">Failed to load</p>
+                <p className="text-xs text-gray-400 max-w-xs text-center">{error}</p>
+                <button onClick={fetchRecords}
+                  className="px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 shadow-sm transition-colors">
+                  Try again
+                </button>
               </div>
             )}
+
             {!loading && !error && filtered.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-64 gap-3 text-gray-400">
-                <Package className="w-10 h-10 text-gray-200" />
-                <p className="text-sm font-medium">No material requests found</p>
-                <p className="text-xs">Try adjusting filters or create a new request</p>
+              <div className="flex flex-col items-center justify-center h-64 gap-3">
+                <div className="w-14 h-14 rounded-2xl bg-gray-50 flex items-center justify-center">
+                  <Package className="w-7 h-7 text-gray-300" />
+                </div>
+                <p className="text-sm font-semibold text-gray-600">No requests found</p>
+                <p className="text-xs text-gray-400">Adjust filters or create a new request</p>
+                <button onClick={() => setShowNew(true)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold shadow-sm hover:bg-indigo-700 transition-colors">
+                  <Plus className="w-3.5 h-3.5" /> New Request
+                </button>
               </div>
             )}
 
             {!loading && !error && filtered.length > 0 && (
               <table className="w-full text-sm border-collapse">
                 <thead className="sticky top-0 z-10">
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="px-4 py-2.5 w-8">
-                      <button onClick={toggleAll} className="text-gray-400 hover:text-indigo-600 transition-colors">
-                        {allSelected ? <CheckSquare className="w-3.5 h-3.5 text-indigo-600" /> : <Square className="w-3.5 h-3.5" />}
-                      </button>
+                  <tr className="bg-gray-50/80 backdrop-blur border-b border-gray-200">
+                    <th className="px-4 py-3 text-left">
+                      <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                        Title <SortBtn field="title" />
+                      </div>
                     </th>
-                    <th className="px-3 py-2.5 text-left">
-                      <button onClick={() => toggleSort("title")} className="group flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-800">
-                        Title <SortIcon field="title" />
-                      </button>
+                    <th className="px-3 py-3 text-left w-32">
+                      <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                        Status <SortBtn field="status" />
+                      </div>
                     </th>
-                    <th className="px-3 py-2.5 text-left w-28">
-                      <button onClick={() => toggleSort("status")} className="group flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-800">
-                        Status <SortIcon field="status" />
-                      </button>
+                    <th className="px-3 py-3 text-left w-36">
+                      <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                        Project <SortBtn field="project" />
+                      </div>
                     </th>
-                    <th className="px-3 py-2.5 text-left w-36">
-                      <button onClick={() => toggleSort("project")} className="group flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-800">
-                        Project <SortIcon field="project" />
-                      </button>
+                    <th className="px-3 py-3 text-left w-36">
+                      <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                        ID <SortBtn field="name" />
+                      </div>
                     </th>
-                    <th className="px-3 py-2.5 text-left w-40">
-                      <button onClick={() => toggleSort("name")} className="group flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-800">
-                        ID <SortIcon field="name" />
-                      </button>
+                    <th className="px-4 py-3 text-right w-28">
+                      <div className="flex items-center justify-end gap-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                        Updated <SortBtn field="modified" />
+                      </div>
                     </th>
-                    <th className="px-3 py-2.5 text-right w-28">
-                      <button onClick={() => toggleSort("modified")} className="group flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-800 ml-auto">
-                        Last Updated <SortIcon field="modified" />
-                      </button>
-                    </th>
-                    <th className="px-3 py-2.5 w-8" />
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-100">
-                  {filtered.map(mr => {
-                    const st = getStatusStyle(mr.status);
-                    const isSelected = selected.has(mr.name);
-                    const isActive   = detail?.name === mr.name;
+                <tbody>
+                  {filtered.map((mr, idx) => {
+                    const st      = statusCfg(mr.status);
+                    const isOpen  = detail?.name === mr.name;
                     return (
-                      <tr
-                        key={mr.name}
+                      <tr key={mr.name}
                         onClick={() => openDetail(mr)}
-                        className={`cursor-pointer transition-colors group ${isActive ? "bg-indigo-50/70" : isSelected ? "bg-indigo-50/40" : "hover:bg-gray-50"}`}
+                        className={`cursor-pointer border-b border-gray-50 transition-colors ${
+                          isOpen ? "bg-indigo-50/60 border-indigo-100" : `${st.row} ${idx % 2 === 1 ? "bg-gray-50/30" : "bg-white"}`
+                        }`}
                       >
-                        <td className="px-4 py-3" onClick={e => { e.stopPropagation(); toggleSelect(mr.name); }}>
-                          <div className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center transition-colors ${isSelected ? "bg-indigo-600 border-indigo-600" : "border-gray-300 group-hover:border-indigo-400"}`}>
-                            {isSelected && <svg viewBox="0 0 12 12" className="w-2 h-2 text-white" fill="currentColor"><path d="M1 6l3 3 7-7" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" /></svg>}
+                        {/* Title */}
+                        <td className="px-4 py-3 min-w-0">
+                          <div className="flex items-start gap-3">
+                            <div className={`mt-0.5 w-2 h-2 rounded-full shrink-0 ${st.dot}`} />
+                            <div className="min-w-0">
+                              <p className={`font-semibold text-sm leading-snug truncate max-w-[320px] ${isOpen ? "text-indigo-700" : "text-gray-800"}`}>
+                                {mr.title || mr.name}
+                              </p>
+                              <span className={`inline-block mt-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded ${typeBadge(mr.material_request_type)}`}>
+                                {mr.material_request_type}
+                              </span>
+                            </div>
                           </div>
                         </td>
-                        <td className="px-3 py-3 max-w-xs">
-                          <span className={`font-medium text-sm leading-snug truncate block ${isActive ? "text-indigo-700" : "text-gray-800 group-hover:text-indigo-600"} transition-colors`}>
-                            {mr.title || mr.name}
-                          </span>
-                          {mr.material_request_type && (
-                            <span className="text-[10px] text-gray-400">{mr.material_request_type}</span>
-                          )}
-                        </td>
+
+                        {/* Status */}
                         <td className="px-3 py-3">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${st.badge}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${st.dot}`} />
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold border ${st.badge}`}>
                             {st.label}
                           </span>
                         </td>
+
+                        {/* Project */}
                         <td className="px-3 py-3">
                           {mr.project ? (
                             <button
                               onClick={e => { e.stopPropagation(); setProjectInput(mr.project!); setProjectFilter(mr.project!); }}
-                              className="text-xs font-medium text-indigo-600 hover:text-indigo-800 hover:underline transition-colors"
-                            >
+                              className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:underline underline-offset-2 transition-colors"
+                              title={`Filter by ${mr.project}`}>
                               {mr.project}
                             </button>
-                          ) : (
-                            <span className="text-xs text-gray-300">—</span>
-                          )}
+                          ) : <span className="text-xs text-gray-300">—</span>}
                         </td>
+
+                        {/* ID */}
                         <td className="px-3 py-3">
-                          <span className="text-xs font-mono text-gray-500">{mr.name}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-mono text-gray-500">{mr.name}</span>
+                            <a href={`${ERPNEXT_URL}/app/material-request/${mr.name}`}
+                              target="_blank" rel="noopener noreferrer"
+                              onClick={e => e.stopPropagation()}
+                              className="text-gray-300 hover:text-indigo-500 transition-colors opacity-0 group-hover:opacity-100"
+                              title="Open in ERPNext">
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          </div>
                         </td>
-                        <td className="px-3 py-3 text-right">
+
+                        {/* Updated */}
+                        <td className="px-4 py-3 text-right">
                           <span className="text-xs text-gray-400 tabular-nums">{timeAgo(mr.modified)}</span>
-                        </td>
-                        <td className="px-2 py-3 text-center opacity-0 group-hover:opacity-100 transition-opacity">
-                          <a href={`${ERPNEXT_URL}/app/material-request/${mr.name}`} target="_blank" rel="noopener noreferrer"
-                            onClick={e => e.stopPropagation()}
-                            className="p-1 rounded text-gray-400 hover:text-indigo-600 transition-colors inline-flex">
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </a>
                         </td>
                       </tr>
                     );
@@ -499,18 +613,28 @@ export default function MaterialRequestPage() {
 
           {/* ── Detail panel ── */}
           {detail && (
-            <div className="w-80 border-l border-gray-200 bg-white flex flex-col overflow-hidden shrink-0 shadow-sm">
-              <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
-                <div>
-                  <p className="text-xs font-bold text-gray-800 font-mono leading-tight">{detail.name}</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">{detail.material_request_type}</p>
+            <div className="w-72 shrink-0 rounded-2xl border border-gray-200 bg-white shadow-sm flex flex-col overflow-hidden">
+              {/* Panel header */}
+              <div className="px-4 py-3 border-b border-gray-100 flex items-start gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-bold text-gray-400 font-mono">{detail.name}</p>
+                  {(() => {
+                    const st = statusCfg(detail.status);
+                    return (
+                      <span className={`inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold border ${st.badge}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} /> {st.label}
+                      </span>
+                    );
+                  })()}
                 </div>
-                <div className="flex items-center gap-1 ml-auto">
-                  <a href={`${ERPNEXT_URL}/app/material-request/${detail.name}`} target="_blank" rel="noopener noreferrer"
-                    className="p-1.5 rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors" title="Open in ERPNext">
+                <div className="flex gap-1 shrink-0">
+                  <a href={`${ERPNEXT_URL}/app/material-request/${detail.name}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors">
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
-                  <button onClick={() => setDetail(null)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
+                  <button onClick={() => setDetail(null)}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -521,66 +645,60 @@ export default function MaterialRequestPage() {
                   <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
                 </div>
               ) : (
-                <div className="flex-1 overflow-y-auto">
-                  {/* Status & title */}
-                  <div className="px-4 py-4 border-b border-gray-50 space-y-3">
-                    {(() => { const st = getStatusStyle(detail.status); return (
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${st.badge}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
-                        {st.label}
-                      </span>
-                    ); })()}
-                    {detail.title && <p className="text-sm font-semibold text-gray-800 leading-snug">{detail.title}</p>}
+                <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
+
+                  {/* Title & type */}
+                  <div className="px-4 py-4 space-y-2">
+                    {detail.title && (
+                      <p className="text-sm font-semibold text-gray-800 leading-snug">{detail.title}</p>
+                    )}
+                    <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded ${typeBadge(detail.material_request_type)}`}>
+                      {detail.material_request_type}
+                    </span>
                   </div>
 
-                  {/* Meta grid */}
-                  <div className="px-4 py-4 border-b border-gray-50 grid grid-cols-2 gap-x-4 gap-y-3">
-                    {detail.project && (
-                      <div className="col-span-2">
-                        <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Project</p>
-                        <p className="text-xs font-semibold text-indigo-600">{detail.project}</p>
+                  {/* Meta */}
+                  <div className="px-4 py-4 space-y-3">
+                    {[
+                      { icon: Tag,         label: "Project",     val: detail.project },
+                      { icon: Building2,   label: "Company",     val: detail.company },
+                      { icon: Calendar,    label: "Date",        val: formatDate(detail.transaction_date) },
+                      { icon: Clock,       label: "Required By", val: formatDate(detail.schedule_date) },
+                      { icon: Hash,        label: "Modified",    val: detail.modified ? timeAgo(detail.modified) : null },
+                    ].filter(r => r.val).map(({ icon: Icon, label, val }) => (
+                      <div key={label} className="flex items-center gap-3">
+                        <div className="w-6 h-6 rounded-lg bg-gray-50 flex items-center justify-center shrink-0">
+                          <Icon className="w-3 h-3 text-gray-400" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400">{label}</p>
+                          <p className="text-xs font-semibold text-gray-700 truncate">{val}</p>
+                        </div>
                       </div>
-                    )}
-                    <div>
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Date</p>
-                      <p className="text-xs text-gray-700">{formatDate(detail.transaction_date)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Required By</p>
-                      <p className="text-xs text-gray-700">{formatDate(detail.schedule_date)}</p>
-                    </div>
-                    {detail.company && (
-                      <div className="col-span-2">
-                        <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Company</p>
-                        <p className="text-xs text-gray-700">{detail.company}</p>
-                      </div>
-                    )}
-                    {detail.requested_by && (
-                      <div className="col-span-2">
-                        <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Requested By</p>
-                        <p className="text-xs text-gray-700">{detail.requested_by}</p>
-                      </div>
-                    )}
-                    <div className="col-span-2">
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Last Updated</p>
-                      <p className="text-xs text-gray-700">{formatDate(detail.modified)}</p>
-                    </div>
+                    ))}
                   </div>
 
                   {/* Items */}
                   {detail.items && detail.items.length > 0 && (
                     <div className="px-4 py-4">
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-3">Items ({detail.items.length})</p>
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400">Items</p>
+                        <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{detail.items.length}</span>
+                      </div>
                       <div className="space-y-2">
                         {detail.items.map((it, i) => (
-                          <div key={i} className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
+                          <div key={i} className="rounded-xl bg-gray-50 border border-gray-100 px-3 py-2.5">
                             <p className="text-xs font-semibold text-gray-800 truncate">{it.item_name || it.item_code}</p>
                             {it.item_name && it.item_code !== it.item_name && (
-                              <p className="text-[10px] text-gray-400 font-mono">{it.item_code}</p>
+                              <p className="text-[10px] text-gray-400 font-mono mt-0.5">{it.item_code}</p>
                             )}
-                            <div className="flex items-center gap-3 mt-1 text-[10px] text-gray-500 flex-wrap">
-                              <span>Qty <b className="text-gray-700">{it.qty}</b> {it.uom}</span>
-                              {it.warehouse && <span className="truncate">{it.warehouse}</span>}
+                            <div className="flex items-center gap-2 mt-1.5 text-[10px] text-gray-500">
+                              <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono">
+                                {it.qty} {it.uom}
+                              </span>
+                              {it.warehouse && (
+                                <span className="truncate text-gray-400">{it.warehouse}</span>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -594,113 +712,133 @@ export default function MaterialRequestPage() {
         </div>
       </div>
 
-      {/* ── New MR Modal ── */}
+      {/* ── New Request Modal ─────────────────────────────────────────────── */}
       {showNew && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden">
-            <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100">
-              <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
-                <ShoppingCart className="w-4 h-4 text-white" />
+
+            {/* Modal header */}
+            <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-indigo-600 to-violet-600">
+              <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                <ShoppingCart className="w-4.5 h-4.5 text-white" style={{ width: 18, height: 18 }} />
               </div>
               <div className="flex-1">
-                <h2 className="text-sm font-bold text-gray-900">New Material Request</h2>
-                <p className="text-[10px] text-gray-400">Will be created in ERPNext</p>
+                <h2 className="text-sm font-bold text-white">New Material Request</h2>
+                <p className="text-[10px] text-indigo-200 mt-0.5">Will be saved to ERPNext · {ERPNEXT_URL}</p>
               </div>
-              <button onClick={() => setShowNew(false)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700">
+              <button onClick={() => setShowNew(false)}
+                className="p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-colors">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+              {/* Header fields */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Title / Purpose <span className="text-red-500">*</span></label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                    Title / Purpose <span className="text-red-500">*</span>
+                  </label>
                   <input value={formTitle} onChange={e => setFormTitle(e.target.value)}
                     placeholder="e.g. WTT-1045 COOLING TOWER FITTINGS"
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 placeholder:text-gray-300" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1.5">Request Type</label>
                   <div className="relative">
                     <select value={formType} onChange={e => setFormType(e.target.value)}
-                      className="w-full appearance-none border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 pr-8">
-                      {MR_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                      className="w-full appearance-none border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 pr-8">
+                      {MR_TYPES.map(t => <option key={t}>{t}</option>)}
                     </select>
-                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Required By <span className="text-red-500">*</span></label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                    Required By <span className="text-red-500">*</span>
+                  </label>
                   <input type="date" value={formScheduleDate} onChange={e => setFormScheduleDate(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1.5">Project</label>
                   <input value={formProject} onChange={e => setFormProject(e.target.value)}
                     placeholder="e.g. WTT-1045"
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 placeholder:text-gray-300" />
                 </div>
                 {companies.length > 0 && (
                   <div>
                     <label className="block text-xs font-semibold text-gray-600 mb-1.5">Company</label>
                     <div className="relative">
                       <select value={formCompany} onChange={e => setFormCompany(e.target.value)}
-                        className="w-full appearance-none border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 pr-8">
-                        {companies.map(c => <option key={c} value={c}>{c}</option>)}
+                        className="w-full appearance-none border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 pr-8">
+                        {companies.map(c => <option key={c}>{c}</option>)}
                       </select>
-                      <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Items */}
+              {/* Items table */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-semibold text-gray-600">Items <span className="text-red-500">*</span></label>
+                  <label className="text-xs font-semibold text-gray-600">
+                    Items <span className="text-red-500">*</span>
+                    <span className="ml-1.5 text-gray-400 font-normal">({formItems.length})</span>
+                  </label>
                   <button onClick={addItem}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors">
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 transition-colors">
                     <Plus className="w-3 h-3" /> Add Item
                   </button>
                 </div>
-                <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-gray-100">
                       <tr>
-                        <th className="px-3 py-2 text-center text-[10px] font-semibold uppercase tracking-wider text-gray-400 w-8">#</th>
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-500">Item Code</th>
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-500">Qty</th>
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-500">UOM</th>
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-500">Warehouse</th>
-                        <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-500">Required By</th>
+                        <th className="px-3 py-2 text-center text-[10px] font-bold uppercase tracking-wider text-gray-400 w-8">#</th>
+                        <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400">Item Code</th>
+                        <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400">Qty</th>
+                        <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400">UOM</th>
+                        <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400">Warehouse</th>
+                        <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400">Required By</th>
                         <th className="px-3 py-2 w-8" />
                       </tr>
                     </thead>
                     <tbody>
                       {formItems.map((item, i) => (
-                        <ItemRow key={i} item={item} index={i} itemsList={itemsList} warehouses={warehouses} onChange={updateItem} onRemove={removeItem} />
+                        <ItemRow key={i} item={item} index={i} itemsList={itemsList} warehouses={warehouses}
+                          onChange={updateItem} onRemove={removeItem} />
                       ))}
                     </tbody>
                   </table>
                   {formItems.length === 0 && (
-                    <div className="py-8 text-center text-sm text-gray-400">
-                      No items added yet — click "Add Item" above.
+                    <div className="py-10 text-center text-sm text-gray-400">
+                      <Package className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+                      No items yet — click <b>Add Item</b> above
                     </div>
                   )}
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50/50">
-              <button onClick={() => setShowNew(false)}
-                className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">
-                Cancel
-              </button>
-              <button onClick={handleCreate} disabled={submitting}
-                className="flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors disabled:opacity-60 shadow-sm">
-                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShoppingCart className="w-4 h-4" />}
-                {submitting ? "Creating…" : "Create in ERPNext"}
-              </button>
+            {/* Modal footer */}
+            <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50/60">
+              <p className="text-xs text-gray-400">
+                {formItems.length} item{formItems.length !== 1 ? "s" : ""} · {formType}
+              </p>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setShowNew(false)}
+                  className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">
+                  Cancel
+                </button>
+                <button onClick={handleCreate} disabled={submitting}
+                  className="flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-sm font-semibold transition-colors disabled:opacity-60 shadow-sm">
+                  {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShoppingCart className="w-4 h-4" />}
+                  {submitting ? "Creating…" : "Create in ERPNext"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
