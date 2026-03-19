@@ -97,7 +97,7 @@ const navGroups: { label?: string; items: NavItem[] }[] = [
 
 const allNavItems: NavItem[] = navGroups.flatMap(g => g.items);
 
-export function Layout({ children }: { children: React.ReactNode }) {
+export function Layout({ children, hideChrome }: { children: React.ReactNode; hideChrome?: boolean }) {
   const [location] = useLocation();
   const [expandedItems, setExpandedItems] = useState<string[]>(["/drawings"]);
   const [collapsed, setCollapsed] = useState(false);
@@ -357,6 +357,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </div>
     </div>
   );
+
+  if (hideChrome) {
+    return <div className="min-h-screen bg-slate-100">{children}</div>;
+  }
 
   return (
     <div className="min-h-screen bg-[#f1f5f9] flex flex-col md:flex-row overflow-hidden">

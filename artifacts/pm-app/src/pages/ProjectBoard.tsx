@@ -5,7 +5,7 @@ import {
   Filter, ChevronDown, ChevronRight, ChevronUp, Package,
   TrendingUp, CheckCircle2, Clock, AlertTriangle, XCircle,
   ChevronsUpDown, ArrowUpDown, CalendarDays, SlidersHorizontal,
-  Expand, Shrink, Eye, EyeOff,
+  Expand, Shrink, Eye, EyeOff, Printer,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -133,18 +133,27 @@ const StatCard = ({ icon: Icon, label, value, color, onClick, active }: { icon: 
 
 export default function ProjectBoard() {
   const { toast } = useToast();
+
+  // ── Report mode (no sidebar, all expanded, all cols, printable) ──
+  const searchParams  = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+  const isReport      = searchParams.get("report") === "1";
+  const reportProject = searchParams.get("project") || "";
+  const reportRemarks = searchParams.get("mr_remarks") || "";
+
   const [rows, setRows]           = useState<Row[]>([]);
   const [projects, setProjects]   = useState<{ name: string; project_name: string }[]>([]);
   const [mrRemarks, setMrRemarks] = useState<string[]>([]);
   const [loading, setLoading]     = useState(false);
   const [expanded, setExpanded]   = useState<Set<number>>(new Set());
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [hiddenCols, setHiddenCols]    = useState<Set<string>>(new Set(["store_qty","production_qty","not_req_qty"]));
+  const [hiddenCols, setHiddenCols]    = useState<Set<string>>(
+    isReport ? new Set() : new Set(["store_qty","production_qty","not_req_qty"])
+  );
   const [showColPicker, setShowColPicker] = useState(false);
 
   // ── Server filters ──
-  const [project, setProject]   = useState("WTT-0528");
-  const [remarks, setRemarks]   = useState("");
+  const [project, setProject]   = useState(isReport ? reportProject : "WTT-0528");
+  const [remarks, setRemarks]   = useState(isReport ? reportRemarks : "");
 
   // ── Client filters ──
   const [search, setSearch]           = useState("");
@@ -199,6 +208,12 @@ export default function ProjectBoard() {
   }, [project]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  useEffect(() => {
+    if (isReport && rows.length > 0) {
+      setExpanded(new Set(rows.map((_, i) => i)));
+    }
+  }, [isReport, rows]);
 
   const toggleRow  = (i: number) => setExpanded(prev => { const s = new Set(prev); s.has(i) ? s.delete(i) : s.add(i); return s; });
   const expandAll  = () => setExpanded(new Set(filtered.map((_, i) => i)));
@@ -277,8 +292,25 @@ export default function ProjectBoard() {
   };
 
   return (
-    <Layout>
-      <div className="h-full flex flex-col bg-slate-100 overflow-hidden">
+    <Layout hideChrome={isReport}>
+      <div className={`${isReport ? "min-h-full" : "h-full"} flex flex-col bg-slate-100 ${isReport ? "" : "overflow-hidden"}`}>
+
+        {/* ── Report print bar ── */}
+        {isReport && (
+          <div className="bg-blue-600 text-white px-6 py-2.5 flex items-center gap-3 shrink-0 print:hidden">
+            <LayoutGrid className="w-4 h-4 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <span className="text-sm font-bold">Project Board — Full Report</span>
+              {project && <span className="text-blue-200 text-xs ml-2">{project} · {selectedProjectName}</span>}
+              {remarks && <span className="text-blue-200 text-xs ml-1">· {remarks}</span>}
+            </div>
+            <span className="text-blue-200 text-xs">{new Date().toLocaleDateString()}</span>
+            <button onClick={() => window.print()}
+              className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
+              <Printer className="w-3.5 h-3.5" /> Print / Save PDF
+            </button>
+          </div>
+        )}
 
         {/* ── Header ── */}
         <div className="bg-white border-b border-gray-200 px-5 py-3 flex items-center gap-3 shrink-0">
@@ -324,11 +356,18 @@ export default function ProjectBoard() {
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 border border-gray-200 hover:bg-gray-50 transition-colors">
             <ExternalLink className="w-3.5 h-3.5" /> ERPNext
           </a>
-          <button onClick={() => window.open(`${window.location.origin}/pm-app/project-board`, "_blank")}
-            title="Open full view"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 border border-gray-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-colors">
-            <Expand className="w-3.5 h-3.5" /> Full View
-          </button>
+          {!isReport && (
+            <button onClick={() => {
+              const p = new URLSearchParams({ report: "1" });
+              if (project) p.set("project", project);
+              if (remarks) p.set("mr_remarks", remarks);
+              window.open(`${window.location.origin}/pm-app/project-board?${p}`, "_blank");
+            }}
+              title="Open full report view"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 border border-gray-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-colors">
+              <Expand className="w-3.5 h-3.5" /> Full Report
+            </button>
+          )}
         </div>
 
         {/* ── Stats (clickable) ── */}
@@ -700,6 +739,7 @@ export default function ProjectBoard() {
           )}
         </div>
       </div>
+    </div>
     </Layout>
   );
 }
