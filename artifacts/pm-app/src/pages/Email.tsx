@@ -124,6 +124,10 @@ function ComposeModal({ onClose, defaultTo="", defaultCc="", defaultSubject="", 
   const [attachments, setAttachments] = useState<File[]>([]);
   const [showEmoji, setShowEmoji] = useState(false);
   const [fontSize, setFontSize] = useState("3");
+  const [profile, setProfile] = useState<{
+    full_name?: string; designation?: string; mobile_no?: string;
+    phone?: string; company?: string; branch?: string;
+  } | null>(null);
 
   const editorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -138,6 +142,9 @@ function ComposeModal({ onClose, defaultTo="", defaultCc="", defaultSubject="", 
     if (editorRef.current && defaultBody) {
       editorRef.current.innerText = defaultBody;
       setBody(defaultBody);
+    }
+    if (userEmail) {
+      apiFetch(`/auth/profile?email=${encodeURIComponent(userEmail)}`).then(p => setProfile(p)).catch(() => {});
     }
   }, []);
 
@@ -433,8 +440,35 @@ function ComposeModal({ onClose, defaultTo="", defaultCc="", defaultSubject="", 
         )}
 
         {/* ── Signature ── */}
-        <div className="px-6 pb-2 pt-1 bg-white border-t border-dashed border-gray-200 shrink-0">
-          <p className="text-xs text-gray-400 italic">— Sent via FlowMatriX</p>
+        <div className="px-6 py-3 bg-white border-t border-dashed border-gray-200 shrink-0 select-none">
+          <p className="text-xs text-gray-400 mb-2 italic">Best Regards,</p>
+          {profile ? (
+            <div className="flex flex-col gap-0.5">
+              {profile.full_name && (
+                <p className="text-sm font-bold text-gray-900 leading-tight">{profile.full_name}</p>
+              )}
+              {profile.designation && (
+                <p className="text-xs font-semibold text-[#e05a00] leading-tight">{profile.designation}</p>
+              )}
+              {(profile.mobile_no || profile.phone) && (
+                <p className="text-xs text-gray-600 leading-tight">{profile.mobile_no || profile.phone}</p>
+              )}
+              {profile.company && (
+                <div className="mt-1.5 pt-1.5 border-t border-gray-100">
+                  <p className="text-xs font-bold text-gray-900 uppercase tracking-wide leading-tight">{profile.company}</p>
+                  {profile.branch && (
+                    <p className="text-[11px] text-gray-500 leading-snug mt-0.5">{profile.branch}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <div className="h-3 w-32 bg-gray-100 rounded animate-pulse"/>
+              <div className="h-2.5 w-24 bg-gray-100 rounded animate-pulse"/>
+              <div className="h-2.5 w-20 bg-gray-100 rounded animate-pulse"/>
+            </div>
+          )}
         </div>
 
         {/* ── Action bar ── */}
