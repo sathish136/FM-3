@@ -89,7 +89,7 @@ export default function ProjectBoard() {
   const [loading, setLoading]   = useState(false);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
-  const [project, setProject]     = useState("");
+  const [project, setProject]     = useState("SACHIN CETP - 25 MLD");
   const [remarks, setRemarks]     = useState("");
   const [pendingOnly, setPendingOnly]   = useState(false);
   const [poNotCreated, setPoNotCreated] = useState(false);
