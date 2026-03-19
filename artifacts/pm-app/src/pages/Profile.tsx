@@ -1,7 +1,7 @@
 import { Layout } from "@/components/Layout";
 import {
   User, Mail, Phone, Building2, Briefcase, Calendar, MapPin,
-  Shield, Globe, Clock, Hash, BadgeCheck, Users, ChevronRight,
+  Shield, Globe, Clock, Hash, BadgeCheck, Users,
   Loader2, AlertCircle, RefreshCw,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -47,17 +47,16 @@ function fmtDateTime(s: string | null): string {
   catch { return s; }
 }
 
-function InfoRow({ icon: Icon, label, value, highlight }: {
-  icon: React.ElementType; label: string; value: string | null; highlight?: boolean;
+// A single field tile — icon, label, value stacked
+function Field({ icon: Icon, label, value, accent }: {
+  icon: React.ElementType; label: string; value: string | null; accent?: boolean;
 }) {
   return (
-    <div className="flex items-start gap-3 py-3 border-b border-border/50 last:border-0">
-      <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0 mt-0.5">
-        <Icon className="w-4 h-4 text-muted-foreground" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{label}</p>
-        <p className={`text-sm font-semibold mt-0.5 truncate ${highlight ? "text-blue-600" : "text-foreground"}`}>
+    <div className="flex items-start gap-3 min-w-0">
+      <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${accent ? "text-blue-500" : "text-muted-foreground"}`} />
+      <div className="min-w-0">
+        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider leading-none mb-1">{label}</p>
+        <p className={`text-sm font-medium leading-snug break-words ${accent ? "text-blue-600" : "text-foreground"}`}>
           {value || "—"}
         </p>
       </div>
@@ -65,16 +64,33 @@ function InfoRow({ icon: Icon, label, value, highlight }: {
   );
 }
 
-function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
+// Section card — title bar + field grid
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
-      <h3 className="text-sm font-bold text-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
-        <span className="w-1 h-4 rounded-full bg-blue-500 inline-block" />
-        {title}
-      </h3>
-      <div className="space-y-0">{children}</div>
+    <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+      <div className="px-5 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
+        <span className="w-1 h-4 rounded-full bg-blue-500 shrink-0" />
+        <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{title}</h3>
+      </div>
+      <div className="p-5">
+        {children}
+      </div>
     </div>
   );
+}
+
+// Two-column field grid — even rows, no stray borders
+function FieldGrid({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-2 gap-x-8 gap-y-5">
+      {children}
+    </div>
+  );
+}
+
+// Thin horizontal divider between field groups inside a section
+function Divider() {
+  return <hr className="border-border/50 my-4" />;
 }
 
 export default function Profile() {
@@ -91,8 +107,7 @@ export default function Profile() {
     try {
       const res = await fetch(`${BASE}/api/auth/profile?email=${encodeURIComponent(user.email)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setProfile(data);
+      setProfile(await res.json());
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load profile");
     } finally {
@@ -111,12 +126,13 @@ export default function Profile() {
 
   return (
     <Layout>
-      <div className="max-w-5xl space-y-6">
-        {/* Header */}
+      <div className="max-w-5xl space-y-5">
+
+        {/* ── Page header ── */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground">My Profile</h1>
-            <p className="text-muted-foreground text-sm mt-0.5">Complete employee & account information</p>
+            <p className="text-sm text-muted-foreground mt-0.5">Complete employee &amp; account information</p>
           </div>
           <button
             onClick={fetchProfile}
@@ -136,145 +152,134 @@ export default function Profile() {
           <div className="flex flex-col items-center gap-3 py-20 text-muted-foreground">
             <AlertCircle className="w-10 h-10 text-red-400" />
             <p className="text-sm font-medium text-red-500">{error}</p>
-            <button onClick={fetchProfile} className="text-xs px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 transition-colors">
-              Retry
-            </button>
+            <button onClick={fetchProfile} className="text-xs px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 transition-colors">Retry</button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-5 items-start">
 
-            {/* ── Left column: Avatar card ── */}
-            <div className="lg:col-span-1 space-y-4">
+            {/* ── Left: Identity card ── */}
+            <div className="space-y-4">
               <div className="bg-card border border-border rounded-2xl p-6 shadow-sm flex flex-col items-center text-center">
                 {/* Avatar */}
                 <div className="relative mb-4">
                   {photoUrl && !imgError ? (
-                    <img
-                      src={photoUrl}
-                      alt={profile?.full_name}
-                      onError={() => setImgError(true)}
-                      className="w-28 h-28 rounded-full object-cover ring-4 ring-blue-100 shadow-lg"
-                    />
+                    <img src={photoUrl} alt={profile?.full_name} onError={() => setImgError(true)}
+                      className="w-24 h-24 rounded-full object-cover ring-4 ring-blue-100 shadow-md" />
                   ) : (
-                    <div className="w-28 h-28 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-3xl font-bold shadow-lg ring-4 ring-blue-100">
+                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-2xl font-bold shadow-md ring-4 ring-blue-100">
                       {initials}
                     </div>
                   )}
-                  {(profile?.employee_status === "Active" || !profile?.employee_status) && (
-                    <span className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-emerald-500 border-2 border-white" title="Active" />
-                  )}
+                  <span className={`absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-white ${profile?.employee_status === "Active" || !profile?.employee_status ? "bg-emerald-500" : "bg-gray-400"}`} />
                 </div>
 
-                <h2 className="text-lg font-bold text-foreground leading-tight">{profile?.full_name || user?.full_name || "—"}</h2>
+                <h2 className="text-base font-bold text-foreground leading-tight">{profile?.full_name || user?.full_name || "—"}</h2>
+
                 {profile?.designation && (
-                  <p className="text-sm text-blue-600 font-medium mt-0.5">{profile.designation}</p>
+                  <p className="text-xs font-semibold text-blue-600 mt-1 leading-snug">{profile.designation}</p>
                 )}
                 {profile?.department && (
                   <p className="text-xs text-muted-foreground mt-0.5">{profile.department}</p>
                 )}
 
-                {/* Status badges */}
-                <div className="flex flex-wrap gap-2 justify-center mt-4">
-                  <span className="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 rounded-full text-xs font-semibold text-emerald-700 border border-emerald-200">
+                <div className="flex flex-wrap gap-2 justify-center mt-3">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                     {profile?.employee_status || "Active"}
                   </span>
                   {profile?.employment_type && (
-                    <span className="px-3 py-1 bg-blue-50 rounded-full text-xs font-semibold text-blue-700 border border-blue-200">
+                    <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
                       {profile.employment_type}
                     </span>
                   )}
                 </div>
 
-                {/* Employee ID */}
                 {profile?.employee_number && (
-                  <div className="mt-4 w-full bg-muted/50 rounded-xl px-4 py-3">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Employee ID</p>
-                    <p className="text-base font-bold text-foreground mt-0.5 font-mono">{profile.employee_number}</p>
+                  <div className="mt-4 w-full rounded-xl bg-muted/60 px-4 py-3 text-center">
+                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">Employee ID</p>
+                    <p className="text-sm font-bold font-mono text-foreground mt-0.5">{profile.employee_number}</p>
                   </div>
                 )}
               </div>
 
-              {/* Quick contacts */}
+              {/* Quick contact */}
               <div className="bg-card border border-border rounded-2xl p-5 shadow-sm space-y-3">
-                <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Quick Contact</h3>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Quick Contact</p>
                 {(profile?.mobile_no || profile?.phone) && (
                   <a href={`tel:${profile.mobile_no || profile.phone}`}
-                    className="flex items-center gap-3 text-sm text-foreground hover:text-blue-600 transition-colors">
-                    <Phone className="w-4 h-4 text-muted-foreground shrink-0" />
-                    <span className="truncate">{profile.mobile_no || profile.phone}</span>
+                    className="flex items-center gap-2.5 text-sm text-foreground hover:text-blue-600 transition-colors">
+                    <Phone className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                    <span>{profile.mobile_no || profile.phone}</span>
                   </a>
                 )}
-                <a href={`mailto:${profile?.email || user?.email}`}
-                  className="flex items-center gap-3 text-sm text-foreground hover:text-blue-600 transition-colors">
-                  <Mail className="w-4 h-4 text-muted-foreground shrink-0" />
+                <div className="flex items-center gap-2.5 text-sm text-foreground">
+                  <Mail className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   <span className="truncate">{profile?.email || user?.email}</span>
-                </a>
+                </div>
                 {profile?.company && (
-                  <div className="flex items-center gap-3 text-sm text-foreground">
-                    <Building2 className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <div className="flex items-center gap-2.5 text-sm text-foreground">
+                    <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                     <span className="truncate">{profile.company}</span>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* ── Right columns: Detail cards ── */}
-            <div className="lg:col-span-2 space-y-5">
+            {/* ── Right: Detail sections ── */}
+            <div className="space-y-4">
 
               {/* Work Information */}
-              <SectionCard title="Work Information">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
-                  <InfoRow icon={Briefcase} label="Designation" value={profile?.designation} highlight />
-                  <InfoRow icon={Users} label="Department" value={profile?.department} />
-                  <InfoRow icon={Building2} label="Company" value={profile?.company} />
-                  <InfoRow icon={MapPin} label="Branch / Location" value={profile?.branch} />
-                  <InfoRow icon={Calendar} label="Date of Joining" value={fmtDate(profile?.date_of_joining ?? null)} />
-                  <InfoRow icon={Briefcase} label="Employment Type" value={profile?.employment_type} />
-                  {profile?.reports_to && (
-                    <InfoRow icon={ChevronRight} label="Reports To" value={profile.reports_to} />
-                  )}
-                  {profile?.grade && (
-                    <InfoRow icon={BadgeCheck} label="Grade" value={profile.grade} />
-                  )}
-                </div>
-              </SectionCard>
+              <Section title="Work Information">
+                <FieldGrid>
+                  <Field icon={Briefcase} label="Designation" value={profile?.designation} accent />
+                  <Field icon={Users} label="Department" value={profile?.department} />
+                  <Field icon={Building2} label="Company" value={profile?.company} />
+                  <Field icon={MapPin} label="Branch / Location" value={profile?.branch} />
+                  <Field icon={Calendar} label="Date of Joining" value={fmtDate(profile?.date_of_joining ?? null)} />
+                  <Field icon={Briefcase} label="Employment Type" value={profile?.employment_type} />
+                </FieldGrid>
+                {(profile?.reports_to || profile?.grade) && (
+                  <>
+                    <Divider />
+                    <FieldGrid>
+                      {profile?.reports_to && <Field icon={Users} label="Reports To" value={profile.reports_to} />}
+                      {profile?.grade && <Field icon={BadgeCheck} label="Grade" value={profile.grade} />}
+                    </FieldGrid>
+                  </>
+                )}
+              </Section>
 
               {/* Personal Information */}
-              <SectionCard title="Personal Information">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
-                  <InfoRow icon={User} label="Gender" value={profile?.gender} />
-                  <InfoRow icon={Calendar} label="Date of Birth" value={fmtDate(profile?.date_of_birth ?? null)} />
-                  <InfoRow icon={Phone} label="Mobile" value={profile?.mobile_no} />
-                  <InfoRow icon={Mail} label="Personal Email" value={profile?.personal_email} />
-                </div>
-              </SectionCard>
+              <Section title="Personal Information">
+                <FieldGrid>
+                  <Field icon={User} label="Gender" value={profile?.gender} />
+                  <Field icon={Calendar} label="Date of Birth" value={fmtDate(profile?.date_of_birth ?? null)} />
+                  <Field icon={Phone} label="Mobile" value={profile?.mobile_no} />
+                  <Field icon={Mail} label="Personal Email" value={profile?.personal_email} />
+                </FieldGrid>
+              </Section>
 
               {/* Account Information */}
-              <SectionCard title="Account Information">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
-                  <InfoRow icon={Mail} label="Login Email" value={profile?.email || user?.email} />
-                  <InfoRow icon={Hash} label="Username" value={profile?.username} />
-                  <InfoRow icon={Globe} label="Language" value={profile?.language} />
-                  <InfoRow icon={Clock} label="Time Zone" value={profile?.time_zone} />
-                  <InfoRow icon={Clock} label="Last Login" value={fmtDateTime(profile?.last_login ?? null)} />
-                  <InfoRow icon={Shield} label="Account Status"
-                    value={profile?.enabled === 0 ? "Disabled" : "Enabled"} />
-                </div>
-              </SectionCard>
+              <Section title="Account Information">
+                <FieldGrid>
+                  <Field icon={Mail} label="Login Email" value={profile?.email || user?.email} />
+                  <Field icon={Hash} label="Username" value={profile?.username} />
+                  <Field icon={Globe} label="Language" value={profile?.language} />
+                  <Field icon={Clock} label="Time Zone" value={profile?.time_zone} />
+                  <Field icon={Clock} label="Last Login" value={fmtDateTime(profile?.last_login ?? null)} />
+                  <Field icon={Shield} label="Account Status" value={profile?.enabled === 0 ? "Disabled" : "Enabled"} />
+                </FieldGrid>
+              </Section>
 
-              {/* System note */}
-              <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-xl p-4">
-                <Shield className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-semibold text-blue-800">Managed via ERPNext</p>
-                  <p className="text-xs text-blue-600 mt-0.5">
-                    Your profile is synced from the central ERP system. Contact your HR administrator to update personal details.
-                  </p>
-                </div>
+              {/* ERPNext note */}
+              <div className="flex items-start gap-3 bg-blue-50/60 border border-blue-100 rounded-xl px-4 py-3">
+                <Shield className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-blue-600">
+                  Profile is synced from ERPNext. Contact your HR administrator to update personal or employment details.
+                </p>
               </div>
-            </div>
 
+            </div>
           </div>
         )}
       </div>
