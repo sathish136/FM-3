@@ -438,7 +438,10 @@ export interface ErpUser {
 export async function fetchErpNextUsers(): Promise<ErpUser[]> {
   if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
   const fields = JSON.stringify(["name", "full_name", "user_image", "enabled"]);
-  const filters = JSON.stringify([["User", "user_type", "=", "System User"]]);
+  const filters = JSON.stringify([
+    ["User", "user_type", "=", "System User"],
+    ["User", "enabled", "=", 1],
+  ]);
   const params = new URLSearchParams({ fields, filters, limit_page_length: "500", order_by: "full_name asc" });
   const url = `${ERPNEXT_URL}/api/resource/User?${params.toString()}`;
   const res = await fetch(url, { headers: { Authorization: authHeader() } });
