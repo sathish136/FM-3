@@ -275,14 +275,83 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
   );
 }
 
+// ─── @Mention hook ───────────────────────────────────────────────────────────
+type MentionUser = { id: string; name: string; designation: string; department: string; avatar: string | null };
+
+function useMentionUsers(query: string, active: boolean) {
+  const [users, setUsers] = useState<MentionUser[]>([]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!active) { setUsers([]); return; }
+    setLoading(true);
+    fetch(`${BASE}/users/mention?q=${encodeURIComponent(query)}`)
+      .then(r => r.json())
+      .then(d => { setUsers(Array.isArray(d) ? d : []); setLoading(false); })
+      .catch(() => { setUsers([]); setLoading(false); });
+  }, [query, active]);
+  return { users, loading };
+}
+
+function getAtQuery(text: string, cursor: number): { query: string; start: number } | null {
+  const before = text.slice(0, cursor);
+  const match = before.match(/@([^\s@]*)$/);
+  if (!match) return null;
+  return { query: match[1], start: before.lastIndexOf("@") };
+}
+
 // ─── Manual Notes Mode ──────────────────────────────────────────────────────
 function ManualView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: Meeting) => void }) {
   const [notes, setNotes] = useState(meeting.rawNotes || "");
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [streamText, setStreamText] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const [mention, setMention] = useState<{ active: boolean; query: string; start: number; idx: number }>({
+    active: false, query: "", start: 0, idx: 0,
+  });
+  const { users, loading: mentionLoading } = useMentionUsers(mention.query, mention.active);
 
   useEffect(() => { setNotes(meeting.rawNotes || ""); }, [meeting.id]);
+
+  const closeMention = () => setMention(m => ({ ...m, active: false, idx: 0 }));
+
+  const handleNotesChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setNotes(val);
+    const cursor = e.target.selectionStart ?? val.length;
+    const result = getAtQuery(val, cursor);
+    if (result) {
+      setMention({ active: true, query: result.query, start: result.start, idx: 0 });
+    } else {
+      closeMention();
+    }
+  };
+
+  const insertMention = (user: MentionUser) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const cursor = ta.selectionStart ?? notes.length;
+    const before = notes.slice(0, mention.start);
+    const after = notes.slice(cursor);
+    const inserted = `@${user.name} `;
+    const newNotes = before + inserted + after;
+    setNotes(newNotes);
+    closeMention();
+    setTimeout(() => {
+      ta.focus();
+      const pos = before.length + inserted.length;
+      ta.setSelectionRange(pos, pos);
+    }, 0);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!mention.active || users.length === 0) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setMention(m => ({ ...m, idx: Math.min(m.idx + 1, users.length - 1) })); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setMention(m => ({ ...m, idx: Math.max(m.idx - 1, 0) })); }
+    else if (e.key === "Enter") { e.preventDefault(); insertMention(users[mention.idx]); }
+    else if (e.key === "Escape") { closeMention(); }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -318,13 +387,52 @@ function ManualView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: Mee
             </button>
           </div>
         </div>
-        <textarea
-          value={notes}
-          onChange={e => setNotes(e.target.value)}
-          rows={10}
-          placeholder={"Type your meeting notes here…\n\nInclude:\n• What was discussed\n• Decisions made\n• Who said what\n\nAI will generate a structured summary with action items."}
-          className="w-full px-4 py-3 text-sm text-gray-700 focus:outline-none resize-none bg-white"
-        />
+        <div className="relative">
+          <textarea
+            ref={textareaRef}
+            value={notes}
+            onChange={handleNotesChange}
+            onKeyDown={handleKeyDown}
+            onBlur={() => setTimeout(closeMention, 150)}
+            rows={10}
+            placeholder={"Type your meeting notes here…\n\nInclude:\n• What was discussed\n• Decisions made\n• Who said what\n\nAI will generate a structured summary with action items.\n\nTip: Type @ to mention a team member"}
+            className="w-full px-4 py-3 text-sm text-gray-700 focus:outline-none resize-none bg-white"
+          />
+          {mention.active && (
+            <div className="absolute left-4 bottom-2 z-50 w-72 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+              <div className="px-3 py-1.5 border-b border-gray-100 flex items-center gap-1.5">
+                <Users className="w-3 h-3 text-blue-500" />
+                <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Mention team member</span>
+                {mentionLoading && <Loader2 className="w-2.5 h-2.5 text-gray-400 animate-spin ml-auto" />}
+              </div>
+              {users.length === 0 && !mentionLoading && (
+                <div className="px-3 py-3 text-xs text-gray-400 text-center">No users found</div>
+              )}
+              {users.map((u, i) => (
+                <button
+                  key={u.id}
+                  onMouseDown={e => { e.preventDefault(); insertMention(u); }}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${i === mention.idx ? "bg-blue-50" : "hover:bg-gray-50"}`}
+                >
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 overflow-hidden">
+                    {u.avatar
+                      ? <img src={u.avatar} alt={u.name} className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                      : u.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-gray-800 truncate">{u.name}</p>
+                    {(u.designation || u.department) && (
+                      <p className="text-[10px] text-gray-400 truncate">{u.designation || u.department}</p>
+                    )}
+                  </div>
+                </button>
+              ))}
+              <div className="px-3 py-1 border-t border-gray-100 bg-gray-50">
+                <p className="text-[9px] text-gray-400">↑↓ navigate · Enter select · Esc close</p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {(generating || meeting.aiSummary) && (
