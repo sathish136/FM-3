@@ -284,7 +284,7 @@ export interface ErpMaterialRequest {
 export async function fetchErpNextMaterialRequests(filters?: { status?: string; type?: string; project?: string }): Promise<ErpMaterialRequest[]> {
   const fields = JSON.stringify([
     "name", "title", "material_request_type", "status",
-    "transaction_date", "schedule_date", "company", "project", "modified",
+    "transaction_date", "schedule_date", "company", "project", "modified", "owner",
   ]);
 
   const fArr: any[] = [];

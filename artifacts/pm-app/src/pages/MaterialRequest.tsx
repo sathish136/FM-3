@@ -32,6 +32,7 @@ interface MaterialRequest {
   project: string | null;
   modified: string | null;
   requested_by: string | null;
+  owner: string | null;
   items?: MRItem[];
 }
 
@@ -323,14 +324,9 @@ export default function MaterialRequestPage() {
       <div className="h-full flex flex-col bg-[#f1f5f9] overflow-hidden">
 
         {/* ── Page header ─────────────────────────────────────────────────── */}
-        <div className="bg-white border-b border-gray-100 px-6 py-4 flex items-center gap-4 shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow shrink-0">
-              <ShoppingCart className="w-[18px] h-[18px] text-white" />
-            </div>
-            <div>
-              <h1 className="text-base font-bold text-gray-900 leading-tight">Material Request</h1>
-            </div>
+        <div className="bg-white border-b border-gray-100 px-6 py-3 flex items-center gap-4 shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+          <div className="flex items-center flex-1 min-w-0">
+            <h1 className="text-sm font-bold text-gray-900">Material Request</h1>
           </div>
 
           <div className="flex items-center gap-2">
@@ -502,6 +498,11 @@ export default function MaterialRequestPage() {
                         ID <SortBtn field="name" />
                       </div>
                     </th>
+                    <th className="px-3 py-3 text-left w-36">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                        Created By
+                      </div>
+                    </th>
                     <th className="px-4 py-3 text-right w-28">
                       <div className="flex items-center justify-end gap-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">
                         Updated <SortBtn field="modified" />
@@ -566,6 +567,15 @@ export default function MaterialRequestPage() {
                               <ExternalLink className="w-3 h-3" />
                             </a>
                           </div>
+                        </td>
+
+                        {/* Created By */}
+                        <td className="px-3 py-3">
+                          {mr.owner ? (
+                            <span className="text-xs text-gray-600 truncate max-w-[130px] block" title={mr.owner}>
+                              {mr.owner.split("@")[0]}
+                            </span>
+                          ) : <span className="text-xs text-gray-300">—</span>}
                         </td>
 
                         {/* Updated */}
