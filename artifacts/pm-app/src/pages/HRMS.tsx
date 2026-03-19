@@ -2,7 +2,7 @@ import { Layout } from "@/components/Layout";
 import {
   Users, Search, RefreshCw, Loader2, Calendar,
   UserCheck, Briefcase, Phone,
-  Building2, ChevronDown, ExternalLink, Mail, Shield, ShieldCheck, ShieldOff,
+  Building2, ChevronDown, ExternalLink, Mail,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -104,7 +104,7 @@ function StatusPill({ status, type }: { status: string; type: "employee" | "leav
   return null;
 }
 
-type Tab = "employees" | "leave" | "attendance" | "departments";
+type Tab = "employees" | "leave" | "attendance";
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 interface UserScope {
@@ -114,17 +114,6 @@ interface UserScope {
   roles: string[];
 }
 
-interface Department {
-  name: string;
-  department_name: string;
-  parent_department: string | null;
-  department_manager: string | null;
-  department_manager_name: string | null;
-  company: string | null;
-  is_group: number;
-  disabled: number;
-  employee_count: number;
-}
 
 export default function HRMS() {
   const { toast } = useToast();
@@ -134,7 +123,6 @@ export default function HRMS() {
   const [employees, setEmployees]   = useState<Employee[]>([]);
   const [leaves, setLeaves]         = useState<LeaveApp[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading]       = useState(false);
   const [scopeLoading, setScopeLoading] = useState(true);
   const [search, setSearch]         = useState("");
@@ -190,17 +178,6 @@ export default function HRMS() {
     } finally { setLoading(false); }
   }, [toast]);
 
-  const loadDepartments = useCallback(async () => {
-    setLoading(true);
-    try {
-      const r = await fetch(`${BASE}/api/hrms/departments`);
-      if (!r.ok) throw new Error(await r.text());
-      setDepartments(await r.json());
-    } catch (e) {
-      toast({ title: "Failed to load departments", description: String(e), variant: "destructive" });
-    } finally { setLoading(false); }
-  }, [toast]);
-
   // Load data when scope is resolved and tab changes
   useEffect(() => {
     if (scopeLoading) return;
@@ -209,8 +186,7 @@ export default function HRMS() {
     setViewEmp(null);
     if (tab === "employees") loadEmployees();
     else if (tab === "leave") loadLeaves();
-    else if (tab === "attendance") loadAttendance();
-    else loadDepartments();
+    else loadAttendance();
   }, [tab, scopeLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Apply permission scope to narrow the displayed data
@@ -220,6 +196,9 @@ export default function HRMS() {
       const deptSet = new Set(userScope.departments);
       return employees.filter(e => e.department && deptSet.has(e.department));
     }
+    // "self" scope: show all employees in the same department as this user
+    const empDept = userScope.employee?.department;
+    if (empDept) return employees.filter(e => e.department === empDept);
     return userScope.employee ? [userScope.employee] : [];
   }, [employees, userScope]);
 
@@ -232,15 +211,6 @@ export default function HRMS() {
   const scopedAtt = useMemo(() =>
     userScope.scope === "all" ? attendance : attendance.filter(a => scopedEmpIds.has(a.employee)),
     [attendance, userScope.scope, scopedEmpIds]);
-
-  const scopedDepts = useMemo(() => {
-    if (userScope.scope === "all") return departments;
-    const allowedSet = new Set(userScope.departments);
-    if (userScope.scope === "department") return departments.filter(d => allowedSet.has(d.name));
-    // self: show only own department
-    const empDept = userScope.employee?.department;
-    return empDept ? departments.filter(d => d.name === empDept) : [];
-  }, [departments, userScope]);
 
   const depts = useMemo(() =>
     [...new Set(scopedEmps.map(e => e.department).filter(Boolean) as string[])].sort(),
@@ -267,17 +237,15 @@ export default function HRMS() {
   );
 
   const TABS: { key: Tab; label: string; count: number; icon: React.ElementType }[] = [
-    { key: "employees",   label: "Employees",           count: scopedEmps.length,   icon: Users },
-    { key: "leave",       label: "Leave Applications",   count: scopedLeaves.length, icon: Calendar },
-    { key: "attendance",  label: "Attendance",            count: scopedAtt.length,   icon: UserCheck },
-    { key: "departments", label: "Departments",           count: scopedDepts.length,  icon: Building2 },
+    { key: "employees",  label: "Employees",          count: scopedEmps.length,   icon: Users },
+    { key: "leave",      label: "Leave Applications",  count: scopedLeaves.length, icon: Calendar },
+    { key: "attendance", label: "Attendance",           count: scopedAtt.length,   icon: UserCheck },
   ];
 
   const handleRefresh = () => {
     if (tab === "employees") loadEmployees();
     else if (tab === "leave") loadLeaves();
-    else if (tab === "attendance") loadAttendance();
-    else loadDepartments();
+    else loadAttendance();
   };
 
   // Scope badge info
@@ -285,7 +253,7 @@ export default function HRMS() {
     ? { label: "All Employees", color: "bg-blue-50 border-blue-100 text-blue-700" }
     : userScope.scope === "department"
     ? { label: `Dept: ${userScope.departments.join(", ")}`, color: "bg-emerald-50 border-emerald-100 text-emerald-700" }
-    : { label: userScope.employee?.employee_name ?? "Self", color: "bg-violet-50 border-violet-100 text-violet-700" };
+    : { label: `Dept: ${userScope.employee?.department ?? "My Department"}`, color: "bg-violet-50 border-violet-100 text-violet-700" };
 
   return (
     <Layout>
