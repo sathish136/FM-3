@@ -47,16 +47,16 @@ function fmtDateTime(s: string | null): string {
   catch { return s; }
 }
 
-// A single field tile — icon, label, value stacked
+// Single field: icon + label (above) + value
 function Field({ icon: Icon, label, value, accent }: {
   icon: React.ElementType; label: string; value: string | null; accent?: boolean;
 }) {
   return (
-    <div className="flex items-start gap-3 min-w-0">
-      <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${accent ? "text-blue-500" : "text-muted-foreground"}`} />
+    <div className="flex items-start gap-2.5 min-w-0">
+      <Icon className="w-3.5 h-3.5 mt-0.5 shrink-0 text-muted-foreground" />
       <div className="min-w-0">
-        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider leading-none mb-1">{label}</p>
-        <p className={`text-sm font-medium leading-snug break-words ${accent ? "text-blue-600" : "text-foreground"}`}>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground leading-none mb-1">{label}</p>
+        <p className={`text-sm font-semibold leading-snug break-words ${accent ? "text-blue-600" : "text-foreground"}`}>
           {value || "—"}
         </p>
       </div>
@@ -64,7 +64,18 @@ function Field({ icon: Icon, label, value, accent }: {
   );
 }
 
-// Section card — title bar + field grid
+// A row containing a LEFT and optional RIGHT field, separated by a vertical line.
+// Rows are separated from each other by a bottom border.
+function FieldRow({ left, right }: { left: React.ReactNode; right?: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-2 border-b border-border/50 last:border-0">
+      <div className="py-3.5 pr-5">{left}</div>
+      <div className={`py-3.5 pl-5 ${right ? "border-l border-border/50" : ""}`}>{right}</div>
+    </div>
+  );
+}
+
+// Section card — coloured title bar + rows list
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
@@ -72,25 +83,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
         <span className="w-1 h-4 rounded-full bg-blue-500 shrink-0" />
         <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{title}</h3>
       </div>
-      <div className="p-5">
-        {children}
-      </div>
+      <div className="px-5">{children}</div>
     </div>
   );
-}
-
-// Two-column field grid — even rows, no stray borders
-function FieldGrid({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-2 gap-x-8 gap-y-5">
-      {children}
-    </div>
-  );
-}
-
-// Thin horizontal divider between field groups inside a section
-function Divider() {
-  return <hr className="border-border/50 my-4" />;
 }
 
 export default function Profile() {
@@ -230,45 +225,50 @@ export default function Profile() {
 
               {/* Work Information */}
               <Section title="Work Information">
-                <FieldGrid>
-                  <Field icon={Briefcase} label="Designation" value={profile?.designation} accent />
-                  <Field icon={Users} label="Department" value={profile?.department} />
-                  <Field icon={Building2} label="Company" value={profile?.company} />
-                  <Field icon={MapPin} label="Branch / Location" value={profile?.branch} />
-                  <Field icon={Calendar} label="Date of Joining" value={fmtDate(profile?.date_of_joining ?? null)} />
-                  <Field icon={Briefcase} label="Employment Type" value={profile?.employment_type} />
-                </FieldGrid>
-                {(profile?.reports_to || profile?.grade) && (
-                  <>
-                    <Divider />
-                    <FieldGrid>
-                      {profile?.reports_to && <Field icon={Users} label="Reports To" value={profile.reports_to} />}
-                      {profile?.grade && <Field icon={BadgeCheck} label="Grade" value={profile.grade} />}
-                    </FieldGrid>
-                  </>
-                )}
+                <FieldRow
+                  left={<Field icon={Briefcase} label="Designation" value={profile?.designation} accent />}
+                  right={<Field icon={Users} label="Department" value={profile?.department} />}
+                />
+                <FieldRow
+                  left={<Field icon={Building2} label="Company" value={profile?.company} />}
+                  right={<Field icon={MapPin} label="Branch / Location" value={profile?.branch} />}
+                />
+                <FieldRow
+                  left={<Field icon={Calendar} label="Date of Joining" value={fmtDate(profile?.date_of_joining ?? null)} />}
+                  right={<Field icon={Briefcase} label="Employment Type" value={profile?.employment_type} />}
+                />
+                <FieldRow
+                  left={<Field icon={Users} label="Reports To" value={profile?.reports_to} />}
+                  right={<Field icon={BadgeCheck} label="Grade" value={profile?.grade} />}
+                />
               </Section>
 
               {/* Personal Information */}
               <Section title="Personal Information">
-                <FieldGrid>
-                  <Field icon={User} label="Gender" value={profile?.gender} />
-                  <Field icon={Calendar} label="Date of Birth" value={fmtDate(profile?.date_of_birth ?? null)} />
-                  <Field icon={Phone} label="Mobile" value={profile?.mobile_no} />
-                  <Field icon={Mail} label="Personal Email" value={profile?.personal_email} />
-                </FieldGrid>
+                <FieldRow
+                  left={<Field icon={User} label="Gender" value={profile?.gender} />}
+                  right={<Field icon={Calendar} label="Date of Birth" value={fmtDate(profile?.date_of_birth ?? null)} />}
+                />
+                <FieldRow
+                  left={<Field icon={Phone} label="Mobile" value={profile?.mobile_no} />}
+                  right={<Field icon={Mail} label="Personal Email" value={profile?.personal_email} />}
+                />
               </Section>
 
               {/* Account Information */}
               <Section title="Account Information">
-                <FieldGrid>
-                  <Field icon={Mail} label="Login Email" value={profile?.email || user?.email} />
-                  <Field icon={Hash} label="Username" value={profile?.username} />
-                  <Field icon={Globe} label="Language" value={profile?.language} />
-                  <Field icon={Clock} label="Time Zone" value={profile?.time_zone} />
-                  <Field icon={Clock} label="Last Login" value={fmtDateTime(profile?.last_login ?? null)} />
-                  <Field icon={Shield} label="Account Status" value={profile?.enabled === 0 ? "Disabled" : "Enabled"} />
-                </FieldGrid>
+                <FieldRow
+                  left={<Field icon={Mail} label="Login Email" value={profile?.email || user?.email || null} />}
+                  right={<Field icon={Hash} label="Username" value={profile?.username} />}
+                />
+                <FieldRow
+                  left={<Field icon={Globe} label="Language" value={profile?.language} />}
+                  right={<Field icon={Clock} label="Time Zone" value={profile?.time_zone} />}
+                />
+                <FieldRow
+                  left={<Field icon={Clock} label="Last Login" value={fmtDateTime(profile?.last_login ?? null)} />}
+                  right={<Field icon={Shield} label="Account Status" value={profile?.enabled === 0 ? "Disabled" : "Enabled"} />}
+                />
               </Section>
 
               {/* ERPNext note */}
