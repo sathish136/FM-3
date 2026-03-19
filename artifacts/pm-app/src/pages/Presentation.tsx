@@ -198,6 +198,7 @@ function SlideCard({ slide, pres, deckIdx, scale = 1 }: {
 function PptxViewer({ fileUrl }: { fileUrl: string }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<ReturnType<typeof initPptxPreview> | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -207,18 +208,19 @@ function PptxViewer({ fileUrl }: { fileUrl: string }) {
     let cancelled = false;
     setStatus("loading");
 
-    const run = () => {
+    const run = async () => {
       if (cancelled || !containerRef.current || !wrapperRef.current) return;
 
       const wrapper = wrapperRef.current;
-      const w = wrapper.clientWidth || window.innerWidth;
-      const h = wrapper.clientHeight || (window.innerHeight - 48);
+      const w = Math.max(wrapper.clientWidth || window.innerWidth, 400);
+      const h = Math.max(wrapper.clientHeight || (window.innerHeight - 56), 300);
 
       containerRef.current.innerHTML = "";
 
       let viewer: ReturnType<typeof initPptxPreview>;
       try {
-        viewer = initPptxPreview(containerRef.current, { width: w, height: h });
+        viewer = initPptxPreview(containerRef.current, { width: w, height: h, mode: "slide" });
+        viewerRef.current = viewer;
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         console.error("pptx-preview init error:", e);
@@ -226,49 +228,42 @@ function PptxViewer({ fileUrl }: { fileUrl: string }) {
         return;
       }
 
-      fetch(fileUrl)
-        .then(r => {
-          if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          return r.arrayBuffer();
-        })
-        .then(buf => {
-          if (cancelled) return;
-          try {
-            const result = viewer.preview(buf);
-            if (result && typeof (result as unknown as Promise<unknown>).then === "function") {
-              (result as unknown as Promise<unknown>)
-                .then(() => { if (!cancelled) setStatus("ready"); })
-                .catch(() => { if (!cancelled) setStatus("ready"); });
-            } else {
-              setTimeout(() => { if (!cancelled) setStatus("ready"); }, 800);
-            }
-          } catch (e2: unknown) {
-            console.error("pptx-preview render error:", e2);
-            setTimeout(() => { if (!cancelled) setStatus("ready"); }, 800);
-          }
-        })
-        .catch(err => {
-          if (cancelled) return;
-          console.error("pptx-preview fetch error:", err);
-          setErrorMsg(err.message || "Failed to load presentation");
-          setStatus("error");
-        });
+      try {
+        const res = await fetch(fileUrl);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const buf = await res.arrayBuffer();
+        if (cancelled) return;
+        await viewer.preview(buf);
+        if (!cancelled) setStatus("ready");
+      } catch (err: unknown) {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("pptx-preview error:", err);
+        setErrorMsg(msg || "Failed to render presentation");
+        setStatus("error");
+      }
     };
 
-    requestAnimationFrame(() => requestAnimationFrame(run));
+    requestAnimationFrame(() => requestAnimationFrame(() => { run(); }));
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      try { viewerRef.current?.destroy(); } catch (_) {}
+      viewerRef.current = null;
+    };
   }, [fileUrl]);
 
   return (
-    <div ref={wrapperRef} className="w-full h-full relative bg-white overflow-auto">
+    <div ref={wrapperRef} className="w-full h-full relative bg-gray-950 overflow-hidden">
+      {/* Loading overlay */}
       {status === "loading" && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-10 bg-gray-950 pointer-events-none">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-10 bg-gray-950">
           <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
           <p className="text-sm font-medium text-gray-300">Rendering slides…</p>
           <p className="text-xs text-gray-500">Parsing PPTX content</p>
         </div>
       )}
+      {/* Error overlay */}
       {status === "error" && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-gray-950 z-10">
           <AlertCircle className="w-12 h-12 text-red-400" />
@@ -279,10 +274,11 @@ function PptxViewer({ fileUrl }: { fileUrl: string }) {
           </a>
         </div>
       )}
+      {/* Container — always in DOM; opacity hides it during load so canvas can still render */}
       <div
         ref={containerRef}
-        className="w-full"
-        style={{ visibility: status === "loading" ? "hidden" : "visible" }}
+        className="w-full h-full"
+        style={{ opacity: status === "loading" ? 0 : 1, transition: "opacity 0.3s ease" }}
       />
     </div>
   );
