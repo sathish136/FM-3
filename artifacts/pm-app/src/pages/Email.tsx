@@ -796,19 +796,23 @@ function EmailDetail({ email, folderPath, onBack, onReply, onReplyAll, onDelete,
 
         {/* Quick reply bar */}
         {!loading && (
-          <div className="border-t border-gray-100">
-            {replyBarCollapsed ? (
-              /* Collapsed: ultra-thin tab to expand */
+          <div>
+            {/* Toggle handle — always visible on the divider */}
+            <div className="relative flex items-center border-t border-gray-100">
               <button
-                onClick={() => setReplyBarCollapsed(false)}
-                title="Show reply options"
-                className="w-full flex items-center justify-center gap-1 py-0.5 text-[10px] text-gray-300 hover:text-gray-500 hover:bg-gray-50 transition-colors"
+                onClick={() => setReplyBarCollapsed(v => !v)}
+                title={replyBarCollapsed ? "Expand actions" : "Collapse actions"}
+                className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-1 px-3 py-0.5 bg-white border border-gray-200 rounded-full text-[10px] font-medium text-gray-400 hover:text-gray-600 hover:border-gray-300 shadow-sm transition-colors z-10"
               >
-                <ChevronDown className="w-3 h-3" />
+                {replyBarCollapsed
+                  ? <><ChevronDown className="w-3 h-3" /><span>Expand</span></>
+                  : <><ChevronLeft className="w-3 h-3 rotate-90" /><span>Collapse</span></>}
               </button>
-            ) : (
-              /* Expanded: full action bar */
-              <div className="px-6 py-2.5 flex items-center gap-2 flex-wrap">
+            </div>
+
+            {/* Action buttons */}
+            {!replyBarCollapsed && (
+              <div className="px-6 pt-4 pb-3 flex items-center gap-2 flex-wrap">
                 <button
                   onClick={()=>onReply(email.from, `Re: ${email.subject}`, buildQuoted())}
                   className="flex items-center gap-1.5 px-4 py-1.5 border border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 text-gray-700 rounded-full text-xs font-medium transition-colors"
@@ -832,13 +836,6 @@ function EmailDetail({ email, folderPath, onBack, onReply, onReplyAll, onDelete,
                   className="flex items-center gap-1.5 px-4 py-1.5 border border-purple-200 hover:border-purple-400 text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-full text-xs font-medium transition-colors"
                 >
                   <Sparkles className="w-3 h-3"/> Smart Reply
-                </button>
-                <button
-                  onClick={() => setReplyBarCollapsed(true)}
-                  title="Hide reply options"
-                  className="ml-auto flex items-center justify-center w-6 h-6 rounded-full text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition-colors"
-                >
-                  <ChevronDown className="w-3.5 h-3.5 rotate-180" />
                 </button>
               </div>
             )}
