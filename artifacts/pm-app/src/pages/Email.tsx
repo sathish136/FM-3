@@ -1231,7 +1231,7 @@ export default function Email() {
 
         {/* ── Email Detail ── */}
         {selected ? (
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 h-full">
             <EmailDetail
               email={selected}
               folderPath={activeFolderPath}
