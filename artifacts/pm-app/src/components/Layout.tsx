@@ -3,13 +3,14 @@ import {
   LayoutDashboard, Box, PenTool, GitBranch,
   Briefcase, ChevronDown, FileText,
   ChevronRight, LogOut, ChevronLeft, ChevronRight as ChevronRightIcon, Menu,
-  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, Users, UserCircle, LayoutGrid, Mail, MessageSquare,
+  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, Users, UserCircle, LayoutGrid, Mail, MessageSquare, Palette,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth, type AuthUser } from "@/hooks/useAuth";
 import { AISearch } from "@/components/AISearch";
 import { WaterDropAnimation } from "@/components/WaterAnimation";
+import { useTheme, THEME_PRESETS } from "@/hooks/useTheme";
 
 function UserAvatar({ user, size = "sm" }: { user: AuthUser | null; size?: "sm" | "md" | "lg" }) {
   const [imgError, setImgError] = useState(false);
@@ -105,7 +106,20 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   const [expandedItems, setExpandedItems] = useState<string[]>(["/drawings"]);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [showThemePicker, setShowThemePicker] = useState(false);
   const { user, logout } = useAuth();
+  const { theme, themeIndex, setTheme } = useTheme();
+  const themePickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (themePickerRef.current && !themePickerRef.current.contains(e.target as Node)) {
+        setShowThemePicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   // Auto-collapse sidebar when on email — gives full reading width
   useEffect(() => {
@@ -180,7 +194,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
                     >
                       {/* Active indicator bar */}
                       {(isActive || isChildActive) && (
-                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full bg-indigo-400" />
+                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full" style={{ backgroundColor: theme.accent }} />
                       )}
 
                       {/* Icon container */}
@@ -239,14 +253,15 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
                             className={cn(
                               "flex items-center gap-2 py-1.5 px-2 text-[12px] rounded-lg transition-all",
                               location === child.path
-                                ? "text-indigo-300 font-semibold bg-indigo-500/10"
+                                ? "font-semibold bg-white/10"
                                 : "text-slate-500 hover:text-slate-200 hover:bg-white/[0.05]"
                             )}
+                            style={location === child.path ? { color: theme.accent } : {}}
                           >
-                            <span className={cn(
-                              "w-1 h-1 rounded-full shrink-0",
-                              location === child.path ? "bg-indigo-400" : "bg-slate-600"
-                            )} />
+                            <span
+                              className="w-1 h-1 rounded-full shrink-0"
+                              style={{ backgroundColor: location === child.path ? theme.accent : "#475569" }}
+                            />
                             {child.label}
                           </Link>
                         ))}
@@ -261,23 +276,55 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
       </nav>
 
       {/* Footer */}
-      <div className="relative border-t border-white/[0.07] p-3 space-y-2">
-        {/* User card */}
-        <Link href="/profile" className="flex items-center justify-center p-2.5 rounded-xl hover:bg-white/[0.07] transition-all cursor-pointer group">
-          <Settings className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400 transition-colors shrink-0" />
-        </Link>
+      <div className="relative border-t border-white/[0.07] p-3 space-y-1" ref={themePickerRef}>
+        {/* Theme picker popup */}
+        {showThemePicker && (
+          <div className="absolute bottom-full left-3 right-3 mb-2 bg-slate-800 border border-white/10 rounded-xl p-3 shadow-2xl z-50">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mb-2">Theme Color</p>
+            <div className="grid grid-cols-4 gap-1.5">
+              {THEME_PRESETS.map((preset, i) => (
+                <button
+                  key={preset.name}
+                  onClick={() => { setTheme(i); setShowThemePicker(false); }}
+                  title={preset.name}
+                  className={cn(
+                    "w-full aspect-square rounded-lg border-2 transition-all",
+                    i === themeIndex ? "border-white scale-105" : "border-transparent hover:scale-110"
+                  )}
+                  style={{ backgroundColor: preset.accent }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center gap-1">
+          {/* Theme picker button */}
+          <button
+            onClick={() => setShowThemePicker(v => !v)}
+            className="flex items-center gap-2 flex-1 px-2.5 py-1.5 rounded-xl text-slate-500 hover:bg-white/[0.07] transition-all text-xs font-medium"
+            title="Theme color"
+          >
+            <span className="w-3 h-3 rounded-full shrink-0 border border-white/20" style={{ backgroundColor: theme.accent }} />
+            <span className="text-[11px]">Theme</span>
+            <Palette className="w-3 h-3 ml-auto" />
+          </button>
+          <Link href="/profile" className="p-1.5 rounded-xl hover:bg-white/[0.07] transition-all cursor-pointer group">
+            <Settings className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400 transition-colors" />
+          </Link>
+        </div>
 
         {/* Sign out */}
         <button
           onClick={logout}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-all text-xs font-medium"
+          className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-all text-xs font-medium"
         >
           <LogOut className="w-3.5 h-3.5 shrink-0" />
           Sign out
         </button>
 
         {/* Branding */}
-        <div className="flex items-center justify-center gap-1.5 pt-1">
+        <div className="flex items-center justify-center gap-1.5 pt-0.5">
           <Zap className="w-2.5 h-2.5 text-indigo-500/50" />
           <p className="text-[9px] text-slate-700 tracking-widest uppercase font-semibold">FlowMatrix</p>
         </div>
@@ -321,7 +368,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
                         ? "bg-white/10 shadow-sm"
                         : "text-slate-500 hover:bg-white/[0.07] hover:text-white"
                     )}>
-                      {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full bg-indigo-400" />}
+                      {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full" style={{ backgroundColor: theme.accent }} />}
                       <Icon className={isActive ? iconColor : "text-slate-500"} style={{ width: 17, height: 17 }} />
                     </div>
                   </Link>
@@ -336,7 +383,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
                   )}
                   onClick={() => toggleExpand(item.path)}
                 >
-                  {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full bg-indigo-400" />}
+                  {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full" style={{ backgroundColor: theme.accent }} />}
                   <Icon className={isActive ? iconColor : "text-slate-500"} style={{ width: 17, height: 17 }} />
                 </div>
               )}
@@ -357,6 +404,13 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
         <Link href="/profile" className="block hover:ring-2 hover:ring-indigo-500/40 rounded-full transition-all cursor-pointer">
           <UserAvatar user={user} size="md" />
         </Link>
+        <button
+          onClick={() => { setCollapsed(false); setShowThemePicker(true); }}
+          className="w-full h-8 rounded-xl flex items-center justify-center text-slate-600 hover:bg-white/10 hover:text-white transition-all"
+          title="Theme color"
+        >
+          <span className="w-3 h-3 rounded-full border border-white/20" style={{ backgroundColor: theme.accent }} />
+        </button>
         <button
           onClick={() => setCollapsed(false)}
           className="w-full h-8 rounded-xl flex items-center justify-center text-slate-600 hover:bg-white/10 hover:text-white transition-all"

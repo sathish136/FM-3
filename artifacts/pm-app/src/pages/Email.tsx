@@ -1,4 +1,5 @@
 import { Layout } from "@/components/Layout";
+import { useTheme } from "@/hooks/useTheme";
 import {
   Mail, Send, Inbox, Pencil, X, ChevronLeft, Loader2,
   RefreshCw, AlertCircle, Trash2, Star, Paperclip, Search,
@@ -71,9 +72,9 @@ const FOLDER_META: Record<string, { label: string; icon: any; color?: string }> 
 const PRIORITY = ["INBOX","[Gmail]/Starred","[Gmail]/Sent Mail","[Gmail]/Drafts","[Gmail]/Spam","[Gmail]/Trash","[Gmail]/All Mail","[Gmail]/Important"];
 
 function folderLabel(path: string) { return FOLDER_META[path]?.label || path.split("/").pop() || path; }
-function FolderIcon({ path, className }: { path: string; className?: string }) {
+function FolderIcon({ path, className, style }: { path: string; className?: string; style?: React.CSSProperties }) {
   const Icon = FOLDER_META[path]?.icon || Tag;
-  return <Icon className={className} />;
+  return <Icon className={className} style={style} />;
 }
 
 function groupFolders(folders: ImapFolder[]) {
@@ -826,10 +827,14 @@ function EmailDetail({ email, folderPath, onBack, onReply, onReplyAll, onDelete,
   );
 }
 
+const PRIMARY_FOLDERS = ["INBOX", "[Gmail]/Starred", "[Gmail]/Sent Mail"];
+const SECONDARY_FOLDERS = ["[Gmail]/Drafts", "[Gmail]/Spam", "[Gmail]/Trash", "[Gmail]/All Mail", "[Gmail]/Important"];
+
 // ─── Main Email Page ──────────────────────────────────────────────────────────
 export default function Email() {
   const { user } = useAuth();
   const userEmail = user?.email;
+  const { theme } = useTheme();
   const userParam = userEmail ? `&user=${encodeURIComponent(userEmail)}` : "";
 
   const [folders, setFolders] = useState<ImapFolder[]>([]);
@@ -945,37 +950,83 @@ export default function Email() {
 
           {foldersLoading && <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-gray-300"/></div>}
 
-          <nav className="px-1.5 flex-1">
-            {mainFolders.map(f=>{
-              const isActive = activeFolderPath===f.path;
-              const colorClass = isActive?"text-blue-700":FOLDER_META[f.path]?.color||"text-gray-500";
+          <nav className="px-1.5 flex-1 py-1">
+            {/* Primary folders */}
+            <p className="px-2.5 mb-1 text-[9px] font-bold uppercase tracking-widest text-gray-400">Mailbox</p>
+            {mainFolders.filter(f => PRIMARY_FOLDERS.includes(f.path)).map(f => {
+              const isActive = activeFolderPath === f.path;
               return (
-                <button key={f.path} onClick={()=>setActiveFolderPath(f.path)}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-sm font-medium transition-colors ${isActive?"bg-blue-50 text-blue-700":"text-gray-700 hover:bg-gray-50"}`}>
-                  <FolderIcon path={f.path} className={`w-4 h-4 shrink-0 ${colorClass}`}/>
+                <button key={f.path} onClick={() => setActiveFolderPath(f.path)}
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-sm font-medium transition-colors ${isActive ? "font-semibold" : "text-gray-700 hover:bg-gray-50"}`}
+                  style={isActive ? { backgroundColor: theme.accentLight, color: theme.accentDark } : {}}>
+                  <FolderIcon path={f.path} className={`w-4 h-4 shrink-0`} style={isActive ? { color: theme.accent } : { color: FOLDER_META[f.path]?.color ? undefined : "#9ca3af" }} />
                   <span className="flex-1 text-left truncate">{folderLabel(f.path)}</span>
-                  {f.path==="INBOX" && unread>0 && (
-                    <span className="text-[10px] font-bold bg-blue-600 text-white rounded-full px-1.5 leading-5 min-w-[20px] text-center">
-                      {unread>99?"99+":unread}
+                  {f.path === "INBOX" && unread > 0 && (
+                    <span className="text-[10px] font-bold text-white rounded-full px-1.5 leading-5 min-w-[20px] text-center" style={{ backgroundColor: theme.accent }}>
+                      {unread > 99 ? "99+" : unread}
                     </span>
                   )}
                 </button>
               );
             })}
 
-            {labels.length>0 && (
-              <>
-                <button onClick={()=>setLabelsOpen(v=>!v)}
-                  className="w-full flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-400 hover:text-gray-600 mt-1">
-                  {labelsOpen?<ChevronDown className="w-3 h-3"/>:<ChevronRight className="w-3 h-3"/>} Labels
+            {/* Separator */}
+            {mainFolders.some(f => SECONDARY_FOLDERS.includes(f.path)) && (
+              <div className="my-2 flex items-center gap-2 px-2.5">
+                <div className="flex-1 h-px bg-gray-100" />
+                <span className="text-[9px] font-bold uppercase tracking-widest text-gray-300">Manage</span>
+                <div className="flex-1 h-px bg-gray-100" />
+              </div>
+            )}
+
+            {/* Secondary folders */}
+            {mainFolders.filter(f => SECONDARY_FOLDERS.includes(f.path)).map(f => {
+              const isActive = activeFolderPath === f.path;
+              return (
+                <button key={f.path} onClick={() => setActiveFolderPath(f.path)}
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-sm font-medium transition-colors ${isActive ? "font-semibold" : "text-gray-600 hover:bg-gray-50"}`}
+                  style={isActive ? { backgroundColor: theme.accentLight, color: theme.accentDark } : {}}>
+                  <FolderIcon path={f.path} className="w-4 h-4 shrink-0" style={isActive ? { color: theme.accent } : { color: "#9ca3af" }} />
+                  <span className="flex-1 text-left truncate">{folderLabel(f.path)}</span>
                 </button>
-                {labelsOpen && labels.map(f=>(
-                  <button key={f.path} onClick={()=>setActiveFolderPath(f.path)}
-                    className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-sm font-medium transition-colors ${activeFolderPath===f.path?"bg-blue-50 text-blue-700":"text-gray-700 hover:bg-gray-50"}`}>
-                    <Tag className="w-3.5 h-3.5 shrink-0 text-gray-400"/>
-                    <span className="flex-1 text-left truncate text-xs">{folderLabel(f.path)}</span>
+              );
+            })}
+
+            {/* Remaining / unlisted main folders */}
+            {mainFolders.filter(f => !PRIMARY_FOLDERS.includes(f.path) && !SECONDARY_FOLDERS.includes(f.path)).map(f => {
+              const isActive = activeFolderPath === f.path;
+              return (
+                <button key={f.path} onClick={() => setActiveFolderPath(f.path)}
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-sm font-medium transition-colors ${isActive ? "font-semibold" : "text-gray-700 hover:bg-gray-50"}`}
+                  style={isActive ? { backgroundColor: theme.accentLight, color: theme.accentDark } : {}}>
+                  <FolderIcon path={f.path} className="w-4 h-4 shrink-0" style={{ color: "#9ca3af" }} />
+                  <span className="flex-1 text-left truncate">{folderLabel(f.path)}</span>
+                </button>
+              );
+            })}
+
+            {/* Labels */}
+            {labels.length > 0 && (
+              <>
+                <div className="my-2 flex items-center gap-2 px-2.5">
+                  <div className="flex-1 h-px bg-gray-100" />
+                  <button onClick={() => setLabelsOpen(v => !v)}
+                    className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-gray-300 hover:text-gray-500 transition-colors">
+                    {labelsOpen ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronRight className="w-2.5 h-2.5" />} Labels
                   </button>
-                ))}
+                  <div className="flex-1 h-px bg-gray-100" />
+                </div>
+                {labelsOpen && labels.map(f => {
+                  const isActive = activeFolderPath === f.path;
+                  return (
+                    <button key={f.path} onClick={() => setActiveFolderPath(f.path)}
+                      className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-sm font-medium transition-colors ${isActive ? "font-semibold" : "text-gray-700 hover:bg-gray-50"}`}
+                      style={isActive ? { backgroundColor: theme.accentLight, color: theme.accentDark } : {}}>
+                      <Tag className="w-3.5 h-3.5 shrink-0 text-gray-400" />
+                      <span className="flex-1 text-left truncate text-xs">{folderLabel(f.path)}</span>
+                    </button>
+                  );
+                })}
               </>
             )}
           </nav>

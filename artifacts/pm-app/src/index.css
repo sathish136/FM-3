@@ -66,6 +66,14 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* THEME ACCENT DEFAULTS (overridden by JS via useTheme) */
+:root {
+  --theme-accent: #6366f1;
+  --theme-accent-light: #eef2ff;
+  --theme-accent-dark: #4338ca;
+  --theme-sidebar: #1e1b4b;
+}
+
 /* LIGHT / BRIGHT MODE */
 :root {
   --button-outline: rgba(0,0,0, .10);
