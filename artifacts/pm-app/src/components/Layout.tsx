@@ -379,7 +379,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
       )}
 
       <aside className={cn(
-        "hidden md:flex flex-col flex-shrink-0 transition-all duration-300 h-screen sticky top-0",
+        "hidden md:flex flex-col flex-shrink-0 transition-all duration-300 h-screen sticky top-0 overflow-hidden",
         collapsed ? "w-[60px]" : "w-[220px]"
       )}>
         {collapsed ? <MiniSidebar /> : <FullSidebar />}
