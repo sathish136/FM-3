@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Box, PenTool, GitBranch,
   Briefcase, ChevronDown, FileText,
   ChevronRight, LogOut, ChevronLeft, ChevronRight as ChevronRightIcon, Menu,
-  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, Users, UserCircle, LayoutGrid, Mail, MessageSquare, Palette,
+  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, Users, UserCircle, LayoutGrid, Mail, MessageSquare, Palette, Sun, Moon,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
@@ -108,7 +108,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showThemePicker, setShowThemePicker] = useState(false);
   const { user, logout } = useAuth();
-  const { theme, themeIndex, setTheme } = useTheme();
+  const { theme, themeIndex, setTheme, darkMode, toggleDarkMode } = useTheme();
   const themePickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -280,7 +280,29 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
         {/* Theme picker popup */}
         {showThemePicker && (
           <div className="absolute bottom-full left-3 right-3 mb-2 bg-slate-800 border border-white/10 rounded-xl p-3 shadow-2xl z-50">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mb-2">Theme Color</p>
+            {/* Dark / Light toggle */}
+            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mb-2">Appearance</p>
+            <div className="flex gap-1.5 mb-3">
+              <button
+                onClick={() => { if (darkMode) toggleDarkMode(); }}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-medium transition-all border",
+                  !darkMode ? "bg-white text-slate-800 border-white" : "bg-transparent text-slate-400 border-white/10 hover:border-white/20"
+                )}
+              >
+                <Sun className="w-3 h-3" /> Light
+              </button>
+              <button
+                onClick={() => { if (!darkMode) toggleDarkMode(); }}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-medium transition-all border",
+                  darkMode ? "bg-slate-700 text-white border-white/20" : "bg-transparent text-slate-400 border-white/10 hover:border-white/20"
+                )}
+              >
+                <Moon className="w-3 h-3" /> Dark
+              </button>
+            </div>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mb-2">Accent Color</p>
             <div className="grid grid-cols-4 gap-1.5">
               {THEME_PRESETS.map((preset, i) => (
                 <button
@@ -405,6 +427,13 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
           <UserAvatar user={user} size="md" />
         </Link>
         <button
+          onClick={toggleDarkMode}
+          className="w-full h-8 rounded-xl flex items-center justify-center text-slate-500 hover:bg-white/10 hover:text-white transition-all"
+          title={darkMode ? "Switch to Light mode" : "Switch to Dark mode"}
+        >
+          {darkMode ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+        </button>
+        <button
           onClick={() => { setCollapsed(false); setShowThemePicker(true); }}
           className="w-full h-8 rounded-xl flex items-center justify-center text-slate-600 hover:bg-white/10 hover:text-white transition-all"
           title="Theme color"
@@ -427,7 +456,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   }
 
   return (
-    <div className="min-h-screen bg-[#f1f5f9] flex flex-col md:flex-row overflow-hidden">
+    <div className="min-h-screen bg-[#f1f5f9] fm-bg-main flex flex-col md:flex-row overflow-hidden">
       {mobileSidebarOpen && (
         <div className="fixed inset-0 bg-black/60 z-20 md:hidden backdrop-blur-sm" onClick={() => setMobileSidebarOpen(false)} />
       )}
@@ -446,7 +475,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
       )}
 
       <main className="flex-1 flex flex-col h-screen overflow-hidden min-w-0">
-        <header className="h-12 bg-white border-b border-gray-100 flex items-center justify-between px-4 shrink-0 shadow-sm">
+        <header className="h-12 bg-white fm-bg-header border-b border-gray-100 fm-border flex items-center justify-between px-4 shrink-0 shadow-sm">
           <div className="flex items-center gap-3">
             <button
               className="md:hidden p-1.5 rounded-lg text-gray-500 hover:bg-gray-100"
@@ -454,10 +483,10 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
             >
               <Menu className="w-4 h-4" />
             </button>
-            <div className="hidden md:flex items-center gap-1.5 text-xs text-gray-400">
-              <span className="font-medium text-gray-300">FlowMatriX</span>
-              <ChevronRightIcon className="w-3 h-3 text-gray-300" />
-              <span className="font-semibold text-gray-700">{pageTitle}</span>
+            <div className="hidden md:flex items-center gap-1.5 text-xs text-gray-400 fm-text-sub">
+              <span className="font-medium text-gray-300 fm-text-sub">FlowMatriX</span>
+              <ChevronRightIcon className="w-3 h-3 text-gray-300 fm-text-sub" />
+              <span className="font-semibold text-gray-700 fm-text-main">{pageTitle}</span>
             </div>
           </div>
           <div className="flex-1 flex justify-center px-4">

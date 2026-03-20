@@ -841,6 +841,8 @@ export default function Email() {
   const [foldersLoading, setFoldersLoading] = useState(false);
   const [activeFolderPath, setActiveFolderPath] = useState("INBOX");
   const [labelsOpen, setLabelsOpen] = useState(false);
+  const [mailboxOpen, setMailboxOpen] = useState(true);
+  const [manageOpen, setManageOpen] = useState(true);
 
   const [emails, setEmails] = useState<EmailItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -952,8 +954,14 @@ export default function Email() {
 
           <nav className="px-1.5 flex-1 py-1">
             {/* Primary folders */}
-            <p className="px-2.5 mb-1 text-[9px] font-bold uppercase tracking-widest text-gray-400">Mailbox</p>
-            {mainFolders.filter(f => PRIMARY_FOLDERS.includes(f.path)).map(f => {
+            <button
+              onClick={() => setMailboxOpen(v => !v)}
+              className="w-full flex items-center gap-1 px-2.5 mb-1 group"
+            >
+              <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400 group-hover:text-gray-600 transition-colors flex-1 text-left">Mailbox</span>
+              {mailboxOpen ? <ChevronDown className="w-3 h-3 text-gray-300" /> : <ChevronRight className="w-3 h-3 text-gray-300" />}
+            </button>
+            {mailboxOpen && mainFolders.filter(f => PRIMARY_FOLDERS.includes(f.path)).map(f => {
               const isActive = activeFolderPath === f.path;
               return (
                 <button key={f.path} onClick={() => setActiveFolderPath(f.path)}
@@ -970,17 +978,19 @@ export default function Email() {
               );
             })}
 
-            {/* Separator */}
+            {/* Manage separator + collapse toggle */}
             {mainFolders.some(f => SECONDARY_FOLDERS.includes(f.path)) && (
-              <div className="my-2 flex items-center gap-2 px-2.5">
-                <div className="flex-1 h-px bg-gray-100" />
-                <span className="text-[9px] font-bold uppercase tracking-widest text-gray-300">Manage</span>
-                <div className="flex-1 h-px bg-gray-100" />
-              </div>
+              <button
+                onClick={() => setManageOpen(v => !v)}
+                className="w-full flex items-center gap-1 px-2.5 mt-3 mb-1 group"
+              >
+                <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400 group-hover:text-gray-600 transition-colors flex-1 text-left">Manage</span>
+                {manageOpen ? <ChevronDown className="w-3 h-3 text-gray-300" /> : <ChevronRight className="w-3 h-3 text-gray-300" />}
+              </button>
             )}
 
             {/* Secondary folders */}
-            {mainFolders.filter(f => SECONDARY_FOLDERS.includes(f.path)).map(f => {
+            {manageOpen && mainFolders.filter(f => SECONDARY_FOLDERS.includes(f.path)).map(f => {
               const isActive = activeFolderPath === f.path;
               return (
                 <button key={f.path} onClick={() => setActiveFolderPath(f.path)}

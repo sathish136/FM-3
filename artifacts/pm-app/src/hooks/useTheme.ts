@@ -19,7 +19,8 @@ export const THEME_PRESETS: ThemePreset[] = [
   { name: "Cyan",    accent: "#06b6d4", accentLight: "#ecfeff", accentDark: "#0e7490", sidebar: "#083344" },
 ];
 
-const STORAGE_KEY = "fm-theme-index";
+const THEME_KEY = "fm-theme-index";
+const DARK_KEY = "fm-dark-mode";
 
 function applyTheme(preset: ThemePreset) {
   const root = document.documentElement;
@@ -29,10 +30,23 @@ function applyTheme(preset: ThemePreset) {
   root.style.setProperty("--theme-sidebar", preset.sidebar);
 }
 
+function applyDark(dark: boolean) {
+  if (dark) {
+    document.documentElement.classList.add("dark");
+  } else {
+    document.documentElement.classList.remove("dark");
+  }
+}
+
 export function useTheme() {
   const [themeIndex, setThemeIndex] = useState<number>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = localStorage.getItem(THEME_KEY);
     return saved !== null ? parseInt(saved, 10) : 0;
+  });
+
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem(DARK_KEY);
+    return saved === "true";
   });
 
   const theme = THEME_PRESETS[themeIndex] ?? THEME_PRESETS[0];
@@ -42,13 +56,24 @@ export function useTheme() {
   }, [themeIndex]);
 
   useEffect(() => {
+    applyDark(darkMode);
+  }, [darkMode]);
+
+  useEffect(() => {
     applyTheme(THEME_PRESETS[themeIndex] ?? THEME_PRESETS[0]);
+    applyDark(localStorage.getItem(DARK_KEY) === "true");
   }, []);
 
   const setTheme = (index: number) => {
     setThemeIndex(index);
-    localStorage.setItem(STORAGE_KEY, String(index));
+    localStorage.setItem(THEME_KEY, String(index));
   };
 
-  return { theme, themeIndex, setTheme, presets: THEME_PRESETS };
+  const toggleDarkMode = () => {
+    const next = !darkMode;
+    setDarkMode(next);
+    localStorage.setItem(DARK_KEY, String(next));
+  };
+
+  return { theme, themeIndex, setTheme, presets: THEME_PRESETS, darkMode, toggleDarkMode };
 }
