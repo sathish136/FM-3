@@ -644,7 +644,7 @@ function EmailDetail({ email, folderPath, onBack, onReply, onReplyAll, onDelete,
   useEffect(()=>{
     if(body?.html && iframeRef.current){
       const doc=iframeRef.current.contentDocument;
-      if(doc){ doc.open(); doc.write(`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:sans-serif;font-size:13px;margin:16px;color:#374151;line-height:1.6}a{color:#2563eb}img{max-width:100%}blockquote{border-left:3px solid #e5e7eb;margin:8px 0;padding-left:12px;color:#6b7280}</style></head><body>${body.html}</body></html>`); doc.close(); }
+      if(doc){ doc.open(); doc.write(`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:sans-serif;font-size:13px;margin:16px;color:#374151;line-height:1.6}a{color:#2563eb}img{max-width:100%}blockquote{border-left:3px solid #e5e7eb;margin:8px 0;padding-left:12px;color:#6b7280}*{resize:none!important}::-webkit-resizer{display:none!important}</style></head><body>${body.html}</body></html>`); doc.close(); }
     }
   },[body]);
 
@@ -778,9 +778,9 @@ function EmailDetail({ email, folderPath, onBack, onReply, onReplyAll, onDelete,
           </div>
 
           {/* Body */}
-          <div className="border-t border-gray-100 pt-4">
+          <div className="border-t border-gray-100 pt-4 resize-none">
             {loading && <div className="flex items-center gap-2 text-gray-400 text-sm"><Loader2 className="w-4 h-4 animate-spin"/> Loading…</div>}
-            {!loading && body?.html && <iframe ref={iframeRef} className="w-full border-0 min-h-[300px]" title="email-body" sandbox="allow-same-origin allow-popups"/>}
+            {!loading && body?.html && <iframe ref={iframeRef} className="w-full border-0 min-h-[300px]" style={{ resize: "none", display: "block" }} title="email-body" sandbox="allow-same-origin allow-popups"/>}
             {!loading && !body?.html && body?.text && <pre className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed font-sans">{body.text}</pre>}
             {!loading && !body?.html && !body?.text && <p className="text-sm text-gray-400 italic">No content available.</p>}
           </div>
