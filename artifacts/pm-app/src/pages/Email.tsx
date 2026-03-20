@@ -240,15 +240,31 @@ function ComposeModal({ onClose, defaultTo="", defaultCc="", defaultSubject="", 
     setAiWriting(false);
   };
 
+  const buildSignatureHtml = () => {
+    if (!profile) return "";
+    const lines: string[] = [];
+    lines.push(`<p style="margin:0;font-size:12px;color:#6b7280;font-style:italic;">Best Regards,</p>`);
+    if (profile.full_name) lines.push(`<p style="margin:0;font-size:14px;font-weight:700;color:#111827;">${profile.full_name}</p>`);
+    if (profile.designation) lines.push(`<p style="margin:0;font-size:12px;font-weight:600;color:#e05a00;">${profile.designation}</p>`);
+    if (profile.mobile_no || profile.phone) lines.push(`<p style="margin:0;font-size:12px;color:#4b5563;">${profile.mobile_no || profile.phone}</p>`);
+    if (profile.company) {
+      lines.push(`<p style="margin:4px 0 0;font-size:12px;font-weight:700;color:#111827;text-transform:uppercase;letter-spacing:0.05em;">${profile.company}</p>`);
+      if (profile.branch) lines.push(`<p style="margin:0;font-size:11px;color:#6b7280;">${profile.branch}</p>`);
+    }
+    return `<br/><hr style="border:none;border-top:1px dashed #e5e7eb;margin:12px 0;"/><div style="font-family:'Inter','Segoe UI',sans-serif;">${lines.join("")}</div>`;
+  };
+
   const handleSend = async () => {
-    const currentBody = editorRef.current?.innerHTML || body;
+    const editorHtml = editorRef.current?.innerHTML || body;
+    const signatureHtml = buildSignatureHtml();
+    const fullBody = editorHtml + signatureHtml;
     if (!to.trim() || !subject.trim()) { setError("To and Subject are required."); return; }
     setSending(true); setError("");
     try {
       await apiFetch("/email/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to, cc: cc || undefined, bcc: bcc || undefined, subject, body: currentBody, user: userEmail }),
+        body: JSON.stringify({ to, cc: cc || undefined, bcc: bcc || undefined, subject, body: fullBody, user: userEmail }),
       });
       setSent(true);
       setTimeout(() => { onSent?.(); onClose(); }, 1500);
