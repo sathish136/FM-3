@@ -264,7 +264,7 @@ function ComposeModal({ onClose, defaultTo="", defaultCc="", defaultSubject="", 
       await apiFetch("/email/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to, cc: cc || undefined, bcc: bcc || undefined, subject, body: fullBody, user: userEmail }),
+        body: JSON.stringify({ to, cc: cc || undefined, bcc: bcc || undefined, subject, html: fullBody, body: fullBody.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(), user: userEmail }),
       });
       setSent(true);
       setTimeout(() => { onSent?.(); onClose(); }, 1500);
