@@ -297,7 +297,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
       </div>
 
       {/* Nav icons */}
-      <nav className="relative flex flex-col items-center gap-0.5 w-full px-2 flex-1 py-3 overflow-y-auto">
+      <nav className="relative flex flex-col items-center gap-0.5 w-full px-2 flex-1 py-3 overflow-y-hidden">
         {allNavItems.map((item) => {
           const isActive = location === item.path || item.children?.some(c => c.path === location);
           const Icon = item.icon;
