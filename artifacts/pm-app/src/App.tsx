@@ -33,6 +33,7 @@ import ProjectBoard from "@/pages/ProjectBoard";
 import Email from "@/pages/Email";
 import EmailSettings from "@/pages/EmailSettings";
 import Chat from "@/pages/Chat";
+import HRIncidents from "@/pages/HRIncidents";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -86,6 +87,7 @@ function ProtectedRoutes() {
       <Route path="/email" component={Email} />
       <Route path="/email-settings" component={EmailSettings} />
       <Route path="/chat" component={Chat} />
+      <Route path="/hrms/incidents" component={HRIncidents} />
       <Route component={NotFound} />
     </Switch>
   );

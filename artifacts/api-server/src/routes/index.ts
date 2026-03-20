@@ -11,6 +11,7 @@ import projectBoardRouter from "./project-board";
 import emailRouter from "./email";
 import emailSettingsRouter from "./emailSettings";
 import chatRouter from "./chat";
+import incidentsRouter from "./incidents";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(projectBoardRouter);
 router.use(emailRouter);
 router.use(emailSettingsRouter);
 router.use(chatRouter);
+router.use(incidentsRouter);
 
 export default router;

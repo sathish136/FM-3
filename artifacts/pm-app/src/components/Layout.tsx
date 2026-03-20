@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Box, PenTool, GitBranch,
   Briefcase, ChevronDown, FileText,
   ChevronRight, LogOut, ChevronLeft, ChevronRight as ChevronRightIcon, Menu,
-  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, Users, UserCircle, LayoutGrid, Mail, MessageSquare, Palette, Sun, Moon,
+  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, Users, UserCircle, LayoutGrid, Mail, MessageSquare, Palette, Sun, Moon, AlertTriangle,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
@@ -89,6 +89,7 @@ const navGroups: { label?: string; items: NavItem[] }[] = [
     label: "HR",
     items: [
       { path: "/hrms", label: "HRMS", icon: UserCircle, color: "text-emerald-400" },
+      { path: "/hrms/incidents", label: "Incidents", icon: AlertTriangle, color: "text-rose-400" },
     ],
   },
   {
