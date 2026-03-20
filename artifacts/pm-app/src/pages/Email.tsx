@@ -632,6 +632,7 @@ function EmailDetail({ email, folderPath, onBack, onReply, onReplyAll, onDelete,
   const [deleting, setDeleting] = useState(false);
   const [headerExpanded, setHeaderExpanded] = useState(false);
   const [showAI, setShowAI] = useState(false);
+  const [replyBarCollapsed, setReplyBarCollapsed] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const userParam = userEmail ? `&user=${encodeURIComponent(userEmail)}` : "";
   const isTrash = folderPath === "[Gmail]/Trash";
@@ -795,31 +796,49 @@ function EmailDetail({ email, folderPath, onBack, onReply, onReplyAll, onDelete,
 
         {/* Quick reply bar */}
         {!loading && (
-          <div className="px-6 py-3 border-t border-gray-100 flex gap-2 flex-wrap">
-            <button
-              onClick={()=>onReply(email.from, `Re: ${email.subject}`, buildQuoted())}
-              className="flex items-center gap-1.5 px-4 py-1.5 border border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 text-gray-700 rounded-full text-xs font-medium transition-colors"
-            >
-              <CornerUpLeft className="w-3 h-3"/> Reply
-            </button>
-            <button
-              onClick={()=>onReplyAll(email.from, buildReplyAllCc(), `Re: ${email.subject}`, buildQuoted())}
-              className="flex items-center gap-1.5 px-4 py-1.5 border border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 text-gray-700 rounded-full text-xs font-medium transition-colors"
-            >
-              <Users className="w-3 h-3"/> Reply All
-            </button>
-            <button
-              onClick={()=>onReply("", `Fwd: ${email.subject}`, buildQuoted())}
-              className="flex items-center gap-1.5 px-4 py-1.5 border border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 text-gray-700 rounded-full text-xs font-medium transition-colors"
-            >
-              <Forward className="w-3 h-3"/> Forward
-            </button>
-            <button
-              onClick={()=>setShowAI(v=>!v)}
-              className="flex items-center gap-1.5 px-4 py-1.5 border border-purple-200 hover:border-purple-400 text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-full text-xs font-medium transition-colors"
-            >
-              <Sparkles className="w-3 h-3"/> Smart Reply
-            </button>
+          <div className="border-t border-gray-100">
+            {/* Toggle strip */}
+            <div className="flex items-center px-4 py-1 gap-2">
+              <button
+                onClick={() => setReplyBarCollapsed(v => !v)}
+                className="flex items-center gap-1 text-[10px] font-medium text-gray-400 hover:text-gray-600 transition-colors select-none"
+                title={replyBarCollapsed ? "Show reply options" : "Hide reply options"}
+              >
+                {replyBarCollapsed
+                  ? <ChevronRight className="w-3 h-3" />
+                  : <ChevronDown className="w-3 h-3" />}
+                <span>{replyBarCollapsed ? "Show actions" : "Hide actions"}</span>
+              </button>
+            </div>
+            {/* Action buttons */}
+            {!replyBarCollapsed && (
+              <div className="px-6 pb-3 flex gap-2 flex-wrap">
+                <button
+                  onClick={()=>onReply(email.from, `Re: ${email.subject}`, buildQuoted())}
+                  className="flex items-center gap-1.5 px-4 py-1.5 border border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 text-gray-700 rounded-full text-xs font-medium transition-colors"
+                >
+                  <CornerUpLeft className="w-3 h-3"/> Reply
+                </button>
+                <button
+                  onClick={()=>onReplyAll(email.from, buildReplyAllCc(), `Re: ${email.subject}`, buildQuoted())}
+                  className="flex items-center gap-1.5 px-4 py-1.5 border border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 text-gray-700 rounded-full text-xs font-medium transition-colors"
+                >
+                  <Users className="w-3 h-3"/> Reply All
+                </button>
+                <button
+                  onClick={()=>onReply("", `Fwd: ${email.subject}`, buildQuoted())}
+                  className="flex items-center gap-1.5 px-4 py-1.5 border border-gray-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 text-gray-700 rounded-full text-xs font-medium transition-colors"
+                >
+                  <Forward className="w-3 h-3"/> Forward
+                </button>
+                <button
+                  onClick={()=>setShowAI(v=>!v)}
+                  className="flex items-center gap-1.5 px-4 py-1.5 border border-purple-200 hover:border-purple-400 text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-full text-xs font-medium transition-colors"
+                >
+                  <Sparkles className="w-3 h-3"/> Smart Reply
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
