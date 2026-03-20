@@ -645,7 +645,7 @@ function EmailDetail({ email, folderPath, onBack, onReply, onReplyAll, onDelete,
   useEffect(()=>{
     if(body?.html && iframeRef.current){
       const doc=iframeRef.current.contentDocument;
-      if(doc){ doc.open(); doc.write(`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:sans-serif;font-size:13px;margin:16px;color:#374151;line-height:1.6}a{color:#2563eb}img{max-width:100%}blockquote{border-left:3px solid #e5e7eb;margin:8px 0;padding-left:12px;color:#6b7280}*{resize:none!important}::-webkit-resizer{display:none!important}</style></head><body>${body.html}</body></html>`); doc.close(); }
+      if(doc){ doc.open(); doc.write(`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:sans-serif;font-size:13px;margin:16px;color:#374151;line-height:1.6}a{color:#2563eb}img{max-width:100%}blockquote{border-left:3px solid #e5e7eb;margin:8px 0;padding-left:12px;color:#6b7280}*{resize:none!important}::-webkit-resizer{display:none!important}::-webkit-scrollbar-button{display:none!important}</style></head><body>${body.html}</body></html>`); doc.close(); }
     }
   },[body]);
 
@@ -693,28 +693,28 @@ function EmailDetail({ email, folderPath, onBack, onReply, onReplyAll, onDelete,
   };
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-white dark:bg-slate-900">
       {/* Toolbar */}
-      <div className="flex items-center gap-0.5 px-3 py-2 border-b border-gray-100 shrink-0">
-        <button onClick={onBack} className="p-1.5 rounded hover:bg-gray-100 text-gray-500 mr-1"><ChevronLeft className="w-4 h-4"/></button>
+      <div className="flex items-center gap-0.5 px-3 py-2 border-b border-gray-100 dark:border-slate-700 shrink-0">
+        <button onClick={onBack} className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-500 dark:text-slate-400 mr-1"><ChevronLeft className="w-4 h-4"/></button>
 
-        <button onClick={handleArchive} title="Archive" className="p-1.5 rounded hover:bg-gray-100 text-gray-500 transition-colors"><Archive className="w-3.5 h-3.5"/></button>
-        <button onClick={handleDelete} disabled={deleting} title={isTrash?"Delete Forever":"Move to Trash"} className="p-1.5 rounded hover:bg-gray-100 text-gray-500 transition-colors">
+        <button onClick={handleArchive} title="Archive" className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-500 dark:text-slate-400 transition-colors"><Archive className="w-3.5 h-3.5"/></button>
+        <button onClick={handleDelete} disabled={deleting} title={isTrash?"Delete Forever":"Move to Trash"} className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-500 dark:text-slate-400 transition-colors">
           {deleting?<Loader2 className="w-3.5 h-3.5 animate-spin"/>:<Trash2 className="w-3.5 h-3.5"/>}
         </button>
-        <button onClick={()=>onToggleSeen(email.uid, email.seen)} title={email.seen?"Mark unread":"Mark read"} className="p-1.5 rounded hover:bg-gray-100 text-gray-500 transition-colors">
+        <button onClick={()=>onToggleSeen(email.uid, email.seen)} title={email.seen?"Mark unread":"Mark read"} className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-500 dark:text-slate-400 transition-colors">
           {email.seen?<EyeOff className="w-3.5 h-3.5"/>:<Eye className="w-3.5 h-3.5"/>}
         </button>
         <button onClick={()=>onToggleStar(email.uid, email.starred)} title={email.starred?"Unstar":"Star"}
-          className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${email.starred?"text-amber-400":"text-gray-500"}`}>
+          className={`p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors ${email.starred?"text-amber-400":"text-gray-500 dark:text-slate-400"}`}>
           <Star className={`w-3.5 h-3.5 ${email.starred?"fill-current":""}`}/>
         </button>
-        <button title="Snooze" className="p-1.5 rounded hover:bg-gray-100 text-gray-500 transition-colors"><Clock className="w-3.5 h-3.5"/></button>
+        <button title="Snooze" className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-500 dark:text-slate-400 transition-colors"><Clock className="w-3.5 h-3.5"/></button>
 
-        <div className="w-px h-4 bg-gray-200 mx-1"/>
+        <div className="w-px h-4 bg-gray-200 dark:bg-slate-700 mx-1"/>
 
         <button onClick={()=>setShowAI(v=>!v)} title="AI Tools"
-          className={`p-1.5 rounded transition-colors flex items-center gap-1 text-xs font-semibold ${showAI?"bg-blue-100 text-blue-700":"hover:bg-gray-100 text-gray-500"}`}>
+          className={`p-1.5 rounded transition-colors flex items-center gap-1 text-xs font-semibold ${showAI?"bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400":"hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-500 dark:text-slate-400"}`}>
           <Sparkles className="w-3.5 h-3.5"/> AI
         </button>
 
@@ -722,23 +722,23 @@ function EmailDetail({ email, folderPath, onBack, onReply, onReplyAll, onDelete,
 
         <button
           onClick={()=>onReply(email.from, `Re: ${email.subject}`, buildQuoted())}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 rounded-lg transition-colors border border-transparent hover:border-gray-200"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors border border-transparent hover:border-gray-200 dark:hover:border-slate-600"
         >
           <CornerUpLeft className="w-3.5 h-3.5"/> Reply
         </button>
         <button
           onClick={()=>onReplyAll(email.from, buildReplyAllCc(), `Re: ${email.subject}`, buildQuoted())}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 rounded-lg transition-colors border border-transparent hover:border-gray-200"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors border border-transparent hover:border-gray-200 dark:hover:border-slate-600"
         >
           <Users className="w-3.5 h-3.5"/> Reply All
         </button>
         <button
           onClick={()=>onReply("", `Fwd: ${email.subject}`, buildQuoted())}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 rounded-lg transition-colors border border-transparent hover:border-gray-200"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors border border-transparent hover:border-gray-200 dark:hover:border-slate-600"
         >
           <Forward className="w-3.5 h-3.5"/> Forward
         </button>
-        <button onClick={handlePrint} title="Print" className="p-1.5 rounded hover:bg-gray-100 text-gray-500 transition-colors ml-1">
+        <button onClick={handlePrint} title="Print" className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-500 dark:text-slate-400 transition-colors ml-1">
           <Printer className="w-3.5 h-3.5"/>
         </button>
       </div>
@@ -746,7 +746,7 @@ function EmailDetail({ email, folderPath, onBack, onReply, onReplyAll, onDelete,
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         <div className="px-6 py-4">
-          <h1 className="text-lg font-bold text-gray-900 mb-3 flex items-start gap-2">
+          <h1 className="text-lg font-bold text-gray-900 dark:text-slate-100 mb-3 flex items-start gap-2">
             <span className="flex-1">{email.subject}</span>
             {email.hasAttachment && <Paperclip className="w-4 h-4 text-gray-400 shrink-0 mt-0.5"/>}
           </h1>
@@ -758,31 +758,31 @@ function EmailDetail({ email, folderPath, onBack, onReply, onReplyAll, onDelete,
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline justify-between gap-2">
-                <button onClick={()=>setHeaderExpanded(v=>!v)} className="flex items-center gap-1 text-sm font-semibold text-gray-900 hover:underline">
+                <button onClick={()=>setHeaderExpanded(v=>!v)} className="flex items-center gap-1 text-sm font-semibold text-gray-900 dark:text-slate-100 hover:underline">
                   {senderName(email.from)}
                   <ChevronDown className={`w-3 h-3 text-gray-400 transition-transform ${headerExpanded?"rotate-180":""}`}/>
                 </button>
-                <span className="text-xs text-gray-400 shrink-0">
+                <span className="text-xs text-gray-400 dark:text-slate-500 shrink-0">
                   {email.date ? new Date(email.date).toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}) : ""}
                 </span>
               </div>
               {!headerExpanded
-                ? <p className="text-xs text-gray-400">to {email.to?.split(",")[0]}</p>
-                : <div className="mt-1 space-y-0.5 text-xs text-gray-500">
-                    <p><span className="text-gray-400 w-10 inline-block">From:</span> {email.from}</p>
-                    <p><span className="text-gray-400 w-10 inline-block">To:</span> {email.to}</p>
-                    {email.cc && <p><span className="text-gray-400 w-10 inline-block">Cc:</span> {email.cc}</p>}
-                    <p><span className="text-gray-400 w-10 inline-block">Date:</span> {email.date ? new Date(email.date).toLocaleString("en-IN") : ""}</p>
+                ? <p className="text-xs text-gray-400 dark:text-slate-500">to {email.to?.split(",")[0]}</p>
+                : <div className="mt-1 space-y-0.5 text-xs text-gray-500 dark:text-slate-400">
+                    <p><span className="text-gray-400 dark:text-slate-500 w-10 inline-block">From:</span> {email.from}</p>
+                    <p><span className="text-gray-400 dark:text-slate-500 w-10 inline-block">To:</span> {email.to}</p>
+                    {email.cc && <p><span className="text-gray-400 dark:text-slate-500 w-10 inline-block">Cc:</span> {email.cc}</p>}
+                    <p><span className="text-gray-400 dark:text-slate-500 w-10 inline-block">Date:</span> {email.date ? new Date(email.date).toLocaleString("en-IN") : ""}</p>
                   </div>
               }
             </div>
           </div>
 
           {/* Body */}
-          <div className="border-t border-gray-100 pt-4 resize-none">
+          <div className="border-t border-gray-100 dark:border-slate-700 pt-4">
             {loading && <div className="flex items-center gap-2 text-gray-400 text-sm"><Loader2 className="w-4 h-4 animate-spin"/> Loading…</div>}
-            {!loading && body?.html && <iframe ref={iframeRef} className="w-full border-0 min-h-[300px]" style={{ resize: "none", display: "block" }} title="email-body" sandbox="allow-same-origin allow-popups"/>}
-            {!loading && !body?.html && body?.text && <pre className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed font-sans">{body.text}</pre>}
+            {!loading && body?.html && <iframe ref={iframeRef} className="w-full border-0 min-h-[300px]" style={{ display: "block" }} title="email-body" sandbox="allow-same-origin allow-popups"/>}
+            {!loading && !body?.html && body?.text && <pre className="text-sm text-gray-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed font-sans">{body.text}</pre>}
             {!loading && !body?.html && !body?.text && <p className="text-sm text-gray-400 italic">No content available.</p>}
           </div>
         </div>
@@ -843,6 +843,7 @@ export default function Email() {
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [mailboxOpen, setMailboxOpen] = useState(true);
   const [manageOpen, setManageOpen] = useState(true);
+  const [listCollapsed, setListCollapsed] = useState(false);
 
   const [emails, setEmails] = useState<EmailItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -937,10 +938,10 @@ export default function Email() {
 
   return (
     <Layout>
-      <div className="flex h-[calc(100vh-48px)] bg-[#f8fafc] overflow-hidden">
+      <div className="flex h-[calc(100vh-48px)] bg-[#f8fafc] dark:bg-slate-900 overflow-hidden">
 
         {/* ── Sidebar ── */}
-        <div className="w-52 flex-shrink-0 bg-white border-r border-gray-100 flex flex-col overflow-y-auto">
+        <div className="w-52 flex-shrink-0 bg-white dark:bg-slate-800 border-r border-gray-100 dark:border-slate-700 flex flex-col overflow-y-auto">
           <div className="px-3 pt-3 pb-2">
             <button
               onClick={()=>{ setComposing(true); setComposeDefaults({to:"",cc:"",subject:"",body:"",mode:"compose"}); }}
@@ -965,7 +966,7 @@ export default function Email() {
               const isActive = activeFolderPath === f.path;
               return (
                 <button key={f.path} onClick={() => setActiveFolderPath(f.path)}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-sm font-medium transition-colors ${isActive ? "font-semibold" : "text-gray-700 hover:bg-gray-50"}`}
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-sm font-medium transition-colors ${isActive ? "font-semibold" : "text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50"}`}
                   style={isActive ? { backgroundColor: theme.accentLight, color: theme.accentDark } : {}}>
                   <FolderIcon path={f.path} className={`w-4 h-4 shrink-0`} style={isActive ? { color: theme.accent } : { color: FOLDER_META[f.path]?.color ? undefined : "#9ca3af" }} />
                   <span className="flex-1 text-left truncate">{folderLabel(f.path)}</span>
@@ -994,7 +995,7 @@ export default function Email() {
               const isActive = activeFolderPath === f.path;
               return (
                 <button key={f.path} onClick={() => setActiveFolderPath(f.path)}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-sm font-medium transition-colors ${isActive ? "font-semibold" : "text-gray-600 hover:bg-gray-50"}`}
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-sm font-medium transition-colors ${isActive ? "font-semibold" : "text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700/50"}`}
                   style={isActive ? { backgroundColor: theme.accentLight, color: theme.accentDark } : {}}>
                   <FolderIcon path={f.path} className="w-4 h-4 shrink-0" style={isActive ? { color: theme.accent } : { color: "#9ca3af" }} />
                   <span className="flex-1 text-left truncate">{folderLabel(f.path)}</span>
@@ -1043,24 +1044,24 @@ export default function Email() {
         </div>
 
         {/* ── Email List ── */}
-        <div className={`flex flex-col border-r border-gray-100 bg-white transition-all ${selected?"w-72 flex-shrink-0":"flex-1"}`}>
+        <div className={`flex flex-col border-r border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800 transition-all duration-200 relative ${listCollapsed ? "w-0 overflow-hidden" : selected ? "w-72 flex-shrink-0" : "flex-1"}`}>
           {/* Toolbar */}
-          <div className="px-3 py-2 border-b border-gray-100 space-y-1.5">
+          <div className="px-3 py-2 border-b border-gray-100 dark:border-slate-700 space-y-1.5">
             <div className="flex items-center gap-1.5">
-              <div className="flex-1 flex items-center gap-2 bg-gray-100 rounded-xl px-3 py-1.5">
+              <div className="flex-1 flex items-center gap-2 bg-gray-100 dark:bg-slate-700 rounded-xl px-3 py-1.5">
                 <Search className="w-3.5 h-3.5 text-gray-400 shrink-0"/>
                 <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search…"
-                  className="flex-1 text-xs bg-transparent outline-none text-gray-700 placeholder-gray-400"/>
+                  className="flex-1 text-xs bg-transparent outline-none text-gray-700 dark:text-slate-200 placeholder-gray-400 dark:placeholder-slate-500"/>
                 {search && <button onClick={()=>setSearch("")}><X className="w-3 h-3 text-gray-400"/></button>}
               </div>
               <button onClick={handleSync} disabled={syncing||loading} title="Sync"
-                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 disabled:opacity-40 transition-colors">
+                className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-400 disabled:opacity-40 transition-colors">
                 <RefreshCw className={`w-3.5 h-3.5 ${syncing?"animate-spin":""}`}/>
               </button>
             </div>
             <div className="flex items-center justify-between px-0.5">
-              <span className="text-xs font-semibold text-gray-800">{folderLabel(activeFolderPath)}</span>
-              <span className="text-[10px] text-gray-400">
+              <span className="text-xs font-semibold text-gray-800 dark:text-slate-200">{folderLabel(activeFolderPath)}</span>
+              <span className="text-[10px] text-gray-400 dark:text-slate-500">
                 {syncing?"Syncing…":lastSynced?`${lastSynced.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}`:""}
               </span>
             </div>
@@ -1110,8 +1111,8 @@ export default function Email() {
               const isChecked = checkedUids.has(email.uid);
               return (
                 <div key={email.uid}
-                  className={`group flex items-center gap-0 border-b border-gray-50 cursor-pointer transition-colors
-                    ${isSelected?"bg-blue-50":email.seen?"hover:bg-gray-50":"bg-blue-50/20 hover:bg-blue-50/40"}`}
+                  className={`group flex items-center gap-0 border-b border-gray-50 dark:border-slate-700/50 cursor-pointer transition-colors
+                    ${isSelected?"bg-blue-50 dark:bg-blue-900/30":email.seen?"hover:bg-gray-50 dark:hover:bg-slate-700/50":"bg-blue-50/20 dark:bg-blue-900/10 hover:bg-blue-50/40 dark:hover:bg-blue-900/20"}`}
                   onClick={()=>setSelected(email)}>
 
                   {/* Checkbox + Star */}
@@ -1134,13 +1135,13 @@ export default function Email() {
                   {/* Content row */}
                   <div className="flex-1 min-w-0 py-2 pr-2">
                     <div className="flex items-baseline gap-1">
-                      <span className={`text-xs truncate flex-1 ${email.seen?"text-gray-600":"text-gray-900 font-semibold"}`}>
+                      <span className={`text-xs truncate flex-1 ${email.seen?"text-gray-600 dark:text-slate-400":"text-gray-900 dark:text-slate-100 font-semibold"}`}>
                         {senderName(email.from)}
                       </span>
-                      <span className="text-[10px] text-gray-400 shrink-0 ml-1">{formatDate(email.date)}</span>
+                      <span className="text-[10px] text-gray-400 dark:text-slate-500 shrink-0 ml-1">{formatDate(email.date)}</span>
                     </div>
                     <div className="flex items-center gap-1 min-w-0">
-                      <span className={`text-[11px] truncate flex-1 ${email.seen?"text-gray-400":"text-gray-700 font-medium"}`}>
+                      <span className={`text-[11px] truncate flex-1 ${email.seen?"text-gray-400 dark:text-slate-500":"text-gray-700 dark:text-slate-300 font-medium"}`}>
                         {email.subject}
                       </span>
                       <div className="flex items-center gap-0.5 shrink-0">
@@ -1153,6 +1154,17 @@ export default function Email() {
               );
             })}
           </div>
+        </div>
+
+        {/* ── List collapse/expand toggle ── */}
+        <div className="flex items-center relative z-10">
+          <button
+            onClick={() => setListCollapsed(v => !v)}
+            title={listCollapsed ? "Show email list" : "Hide email list"}
+            className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 z-20 w-5 h-10 flex items-center justify-center bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-full shadow-sm hover:bg-gray-50 dark:hover:bg-slate-600 text-gray-400 dark:text-slate-400 transition-all"
+          >
+            {listCollapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
+          </button>
         </div>
 
         {/* ── Email Detail ── */}
@@ -1172,12 +1184,12 @@ export default function Email() {
             />
           </div>
         ) : (
-          <div className="flex-1 hidden md:flex flex-col items-center justify-center text-center px-8 bg-[#f8fafc]">
-            <div className="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-3">
+          <div className="flex-1 hidden md:flex flex-col items-center justify-center text-center px-8 bg-[#f8fafc] dark:bg-slate-900">
+            <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/30 flex items-center justify-center mb-3">
               <Mail className="w-7 h-7 text-blue-400"/>
             </div>
-            <h2 className="text-sm font-bold text-gray-800">Select an email to read</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Or compose a new message</p>
+            <h2 className="text-sm font-bold text-gray-800 dark:text-slate-200">Select an email to read</h2>
+            <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">Or compose a new message</p>
           </div>
         )}
       </div>

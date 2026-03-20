@@ -287,8 +287,9 @@
   padding-left: 1.5rem;
 }
 
-/* ─── Global resize handle removal ──────────────────────────────────────── */
+/* ─── Global resize handle + scrollbar arrows removal ────────────────────── */
 ::-webkit-resizer { display: none !important; }
+::-webkit-scrollbar-button { display: none !important; }
 * { resize: none !important; }
 textarea { resize: vertical !important; }
 
