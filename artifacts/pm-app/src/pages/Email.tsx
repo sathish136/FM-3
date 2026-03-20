@@ -844,6 +844,7 @@ export default function Email() {
   const [mailboxOpen, setMailboxOpen] = useState(true);
   const [manageOpen, setManageOpen] = useState(true);
   const [listCollapsed, setListCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const [emails, setEmails] = useState<EmailItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -941,13 +942,31 @@ export default function Email() {
       <div className="flex h-[calc(100vh-48px)] bg-[#f8fafc] dark:bg-slate-900 overflow-hidden">
 
         {/* ── Sidebar ── */}
-        <div className="w-52 flex-shrink-0 bg-white dark:bg-slate-800 border-r border-gray-100 dark:border-slate-700 flex flex-col overflow-y-auto">
-          <div className="px-3 pt-3 pb-2">
+        <div className={`${sidebarCollapsed ? "w-12" : "w-52"} flex-shrink-0 bg-white dark:bg-slate-800 border-r border-gray-100 dark:border-slate-700 flex flex-col overflow-y-auto transition-all duration-200`}>
+          <div className={`px-2 pt-3 pb-2 flex ${sidebarCollapsed ? "justify-center" : "gap-1"}`}>
+            {!sidebarCollapsed && (
+              <button
+                onClick={()=>{ setComposing(true); setComposeDefaults({to:"",cc:"",subject:"",body:"",mode:"compose"}); }}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[#1a6de0] hover:bg-[#1558c0] text-white rounded-2xl text-sm font-semibold shadow-sm transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5"/> Compose
+              </button>
+            )}
+            {sidebarCollapsed && (
+              <button
+                onClick={()=>{ setComposing(true); setComposeDefaults({to:"",cc:"",subject:"",body:"",mode:"compose"}); }}
+                title="Compose"
+                className="flex items-center justify-center w-8 h-8 bg-[#1a6de0] hover:bg-[#1558c0] text-white rounded-xl shadow-sm transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5"/>
+              </button>
+            )}
             <button
-              onClick={()=>{ setComposing(true); setComposeDefaults({to:"",cc:"",subject:"",body:"",mode:"compose"}); }}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#1a6de0] hover:bg-[#1558c0] text-white rounded-2xl text-sm font-semibold shadow-sm transition-colors"
+              onClick={() => setSidebarCollapsed(v => !v)}
+              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              className="flex items-center justify-center w-8 h-8 rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors flex-shrink-0"
             >
-              <Pencil className="w-3.5 h-3.5"/> Compose
+              {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
             </button>
           </div>
 
@@ -955,22 +974,25 @@ export default function Email() {
 
           <nav className="px-1.5 flex-1 py-1">
             {/* Primary folders */}
-            <button
-              onClick={() => setMailboxOpen(v => !v)}
-              className="w-full flex items-center gap-1 px-2.5 mb-1 group"
-            >
-              <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400 group-hover:text-gray-600 transition-colors flex-1 text-left">Mailbox</span>
-              {mailboxOpen ? <ChevronDown className="w-3 h-3 text-gray-300" /> : <ChevronRight className="w-3 h-3 text-gray-300" />}
-            </button>
-            {mailboxOpen && mainFolders.filter(f => PRIMARY_FOLDERS.includes(f.path)).map(f => {
+            {!sidebarCollapsed && (
+              <button
+                onClick={() => setMailboxOpen(v => !v)}
+                className="w-full flex items-center gap-1 px-2.5 mb-1 group"
+              >
+                <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400 group-hover:text-gray-600 transition-colors flex-1 text-left">Mailbox</span>
+                {mailboxOpen ? <ChevronDown className="w-3 h-3 text-gray-300" /> : <ChevronRight className="w-3 h-3 text-gray-300" />}
+              </button>
+            )}
+            {(sidebarCollapsed || mailboxOpen) && mainFolders.filter(f => PRIMARY_FOLDERS.includes(f.path)).map(f => {
               const isActive = activeFolderPath === f.path;
               return (
                 <button key={f.path} onClick={() => setActiveFolderPath(f.path)}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-sm font-medium transition-colors ${isActive ? "font-semibold" : "text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50"}`}
+                  title={folderLabel(f.path)}
+                  className={`w-full flex items-center ${sidebarCollapsed ? "justify-center px-0 py-2" : "gap-2.5 px-2.5 py-1.5"} rounded-xl text-sm font-medium transition-colors ${isActive ? "font-semibold" : "text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700/50"}`}
                   style={isActive ? { backgroundColor: theme.accentLight, color: theme.accentDark } : {}}>
                   <FolderIcon path={f.path} className={`w-4 h-4 shrink-0`} style={isActive ? { color: theme.accent } : { color: FOLDER_META[f.path]?.color ? undefined : "#9ca3af" }} />
-                  <span className="flex-1 text-left truncate">{folderLabel(f.path)}</span>
-                  {f.path === "INBOX" && unread > 0 && (
+                  {!sidebarCollapsed && <span className="flex-1 text-left truncate">{folderLabel(f.path)}</span>}
+                  {!sidebarCollapsed && f.path === "INBOX" && unread > 0 && (
                     <span className="text-[10px] font-bold text-white rounded-full px-1.5 leading-5 min-w-[20px] text-center" style={{ backgroundColor: theme.accent }}>
                       {unread > 99 ? "99+" : unread}
                     </span>
@@ -980,7 +1002,7 @@ export default function Email() {
             })}
 
             {/* Manage separator + collapse toggle */}
-            {mainFolders.some(f => SECONDARY_FOLDERS.includes(f.path)) && (
+            {!sidebarCollapsed && mainFolders.some(f => SECONDARY_FOLDERS.includes(f.path)) && (
               <button
                 onClick={() => setManageOpen(v => !v)}
                 className="w-full flex items-center gap-1 px-2.5 mt-3 mb-1 group"
@@ -991,14 +1013,15 @@ export default function Email() {
             )}
 
             {/* Secondary folders */}
-            {manageOpen && mainFolders.filter(f => SECONDARY_FOLDERS.includes(f.path)).map(f => {
+            {(sidebarCollapsed || manageOpen) && mainFolders.filter(f => SECONDARY_FOLDERS.includes(f.path)).map(f => {
               const isActive = activeFolderPath === f.path;
               return (
                 <button key={f.path} onClick={() => setActiveFolderPath(f.path)}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-sm font-medium transition-colors ${isActive ? "font-semibold" : "text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700/50"}`}
+                  title={folderLabel(f.path)}
+                  className={`w-full flex items-center ${sidebarCollapsed ? "justify-center px-0 py-2" : "gap-2.5 px-2.5 py-1.5"} rounded-xl text-sm font-medium transition-colors ${isActive ? "font-semibold" : "text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-700/50"}`}
                   style={isActive ? { backgroundColor: theme.accentLight, color: theme.accentDark } : {}}>
                   <FolderIcon path={f.path} className="w-4 h-4 shrink-0" style={isActive ? { color: theme.accent } : { color: "#9ca3af" }} />
-                  <span className="flex-1 text-left truncate">{folderLabel(f.path)}</span>
+                  {!sidebarCollapsed && <span className="flex-1 text-left truncate">{folderLabel(f.path)}</span>}
                 </button>
               );
             })}
@@ -1008,10 +1031,11 @@ export default function Email() {
               const isActive = activeFolderPath === f.path;
               return (
                 <button key={f.path} onClick={() => setActiveFolderPath(f.path)}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-sm font-medium transition-colors ${isActive ? "font-semibold" : "text-gray-700 hover:bg-gray-50"}`}
+                  title={folderLabel(f.path)}
+                  className={`w-full flex items-center ${sidebarCollapsed ? "justify-center px-0 py-2" : "gap-2.5 px-2.5 py-1.5"} rounded-xl text-sm font-medium transition-colors ${isActive ? "font-semibold" : "text-gray-700 hover:bg-gray-50"}`}
                   style={isActive ? { backgroundColor: theme.accentLight, color: theme.accentDark } : {}}>
                   <FolderIcon path={f.path} className="w-4 h-4 shrink-0" style={{ color: "#9ca3af" }} />
-                  <span className="flex-1 text-left truncate">{folderLabel(f.path)}</span>
+                  {!sidebarCollapsed && <span className="flex-1 text-left truncate">{folderLabel(f.path)}</span>}
                 </button>
               );
             })}
@@ -1019,22 +1043,25 @@ export default function Email() {
             {/* Labels */}
             {labels.length > 0 && (
               <>
-                <div className="my-2 flex items-center gap-2 px-2.5">
-                  <div className="flex-1 h-px bg-gray-100" />
-                  <button onClick={() => setLabelsOpen(v => !v)}
-                    className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-gray-300 hover:text-gray-500 transition-colors">
-                    {labelsOpen ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronRight className="w-2.5 h-2.5" />} Labels
-                  </button>
-                  <div className="flex-1 h-px bg-gray-100" />
-                </div>
-                {labelsOpen && labels.map(f => {
+                {!sidebarCollapsed && (
+                  <div className="my-2 flex items-center gap-2 px-2.5">
+                    <div className="flex-1 h-px bg-gray-100" />
+                    <button onClick={() => setLabelsOpen(v => !v)}
+                      className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-gray-300 hover:text-gray-500 transition-colors">
+                      {labelsOpen ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronRight className="w-2.5 h-2.5" />} Labels
+                    </button>
+                    <div className="flex-1 h-px bg-gray-100" />
+                  </div>
+                )}
+                {(sidebarCollapsed || labelsOpen) && labels.map(f => {
                   const isActive = activeFolderPath === f.path;
                   return (
                     <button key={f.path} onClick={() => setActiveFolderPath(f.path)}
-                      className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-sm font-medium transition-colors ${isActive ? "font-semibold" : "text-gray-700 hover:bg-gray-50"}`}
+                      title={folderLabel(f.path)}
+                      className={`w-full flex items-center ${sidebarCollapsed ? "justify-center px-0 py-2" : "gap-2.5 px-2.5 py-1.5"} rounded-xl text-sm font-medium transition-colors ${isActive ? "font-semibold" : "text-gray-700 hover:bg-gray-50"}`}
                       style={isActive ? { backgroundColor: theme.accentLight, color: theme.accentDark } : {}}>
                       <Tag className="w-3.5 h-3.5 shrink-0 text-gray-400" />
-                      <span className="flex-1 text-left truncate text-xs">{folderLabel(f.path)}</span>
+                      {!sidebarCollapsed && <span className="flex-1 text-left truncate text-xs">{folderLabel(f.path)}</span>}
                     </button>
                   );
                 })}
