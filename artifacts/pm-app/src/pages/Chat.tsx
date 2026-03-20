@@ -3,10 +3,11 @@ import { useAuth } from "@/hooks/useAuth";
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Hash, Plus, X, Send, Smile, Paperclip,
-  Users, Search, Bell, Circle, Loader2,
+  Users, Search, Bell, Loader2,
   MessageSquare, Sparkles, MoreHorizontal, Trash2,
-  ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen,
-  AtSign, Bold, Italic, Link2, Pin, BookmarkPlus,
+  ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen,
+  AtSign, Bold, Italic, Underline, Link2, Pin, BookmarkPlus,
+  Video, Phone, Settings,
 } from "lucide-react";
 
 const BASE = "/api";
@@ -16,8 +17,13 @@ const WS_BASE = typeof window !== "undefined"
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "🔥", "✅", "👀", "💯"];
 
+const TEAMS_PURPLE = "#6264A7";
+const SIDEBAR_BG = "#201F2E";
+const SIDEBAR_HOVER = "rgba(255,255,255,0.08)";
+const SIDEBAR_ACTIVE = "rgba(255,255,255,0.14)";
+
 const AVATAR_COLORS = [
-  ["#7C3AED", "#5B21B6"],
+  ["#6264A7", "#464775"],
   ["#2563EB", "#1D4ED8"],
   ["#DB2777", "#9D174D"],
   ["#D97706", "#B45309"],
@@ -66,9 +72,9 @@ async function apiFetch(path: string, opts?: RequestInit) {
 function Avatar({ name, email, size = "md", showStatus = false, online = false }:
   { name: string; email: string; size?: "xs" | "sm" | "md" | "lg"; showStatus?: boolean; online?: boolean }) {
   const [c1, c2] = avatarGrad(email);
-  const sz = { xs: 24, sm: 28, md: 36, lg: 44 }[size];
-  const fs = { xs: 9, sm: 10, md: 12, lg: 15 }[size];
-  const dotSz = { xs: 6, sm: 7, md: 9, lg: 11 }[size];
+  const sz = { xs: 24, sm: 28, md: 32, lg: 40 }[size];
+  const fs = { xs: 9, sm: 10, md: 11, lg: 14 }[size];
+  const dotSz = { xs: 6, sm: 7, md: 9, lg: 10 }[size];
   return (
     <div style={{ position: "relative", width: sz, height: sz, flexShrink: 0 }}>
       <div style={{
@@ -76,29 +82,28 @@ function Avatar({ name, email, size = "md", showStatus = false, online = false }
         background: `linear-gradient(135deg, ${c1}, ${c2})`,
         display: "flex", alignItems: "center", justifyContent: "center",
         color: "#fff", fontWeight: 700, fontSize: fs, letterSpacing: "0.02em",
-        boxShadow: `0 2px 8px ${c1}55`,
       }}>{initials(name)}</div>
       {showStatus && (
         <div style={{
-          position: "absolute", bottom: -1, right: -1,
+          position: "absolute", bottom: 0, right: 0,
           width: dotSz, height: dotSz, borderRadius: "50%",
-          background: online ? "#22C55E" : "#6B7280",
-          border: "2px solid #0f1018",
-          boxShadow: online ? "0 0 6px #22C55E88" : "none",
+          background: online ? "#92C353" : "#8A8886",
+          border: `2px solid ${SIDEBAR_BG}`,
         }}/>
       )}
     </div>
   );
 }
 
-function ChannelIcon({ active }: { active: boolean }) {
+function ContentAvatar({ name, email }: { name: string; email: string }) {
+  const [c1, c2] = avatarGrad(email);
   return (
     <div style={{
-      width: 6, height: 6, borderRadius: "50%",
-      background: active ? "linear-gradient(135deg,#A78BFA,#7C3AED)" : "transparent",
-      border: active ? "none" : "1.5px solid #4B5563",
-      flexShrink: 0, marginRight: 2,
-    }}/>
+      width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
+      background: `linear-gradient(135deg, ${c1}, ${c2})`,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      color: "#fff", fontWeight: 700, fontSize: 11,
+    }}>{initials(name)}</div>
   );
 }
 
@@ -122,11 +127,13 @@ export default function Chat() {
   const [search, setSearch] = useState("");
   const [hoveredMsg, setHoveredMsg] = useState<number | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [channelsOpen, setChannelsOpen] = useState(true);
+  const [membersOpen, setMembersOpen] = useState(true);
 
   const wsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -245,272 +252,245 @@ export default function Chat() {
   return (
     <Layout>
       <style>{`
-        .ft-sidebar {
-          width: 260px;
-          min-width: 260px;
-          transition: width 0.25s cubic-bezier(.4,0,.2,1), min-width 0.25s cubic-bezier(.4,0,.2,1);
-          overflow: hidden;
-        }
-        .ft-sidebar.collapsed {
-          width: 0px;
-          min-width: 0px;
-        }
-        .ft-sidebar-inner {
-          width: 260px;
-        }
-        .ft-msg-hover:hover { background: rgba(139,92,246,0.04); }
-        .ft-ch-btn { transition: background 0.12s, color 0.12s; }
-        .ft-ch-btn:hover { background: rgba(139,92,246,0.12) !important; }
-        .ft-ch-btn.active { background: rgba(139,92,246,0.18) !important; }
-        .ft-input:focus { outline: none; }
-        .ft-scrollbar::-webkit-scrollbar { width: 4px; }
-        .ft-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .ft-scrollbar::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.25); border-radius: 99px; }
-        .ft-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(139,92,246,0.5); }
-        .ft-reaction-pill { transition: background 0.12s, transform 0.1s; }
-        .ft-reaction-pill:hover { transform: scale(1.08); }
-        .ft-action-btn { transition: background 0.12s, color 0.12s, transform 0.1s; }
-        .ft-action-btn:hover { transform: scale(1.12); }
-        @keyframes ft-bounce {
-          0%,80%,100% { transform: translateY(0); }
-          40% { transform: translateY(-5px); }
-        }
-        .ft-dot { animation: ft-bounce 1.2s infinite; display: inline-block; }
-        @keyframes ft-pulse-ring {
-          0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34,197,94,0.5); }
-          70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(34,197,94,0); }
-          100% { transform: scale(0.95); }
-        }
-        .ft-online-pulse { animation: ft-pulse-ring 2.5s infinite; }
-        @keyframes ft-shimmer {
-          0% { background-position: -400px 0; }
-          100% { background-position: 400px 0; }
-        }
-        .ft-skeleton {
-          background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
-          background-size: 800px 100%;
-          animation: ft-shimmer 1.5s infinite;
-          border-radius: 6px;
-        }
+        .teams-sidebar { width: 260px; min-width: 260px; transition: width 0.2s ease, min-width 0.2s ease; overflow: hidden; }
+        .teams-sidebar.collapsed { width: 0; min-width: 0; }
+        .teams-sidebar-inner { width: 260px; }
+        .teams-ch-btn { transition: background 0.1s; border-radius: 4px; }
+        .teams-ch-btn:hover { background: ${SIDEBAR_HOVER} !important; }
+        .teams-ch-btn.active { background: ${SIDEBAR_ACTIVE} !important; }
+        .teams-msg-row:hover { background: #f5f5f5; }
+        .teams-input-box:focus-within { border-color: ${TEAMS_PURPLE} !important; box-shadow: 0 0 0 1px ${TEAMS_PURPLE}33; }
+        .teams-scrollbar::-webkit-scrollbar { width: 6px; }
+        .teams-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .teams-scrollbar::-webkit-scrollbar-thumb { background: #d1d1d1; border-radius: 99px; }
+        .teams-scrollbar::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+        .teams-reaction:hover { background: #edebe9 !important; transform: scale(1.05); }
+        .teams-action-btn:hover { background: #edebe9 !important; }
+        @keyframes teams-bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-4px)} }
+        .teams-dot { animation: teams-bounce 1.2s infinite; display: inline-block; }
+        .teams-dot:nth-child(2) { animation-delay: 0.15s; }
+        .teams-dot:nth-child(3) { animation-delay: 0.3s; }
+        @keyframes teams-shimmer { 0%{background-position:-400px 0} 100%{background-position:400px 0} }
+        .teams-skeleton { background: linear-gradient(90deg,#f0f0f0 25%,#e0e0e0 50%,#f0f0f0 75%); background-size: 800px 100%; animation: teams-shimmer 1.5s infinite; border-radius: 4px; }
+        .teams-icon-btn { transition: background 0.1s, color 0.1s; border-radius: 4px; }
+        .teams-icon-btn:hover { background: #edebe9; color: #242424 !important; }
       `}</style>
 
-      <div style={{ display: "flex", height: "calc(100vh - 48px)", background: "#0d0e16", overflow: "hidden", position: "relative" }}>
+      <div style={{ display: "flex", height: "calc(100vh - 48px)", background: "#f5f5f5", overflow: "hidden" }}>
 
         {/* ── SIDEBAR ── */}
-        <div className={`ft-sidebar${sidebarOpen ? "" : " collapsed"}`}
-          style={{ background: "#111220", borderRight: "1px solid rgba(139,92,246,0.08)", display: "flex", flexShrink: 0, position: "relative" }}>
-          <div className="ft-sidebar-inner" style={{ display: "flex", flexDirection: "column", height: "100%", overflowX: "hidden" }}>
+        <div className={`teams-sidebar${sidebarOpen ? "" : " collapsed"}`}
+          style={{ background: SIDEBAR_BG, display: "flex", flexShrink: 0 }}>
+          <div className="teams-sidebar-inner" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
 
-            {/* Brand header */}
-            <div style={{ padding: "14px 14px 10px", borderBottom: "1px solid rgba(139,92,246,0.08)", flexShrink: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {/* App header */}
+            <div style={{ padding: "12px 12px 8px", flexShrink: 0, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{
-                  width: 34, height: 34, borderRadius: 10, flexShrink: 0,
-                  background: "linear-gradient(135deg,#7C3AED,#4F46E5)",
-                  boxShadow: "0 4px 16px rgba(124,58,237,0.45)",
+                  width: 30, height: 30, borderRadius: 6, flexShrink: 0,
+                  background: TEAMS_PURPLE,
                   display: "flex", alignItems: "center", justifyContent: "center",
                 }}>
-                  <MessageSquare size={16} color="#fff"/>
+                  <MessageSquare size={15} color="#fff"/>
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 800, fontSize: 14, color: "#F3F4F6", letterSpacing: "-0.01em" }}>FlowTalk</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 1 }}>
-                    <div className="ft-online-pulse" style={{ width: 7, height: 7, borderRadius: "50%", background: "#22C55E" }}/>
-                    <span style={{ fontSize: 10, color: "#22C55E", fontWeight: 600 }}>{allOnline.length} online</span>
-                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", letterSpacing: "-0.01em" }}>FlowTalk</div>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.45)" }}>Team Chat</div>
                 </div>
                 <button onClick={() => setSidebarOpen(false)}
-                  style={{ background: "none", border: "none", padding: 4, cursor: "pointer", color: "#6B7280", borderRadius: 6 }}
+                  style={{ background: "none", border: "none", padding: 4, cursor: "pointer", color: "rgba(255,255,255,0.5)", borderRadius: 4, display: "flex" }}
                   title="Collapse sidebar">
-                  <PanelLeftClose size={15}/>
+                  <PanelLeftClose size={14}/>
                 </button>
               </div>
 
               {/* Search */}
               <div style={{
-                marginTop: 10, display: "flex", alignItems: "center", gap: 7,
-                background: "rgba(255,255,255,0.04)", borderRadius: 8,
-                padding: "6px 10px", border: "1px solid rgba(255,255,255,0.06)",
+                marginTop: 10, display: "flex", alignItems: "center", gap: 6,
+                background: "rgba(255,255,255,0.1)", borderRadius: 4,
+                padding: "5px 9px", border: "1px solid rgba(255,255,255,0.08)",
               }}>
-                <Search size={12} color="#6B7280"/>
+                <Search size={12} color="rgba(255,255,255,0.5)"/>
                 <input value={search} onChange={e => setSearch(e.target.value)}
-                  placeholder="Search messages…" className="ft-input"
-                  style={{ flex: 1, background: "none", border: "none", fontSize: 12, color: "#D1D5DB", minWidth: 0 }}/>
-                {search && <button onClick={() => setSearch("")} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}><X size={11} color="#6B7280"/></button>}
+                  placeholder="Search"
+                  style={{ flex: 1, background: "none", border: "none", outline: "none", fontSize: 12, color: "#fff", minWidth: 0 }}/>
+                {search && <button onClick={() => setSearch("")} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex" }}><X size={11} color="rgba(255,255,255,0.5)"/></button>}
               </div>
             </div>
 
-            {/* Channels */}
-            <div className="ft-scrollbar" style={{ flex: 1, overflowY: "auto", padding: "8px 8px 0" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 6px 4px" }}>
-                <span style={{ fontSize: 10, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.08em" }}>Channels</span>
-                <button onClick={() => setShowNewChannel(true)}
-                  style={{ background: "rgba(139,92,246,0.15)", border: "none", borderRadius: 6, padding: "3px 6px", cursor: "pointer", display: "flex", alignItems: "center", gap: 3, color: "#A78BFA" }}
-                  title="New channel">
-                  <Plus size={11}/><span style={{ fontSize: 10, fontWeight: 600 }}>New</span>
-                </button>
-              </div>
+            {/* Nav */}
+            <div className="teams-scrollbar" style={{ flex: 1, overflowY: "auto", padding: "6px 6px 0" }}>
 
-              {channels.map(ch => {
+              {/* Channels section */}
+              <button
+                onClick={() => setChannelsOpen(v => !v)}
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 4, padding: "6px 6px 4px", background: "none", border: "none", cursor: "pointer" }}>
+                {channelsOpen
+                  ? <ChevronDown size={12} color="rgba(255,255,255,0.5)"/>
+                  : <ChevronRight size={12} color="rgba(255,255,255,0.5)"/>}
+                <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.6)", textTransform: "uppercase", letterSpacing: "0.06em", flex: 1, textAlign: "left" }}>Channels</span>
+                <button onClick={e => { e.stopPropagation(); setShowNewChannel(true); }}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,0.5)", display: "flex", padding: 2, borderRadius: 3 }}
+                  title="Add channel">
+                  <Plus size={13}/>
+                </button>
+              </button>
+
+              {channelsOpen && channels.map(ch => {
                 const active = activeChannel?.id === ch.id;
                 return (
                   <button key={ch.id} onClick={() => setActiveChannel(ch)}
-                    className={`ft-ch-btn${active ? " active" : ""}`}
+                    className={`teams-ch-btn${active ? " active" : ""}`}
                     style={{
                       width: "100%", display: "flex", alignItems: "center", gap: 8,
-                      padding: "7px 8px", borderRadius: 8, border: "none",
-                      background: active ? "rgba(139,92,246,0.18)" : "transparent",
+                      padding: "6px 8px", border: "none",
+                      background: active ? SIDEBAR_ACTIVE : "transparent",
                       cursor: "pointer", marginBottom: 1,
-                      boxShadow: active ? "inset 0 0 0 1px rgba(139,92,246,0.25)" : "none",
                     }}>
-                    <div style={{
-                      width: 26, height: 26, borderRadius: 7, flexShrink: 0,
-                      background: active ? "linear-gradient(135deg,#7C3AED,#4F46E5)" : "rgba(255,255,255,0.06)",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      boxShadow: active ? "0 2px 8px rgba(124,58,237,0.4)" : "none",
-                    }}>
-                      <Hash size={12} color={active ? "#fff" : "#9CA3AF"}/>
-                    </div>
-                    <span style={{ flex: 1, textAlign: "left", fontSize: 13, fontWeight: active ? 600 : 400, color: active ? "#F3F4F6" : "#9CA3AF", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <Hash size={14} color={active ? "#fff" : "rgba(255,255,255,0.55)"}/>
+                    <span style={{ flex: 1, textAlign: "left", fontSize: 13, fontWeight: active ? 600 : 400, color: active ? "#fff" : "rgba(255,255,255,0.65)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {ch.name}
                     </span>
-                    {active && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#A78BFA", flexShrink: 0 }}/>}
                   </button>
                 );
               })}
 
               {/* New channel form */}
               {showNewChannel && (
-                <div style={{ margin: "6px 4px", padding: 12, background: "rgba(139,92,246,0.08)", borderRadius: 10, border: "1px solid rgba(139,92,246,0.2)" }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#A78BFA", marginBottom: 8 }}>Create Channel</div>
+                <div style={{ margin: "4px 4px 8px", padding: 10, background: "rgba(255,255,255,0.06)", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.8)", marginBottom: 7 }}>Create a channel</div>
                   <input value={newChannelName} onChange={e => setNewChannelName(e.target.value)}
                     onKeyDown={e => e.key === "Enter" && handleCreateChannel()}
-                    placeholder="channel-name" className="ft-input"
-                    style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 7, padding: "6px 10px", fontSize: 12, color: "#F3F4F6", marginBottom: 6, boxSizing: "border-box" }}/>
+                    placeholder="Channel name" autoFocus
+                    style={{ width: "100%", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 4, padding: "5px 8px", fontSize: 12, color: "#fff", marginBottom: 5, boxSizing: "border-box", outline: "none" }}/>
                   <input value={newChannelDesc} onChange={e => setNewChannelDesc(e.target.value)}
-                    placeholder="Description (optional)" className="ft-input"
-                    style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 7, padding: "6px 10px", fontSize: 12, color: "#F3F4F6", marginBottom: 8, boxSizing: "border-box" }}/>
-                  <div style={{ display: "flex", gap: 6 }}>
+                    placeholder="Description (optional)"
+                    style={{ width: "100%", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 4, padding: "5px 8px", fontSize: 12, color: "#fff", marginBottom: 7, boxSizing: "border-box", outline: "none" }}/>
+                  <div style={{ display: "flex", gap: 5 }}>
                     <button onClick={handleCreateChannel}
-                      style={{ flex: 1, background: "linear-gradient(135deg,#7C3AED,#4F46E5)", border: "none", borderRadius: 7, padding: "6px", fontSize: 12, fontWeight: 700, color: "#fff", cursor: "pointer", boxShadow: "0 2px 10px rgba(124,58,237,0.4)" }}>
+                      style={{ flex: 1, background: TEAMS_PURPLE, border: "none", borderRadius: 4, padding: "5px", fontSize: 12, fontWeight: 600, color: "#fff", cursor: "pointer" }}>
                       Create
                     </button>
                     <button onClick={() => setShowNewChannel(false)}
-                      style={{ background: "rgba(255,255,255,0.06)", border: "none", borderRadius: 7, padding: "6px 8px", cursor: "pointer", color: "#9CA3AF" }}>
-                      <X size={13}/>
+                      style={{ background: "rgba(255,255,255,0.08)", border: "none", borderRadius: 4, padding: "5px 8px", cursor: "pointer", color: "rgba(255,255,255,0.6)", display: "flex", alignItems: "center" }}>
+                      <X size={12}/>
                     </button>
                   </div>
                 </div>
               )}
 
               {/* Members section */}
-              <div style={{ marginTop: 16, paddingBottom: 12 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.08em", padding: "0 6px 6px" }}>
-                  Members
-                </div>
-                {allOnline.map(email => {
-                  const name = email === userEmail ? userName : email.split("@")[0];
-                  const isMe = email === userEmail;
-                  return (
-                    <div key={email} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 6px", borderRadius: 8 }}>
-                      <Avatar name={name} email={email} size="sm" showStatus online/>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12, color: "#D1D5DB", fontWeight: isMe ? 600 : 400, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {name}{isMe && <span style={{ fontSize: 10, color: "#6B7280", marginLeft: 4 }}>you</span>}
-                        </div>
+              <button
+                onClick={() => setMembersOpen(v => !v)}
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 4, padding: "10px 6px 4px", background: "none", border: "none", cursor: "pointer", marginTop: 4 }}>
+                {membersOpen
+                  ? <ChevronDown size={12} color="rgba(255,255,255,0.5)"/>
+                  : <ChevronRight size={12} color="rgba(255,255,255,0.5)"/>}
+                <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.6)", textTransform: "uppercase", letterSpacing: "0.06em", flex: 1, textAlign: "left" }}>Members</span>
+              </button>
+
+              {membersOpen && allOnline.map(email => {
+                const name = email === userEmail ? userName : email.split("@")[0];
+                const isMe = email === userEmail;
+                return (
+                  <div key={email} className="teams-ch-btn" style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", borderRadius: 4, marginBottom: 1 }}>
+                    <Avatar name={name} email={email} size="sm" showStatus online/>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, color: isMe ? "#fff" : "rgba(255,255,255,0.7)", fontWeight: isMe ? 600 : 400, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {name}{isMe && <span style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginLeft: 5 }}>You</span>}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                );
+              })}
+              <div style={{ height: 12 }}/>
             </div>
 
-            {/* Current user footer */}
-            <div style={{ padding: "10px 10px", borderTop: "1px solid rgba(139,92,246,0.08)", display: "flex", alignItems: "center", gap: 8, flexShrink: 0, background: "#0d0e18" }}>
+            {/* User footer */}
+            <div style={{ padding: "8px 10px", borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", gap: 8, flexShrink: 0, background: "rgba(0,0,0,0.15)" }}>
               <Avatar name={userName} email={userEmail} size="sm" showStatus online/>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: "#F3F4F6", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{userName}</div>
-                <div style={{ fontSize: 10, color: "#6B7280", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{userEmail}</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{userName}</div>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", display: "flex", alignItems: "center", gap: 4 }}>
+                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#92C353", flexShrink: 0 }}/>
+                  Available
+                </div>
               </div>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#22C55E", boxShadow: "0 0 6px #22C55E" }}/>
+              <button style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,0.4)", padding: 4, borderRadius: 4, display: "flex" }}>
+                <Settings size={14}/>
+              </button>
             </div>
           </div>
         </div>
 
         {/* ── MAIN AREA ── */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative" }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, background: "#fff" }}>
 
           {!activeChannel ? (
-            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "#f5f5f5" }}>
               <div style={{ textAlign: "center" }}>
-                <div style={{ width: 64, height: 64, borderRadius: 20, background: "linear-gradient(135deg,rgba(124,58,237,0.2),rgba(79,70,229,0.2))", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", border: "1px solid rgba(124,58,237,0.25)" }}>
-                  <MessageSquare size={28} color="#7C3AED"/>
+                <div style={{ width: 56, height: 56, borderRadius: 12, background: "#ede9fe", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
+                  <MessageSquare size={26} color={TEAMS_PURPLE}/>
                 </div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: "#F3F4F6" }}>Select a channel</div>
-                <div style={{ fontSize: 13, color: "#6B7280", marginTop: 4 }}>Pick a channel from the sidebar to start chatting</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "#242424" }}>Select a channel</div>
+                <div style={{ fontSize: 13, color: "#605e5c", marginTop: 4 }}>Choose a channel to start chatting</div>
               </div>
             </div>
           ) : (
             <>
               {/* ── Channel Header ── */}
               <div style={{
-                display: "flex", alignItems: "center", gap: 12, padding: "0 20px",
-                height: 56, borderBottom: "1px solid rgba(139,92,246,0.08)",
-                background: "rgba(13,14,22,0.95)", flexShrink: 0,
-                backdropFilter: "blur(12px)",
+                display: "flex", alignItems: "center", gap: 10, padding: "0 16px",
+                height: 48, borderBottom: "1px solid #edebe9",
+                background: "#fff", flexShrink: 0,
+                boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
               }}>
                 {!sidebarOpen && (
                   <button onClick={() => setSidebarOpen(true)}
-                    style={{ background: "rgba(139,92,246,0.12)", border: "1px solid rgba(139,92,246,0.2)", borderRadius: 8, padding: "5px 8px", cursor: "pointer", color: "#A78BFA", display: "flex", alignItems: "center", gap: 4, marginRight: 4 }}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "#605e5c", display: "flex", alignItems: "center", gap: 4, padding: "4px 6px", borderRadius: 4, marginRight: 4 }}
                     title="Open sidebar">
-                    <PanelLeftOpen size={14}/><span style={{ fontSize: 11, fontWeight: 600 }}>Channels</span>
+                    <PanelLeftOpen size={16}/>
                   </button>
                 )}
 
-                <div style={{
-                  width: 32, height: 32, borderRadius: 9,
-                  background: "linear-gradient(135deg,#7C3AED,#4F46E5)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  boxShadow: "0 2px 12px rgba(124,58,237,0.35)",
-                }}>
-                  <Hash size={14} color="#fff"/>
-                </div>
+                <Hash size={16} color={TEAMS_PURPLE}/>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontWeight: 800, fontSize: 15, color: "#F3F4F6", letterSpacing: "-0.01em" }}>{activeChannel.name}</span>
-                    {connecting && <Loader2 size={12} color="#6B7280" style={{ animation: "spin 1s linear infinite" }}/>}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontWeight: 700, fontSize: 14, color: "#242424" }}>{activeChannel.name}</span>
+                    {connecting && <Loader2 size={12} color="#605e5c" style={{ animation: "spin 1s linear infinite" }}/>}
+                    {activeChannel.description && (
+                      <>
+                        <span style={{ color: "#d1d1d1", fontSize: 12 }}>|</span>
+                        <span style={{ fontSize: 12, color: "#605e5c", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260 }}>{activeChannel.description}</span>
+                      </>
+                    )}
                   </div>
-                  {activeChannel.description && (
-                    <div style={{ fontSize: 11, color: "#6B7280", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{activeChannel.description}</div>
-                  )}
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 5, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 20, padding: "4px 10px" }}>
-                    <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#22C55E", boxShadow: "0 0 5px #22C55E" }}/>
-                    <span style={{ fontSize: 11, color: "#9CA3AF", fontWeight: 600 }}>{allOnline.length} online</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, marginRight: 6, padding: "3px 8px", background: "#f5f5f5", borderRadius: 12 }}>
+                    <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#92C353" }}/>
+                    <span style={{ fontSize: 11, color: "#605e5c", fontWeight: 600 }}>{allOnline.length} online</span>
                   </div>
-                  <button style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: "6px 8px", cursor: "pointer", color: "#6B7280" }}>
-                    <Bell size={14}/>
-                  </button>
-                  <button style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: "6px 8px", cursor: "pointer", color: "#6B7280" }}>
-                    <MoreHorizontal size={14}/>
-                  </button>
+                  <button className="teams-icon-btn" style={{ background: "none", border: "none", cursor: "pointer", color: "#605e5c", padding: "5px 7px", display: "flex" }} title="Search"><Search size={15}/></button>
+                  <button className="teams-icon-btn" style={{ background: "none", border: "none", cursor: "pointer", color: "#605e5c", padding: "5px 7px", display: "flex" }} title="Call"><Phone size={15}/></button>
+                  <button className="teams-icon-btn" style={{ background: "none", border: "none", cursor: "pointer", color: "#605e5c", padding: "5px 7px", display: "flex" }} title="Video"><Video size={15}/></button>
+                  <button className="teams-icon-btn" style={{ background: "none", border: "none", cursor: "pointer", color: "#605e5c", padding: "5px 7px", display: "flex" }} title="More"><MoreHorizontal size={15}/></button>
                 </div>
               </div>
 
               {/* ── Messages ── */}
-              <div className="ft-scrollbar" onClick={() => setShowEmoji(false)}
-                style={{ flex: 1, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 0 }}>
+              <div className="teams-scrollbar" onClick={() => setShowEmoji(false)}
+                style={{ flex: 1, overflowY: "auto", padding: "16px 16px 8px", display: "flex", flexDirection: "column", gap: 0, background: "#fff" }}>
 
                 {loading && (
-                  <div style={{ padding: "20px 0" }}>
+                  <div style={{ padding: "12px 0" }}>
                     {[1,2,3,4].map(i => (
-                      <div key={i} style={{ display: "flex", gap: 12, marginBottom: 20 }}>
-                        <div className="ft-skeleton" style={{ width: 36, height: 36, borderRadius: "50%", flexShrink: 0 }}/>
+                      <div key={i} style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+                        <div className="teams-skeleton" style={{ width: 32, height: 32, borderRadius: "50%", flexShrink: 0 }}/>
                         <div style={{ flex: 1 }}>
-                          <div className="ft-skeleton" style={{ height: 12, width: `${60 + i * 8}%`, marginBottom: 8 }}/>
-                          <div className="ft-skeleton" style={{ height: 10, width: `${40 + i * 5}%` }}/>
+                          <div className="teams-skeleton" style={{ height: 11, width: `${50 + i * 9}%`, marginBottom: 7 }}/>
+                          <div className="teams-skeleton" style={{ height: 10, width: `${35 + i * 6}%` }}/>
                         </div>
                       </div>
                     ))}
@@ -519,34 +499,23 @@ export default function Chat() {
 
                 {!loading && messages.length === 0 && (
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", paddingBottom: 40 }}>
-                    <div style={{
-                      width: 72, height: 72, borderRadius: 22,
-                      background: "linear-gradient(135deg,rgba(124,58,237,0.15),rgba(79,70,229,0.15))",
-                      border: "1px solid rgba(124,58,237,0.25)",
-                      display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16,
-                      boxShadow: "0 8px 32px rgba(124,58,237,0.15)",
-                    }}>
-                      <Hash size={32} color="#7C3AED"/>
+                    <div style={{ width: 64, height: 64, borderRadius: 16, background: "#ede9fe", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
+                      <Hash size={28} color={TEAMS_PURPLE}/>
                     </div>
-                    <div style={{ fontSize: 20, fontWeight: 800, color: "#F3F4F6", marginBottom: 6 }}>
-                      Welcome to #{activeChannel.name}!
+                    <div style={{ fontSize: 18, fontWeight: 700, color: "#242424", marginBottom: 6 }}>Welcome to #{activeChannel.name}!</div>
+                    <div style={{ fontSize: 13, color: "#605e5c", maxWidth: 320, textAlign: "center" }}>
+                      {activeChannel.description || "This is the beginning of the conversation."}
                     </div>
-                    <div style={{ fontSize: 13, color: "#6B7280", maxWidth: 320, textAlign: "center" }}>
-                      {activeChannel.description || "This is the beginning of a great conversation. Say hello!"}
-                    </div>
-                    <button onClick={() => inputRef.current?.focus()}
-                      style={{ marginTop: 16, background: "linear-gradient(135deg,#7C3AED,#4F46E5)", border: "none", borderRadius: 10, padding: "8px 20px", fontSize: 13, fontWeight: 600, color: "#fff", cursor: "pointer", boxShadow: "0 4px 16px rgba(124,58,237,0.4)" }}>
-                      Start the conversation
-                    </button>
                   </div>
                 )}
 
                 {dayGroups.map(({ day, msgs }) => (
                   <div key={day}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "20px 0 8px" }}>
-                      <div style={{ flex: 1, height: 1, background: "linear-gradient(90deg,transparent,rgba(139,92,246,0.15))" }}/>
-                      <div style={{ padding: "3px 12px", background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.18)", borderRadius: 20, fontSize: 11, color: "#9CA3AF", fontWeight: 600 }}>{day}</div>
-                      <div style={{ flex: 1, height: 1, background: "linear-gradient(90deg,rgba(139,92,246,0.15),transparent)" }}/>
+                    {/* Day separator */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "16px 0 8px" }}>
+                      <div style={{ flex: 1, height: 1, background: "#edebe9" }}/>
+                      <span style={{ fontSize: 11, color: "#605e5c", fontWeight: 600, background: "#fff", padding: "0 10px", whiteSpace: "nowrap" }}>{day}</span>
+                      <div style={{ flex: 1, height: 1, background: "#edebe9" }}/>
                     </div>
 
                     {msgs.map((msg, i) => {
@@ -558,66 +527,56 @@ export default function Chat() {
                       const hasReactions = Object.keys(reactions).length > 0;
 
                       return (
-                        <div key={msg.id} className="ft-msg-hover"
-                          style={{ display: "flex", gap: 12, padding: isGrouped ? "2px 8px 2px 12px" : "8px 8px 2px 12px", borderRadius: 10, marginBottom: 2, position: "relative", cursor: "default" }}
+                        <div key={msg.id} className="teams-msg-row"
+                          style={{ display: "flex", gap: 10, padding: isGrouped ? "1px 8px 1px 10px" : "8px 8px 2px 10px", borderRadius: 4, position: "relative", cursor: "default" }}
                           onMouseEnter={() => setHoveredMsg(msg.id)}
                           onMouseLeave={() => setHoveredMsg(null)}>
 
-                          <div style={{ width: 36, flexShrink: 0 }}>
+                          <div style={{ width: 32, flexShrink: 0, paddingTop: isGrouped ? 0 : 2 }}>
                             {!isGrouped
-                              ? <Avatar name={msg.user_name} email={msg.user_email}/>
-                              : <span style={{ display: "block", fontSize: 9, color: "transparent", userSelect: "none", marginTop: 8, textAlign: "right" }}>{formatTime(msg.created_at)}</span>
+                              ? <ContentAvatar name={msg.user_name} email={msg.user_email}/>
+                              : <span style={{ display: "block", fontSize: 9, color: "#a8a8a8", textAlign: "right", marginTop: 5, userSelect: "none" }}>{formatTime(msg.created_at)}</span>
                             }
                           </div>
 
                           <div style={{ flex: 1, minWidth: 0 }}>
                             {!isGrouped && (
-                              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 3 }}>
-                                <span style={{
-                                  fontSize: 14, fontWeight: 700,
-                                  color: isOwn ? "#A78BFA" : "#F3F4F6",
-                                  letterSpacing: "-0.01em",
-                                }}>{msg.user_name}</span>
-                                <span style={{ fontSize: 10, color: "#4B5563", fontWeight: 500 }}>{formatTime(msg.created_at)}</span>
-                                {isOwn && <span style={{ fontSize: 9, color: "#7C3AED", background: "rgba(124,58,237,0.12)", borderRadius: 4, padding: "1px 5px", fontWeight: 600 }}>you</span>}
+                              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 2 }}>
+                                <span style={{ fontSize: 14, fontWeight: 700, color: "#242424" }}>{msg.user_name}</span>
+                                {isOwn && <span style={{ fontSize: 10, color: TEAMS_PURPLE, fontWeight: 600 }}>You</span>}
+                                <span style={{ fontSize: 11, color: "#a8a8a8" }}>{formatTime(msg.created_at)}</span>
                               </div>
                             )}
 
-                            <div style={{
-                              fontSize: 13.5, color: "#D1D5DB", lineHeight: 1.6,
-                              wordBreak: "break-word", whiteSpace: "pre-wrap",
-                            }}>{msg.content}</div>
+                            <div style={{ fontSize: 13.5, color: "#242424", lineHeight: 1.55, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
+                              {msg.content}
+                            </div>
 
                             {msg.attachment_name && (
-                              <div style={{ marginTop: 6, display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "#60A5FA" }}>
+                              <div style={{ marginTop: 5, display: "inline-flex", alignItems: "center", gap: 6, background: "#f0f0f0", border: "1px solid #e0e0e0", borderRadius: 4, padding: "4px 10px", fontSize: 12, color: "#424242" }}>
                                 <Paperclip size={11}/>{msg.attachment_name}
                               </div>
                             )}
 
                             {hasReactions && (
-                              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 5 }}>
                                 {Object.entries(reactions).map(([emoji, users]) => {
                                   const mine = users.includes(userEmail);
                                   return (
                                     <button key={emoji} onClick={() => handleReact(msg.id, emoji)}
-                                      className="ft-reaction-pill"
+                                      className="teams-reaction"
                                       style={{
                                         display: "flex", alignItems: "center", gap: 4,
-                                        padding: "3px 8px", borderRadius: 20, border: "none",
-                                        background: mine ? "rgba(124,58,237,0.25)" : "rgba(255,255,255,0.05)",
-                                        outline: mine ? "1px solid rgba(124,58,237,0.5)" : "1px solid rgba(255,255,255,0.08)",
-                                        cursor: "pointer", fontSize: 13,
+                                        padding: "2px 8px", borderRadius: 12,
+                                        background: mine ? "#ede9fe" : "#f5f5f5",
+                                        border: mine ? `1px solid ${TEAMS_PURPLE}55` : "1px solid #e8e8e8",
+                                        cursor: "pointer", fontSize: 13, transition: "all 0.1s",
                                       }}>
                                       {emoji}
-                                      <span style={{ fontSize: 11, fontWeight: 600, color: mine ? "#A78BFA" : "#9CA3AF" }}>{users.length}</span>
+                                      <span style={{ fontSize: 11, fontWeight: 600, color: mine ? TEAMS_PURPLE : "#605e5c" }}>{users.length}</span>
                                     </button>
                                   );
                                 })}
-                                <button onClick={() => setHoveredMsg(msg.id)}
-                                  className="ft-reaction-pill"
-                                  style={{ padding: "3px 8px", borderRadius: 20, border: "none", background: "rgba(255,255,255,0.03)", outline: "1px solid rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 13, color: "#6B7280" }}>
-                                  <Smile size={12}/>
-                                </button>
                               </div>
                             )}
                           </div>
@@ -625,41 +584,38 @@ export default function Chat() {
                           {/* Hover action bar */}
                           {hoveredMsg === msg.id && (
                             <div style={{
-                              position: "absolute", top: -18, right: 8,
-                              display: "flex", alignItems: "center", gap: 2,
-                              background: "#1a1b2e",
-                              border: "1px solid rgba(139,92,246,0.2)",
-                              borderRadius: 12, padding: "4px 6px",
-                              boxShadow: "0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(139,92,246,0.1)",
+                              position: "absolute", top: -20, right: 8,
+                              display: "flex", alignItems: "center", gap: 1,
+                              background: "#fff", border: "1px solid #edebe9",
+                              borderRadius: 6, padding: "3px 5px",
+                              boxShadow: "0 4px 16px rgba(0,0,0,0.1)",
                               zIndex: 20,
                             }}>
-                              {QUICK_REACTIONS.map(emoji => (
+                              {QUICK_REACTIONS.slice(0, 6).map(emoji => (
                                 <button key={emoji} onClick={() => handleReact(msg.id, emoji)}
-                                  className="ft-action-btn"
-                                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15, padding: "0 2px", borderRadius: 6 }}>
+                                  className="teams-action-btn"
+                                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, padding: "2px 3px", borderRadius: 4 }}>
                                   {emoji}
                                 </button>
                               ))}
-                              <div style={{ width: 1, height: 16, background: "rgba(255,255,255,0.08)", margin: "0 3px" }}/>
-                              <button title="Mention reply" className="ft-action-btn"
-                                style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 3px", borderRadius: 6, color: "#6B7280" }}>
+                              <div style={{ width: 1, height: 16, background: "#edebe9", margin: "0 3px" }}/>
+                              <button title="Mention" className="teams-action-btn"
+                                style={{ background: "none", border: "none", cursor: "pointer", padding: "3px 4px", borderRadius: 4, color: "#605e5c", display: "flex" }}>
                                 <AtSign size={13}/>
                               </button>
-                              <button title="Pin" className="ft-action-btn"
-                                style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 3px", borderRadius: 6, color: "#6B7280" }}>
+                              <button title="Pin" className="teams-action-btn"
+                                style={{ background: "none", border: "none", cursor: "pointer", padding: "3px 4px", borderRadius: 4, color: "#605e5c", display: "flex" }}>
                                 <Pin size={13}/>
                               </button>
-                              <button title="Bookmark" className="ft-action-btn"
-                                style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 3px", borderRadius: 6, color: "#6B7280" }}>
+                              <button title="Bookmark" className="teams-action-btn"
+                                style={{ background: "none", border: "none", cursor: "pointer", padding: "3px 4px", borderRadius: 4, color: "#605e5c", display: "flex" }}>
                                 <BookmarkPlus size={13}/>
                               </button>
                               {isOwn && (
                                 <>
-                                  <div style={{ width: 1, height: 16, background: "rgba(255,255,255,0.08)", margin: "0 3px" }}/>
-                                  <button onClick={() => handleDeleteMessage(msg.id)} title="Delete" className="ft-action-btn"
-                                    style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 3px", borderRadius: 6, color: "#6B7280" }}
-                                    onMouseEnter={e => (e.currentTarget.style.color = "#F87171")}
-                                    onMouseLeave={e => (e.currentTarget.style.color = "#6B7280")}>
+                                  <div style={{ width: 1, height: 16, background: "#edebe9", margin: "0 3px" }}/>
+                                  <button onClick={() => handleDeleteMessage(msg.id)} title="Delete" className="teams-action-btn"
+                                    style={{ background: "none", border: "none", cursor: "pointer", padding: "3px 4px", borderRadius: 4, color: "#a80000", display: "flex" }}>
                                     <Trash2 size={13}/>
                                   </button>
                                 </>
@@ -674,107 +630,103 @@ export default function Chat() {
 
                 {/* Typing indicator */}
                 {typingUsers.length > 0 && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 12px", marginTop: 4 }}>
-                    <div style={{ display: "flex", gap: 4 }}>
-                      {[0,1,2].map(i => (
-                        <span key={i} className="ft-dot" style={{ width: 6, height: 6, borderRadius: "50%", background: "#7C3AED", display: "block", animationDelay: `${i * 0.18}s` }}/>
-                      ))}
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px" }}>
+                    <div style={{ width: 32, flexShrink: 0 }}/>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <div style={{ display: "flex", gap: 3 }}>
+                        {[1,2,3].map(n => <span key={n} className="teams-dot" style={{ width: 5, height: 5, borderRadius: "50%", background: "#605e5c", display: "inline-block" }}/>)}
+                      </div>
+                      <span style={{ fontSize: 12, color: "#605e5c" }}>
+                        {typingUsers.join(", ")} {typingUsers.length === 1 ? "is" : "are"} typing…
+                      </span>
                     </div>
-                    <span style={{ fontSize: 12, color: "#6B7280", fontStyle: "italic" }}>
-                      <strong style={{ color: "#A78BFA" }}>{typingUsers.join(", ")}</strong> {typingUsers.length === 1 ? "is" : "are"} typing…
-                    </span>
                   </div>
                 )}
-
                 <div ref={messagesEndRef}/>
               </div>
 
               {/* ── Message Input ── */}
-              <div style={{ padding: "0 20px 20px", flexShrink: 0 }}>
-                <div style={{
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid rgba(139,92,246,0.2)",
-                  borderRadius: 14,
-                  boxShadow: "0 0 0 0px rgba(124,58,237,0)",
-                  transition: "border-color 0.15s, box-shadow 0.15s",
-                  overflow: "visible", position: "relative",
-                }}
-                  onFocusCapture={e => { (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(124,58,237,0.5)"; (e.currentTarget as HTMLDivElement).style.boxShadow = "0 0 0 3px rgba(124,58,237,0.12)"; }}
-                  onBlurCapture={e => { (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(139,92,246,0.2)"; (e.currentTarget as HTMLDivElement).style.boxShadow = "none"; }}>
+              <div style={{ padding: "8px 16px 12px", background: "#fff", flexShrink: 0 }}>
+                {/* Emoji picker */}
+                {showEmoji && (
+                  <div style={{
+                    marginBottom: 6, padding: 8, background: "#fff",
+                    border: "1px solid #edebe9", borderRadius: 8,
+                    display: "flex", flexWrap: "wrap", gap: 4,
+                    boxShadow: "0 4px 16px rgba(0,0,0,0.1)",
+                  }}>
+                    {QUICK_REACTIONS.map(e => (
+                      <button key={e} onClick={() => { setInput(p => p + e); setShowEmoji(false); inputRef.current?.focus(); }}
+                        style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, padding: "3px 5px", borderRadius: 4, transition: "background 0.1s" }}
+                        onMouseEnter={el => (el.currentTarget.style.background = "#f5f5f5")}
+                        onMouseLeave={el => (el.currentTarget.style.background = "none")}>
+                        {e}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
-                  {/* Emoji picker */}
-                  {showEmoji && (
-                    <div style={{
-                      position: "absolute", bottom: "calc(100% + 8px)", left: 0,
-                      background: "#1a1b2e", border: "1px solid rgba(139,92,246,0.25)",
-                      borderRadius: 14, padding: 12, zIndex: 50,
-                      boxShadow: "0 16px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(139,92,246,0.1)",
-                      width: 280,
-                    }} onClick={e => e.stopPropagation()}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: "#6B7280", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                        Quick Reactions
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(9,1fr)", gap: 3 }}>
-                        {["😊","😂","❤️","👍","🎉","🙏","😍","🔥","✅","💯","👋","🤔","😅","🙌","💪","📧","👏","🚀","💡","⚡","🎯","📊","✨","🔔","💬","🤝","⭐","🏆","🎊","👀","😎","🤩","😁","😎","🥳","😤","😬","🤗","👑","🌟","💥","🛠","📌","🔗","📅","💼","🎨","🎯","🧩","🤖"].map(emoji => (
-                          <button key={emoji} onClick={() => { setInput(v => v + emoji); setShowEmoji(false); inputRef.current?.focus(); }}
-                            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, padding: 4, borderRadius: 6, transition: "background 0.1s" }}
-                            onMouseEnter={e => (e.currentTarget.style.background = "rgba(139,92,246,0.15)")}
-                            onMouseLeave={e => (e.currentTarget.style.background = "none")}>
-                            {emoji}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                <div className="teams-input-box" style={{
+                  background: "#fff", border: "1px solid #c8c6c4",
+                  borderRadius: 6, overflow: "hidden", transition: "border-color 0.15s, box-shadow 0.15s",
+                }}>
+                  {/* Formatting toolbar */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 1, padding: "5px 8px 0", borderBottom: "1px solid #f0f0f0" }}>
+                    {[
+                      { icon: <Bold size={13}/>, title: "Bold" },
+                      { icon: <Italic size={13}/>, title: "Italic" },
+                      { icon: <Underline size={13}/>, title: "Underline" },
+                      { icon: <Link2 size={13}/>, title: "Link" },
+                    ].map(({ icon, title }) => (
+                      <button key={title} title={title} className="teams-action-btn"
+                        style={{ background: "none", border: "none", cursor: "pointer", padding: "3px 5px", borderRadius: 4, color: "#605e5c", display: "flex" }}>
+                        {icon}
+                      </button>
+                    ))}
+                    <div style={{ flex: 1 }}/>
+                    <button onClick={() => setShowEmoji(v => !v)} title="Emoji" className="teams-action-btn"
+                      style={{ background: "none", border: "none", cursor: "pointer", padding: "3px 5px", borderRadius: 4, color: showEmoji ? TEAMS_PURPLE : "#605e5c", display: "flex" }}>
+                      <Smile size={14}/>
+                    </button>
+                    <button onClick={() => fileInputRef.current?.click()} title="Attach file" className="teams-action-btn"
+                      style={{ background: "none", border: "none", cursor: "pointer", padding: "3px 5px", borderRadius: 4, color: "#605e5c", display: "flex" }}>
+                      <Paperclip size={14}/>
+                    </button>
+                    <button title="AI assist" className="teams-action-btn"
+                      style={{ background: "none", border: "none", cursor: "pointer", padding: "3px 5px", borderRadius: 4, color: "#605e5c", display: "flex" }}>
+                      <Sparkles size={14}/>
+                    </button>
+                  </div>
 
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px" }}>
-                    <Avatar name={userName} email={userEmail} size="sm"/>
-                    <input ref={inputRef}
-                      value={input}
+                  {/* Text area */}
+                  <div style={{ display: "flex", alignItems: "flex-end", padding: "6px 8px 6px" }}>
+                    <textarea ref={inputRef} value={input}
                       onChange={e => { setInput(e.target.value); sendTyping(); }}
                       onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); } }}
-                      placeholder={`Message #${activeChannel.name}…`}
-                      className="ft-input"
-                      style={{ flex: 1, background: "none", border: "none", fontSize: 14, color: "#F3F4F6", minWidth: 0 }}/>
-                  </div>
-
-                  {/* Toolbar */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "4px 10px 8px", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                    <button onClick={e => { e.stopPropagation(); setShowEmoji(v => !v); }}
-                      style={{ background: showEmoji ? "rgba(124,58,237,0.2)" : "none", border: "none", borderRadius: 7, padding: "5px 6px", cursor: "pointer", color: showEmoji ? "#A78BFA" : "#6B7280", display: "flex" }}
-                      title="Emoji">
-                      <Smile size={16}/>
+                      placeholder={`Message #${activeChannel.name}`}
+                      rows={1}
+                      style={{
+                        flex: 1, background: "none", border: "none", outline: "none",
+                        fontSize: 13.5, color: "#242424", resize: "none",
+                        fontFamily: "inherit", lineHeight: 1.5, maxHeight: 120, overflow: "auto",
+                        padding: 0,
+                      }}/>
+                    <button
+                      onClick={() => sendMessage(input)}
+                      disabled={!input.trim()}
+                      style={{
+                        marginLeft: 8, width: 30, height: 30, borderRadius: 4, border: "none",
+                        background: input.trim() ? TEAMS_PURPLE : "#edebe9",
+                        color: input.trim() ? "#fff" : "#a8a8a8",
+                        cursor: input.trim() ? "pointer" : "default",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        transition: "background 0.15s", flexShrink: 0,
+                      }}>
+                      <Send size={14}/>
                     </button>
-                    <input ref={fileInputRef} type="file" style={{ display: "none" }} onChange={handleFileChange}/>
-                    <button onClick={() => fileInputRef.current?.click()}
-                      style={{ background: "none", border: "none", borderRadius: 7, padding: "5px 6px", cursor: "pointer", color: "#6B7280", display: "flex" }}
-                      title="Attach file">
-                      <Paperclip size={16}/>
-                    </button>
-                    <button style={{ background: "none", border: "none", borderRadius: 7, padding: "5px 6px", cursor: "pointer", color: "#6B7280", display: "flex" }} title="AI assist">
-                      <Sparkles size={16}/>
-                    </button>
-                    <button style={{ background: "none", border: "none", borderRadius: 7, padding: "5px 6px", cursor: "pointer", color: "#6B7280", display: "flex" }} title="Mention">
-                      <AtSign size={16}/>
-                    </button>
-                    <div style={{ flex: 1 }}/>
-
-                    <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                      <span style={{ fontSize: 11, color: "#4B5563" }}>↵ Send</span>
-                      <button onClick={() => sendMessage(input)} disabled={!input.trim()}
-                        style={{
-                          display: "flex", alignItems: "center", gap: 6, padding: "6px 14px",
-                          background: input.trim() ? "linear-gradient(135deg,#7C3AED,#4F46E5)" : "rgba(255,255,255,0.04)",
-                          border: "none", borderRadius: 9, cursor: input.trim() ? "pointer" : "default",
-                          fontSize: 13, fontWeight: 700, color: input.trim() ? "#fff" : "#4B5563",
-                          boxShadow: input.trim() ? "0 2px 12px rgba(124,58,237,0.4)" : "none",
-                          transition: "all 0.15s",
-                        }}>
-                        <Send size={13}/> Send
-                      </button>
-                    </div>
                   </div>
                 </div>
+                <input ref={fileInputRef} type="file" style={{ display: "none" }} onChange={handleFileChange}/>
               </div>
             </>
           )}
