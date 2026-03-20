@@ -914,7 +914,7 @@ export default function Email() {
 
   return (
     <Layout>
-      <div className="flex h-[calc(100vh-48px)] bg-[#f8fafc]">
+      <div className="flex h-[calc(100vh-48px)] bg-[#f8fafc] overflow-hidden">
 
         {/* ── Sidebar ── */}
         <div className="w-52 flex-shrink-0 bg-white border-r border-gray-100 flex flex-col overflow-y-auto">

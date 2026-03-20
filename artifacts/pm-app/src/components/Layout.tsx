@@ -428,7 +428,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar">
           {children}
         </div>
       </main>
