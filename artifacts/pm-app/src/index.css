@@ -311,6 +311,34 @@ html.dark .fm-text-main { color: #e2e8f0 !important; }
 html.dark .fm-text-sub  { color: #94a3b8 !important; }
 html.dark .fm-border    { border-color: #334155 !important; }
 
+/* Nesting page semantic classes */
+.nm-bg-page        { background-color: #f8fafc; color: #0f172a; }
+.nm-bg-card        { background-color: #ffffff; border-color: #e2e8f0; }
+.nm-bg-input       { background-color: #f1f5f9; border-color: #cbd5e1; }
+.nm-bg-hover:hover { background-color: #f1f5f9; }
+.nm-bg-active      { background-color: #e0e7ff; }
+.nm-bg-canvas      { background-color: #e2e8f0; }
+.nm-text-main      { color: #0f172a; }
+.nm-text-sub       { color: #475569; }
+.nm-text-muted     { color: #94a3b8; }
+.nm-border         { border-color: #e2e8f0; }
+.nm-select         { background-color: #f1f5f9; border-color: #cbd5e1; color: #0f172a; }
+.nm-select option  { background-color: #ffffff; color: #0f172a; }
+
+/* Nesting page dark overrides */
+html.dark .nm-bg-page        { background-color: #0f0f1a; color: #e2e8f0; }
+html.dark .nm-bg-card        { background-color: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); }
+html.dark .nm-bg-input       { background-color: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+html.dark .nm-bg-hover:hover { background-color: rgba(255,255,255,0.1); }
+html.dark .nm-bg-active      { background-color: rgba(99,102,241,0.3); }
+html.dark .nm-bg-canvas      { background-color: #1e1e2e; }
+html.dark .nm-text-main      { color: #ffffff; }
+html.dark .nm-text-sub       { color: rgba(255,255,255,0.6); }
+html.dark .nm-text-muted     { color: rgba(255,255,255,0.3); }
+html.dark .nm-border         { border-color: rgba(255,255,255,0.1); }
+html.dark .nm-select         { background-color: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); color: #ffffff; }
+html.dark .nm-select option  { background-color: #1e1e2e; color: #ffffff; }
+
 /* Email page dark overrides */
 html.dark .fm-email-sidebar  { background-color: #1e293b !important; border-color: #334155 !important; }
 html.dark .fm-email-list     { background-color: #1a2233 !important; border-color: #334155 !important; }
