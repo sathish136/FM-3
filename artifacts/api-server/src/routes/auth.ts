@@ -34,7 +34,7 @@ function maskEmail(email: string): string {
 
 async function sendOtpEmail(to: string, otp: string, name: string): Promise<void> {
   const gmailUser = process.env.GMAIL_USER || "noreply@wttint.com";
-  const gmailPass = process.env.GMAIL_APP_PASSWORD || "Aw@rd%25@noreply";
+  const gmailPass = process.env.GMAIL_APP_PASSWORD || "ejjjsfufipqmvpuh";
 
   const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
