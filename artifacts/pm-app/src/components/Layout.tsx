@@ -90,7 +90,6 @@ const navGroups: { label?: string; items: NavItem[] }[] = [
     label: "HR",
     items: [
       { path: "/hrms", label: "HRMS", icon: UserCircle, color: "text-emerald-400" },
-      { path: "/hrms/incidents", label: "Incidents", icon: AlertTriangle, color: "text-rose-400" },
     ],
   },
   {
