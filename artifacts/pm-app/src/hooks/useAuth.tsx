@@ -9,7 +9,8 @@ export interface AuthUser {
 interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
-  login: (usr: string, pwd: string) => Promise<void>;
+  login: (usr: string, pwd: string) => Promise<{ twoFaRequired: true; email: string; maskedEmail: string }>;
+  verifyOtp: (email: string, otp: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -29,7 +30,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (stored) {
           const parsed: AuthUser = JSON.parse(stored);
           setUser(parsed);
-          // Refresh photo from ERPNext in background
           try {
             const res = await fetch(
               `${BASE}/api/auth/me?email=${encodeURIComponent(parsed.email)}`
@@ -48,15 +48,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               localStorage.setItem(STORAGE_KEY, JSON.stringify(refreshed));
               setUser(refreshed);
             }
-          } catch { /* photo refresh failure is non-fatal */ }
+          } catch { }
         }
-      } catch {}
+      } catch { }
       setLoading(false);
     };
     init();
   }, []);
 
-  const login = async (usr: string, pwd: string) => {
+  const login = async (usr: string, pwd: string): Promise<{ twoFaRequired: true; email: string; maskedEmail: string }> => {
     let res: Response;
     try {
       res = await fetch(`${BASE}/api/auth/login`, {
@@ -80,14 +80,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error((data.error as string) || "Invalid credentials");
     }
 
+    return { twoFaRequired: true, email: data.email as string, maskedEmail: data.maskedEmail as string };
+  };
+
+  const verifyOtp = async (email: string, otp: string): Promise<void> => {
+    let res: Response;
+    try {
+      res = await fetch(`${BASE}/api/auth/verify-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, otp }),
+      });
+    } catch {
+      throw new Error("Unable to reach the server. Please check your connection.");
+    }
+
+    let data: Record<string, unknown> = {};
+    try {
+      const text = await res.text();
+      if (text && text.trim()) data = JSON.parse(text);
+    } catch {
+      throw new Error("Unexpected server response. Please try again.");
+    }
+
+    if (!res.ok) {
+      throw new Error((data.error as string) || "Verification failed");
+    }
+
     const rawPhoto = (data.photo as string | null) ?? null;
     const proxyPhoto = rawPhoto
       ? `${BASE}/api/auth/photo?url=${encodeURIComponent(rawPhoto)}`
       : null;
 
     const authUser: AuthUser = {
-      email: (data.email as string) || usr,
-      full_name: (data.full_name as string) || usr,
+      email: (data.email as string) || email,
+      full_name: (data.full_name as string) || email,
       photo: proxyPhoto,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(authUser));
@@ -100,7 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, verifyOtp, logout }}>
       {children}
     </AuthContext.Provider>
   );

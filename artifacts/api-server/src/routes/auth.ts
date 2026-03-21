@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import { writeFile, readFile, unlink, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import nodemailer from "nodemailer";
 
 const execFileAsync = promisify(execFile);
 
@@ -12,6 +13,57 @@ const authRouter = Router();
 const ERP_URL = process.env.ERPNEXT_URL || "https://erp.wttint.com";
 const API_KEY = process.env.ERPNEXT_API_KEY || "";
 const API_SECRET = process.env.ERPNEXT_API_SECRET || "";
+
+// ── OTP store (in-memory, 5-minute TTL) ──────────────────────────────────────
+interface OtpEntry {
+  otp: string;
+  expires: number;
+  userData: { email: string; full_name: string; photo: string | null };
+}
+const otpStore = new Map<string, OtpEntry>();
+
+function generateOtp(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function maskEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  const masked = local.length <= 2 ? local[0] + "*" : local[0] + "*".repeat(local.length - 2) + local[local.length - 1];
+  return `${masked}@${domain}`;
+}
+
+async function sendOtpEmail(to: string, otp: string, name: string): Promise<void> {
+  const gmailUser = process.env.GMAIL_USER;
+  const gmailPass = process.env.GMAIL_APP_PASSWORD;
+  if (!gmailUser || !gmailPass) throw new Error("Email not configured");
+
+  const transporter = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false,
+    auth: { user: gmailUser, pass: gmailPass },
+  });
+
+  await transporter.sendMail({
+    from: `"FlowMatriX" <${gmailUser}>`,
+    to,
+    subject: "Your FlowMatriX Login Code",
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#f8fafc;border-radius:16px;">
+        <h2 style="color:#0a2463;margin:0 0 8px;">FlowMatri<span style="color:#0ea5e9">X</span></h2>
+        <p style="color:#64748b;font-size:14px;margin:0 0 24px;">Two-Factor Authentication</p>
+        <p style="color:#1e293b;font-size:15px;">Hi <strong>${name}</strong>,</p>
+        <p style="color:#1e293b;font-size:15px;">Your one-time login code is:</p>
+        <div style="background:#fff;border:2px solid #e2e8f0;border-radius:12px;padding:24px;text-align:center;margin:24px 0;">
+          <span style="font-size:36px;font-weight:900;letter-spacing:12px;color:#0a2463;">${otp}</span>
+        </div>
+        <p style="color:#64748b;font-size:13px;">This code expires in <strong>5 minutes</strong>. Do not share it with anyone.</p>
+        <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;" />
+        <p style="color:#94a3b8;font-size:12px;text-align:center;">© ${new Date().getFullYear()} WTT International India</p>
+      </div>
+    `,
+  });
+}
 
 async function safeJson(response: Response): Promise<Record<string, unknown>> {
   try {
@@ -152,7 +204,6 @@ authRouter.post("/auth/login", async (req, res) => {
     let photo: string | null = null;
 
     try {
-      // Resolve user by username OR email — handles username-only logins
       const userDoc = await resolveUserDoc(loginId);
       if (userDoc.full_name) fullName = userDoc.full_name;
       if (userDoc.email) email = userDoc.email;
@@ -164,11 +215,48 @@ authRouter.post("/auth/login", async (req, res) => {
       console.warn("Could not fetch user profile:", profileErr);
     }
 
-    return res.json({ message: "Logged In", full_name: fullName, email, photo });
+    // Generate OTP and send to the user's email
+    const otp = generateOtp();
+    otpStore.set(email, {
+      otp,
+      expires: Date.now() + 5 * 60 * 1000,
+      userData: { email, full_name: fullName, photo },
+    });
+
+    try {
+      await sendOtpEmail(email, otp, fullName);
+    } catch (mailErr) {
+      console.error("Failed to send OTP email:", mailErr);
+      return res.status(500).json({ error: "Could not send verification code. Please check email configuration." });
+    }
+
+    return res.json({ status: "otp_sent", email, maskedEmail: maskEmail(email) });
   } catch (err: any) {
     console.error("Login error:", err);
     return res.status(500).json({ error: "Failed to connect to authentication server" });
   }
+});
+
+authRouter.post("/auth/verify-otp", (req, res) => {
+  const { email, otp } = req.body;
+  if (!email || !otp) {
+    return res.status(400).json({ error: "Email and OTP are required" });
+  }
+
+  const entry = otpStore.get(email);
+  if (!entry) {
+    return res.status(401).json({ error: "No pending verification found. Please log in again." });
+  }
+  if (Date.now() > entry.expires) {
+    otpStore.delete(email);
+    return res.status(401).json({ error: "Verification code has expired. Please log in again." });
+  }
+  if (entry.otp !== String(otp).trim()) {
+    return res.status(401).json({ error: "Incorrect verification code. Please try again." });
+  }
+
+  otpStore.delete(email);
+  return res.json({ message: "Logged In", ...entry.userData });
 });
 
 authRouter.post("/auth/logout", (_req, res) => {
