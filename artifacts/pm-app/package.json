@@ -80,6 +80,7 @@
     "@mlightcad/data-model": "^1.7.5",
     "@types/lodash-es": "^4.17.12",
     "@types/three": "^0.183.1",
+    "dxf-parser": "^1.1.2",
     "dxf-viewer": "^1.0.46",
     "hyperformula": "^3.2.0",
     "jszip": "^3.10.1",
