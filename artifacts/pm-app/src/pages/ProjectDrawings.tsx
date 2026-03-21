@@ -287,22 +287,34 @@ function PdfWatermark({
     status === "revision"
       ? `${cfg.watermarkText} — ${revisionLbl}`
       : cfg.watermarkText;
+
+  const colorMap: Record<DrawingStatus, { border: string; text: string; bg: string }> = {
+    draft:    { border: "#d97706", text: "#d97706", bg: "rgba(217,119,6,0.08)" },
+    revision: { border: "#2563eb", text: "#2563eb", bg: "rgba(37,99,235,0.08)" },
+    final:    { border: "#059669", text: "#059669", bg: "rgba(5,150,105,0.08)" },
+  };
+  const c = colorMap[status];
+
   return (
     <div
-      className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden"
+      className="absolute bottom-3 right-3 pointer-events-none"
       style={{ zIndex: 10 }}
     >
       <div
         style={{
-          transform: "rotate(-45deg)",
-          whiteSpace: "nowrap",
-          fontSize: "clamp(28px,6vw,64px)",
-          fontWeight: 900,
-          letterSpacing: "0.15em",
-          color: cfg.watermarkColor,
-          userSelect: "none",
+          border: `2px solid ${c.border}`,
+          background: c.bg,
+          color: c.text,
+          padding: "4px 12px",
+          borderRadius: "4px",
+          fontSize: "11px",
+          fontWeight: 800,
+          letterSpacing: "0.18em",
           textTransform: "uppercase",
           fontFamily: "Arial, sans-serif",
+          userSelect: "none",
+          whiteSpace: "nowrap",
+          opacity: 0.85,
         }}
       >
         {text}
