@@ -1,11 +1,13 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Layout } from "@/components/Layout";
-import { runNesting, Part, NestingResult, PlacedPart } from "@/lib/nestingAlgorithm";
+import { runNesting, Part, NestingResult, PlacedPart, PART_COLORS } from "@/lib/nestingAlgorithm";
 import { parseDxfFile, parseSvgFile, readDwgFileInfo, DwgFileInfo } from "@/lib/dxfParser";
 import {
   Upload, Plus, Trash2, Play, Download, ChevronLeft, ChevronRight,
   RotateCw, Info, AlertTriangle, CheckCircle, Layers, Package,
   FileText, Settings2, ZoomIn, ZoomOut, Maximize2, X, FileX,
+  ChevronDown, ChevronUp, Grid, Ruler, PanelLeft, PanelRight,
+  RefreshCw, Copy, Printer, ArrowRight, Minus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -17,17 +19,12 @@ interface DwgDialogEntry {
   quantity: number;
 }
 
-function DwgImportDialog({
-  entries,
-  onConfirm,
-  onCancel,
-}: {
+function DwgImportDialog({ entries, onConfirm, onCancel }: {
   entries: DwgDialogEntry[];
   onConfirm: (entries: DwgDialogEntry[]) => void;
   onCancel: () => void;
 }) {
   const [local, setLocal] = useState<DwgDialogEntry[]>(entries);
-
   const update = (idx: number, changes: Partial<DwgDialogEntry>) =>
     setLocal(l => l.map((e, i) => (i === idx ? { ...e, ...changes } : e)));
 
@@ -39,72 +36,46 @@ function DwgImportDialog({
             <h2 className="nm-text-main font-semibold flex items-center gap-2">
               <FileX size={16} className="text-amber-500" /> DWG File Import
             </h2>
-            <p className="nm-text-sub text-xs mt-0.5">
-              DWG binary geometry cannot be auto-extracted in the browser. Enter part dimensions below.
-            </p>
+            <p className="nm-text-sub text-xs mt-0.5">Enter part dimensions manually for DWG files.</p>
           </div>
           <button onClick={onCancel} className="nm-text-muted hover:nm-text-main"><X size={18} /></button>
         </div>
-
         <div className="px-5 py-4 space-y-4 max-h-[60vh] overflow-y-auto">
           {local.map((entry, idx) => (
             <div key={idx} className="nm-bg-page border nm-border rounded-xl p-4">
               <div className="flex items-center gap-2 mb-3">
-                <div className="px-2 py-0.5 bg-amber-500/20 text-amber-600 dark:text-amber-300 text-xs rounded font-mono">
-                  {entry.info.versionName}
-                </div>
+                <div className="px-2 py-0.5 bg-amber-500/20 text-amber-600 dark:text-amber-300 text-xs rounded font-mono">{entry.info.versionName}</div>
                 <span className="nm-text-sub text-xs truncate">{entry.info.fileName}</span>
               </div>
-              <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2">
                   <label className="text-xs nm-text-sub mb-1 block">Part Name</label>
-                  <input
-                    value={entry.name}
-                    onChange={e => update(idx, { name: e.target.value })}
-                    className="w-full nm-bg-input border nm-border rounded-lg px-3 py-2 nm-text-main text-sm"
-                  />
+                  <input value={entry.name} onChange={e => update(idx, { name: e.target.value })}
+                    className="w-full nm-bg-input border nm-border rounded-lg px-3 py-2 nm-text-main text-sm" />
                 </div>
                 <div>
                   <label className="text-xs nm-text-sub mb-1 block">Width (mm)</label>
-                  <input
-                    type="number" value={entry.width} min={1}
-                    onChange={e => update(idx, { width: Number(e.target.value) })}
-                    className="w-full nm-bg-input border nm-border rounded-lg px-3 py-2 nm-text-main text-sm"
-                  />
+                  <input type="number" value={entry.width} min={1} onChange={e => update(idx, { width: Number(e.target.value) })}
+                    className="w-full nm-bg-input border nm-border rounded-lg px-3 py-2 nm-text-main text-sm" />
                 </div>
                 <div>
                   <label className="text-xs nm-text-sub mb-1 block">Height (mm)</label>
-                  <input
-                    type="number" value={entry.height} min={1}
-                    onChange={e => update(idx, { height: Number(e.target.value) })}
-                    className="w-full nm-bg-input border nm-border rounded-lg px-3 py-2 nm-text-main text-sm"
-                  />
+                  <input type="number" value={entry.height} min={1} onChange={e => update(idx, { height: Number(e.target.value) })}
+                    className="w-full nm-bg-input border nm-border rounded-lg px-3 py-2 nm-text-main text-sm" />
                 </div>
                 <div>
                   <label className="text-xs nm-text-sub mb-1 block">Quantity</label>
-                  <input
-                    type="number" value={entry.quantity} min={1}
-                    onChange={e => update(idx, { quantity: Math.max(1, Number(e.target.value)) })}
-                    className="w-full nm-bg-input border nm-border rounded-lg px-3 py-2 nm-text-main text-sm"
-                  />
+                  <input type="number" value={entry.quantity} min={1} onChange={e => update(idx, { quantity: Math.max(1, Number(e.target.value)) })}
+                    className="w-full nm-bg-input border nm-border rounded-lg px-3 py-2 nm-text-main text-sm" />
                 </div>
-              </div>
-              <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-300 bg-amber-500/10 rounded-lg px-3 py-2">
-                <Info size={11} />
-                Open in AutoCAD/LibreCAD → check part dimensions → enter above.
               </div>
             </div>
           ))}
         </div>
-
         <div className="flex justify-end gap-2 px-5 py-4 border-t nm-border">
-          <button onClick={onCancel} className="px-4 py-2 nm-text-sub hover:nm-text-main text-sm">
-            Cancel
-          </button>
-          <button
-            onClick={() => onConfirm(local)}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm rounded-lg font-medium"
-          >
+          <button onClick={onCancel} className="px-4 py-2 nm-text-sub hover:nm-text-main text-sm">Cancel</button>
+          <button onClick={() => onConfirm(local)}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm rounded-lg font-medium">
             Add {local.length} Part{local.length !== 1 ? "s" : ""}
           </button>
         </div>
@@ -114,215 +85,396 @@ function DwgImportDialog({
 }
 
 const SHEET_PRESETS = [
-  { label: "A4 (210×297 mm)", width: 210, height: 297 },
-  { label: "A3 (297×420 mm)", width: 297, height: 420 },
-  { label: "A2 (420×594 mm)", width: 420, height: 594 },
-  { label: "A1 (594×841 mm)", width: 594, height: 841 },
-  { label: "A0 (841×1189 mm)", width: 841, height: 1189 },
-  { label: '4×8 ft Sheet (1220×2440 mm)', width: 1220, height: 2440 },
-  { label: '5×10 ft Sheet (1524×3048 mm)', width: 1524, height: 3048 },
+  { label: "A4 (210×297)", width: 210, height: 297 },
+  { label: "A3 (297×420)", width: 297, height: 420 },
+  { label: "A2 (420×594)", width: 420, height: 594 },
+  { label: "A1 (594×841)", width: 594, height: 841 },
+  { label: "A0 (841×1189)", width: 841, height: 1189 },
+  { label: "4×8 ft (1220×2440)", width: 1220, height: 2440 },
+  { label: "5×10 ft (1524×3048)", width: 1524, height: 3048 },
+  { label: "4×4 ft (1220×1220)", width: 1220, height: 1220 },
   { label: "Custom", width: 0, height: 0 },
 ];
 
-const PART_COLORS = [
-  "#6366f1", "#f59e0b", "#10b981", "#ef4444", "#3b82f6",
-  "#8b5cf6", "#ec4899", "#14b8a6", "#f97316", "#84cc16",
-  "#06b6d4", "#a855f7", "#e11d48", "#059669", "#d97706",
-];
-
 let partCounter = 0;
-
 function newPart(): Part {
   partCounter++;
   return {
-    id: `manual-${partCounter}-${Date.now()}`,
+    id: `p-${partCounter}-${Date.now()}`,
     name: `Part ${partCounter}`,
     width: 100,
     height: 80,
     quantity: 1,
     color: PART_COLORS[(partCounter - 1) % PART_COLORS.length],
+    allowRotation: true,
+    grainDirection: "none",
   };
 }
 
-interface SheetCanvasProps {
+function useIsDark() {
+  const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"));
+  useEffect(() => {
+    const obs = new MutationObserver(() => setDark(document.documentElement.classList.contains("dark")));
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, []);
+  return dark;
+}
+
+interface CanvasProps {
   sheet: { width: number; height: number; placedParts: PlacedPart[] };
   selectedPartId: string | null;
   onSelect: (id: string | null) => void;
+  showGrid: boolean;
+  showRulers: boolean;
 }
 
-function SheetCanvas({ sheet, selectedPartId, onSelect }: SheetCanvasProps) {
+function SheetCanvas({ sheet, selectedPartId, onSelect, showGrid, showRulers }: CanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [zoom, setZoom] = useState(1);
-  const [isDragging, setIsDragging] = useState(false);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const lastMouse = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
-  const isDark = () => document.documentElement.classList.contains("dark");
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [hoveredPart, setHoveredPart] = useState<PlacedPart | null>(null);
+  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+  const lastMouse = useRef({ x: 0, y: 0 });
+  const isDark = useIsDark();
+  const RULER = showRulers ? 24 : 0;
 
   const fitScale = useCallback(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current) return 1;
     const { clientWidth, clientHeight } = containerRef.current;
-    const scaleX = (clientWidth - 40) / sheet.width;
-    const scaleY = (clientHeight - 40) / sheet.height;
-    return Math.min(scaleX, scaleY);
-  }, [sheet.width, sheet.height]);
+    const usable = { w: clientWidth - RULER - 48, h: clientHeight - RULER - 48 };
+    return Math.min(usable.w / sheet.width, usable.h / sheet.height, 4);
+  }, [sheet.width, sheet.height, RULER]);
 
-  useEffect(() => {
-    const scale = fitScale() ?? 1;
-    setZoom(scale);
+  const resetView = useCallback(() => {
+    setZoom(fitScale());
     setPan({ x: 0, y: 0 });
-  }, [fitScale, sheet]);
+  }, [fitScale]);
+
+  useEffect(() => { resetView(); }, [resetView, sheet]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-
     const dpr = window.devicePixelRatio || 1;
     const cw = canvas.offsetWidth;
     const ch = canvas.offsetHeight;
     canvas.width = cw * dpr;
     canvas.height = ch * dpr;
     ctx.scale(dpr, dpr);
-
     ctx.clearRect(0, 0, cw, ch);
 
-    const offsetX = (cw - sheet.width * zoom) / 2 + pan.x;
-    const offsetY = (ch - sheet.height * zoom) / 2 + pan.y;
+    const colors = {
+      bg: isDark ? "#0f1117" : "#f1f5f9",
+      ruler: isDark ? "#1e2030" : "#e2e8f0",
+      rulerText: isDark ? "#64748b" : "#94a3b8",
+      rulerTick: isDark ? "#334155" : "#cbd5e1",
+      sheetBg: "#ffffff",
+      sheetBorder: isDark ? "#475569" : "#94a3b8",
+      grid: isDark ? "rgba(148,163,184,0.08)" : "rgba(100,116,139,0.1)",
+      gridMajor: isDark ? "rgba(148,163,184,0.15)" : "rgba(100,116,139,0.18)",
+      labelBg: "rgba(255,255,255,0.92)",
+      labelText: "#1e293b",
+    };
 
-    const dark = isDark();
-    ctx.fillStyle = dark ? "#1e1e2e" : "#e2e8f0";
+    const ox = RULER + (cw - RULER - sheet.width * zoom) / 2 + pan.x;
+    const oy = RULER + (ch - RULER - sheet.height * zoom) / 2 + pan.y;
+
+    ctx.fillStyle = colors.bg;
     ctx.fillRect(0, 0, cw, ch);
 
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(offsetX, offsetY, sheet.width * zoom, sheet.height * zoom);
+    if (showRulers) {
+      ctx.fillStyle = colors.ruler;
+      ctx.fillRect(0, 0, RULER, ch);
+      ctx.fillRect(0, 0, cw, RULER);
+      ctx.fillStyle = colors.bg;
+      ctx.fillRect(0, 0, RULER, RULER);
 
-    ctx.strokeStyle = dark ? "#94a3b8" : "#64748b";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(offsetX, offsetY, sheet.width * zoom, sheet.height * zoom);
+      ctx.fillStyle = colors.rulerText;
+      ctx.font = "9px sans-serif";
+      ctx.textAlign = "center";
+
+      const step = zoom >= 2 ? 10 : zoom >= 1 ? 25 : zoom >= 0.5 ? 50 : 100;
+      for (let mm = 0; mm <= sheet.width; mm += step) {
+        const rx = ox + mm * zoom;
+        if (rx < RULER || rx > cw) continue;
+        ctx.strokeStyle = colors.rulerTick;
+        ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(rx, RULER - 5); ctx.lineTo(rx, RULER); ctx.stroke();
+        if (mm % (step * 2) === 0) ctx.fillText(String(mm), rx, RULER - 7);
+      }
+      ctx.textAlign = "center";
+      for (let mm = 0; mm <= sheet.height; mm += step) {
+        const ry = oy + mm * zoom;
+        if (ry < RULER || ry > ch) continue;
+        ctx.strokeStyle = colors.rulerTick;
+        ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(RULER - 5, ry); ctx.lineTo(RULER, ry); ctx.stroke();
+        if (mm % (step * 2) === 0) {
+          ctx.save();
+          ctx.translate(RULER - 7, ry);
+          ctx.rotate(-Math.PI / 2);
+          ctx.fillText(String(mm), 0, 0);
+          ctx.restore();
+        }
+      }
+      ctx.strokeStyle = colors.rulerTick;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(0, 0, RULER, ch);
+      ctx.strokeRect(0, 0, cw, RULER);
+    }
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(RULER, RULER, cw - RULER, ch - RULER);
+    ctx.clip();
+
+    ctx.shadowColor = "rgba(0,0,0,0.25)";
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 3;
+    ctx.fillStyle = colors.sheetBg;
+    ctx.fillRect(ox, oy, sheet.width * zoom, sheet.height * zoom);
+    ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+
+    ctx.strokeStyle = colors.sheetBorder;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(ox, oy, sheet.width * zoom, sheet.height * zoom);
+
+    if (showGrid && zoom > 0.3) {
+      const gridStep = zoom >= 2 ? 10 : zoom >= 1 ? 25 : 50;
+      ctx.lineWidth = 0.5;
+      for (let mm = 0; mm <= sheet.width; mm += gridStep) {
+        const x = ox + mm * zoom;
+        ctx.strokeStyle = mm % (gridStep * 5) === 0 ? colors.gridMajor : colors.grid;
+        ctx.beginPath(); ctx.moveTo(x, oy); ctx.lineTo(x, oy + sheet.height * zoom); ctx.stroke();
+      }
+      for (let mm = 0; mm <= sheet.height; mm += gridStep) {
+        const y = oy + mm * zoom;
+        ctx.strokeStyle = mm % (gridStep * 5) === 0 ? colors.gridMajor : colors.grid;
+        ctx.beginPath(); ctx.moveTo(ox, y); ctx.lineTo(ox + sheet.width * zoom, y); ctx.stroke();
+      }
+    }
 
     for (const part of sheet.placedParts) {
-      const px = offsetX + part.x * zoom;
-      const py = offsetY + part.y * zoom;
+      const px = ox + part.x * zoom;
+      const py = oy + part.y * zoom;
       const pw = part.width * zoom;
       const ph = part.height * zoom;
-
       const isSelected = selectedPartId === part.partId;
+      const isHovered = hoveredPart?.partId === part.partId && hoveredPart?.instanceIndex === part.instanceIndex;
 
-      ctx.fillStyle = part.color + "cc";
+      const alpha = isSelected ? "dd" : isHovered ? "cc" : "aa";
+      ctx.fillStyle = part.color + alpha;
       ctx.fillRect(px, py, pw, ph);
 
-      ctx.strokeStyle = isSelected ? (dark ? "#ffffff" : "#1e293b") : part.color;
-      ctx.lineWidth = isSelected ? 2.5 : 1.5;
-      ctx.strokeRect(px, py, pw, ph);
-
-      if (part.rotated) {
-        ctx.fillStyle = "rgba(255,255,255,0.6)";
-        ctx.font = `${Math.max(8, Math.min(10, pw / 4))}px sans-serif`;
-        ctx.fillText("↺", px + 2, py + 12);
+      if (isSelected) {
+        ctx.strokeStyle = part.color;
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([]);
+        ctx.strokeRect(px, py, pw, ph);
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 3]);
+        ctx.strokeRect(px + 1.5, py + 1.5, pw - 3, ph - 3);
+        ctx.setLineDash([]);
+      } else {
+        ctx.strokeStyle = isHovered ? part.color : part.color + "99";
+        ctx.lineWidth = isHovered ? 1.5 : 1;
+        ctx.strokeRect(px, py, pw, ph);
       }
 
-      if (pw > 30 && ph > 16) {
-        ctx.fillStyle = "rgba(255,255,255,0.9)";
-        ctx.font = `bold ${Math.max(8, Math.min(11, pw / 5))}px sans-serif`;
+      if (part.rotated && pw > 14 && ph > 14) {
+        ctx.fillStyle = "rgba(255,255,255,0.8)";
+        ctx.font = `${Math.min(11, pw * 0.35)}px sans-serif`;
+        ctx.fillText("↺", px + 3, py + 11);
+      }
+
+      if (pw > 32 && ph > 18) {
+        const fs = Math.max(9, Math.min(12, pw / 6, ph / 3));
+        ctx.font = `bold ${fs}px sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        const label = part.name.length > 10 ? part.name.slice(0, 9) + "…" : part.name;
-        ctx.fillText(label, px + pw / 2, py + ph / 2);
-        if (ph > 28) {
-          ctx.font = `${Math.max(7, Math.min(9, pw / 6))}px sans-serif`;
-          ctx.fillStyle = "rgba(255,255,255,0.7)";
-          ctx.fillText(`${part.width}×${part.height}`, px + pw / 2, py + ph / 2 + 12);
+        const label = part.name.length > 12 ? part.name.slice(0, 11) + "…" : part.name;
+        ctx.fillStyle = "rgba(255,255,255,0.95)";
+        ctx.fillText(label, px + pw / 2, py + ph / 2 - (ph > 32 ? 6 : 0));
+        if (ph > 32) {
+          ctx.font = `${Math.max(8, fs - 2)}px sans-serif`;
+          ctx.fillStyle = "rgba(255,255,255,0.75)";
+          ctx.fillText(`${part.width}×${part.height}mm`, px + pw / 2, py + ph / 2 + 7);
         }
         ctx.textAlign = "left";
         ctx.textBaseline = "alphabetic";
       }
     }
 
-    ctx.fillStyle = dark ? "#94a3b8" : "#64748b";
+    if (mousePos && showRulers) {
+      const mmX = (mousePos.x - ox) / zoom;
+      const mmY = (mousePos.y - oy) / zoom;
+      if (mmX >= 0 && mmX <= sheet.width && mmY >= 0 && mmY <= sheet.height) {
+        ctx.strokeStyle = "rgba(99,102,241,0.4)";
+        ctx.lineWidth = 0.5;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.moveTo(mousePos.x, oy); ctx.lineTo(mousePos.x, oy + sheet.height * zoom); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(ox, mousePos.y); ctx.lineTo(ox + sheet.width * zoom, mousePos.y); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    ctx.fillStyle = colors.rulerText;
     ctx.font = "10px sans-serif";
-    ctx.fillText(`${sheet.width} mm`, offsetX + sheet.width * zoom / 2 - 20, offsetY + sheet.height * zoom + 14);
+    ctx.textAlign = "center";
+    ctx.fillText(`${sheet.width} mm`, ox + sheet.width * zoom / 2, oy + sheet.height * zoom + 16);
     ctx.save();
-    ctx.translate(offsetX - 14, offsetY + sheet.height * zoom / 2);
+    ctx.translate(ox - 14, oy + sheet.height * zoom / 2);
     ctx.rotate(-Math.PI / 2);
-    ctx.fillText(`${sheet.height} mm`, -18, 0);
+    ctx.fillText(`${sheet.height} mm`, 0, 0);
     ctx.restore();
-  }, [sheet, zoom, pan, selectedPartId, fitScale]);
+
+    ctx.restore();
+  }, [sheet, zoom, pan, selectedPartId, hoveredPart, isDark, showGrid, showRulers, mousePos, RULER]);
+
+  const getPartAtPos = (cx: number, cy: number): PlacedPart | null => {
+    if (!canvasRef.current) return null;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const cw = canvasRef.current.offsetWidth;
+    const ch = canvasRef.current.offsetHeight;
+    const ox = RULER + (cw - RULER - sheet.width * zoom) / 2 + pan.x;
+    const oy = RULER + (ch - RULER - sheet.height * zoom) / 2 + pan.y;
+    const mx = (cx - rect.left - ox) / zoom;
+    const my = (cy - rect.top - oy) / zoom;
+    for (let i = sheet.placedParts.length - 1; i >= 0; i--) {
+      const p = sheet.placedParts[i];
+      if (mx >= p.x && mx <= p.x + p.width && my >= p.y && my <= p.y + p.height) return p;
+    }
+    return null;
+  };
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 1 || e.altKey) {
+    if (e.button === 1 || e.button === 2 || e.altKey || e.ctrlKey) {
+      e.preventDefault();
       setIsDragging(true);
       lastMouse.current = { x: e.clientX, y: e.clientY };
     }
   };
-
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging) return;
-    const dx = e.clientX - lastMouse.current.x;
-    const dy = e.clientY - lastMouse.current.y;
-    lastMouse.current = { x: e.clientX, y: e.clientY };
-    setPan(p => ({ x: p.x + dx, y: p.y + dy }));
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (rect) setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    if (isDragging) {
+      const dx = e.clientX - lastMouse.current.x;
+      const dy = e.clientY - lastMouse.current.y;
+      lastMouse.current = { x: e.clientX, y: e.clientY };
+      setPan(p => ({ x: p.x + dx, y: p.y + dy }));
+    } else {
+      setHoveredPart(getPartAtPos(e.clientX, e.clientY));
+    }
   };
-
   const handleMouseUp = () => setIsDragging(false);
-
+  const handleMouseLeave = () => { setIsDragging(false); setHoveredPart(null); setMousePos(null); };
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
-    setZoom(z => Math.max(0.1, Math.min(10, z - e.deltaY * 0.001)));
+    const factor = e.deltaY < 0 ? 1.1 : 0.9;
+    setZoom(z => Math.max(0.05, Math.min(20, z * factor)));
   };
-
   const handleClick = (e: React.MouseEvent) => {
-    if (!canvasRef.current) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    const cw = canvasRef.current.offsetWidth;
-    const ch = canvasRef.current.offsetHeight;
-    const offsetX = (cw - sheet.width * zoom) / 2 + pan.x;
-    const offsetY = (ch - sheet.height * zoom) / 2 + pan.y;
-    const mx = (e.clientX - rect.left - offsetX) / zoom;
-    const my = (e.clientY - rect.top - offsetY) / zoom;
-
-    let found: PlacedPart | null = null;
-    for (let i = sheet.placedParts.length - 1; i >= 0; i--) {
-      const p = sheet.placedParts[i];
-      if (mx >= p.x && mx <= p.x + p.width && my >= p.y && my <= p.y + p.height) {
-        found = p;
-        break;
-      }
-    }
+    if (Math.abs(e.movementX) + Math.abs(e.movementY) > 3) return;
+    const found = getPartAtPos(e.clientX, e.clientY);
     onSelect(found ? found.partId : null);
   };
+  const handleContextMenu = (e: React.MouseEvent) => e.preventDefault();
 
   return (
-    <div ref={containerRef} className="relative w-full h-full nm-bg-canvas rounded-lg overflow-hidden">
+    <div ref={containerRef} className="relative w-full h-full overflow-hidden rounded-lg" style={{ background: isDark ? "#0f1117" : "#f1f5f9" }}>
       <canvas
         ref={canvasRef}
-        className="w-full h-full cursor-crosshair"
+        className={cn("w-full h-full", isDragging ? "cursor-grabbing" : hoveredPart ? "cursor-pointer" : "cursor-crosshair")}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
         onWheel={handleWheel}
         onClick={handleClick}
+        onContextMenu={handleContextMenu}
       />
-      <div className="absolute top-2 right-2 flex gap-1">
-        <button
-          onClick={() => setZoom(z => Math.min(10, z * 1.2))}
-          className="p-1.5 nm-bg-card nm-bg-hover rounded nm-text-main border nm-border shadow-sm"
-        ><ZoomIn size={14} /></button>
-        <button
-          onClick={() => setZoom(z => Math.max(0.05, z / 1.2))}
-          className="p-1.5 nm-bg-card nm-bg-hover rounded nm-text-main border nm-border shadow-sm"
-        ><ZoomOut size={14} /></button>
-        <button
-          onClick={() => { setZoom(fitScale() ?? 1); setPan({ x: 0, y: 0 }); }}
-          className="p-1.5 nm-bg-card nm-bg-hover rounded nm-text-main border nm-border shadow-sm"
-        ><Maximize2 size={14} /></button>
+      <div className="absolute top-2 right-2 flex flex-col gap-1">
+        <button onClick={() => setZoom(z => Math.min(20, z * 1.2))} title="Zoom In"
+          className="p-1.5 nm-bg-card nm-bg-hover rounded nm-text-main border nm-border shadow-sm"><ZoomIn size={13} /></button>
+        <button onClick={() => setZoom(z => Math.max(0.05, z / 1.2))} title="Zoom Out"
+          className="p-1.5 nm-bg-card nm-bg-hover rounded nm-text-main border nm-border shadow-sm"><ZoomOut size={13} /></button>
+        <button onClick={resetView} title="Fit to screen"
+          className="p-1.5 nm-bg-card nm-bg-hover rounded nm-text-main border nm-border shadow-sm"><Maximize2 size={13} /></button>
       </div>
+      {hoveredPart && (
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 px-3 py-1.5 nm-bg-card border nm-border rounded-lg shadow-lg text-xs nm-text-main pointer-events-none whitespace-nowrap">
+          <span className="font-semibold">{hoveredPart.name}</span>
+          <span className="nm-text-sub ml-2">{hoveredPart.width}×{hoveredPart.height} mm</span>
+          {hoveredPart.rotated && <span className="ml-2 text-indigo-500">↺ rotated</span>}
+        </div>
+      )}
       <div className="absolute bottom-2 left-2 text-xs nm-text-muted">
-        Scroll to zoom · Alt+drag to pan · Click part to select
+        Scroll=zoom · Right-drag=pan · Click=select
       </div>
     </div>
+  );
+}
+
+function SheetThumbnail({ sheet, active, onClick, partColors }: {
+  sheet: { index: number; utilization: number; placedParts: PlacedPart[]; width: number; height: number };
+  active: boolean;
+  onClick: () => void;
+  partColors: Record<string, string>;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const isDark = useIsDark();
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const W = canvas.width; const H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    const pad = 4;
+    const scale = Math.min((W - pad * 2) / sheet.width, (H - pad * 2) / sheet.height);
+    const ox = pad + ((W - pad * 2) - sheet.width * scale) / 2;
+    const oy = pad + ((H - pad * 2) - sheet.height * scale) / 2;
+    ctx.fillStyle = isDark ? "#1e2030" : "#e2e8f0";
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(ox, oy, sheet.width * scale, sheet.height * scale);
+    ctx.strokeStyle = isDark ? "#475569" : "#94a3b8";
+    ctx.lineWidth = 0.5;
+    ctx.strokeRect(ox, oy, sheet.width * scale, sheet.height * scale);
+    for (const p of sheet.placedParts) {
+      ctx.fillStyle = (p.color ?? partColors[p.partId] ?? "#6366f1") + "cc";
+      ctx.fillRect(ox + p.x * scale, oy + p.y * scale, p.width * scale, p.height * scale);
+    }
+  }, [sheet, isDark, partColors]);
+
+  const eff = sheet.utilization;
+  const effColor = eff >= 75 ? "#10b981" : eff >= 50 ? "#f59e0b" : "#ef4444";
+
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex-shrink-0 flex flex-col items-center gap-1 p-1.5 rounded-lg border transition",
+        active ? "border-indigo-500 bg-indigo-500/10" : "nm-border nm-bg-card nm-bg-hover"
+      )}
+      style={{ width: 72 }}
+    >
+      <canvas ref={canvasRef} width={60} height={44} className="rounded" />
+      <div className="text-center w-full">
+        <div className="text-xs font-medium nm-text-main">#{sheet.index + 1}</div>
+        <div className="w-full h-1 nm-bg-input rounded-full overflow-hidden mt-0.5">
+          <div className="h-full rounded-full transition-all" style={{ width: `${eff}%`, backgroundColor: effColor }} />
+        </div>
+        <div className="text-xs nm-text-muted">{eff.toFixed(0)}%</div>
+      </div>
+    </button>
   );
 }
 
@@ -331,16 +483,20 @@ export default function Nesting() {
   const [sheetPreset, setSheetPreset] = useState(0);
   const [sheetW, setSheetW] = useState(SHEET_PRESETS[0].width);
   const [sheetH, setSheetH] = useState(SHEET_PRESETS[0].height);
-  const [padding, setPadding] = useState(2);
-  const [allowRotation] = useState(true);
+  const [kerf, setKerf] = useState(2);
+  const [allowRotation, setAllowRotation] = useState(true);
   const [result, setResult] = useState<NestingResult | null>(null);
   const [currentSheet, setCurrentSheet] = useState(0);
   const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [runProgress, setRunProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [activeTab, setActiveTab] = useState<"config" | "results">("config");
   const [dwgDialog, setDwgDialog] = useState<DwgDialogEntry[] | null>(null);
+  const [showGrid, setShowGrid] = useState(true);
+  const [showRulers, setShowRulers] = useState(true);
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handlePresetChange = (idx: number) => {
@@ -352,11 +508,13 @@ export default function Nesting() {
   };
 
   const addPart = () => setParts(p => [...p, newPart()]);
-
   const removePart = (id: string) => setParts(p => p.filter(x => x.id !== id));
-
   const updatePart = (id: string, changes: Partial<Part>) =>
     setParts(p => p.map(x => x.id === id ? { ...x, ...changes } : x));
+  const duplicatePart = (part: Part) => {
+    partCounter++;
+    setParts(p => [...p, { ...part, id: `p-${partCounter}-${Date.now()}`, name: part.name + " (copy)" }]);
+  };
 
   const handleFiles = async (files: FileList | null) => {
     if (!files) return;
@@ -369,322 +527,346 @@ export default function Nesting() {
         const ext = file.name.split(".").pop()?.toLowerCase();
         if (ext === "dxf") {
           const parsed = await parseDxfFile(file);
-          parsed.forEach((p, i) => {
-            p.color = PART_COLORS[(parts.length + newParts.length + i) % PART_COLORS.length];
-          });
+          parsed.forEach((p, i) => { p.color = PART_COLORS[(parts.length + newParts.length + i) % PART_COLORS.length]; });
           newParts.push(...parsed);
         } else if (ext === "svg") {
           const parsed = await parseSvgFile(file);
-          parsed.forEach((p, i) => {
-            p.color = PART_COLORS[(parts.length + newParts.length + i) % PART_COLORS.length];
-          });
+          parsed.forEach((p, i) => { p.color = PART_COLORS[(parts.length + newParts.length + i) % PART_COLORS.length]; });
           newParts.push(...parsed);
         } else if (ext === "dwg") {
           const info = await readDwgFileInfo(file);
-          const baseName = file.name.replace(/\.dwg$/i, "");
-          dwgEntries.push({ info, name: baseName, width: 100, height: 100, quantity: 1 });
+          dwgEntries.push({ info, name: file.name.replace(/\.dwg$/i, ""), width: 100, height: 100, quantity: 1 });
         } else {
-          setError(`Unsupported format: ${ext?.toUpperCase()}. Supported: DWG, DXF, SVG`);
+          setError(`Unsupported: ${ext?.toUpperCase()}. Supported: DWG, DXF, SVG`);
         }
-      } catch (e: any) {
-        setError(e.message ?? "Failed to parse file.");
-      }
+      } catch (e: any) { setError(e.message ?? "Failed to parse file."); }
     }
 
-    if (newParts.length > 0) {
-      setParts(p => [...p, ...newParts]);
-      setActiveTab("config");
-    }
-
-    if (dwgEntries.length > 0) {
-      setDwgDialog(dwgEntries);
-    }
-  };
-
-  const confirmDwgImport = (entries: DwgDialogEntry[]) => {
-    const newParts: Part[] = entries.map((e, i) => ({
-      id: `dwg-${Date.now()}-${i}`,
-      name: e.name,
-      width: e.width,
-      height: e.height,
-      quantity: e.quantity,
-      color: PART_COLORS[(parts.length + i) % PART_COLORS.length],
-      sourceFile: e.info.fileName,
-    }));
-    setParts(p => [...p, ...newParts]);
-    setDwgDialog(null);
-    setActiveTab("config");
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    handleFiles(e.dataTransfer.files);
+    if (newParts.length > 0) setParts(p => [...p, ...newParts]);
+    if (dwgEntries.length > 0) setDwgDialog(dwgEntries);
   };
 
   const runNest = async () => {
     const validParts = parts.filter(p => p.width > 0 && p.height > 0 && p.quantity > 0);
     if (validParts.length === 0) { setError("Add at least one valid part."); return; }
     if (sheetW <= 0 || sheetH <= 0) { setError("Invalid sheet dimensions."); return; }
-    setRunning(true);
-    setError(null);
-    await new Promise(r => setTimeout(r, 20));
-    const res = runNesting(validParts, sheetW, sheetH, allowRotation, padding);
-    setResult(res);
-    setCurrentSheet(0);
-    setSelectedPartId(null);
-    setActiveTab("results");
-    setRunning(false);
+    setRunning(true); setError(null); setRunProgress(0);
+    for (let i = 0; i <= 85; i += 15) { setRunProgress(i); await new Promise(r => setTimeout(r, 40)); }
+    const res = runNesting(validParts, sheetW, sheetH, allowRotation, kerf);
+    setRunProgress(100);
+    await new Promise(r => setTimeout(r, 200));
+    setResult(res); setCurrentSheet(0); setSelectedPartId(null);
+    setRunning(false); setRunProgress(0);
+    setRightOpen(true);
   };
 
   const exportReport = () => {
     if (!result) return;
-    const lines: string[] = [
-      "NESTING REPORT",
-      "==============",
-      `Generated: ${new Date().toLocaleString()}`,
-      `Sheet Size: ${sheetW} × ${sheetH} mm`,
-      `Sheets Used: ${result.sheets.length}`,
-      `Total Parts: ${result.totalParts}`,
-      `Placed Parts: ${result.placedCount}`,
-      `Material Utilization: ${result.utilizationPercent.toFixed(1)}%`,
-      `Material Waste: ${result.wastePercent.toFixed(1)}%`,
-      `Total Sheet Area: ${result.totalSheetArea.toLocaleString()} mm²`,
-      `Used Area: ${result.totalUsedArea.toLocaleString()} mm²`,
+    const lines = [
+      "═══════════════════════════════════",
+      "         NESTING REPORT",
+      "═══════════════════════════════════",
+      `Generated:    ${new Date().toLocaleString()}`,
+      `Strategy:     ${result.strategy}`,
+      `Time:         ${result.timeMs}ms`,
+      "",
+      "SHEET CONFIGURATION",
+      "───────────────────",
+      `Sheet Size:   ${sheetW} × ${sheetH} mm`,
+      `Kerf/Gap:     ${kerf} mm`,
+      `Allow Rotation: ${allowRotation ? "Yes" : "No"}`,
+      "",
+      "RESULTS",
+      "───────────────────",
+      `Sheets Used:  ${result.sheets.length}`,
+      `Parts Total:  ${result.totalParts}`,
+      `Parts Placed: ${result.placedCount}`,
+      `Utilization:  ${result.utilizationPercent.toFixed(2)}%`,
+      `Waste:        ${result.wastePercent.toFixed(2)}%`,
+      `Sheet Area:   ${result.totalSheetArea.toLocaleString()} mm²`,
+      `Used Area:    ${result.totalUsedArea.toLocaleString()} mm²`,
       "",
       "PARTS LIST",
-      "----------",
+      "───────────────────",
+      ...parts.map(p => `  ${p.name.padEnd(20)} ${String(p.width).padStart(6)}×${String(p.height).padEnd(6)} mm  ×${p.quantity} pcs`),
     ];
-    parts.forEach(p => {
-      lines.push(`${p.name}: ${p.width}×${p.height} mm × ${p.quantity} pcs`);
-    });
     if (result.unplacedParts.length > 0) {
-      lines.push("", "UNPLACED PARTS", "--------------");
-      result.unplacedParts.forEach(u => {
-        lines.push(`${u.part.name}: ${u.remaining} pcs could not be placed`);
-      });
+      lines.push("", "UNPLACED PARTS", "───────────────────");
+      result.unplacedParts.forEach(u => lines.push(`  ${u.part.name}: ${u.remaining} pcs too large`));
     }
-    lines.push("", "SHEET BREAKDOWN", "---------------");
+    lines.push("", "SHEET BREAKDOWN", "───────────────────");
     result.sheets.forEach(s => {
-      lines.push(`Sheet ${s.index + 1}: ${s.placedParts.length} parts, ${s.utilization.toFixed(1)}% utilization`);
+      lines.push(`  Sheet ${s.index + 1}: ${s.placedParts.length} parts, ${s.utilization.toFixed(1)}% util, ${(s.usedArea / 100).toFixed(0)} cm²`);
     });
-
     const blob = new Blob([lines.join("\n")], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = "nesting-report.txt"; a.click();
+    const a = document.createElement("a"); a.href = url; a.download = "nesting-report.txt"; a.click();
     URL.revokeObjectURL(url);
   };
 
-  const exportSvg = () => {
-    if (!result || !result.sheets[currentSheet]) return;
-    const s = result.sheets[currentSheet];
-    const svgLines = [
+  const exportSvg = (sheetIdx: number) => {
+    if (!result?.sheets[sheetIdx]) return;
+    const s = result.sheets[sheetIdx];
+    const lines = [
       `<svg xmlns="http://www.w3.org/2000/svg" width="${s.width}" height="${s.height}" viewBox="0 0 ${s.width} ${s.height}">`,
-      `<rect width="${s.width}" height="${s.height}" fill="white" stroke="#ccc" stroke-width="1"/>`,
-      ...s.placedParts.map(p =>
-        `<rect x="${p.x}" y="${p.y}" width="${p.width}" height="${p.height}" fill="${p.color}88" stroke="${p.color}" stroke-width="0.5">` +
-        `<title>${p.name} (${p.width}×${p.height} mm${p.rotated ? ", rotated" : ""})</title></rect>` +
-        `<text x="${p.x + p.width / 2}" y="${p.y + p.height / 2}" font-size="8" text-anchor="middle" dominant-baseline="middle" fill="white" font-weight="bold">${p.name}</text>`
-      ),
+      `<rect width="${s.width}" height="${s.height}" fill="white" stroke="#94a3b8" stroke-width="1"/>`,
+      ...s.placedParts.map(p => [
+        `<rect x="${p.x.toFixed(2)}" y="${p.y.toFixed(2)}" width="${p.width}" height="${p.height}" fill="${p.color}88" stroke="${p.color}" stroke-width="0.8">`,
+        `<title>${p.name} (${p.width}×${p.height}mm${p.rotated ? ", rotated" : ""})</title></rect>`,
+        `<text x="${(p.x + p.width / 2).toFixed(1)}" y="${(p.y + p.height / 2).toFixed(1)}" font-size="6" text-anchor="middle" dominant-baseline="middle" fill="white" font-weight="bold">${p.name}</text>`,
+      ].join("")),
+      `<text x="${s.width / 2}" y="${s.height - 3}" font-size="5" text-anchor="middle" fill="#64748b">Sheet ${sheetIdx + 1} — ${s.utilization.toFixed(1)}% utilization — ${s.width}×${s.height}mm</text>`,
       `</svg>`,
     ];
-    const blob = new Blob([svgLines.join("\n")], { type: "image/svg+xml" });
+    const blob = new Blob([lines.join("\n")], { type: "image/svg+xml" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `nesting-sheet-${currentSheet + 1}.svg`; a.click();
+    const a = document.createElement("a"); a.href = url; a.download = `nesting-sheet-${sheetIdx + 1}.svg`; a.click();
     URL.revokeObjectURL(url);
   };
 
   const selectedPart = selectedPartId ? parts.find(p => p.id === selectedPartId) : null;
   const sheetData = result?.sheets[currentSheet];
+  const partColors = Object.fromEntries(parts.map(p => [p.id, p.color ?? PART_COLORS[0]]));
+  const totalPcs = parts.reduce((s, p) => s + p.quantity, 0);
+  const totalArea = parts.reduce((s, p) => s + p.width * p.height * p.quantity, 0);
 
-  const statCard = (label: string, value: string, sub?: string, color?: string) => (
-    <div className="nm-bg-card rounded-xl p-3 border nm-border">
-      <div className="text-xs nm-text-sub mb-1">{label}</div>
-      <div className={cn("text-xl font-bold", color ?? "nm-text-main")}>{value}</div>
-      {sub && <div className="text-xs nm-text-muted mt-0.5">{sub}</div>}
-    </div>
-  );
+  const effColor = result
+    ? result.utilizationPercent >= 75 ? "text-emerald-500" : result.utilizationPercent >= 50 ? "text-amber-500" : "text-red-500"
+    : "nm-text-muted";
 
   return (
     <Layout>
-      <div className="flex flex-col h-full min-h-0 p-4 gap-4 nm-bg-page">
-        <div className="flex items-center justify-between flex-shrink-0">
+      <div className="flex flex-col h-full min-h-0 nm-bg-page">
+        {/* ── Top bar ── */}
+        <div className="flex items-center gap-3 px-4 py-2.5 border-b nm-border flex-shrink-0 nm-bg-card">
+          <button onClick={() => setLeftOpen(v => !v)} className="p-1.5 nm-text-muted hover:nm-text-main rounded">
+            <PanelLeft size={16} />
+          </button>
+          <Layers size={18} className="text-indigo-500 flex-shrink-0" />
           <div>
-            <h1 className="text-2xl font-bold nm-text-main flex items-center gap-2">
-              <Layers size={22} className="text-indigo-500" /> Nesting Module
-            </h1>
-            <p className="nm-text-sub text-sm mt-0.5">Optimize material usage by nesting flat parts on sheets</p>
+            <h1 className="text-sm font-bold nm-text-main leading-none">Nesting Module</h1>
+            <p className="text-xs nm-text-muted leading-none mt-0.5">2D sheet material optimization</p>
           </div>
-          <div className="flex gap-2">
+          <div className="h-5 w-px nm-border mx-1" />
+          {result && (
+            <>
+              <div className="flex items-center gap-4 text-xs">
+                <div><span className="nm-text-muted">Sheets: </span><span className="nm-text-main font-semibold">{result.sheets.length}</span></div>
+                <div><span className="nm-text-muted">Parts: </span><span className="nm-text-main font-semibold">{result.placedCount}/{result.totalParts}</span></div>
+                <div><span className="nm-text-muted">Utilization: </span><span className={cn("font-bold", effColor)}>{result.utilizationPercent.toFixed(1)}%</span></div>
+                <div><span className="nm-text-muted">Strategy: </span><span className="nm-text-main">{result.strategy}</span></div>
+                <div><span className="nm-text-muted">Time: </span><span className="nm-text-main">{result.timeMs}ms</span></div>
+              </div>
+              <div className="h-5 w-px nm-border mx-1" />
+            </>
+          )}
+          <div className="flex items-center gap-1.5 ml-auto">
+            <button onClick={() => setShowRulers(v => !v)}
+              className={cn("flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border transition",
+                showRulers ? "bg-indigo-500/15 border-indigo-500/40 text-indigo-600 dark:text-indigo-400" : "nm-bg-card nm-border nm-text-sub nm-bg-hover"
+              )}>
+              <Ruler size={12} /> Rulers
+            </button>
+            <button onClick={() => setShowGrid(v => !v)}
+              className={cn("flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border transition",
+                showGrid ? "bg-indigo-500/15 border-indigo-500/40 text-indigo-600 dark:text-indigo-400" : "nm-bg-card nm-border nm-text-sub nm-bg-hover"
+              )}>
+              <Grid size={12} /> Grid
+            </button>
             {result && (
               <>
-                <button onClick={exportSvg} className="flex items-center gap-1.5 px-3 py-1.5 nm-bg-card border nm-border nm-bg-hover nm-text-main text-sm rounded-lg transition">
-                  <Download size={14} /> SVG
+                <button onClick={() => exportSvg(currentSheet)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 nm-bg-card border nm-border nm-bg-hover nm-text-main text-xs rounded-lg">
+                  <Download size={12} /> SVG
                 </button>
-                <button onClick={exportReport} className="flex items-center gap-1.5 px-3 py-1.5 nm-bg-card border nm-border nm-bg-hover nm-text-main text-sm rounded-lg transition">
-                  <FileText size={14} /> Report
+                <button onClick={exportReport}
+                  className="flex items-center gap-1 px-2.5 py-1.5 nm-bg-card border nm-border nm-bg-hover nm-text-main text-xs rounded-lg">
+                  <FileText size={12} /> Report
                 </button>
               </>
             )}
             <button
               onClick={runNest}
               disabled={running}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-sm rounded-lg transition"
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-semibold text-sm rounded-lg transition"
             >
-              {running ? <RotateCw size={15} className="animate-spin" /> : <Play size={15} />}
-              {running ? "Running…" : "Run Nesting"}
+              {running ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} />}
+              {running ? "Optimizing…" : "Run Nesting"}
+            </button>
+            <button onClick={() => setRightOpen(v => !v)} className="p-1.5 nm-text-muted hover:nm-text-main rounded">
+              <PanelRight size={16} />
             </button>
           </div>
         </div>
 
-        {error && (
-          <div className="flex items-center gap-2 px-4 py-2 bg-red-500/10 border border-red-500/30 rounded-lg text-red-600 dark:text-red-300 text-sm flex-shrink-0">
-            <AlertTriangle size={15} /> {error}
+        {running && (
+          <div className="h-1 bg-indigo-100 dark:bg-indigo-950 flex-shrink-0">
+            <div className="h-full bg-indigo-500 transition-all duration-200 rounded-r" style={{ width: `${runProgress}%` }} />
           </div>
         )}
 
-        <div className="flex gap-2 flex-shrink-0">
-          {(["config", "results"] as const).map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={cn(
-                "px-4 py-1.5 rounded-lg text-sm font-medium transition capitalize",
-                activeTab === tab ? "bg-indigo-600 text-white" : "nm-bg-card border nm-border nm-text-sub nm-bg-hover"
-              )}
-            >
-              {tab === "config" ? "Configuration & Parts" : "Nesting Results"}
-              {tab === "results" && result && (
-                <span className="ml-2 px-1.5 py-0.5 nm-bg-input rounded text-xs">{result.sheets.length} sheets</span>
-              )}
-            </button>
-          ))}
-        </div>
+        {error && (
+          <div className="flex items-center gap-2 px-4 py-2 bg-red-500/10 border-b border-red-500/20 text-red-600 dark:text-red-400 text-sm flex-shrink-0">
+            <AlertTriangle size={14} /> {error}
+            <button onClick={() => setError(null)} className="ml-auto"><X size={14} /></button>
+          </div>
+        )}
 
-        <div className="flex-1 min-h-0 overflow-hidden">
-          {activeTab === "config" && (
-            <div className="h-full overflow-y-auto pr-1 space-y-4">
-              <div className="nm-bg-card border nm-border rounded-xl p-4">
-                <h2 className="text-sm font-semibold nm-text-main mb-3 flex items-center gap-2">
-                  <Settings2 size={15} className="text-indigo-400" /> Sheet Configuration
-                </h2>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  <div className="col-span-2 md:col-span-3">
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          {/* ── Left panel ── */}
+          {leftOpen && (
+            <div className="w-72 flex-shrink-0 flex flex-col border-r nm-border nm-bg-card overflow-y-auto">
+              {/* Sheet config */}
+              <div className="p-3 border-b nm-border">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <Settings2 size={13} className="text-indigo-400" />
+                  <span className="text-xs font-semibold nm-text-main uppercase tracking-wider">Sheet Configuration</span>
+                </div>
+                <div className="space-y-2">
+                  <div>
                     <label className="text-xs nm-text-sub mb-1 block">Preset</label>
-                    <select
-                      value={sheetPreset}
-                      onChange={e => handlePresetChange(Number(e.target.value))}
-                      className="w-full nm-bg-input border nm-border rounded-lg px-3 py-2 nm-text-main text-sm"
-                    >
-                      {SHEET_PRESETS.map((p, i) => (
-                        <option key={i} value={i}>{p.label}</option>
-                      ))}
+                    <select value={sheetPreset} onChange={e => handlePresetChange(Number(e.target.value))}
+                      className="w-full nm-bg-input border nm-border rounded-lg px-2.5 py-1.5 nm-text-main text-xs">
+                      {SHEET_PRESETS.map((p, i) => <option key={i} value={i}>{p.label}</option>)}
                     </select>
                   </div>
-                  <div>
-                    <label className="text-xs nm-text-sub mb-1 block">Width (mm)</label>
-                    <input
-                      type="number" value={sheetW} min={1}
-                      onChange={e => { setSheetW(Number(e.target.value)); setSheetPreset(SHEET_PRESETS.length - 1); }}
-                      className="w-full nm-bg-input border nm-border rounded-lg px-3 py-2 nm-text-main text-sm"
-                    />
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs nm-text-sub mb-1 block">Width (mm)</label>
+                      <input type="number" value={sheetW} min={1}
+                        onChange={e => { setSheetW(Number(e.target.value)); setSheetPreset(SHEET_PRESETS.length - 1); }}
+                        className="w-full nm-bg-input border nm-border rounded-lg px-2.5 py-1.5 nm-text-main text-xs" />
+                    </div>
+                    <div>
+                      <label className="text-xs nm-text-sub mb-1 block">Height (mm)</label>
+                      <input type="number" value={sheetH} min={1}
+                        onChange={e => { setSheetH(Number(e.target.value)); setSheetPreset(SHEET_PRESETS.length - 1); }}
+                        className="w-full nm-bg-input border nm-border rounded-lg px-2.5 py-1.5 nm-text-main text-xs" />
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-xs nm-text-sub mb-1 block">Height (mm)</label>
-                    <input
-                      type="number" value={sheetH} min={1}
-                      onChange={e => { setSheetH(Number(e.target.value)); setSheetPreset(SHEET_PRESETS.length - 1); }}
-                      className="w-full nm-bg-input border nm-border rounded-lg px-3 py-2 nm-text-main text-sm"
-                    />
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs nm-text-sub mb-1 block">Kerf/Gap (mm)</label>
+                      <input type="number" value={kerf} min={0} max={50} step={0.5}
+                        onChange={e => setKerf(Number(e.target.value))}
+                        className="w-full nm-bg-input border nm-border rounded-lg px-2.5 py-1.5 nm-text-main text-xs" />
+                    </div>
+                    <div>
+                      <label className="text-xs nm-text-sub mb-1 block">Allow Rotation</label>
+                      <button
+                        onClick={() => setAllowRotation(v => !v)}
+                        className={cn(
+                          "w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg border text-xs transition",
+                          allowRotation ? "bg-indigo-500/15 border-indigo-500/40 text-indigo-600 dark:text-indigo-400"
+                            : "nm-bg-input nm-border nm-text-sub"
+                        )}>
+                        <RotateCw size={11} /> {allowRotation ? "Enabled" : "Disabled"}
+                      </button>
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-xs nm-text-sub mb-1 block">Spacing / Padding (mm)</label>
-                    <input
-                      type="number" value={padding} min={0} max={50}
-                      onChange={e => setPadding(Number(e.target.value))}
-                      className="w-full nm-bg-input border nm-border rounded-lg px-3 py-2 nm-text-main text-sm"
-                    />
+                  <div className="nm-bg-page rounded-lg p-2 text-xs nm-text-sub grid grid-cols-2 gap-1">
+                    <span>Sheet area:</span>
+                    <span className="nm-text-main font-medium text-right">{(sheetW * sheetH / 100).toFixed(0)} cm²</span>
+                    <span>Parts area:</span>
+                    <span className="nm-text-main font-medium text-right">{(totalArea / 100).toFixed(0)} cm²</span>
                   </div>
                 </div>
               </div>
 
-              <div
-                className={cn(
-                  "border-2 border-dashed rounded-xl p-6 text-center transition cursor-pointer",
-                  isDragOver ? "border-indigo-400 bg-indigo-500/10" : "nm-border hover:border-indigo-400/60"
-                )}
-                onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
-                onDragLeave={() => setIsDragOver(false)}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Upload size={28} className="mx-auto nm-text-muted mb-2" />
-                <p className="nm-text-sub text-sm">Drop DWG, DXF, or SVG files here, or click to browse</p>
-                <p className="nm-text-muted text-xs mt-1">DXF/SVG: parts auto-extracted · DWG: enter dimensions in dialog</p>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept=".dxf,.svg,.dwg"
-                  className="hidden"
-                  onChange={e => handleFiles(e.target.files)}
-                />
+              {/* File import */}
+              <div className="p-3 border-b nm-border">
+                <div
+                  className={cn(
+                    "border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition",
+                    isDragOver ? "border-indigo-400 bg-indigo-500/10" : "nm-border hover:border-indigo-400/60 nm-bg-hover"
+                  )}
+                  onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
+                  onDragLeave={() => setIsDragOver(false)}
+                  onDrop={e => { e.preventDefault(); setIsDragOver(false); handleFiles(e.dataTransfer.files); }}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload size={20} className="mx-auto nm-text-muted mb-1.5" />
+                  <p className="nm-text-sub text-xs">Drop DXF, SVG, DWG here</p>
+                  <p className="nm-text-muted text-xs mt-0.5">or click to browse</p>
+                  <input ref={fileInputRef} type="file" multiple accept=".dxf,.svg,.dwg" className="hidden"
+                    onChange={e => handleFiles(e.target.files)} />
+                </div>
               </div>
 
-              <div className="nm-bg-card border nm-border rounded-xl p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-semibold nm-text-main flex items-center gap-2">
-                    <Package size={15} className="text-amber-400" /> Parts List
-                    <span className="nm-text-muted font-normal text-xs">({parts.length} parts, {parts.reduce((s, p) => s + p.quantity, 0)} pcs total)</span>
-                  </h2>
-                  <button
-                    onClick={addPart}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs rounded-lg transition"
-                  >
-                    <Plus size={12} /> Add Part
+              {/* Parts list */}
+              <div className="flex-1 min-h-0 flex flex-col">
+                <div className="flex items-center justify-between px-3 py-2 border-b nm-border">
+                  <div className="flex items-center gap-1.5">
+                    <Package size={13} className="text-amber-400" />
+                    <span className="text-xs font-semibold nm-text-main uppercase tracking-wider">Parts</span>
+                    <span className="text-xs nm-text-muted">({parts.length} types · {totalPcs} pcs)</span>
+                  </div>
+                  <button onClick={addPart}
+                    className="flex items-center gap-1 px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs rounded-lg transition">
+                    <Plus size={11} /> Add
                   </button>
                 </div>
 
-                <div className="space-y-2">
-                  <div className="grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-2 text-xs nm-text-muted px-2">
-                    <span>Name</span><span>Width (mm)</span><span>Height (mm)</span><span>Qty</span><span></span>
-                  </div>
-                  {parts.map((part) => (
-                    <div key={part.id} className="grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-2 items-center nm-bg-page border nm-border rounded-lg px-2 py-2">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-3 h-3 rounded-sm flex-shrink-0"
-                          style={{ backgroundColor: part.color ?? "#6366f1" }}
+                <div className="overflow-y-auto flex-1">
+                  {parts.length === 0 && (
+                    <div className="p-4 text-center nm-text-muted text-xs">No parts added yet</div>
+                  )}
+                  {parts.map((part, idx) => (
+                    <div key={part.id} className={cn(
+                      "border-b nm-border p-2.5 transition",
+                      selectedPartId === part.id ? "bg-indigo-500/10" : "hover:nm-bg-page"
+                    )}>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <input
+                          type="color"
+                          value={part.color ?? PART_COLORS[idx % PART_COLORS.length]}
+                          onChange={e => updatePart(part.id, { color: e.target.value })}
+                          className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0 flex-shrink-0"
+                          style={{ WebkitAppearance: "none" }}
                         />
                         <input
                           value={part.name}
                           onChange={e => updatePart(part.id, { name: e.target.value })}
-                          className="bg-transparent nm-text-main text-sm w-full focus:outline-none"
+                          className="flex-1 bg-transparent nm-text-main text-xs font-medium focus:outline-none min-w-0"
                         />
-                        {part.sourceFile && (
-                          <span className="text-xs nm-text-muted truncate max-w-[80px]" title={part.sourceFile}>{part.sourceFile}</span>
-                        )}
+                        <button onClick={() => duplicatePart(part)} className="nm-text-muted hover:nm-text-main p-0.5"><Copy size={11} /></button>
+                        <button onClick={() => removePart(part.id)} className="text-red-400 hover:text-red-500 p-0.5"><Trash2 size={11} /></button>
                       </div>
-                      <input
-                        type="number" value={part.width} min={1}
-                        onChange={e => updatePart(part.id, { width: Number(e.target.value) })}
-                        className="nm-bg-input border nm-border rounded px-2 py-1 nm-text-main text-sm w-full"
-                      />
-                      <input
-                        type="number" value={part.height} min={1}
-                        onChange={e => updatePart(part.id, { height: Number(e.target.value) })}
-                        className="nm-bg-input border nm-border rounded px-2 py-1 nm-text-main text-sm w-full"
-                      />
-                      <input
-                        type="number" value={part.quantity} min={1}
-                        onChange={e => updatePart(part.id, { quantity: Math.max(1, Number(e.target.value)) })}
-                        className="nm-bg-input border nm-border rounded px-2 py-1 nm-text-main text-sm w-full"
-                      />
-                      <button onClick={() => removePart(part.id)} className="text-red-400 hover:text-red-300 p-1">
-                        <Trash2 size={14} />
-                      </button>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <div>
+                          <label className="text-xs nm-text-muted block mb-0.5">W (mm)</label>
+                          <input type="number" value={part.width} min={1}
+                            onChange={e => updatePart(part.id, { width: Number(e.target.value) })}
+                            className="w-full nm-bg-input border nm-border rounded px-2 py-1 nm-text-main text-xs" />
+                        </div>
+                        <div>
+                          <label className="text-xs nm-text-muted block mb-0.5">H (mm)</label>
+                          <input type="number" value={part.height} min={1}
+                            onChange={e => updatePart(part.id, { height: Number(e.target.value) })}
+                            className="w-full nm-bg-input border nm-border rounded px-2 py-1 nm-text-main text-xs" />
+                        </div>
+                        <div>
+                          <label className="text-xs nm-text-muted block mb-0.5">Qty</label>
+                          <input type="number" value={part.quantity} min={1}
+                            onChange={e => updatePart(part.id, { quantity: Math.max(1, Number(e.target.value)) })}
+                            className="w-full nm-bg-input border nm-border rounded px-2 py-1 nm-text-main text-xs" />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <button
+                          onClick={() => updatePart(part.id, { allowRotation: !part.allowRotation })}
+                          className={cn(
+                            "flex items-center gap-1 px-1.5 py-0.5 rounded text-xs border transition flex-1 justify-center",
+                            part.allowRotation !== false
+                              ? "bg-indigo-500/15 border-indigo-500/30 text-indigo-600 dark:text-indigo-400"
+                              : "nm-bg-input nm-border nm-text-muted"
+                          )}>
+                          <RotateCw size={9} /> {part.allowRotation !== false ? "Rot ✓" : "No rot"}
+                        </button>
+                        <div className="text-xs nm-text-muted">
+                          {(part.width * part.height / 100).toFixed(0)} cm²
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -692,171 +874,211 @@ export default function Nesting() {
             </div>
           )}
 
-          {activeTab === "results" && (
-            <div className="h-full flex flex-col gap-3 min-h-0">
-              {!result ? (
-                <div className="flex-1 flex flex-col items-center justify-center nm-text-muted">
-                  <Layers size={48} className="mb-3 opacity-30" />
-                  <p className="text-lg">No results yet</p>
-                  <p className="text-sm mt-1">Configure parts and click "Run Nesting"</p>
+          {/* ── Center canvas ── */}
+          <div className="flex-1 min-w-0 flex flex-col min-h-0">
+            {/* Sheet nav bar */}
+            {result && (
+              <div className="flex items-center gap-2 px-3 py-2 border-b nm-border nm-bg-card flex-shrink-0">
+                <button disabled={currentSheet === 0} onClick={() => setCurrentSheet(s => s - 1)}
+                  className="p-1 nm-bg-page border nm-border rounded nm-text-main disabled:opacity-30 nm-bg-hover">
+                  <ChevronLeft size={14} />
+                </button>
+                <div className="flex gap-1.5 overflow-x-auto flex-1">
+                  {result.sheets.map((s, i) => (
+                    <SheetThumbnail key={i} sheet={s} active={i === currentSheet}
+                      onClick={() => setCurrentSheet(i)} partColors={partColors} />
+                  ))}
                 </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 flex-shrink-0">
-                    {statCard("Sheets Used", String(result.sheets.length), "sheets of material")}
-                    {statCard("Parts Placed", `${result.placedCount}/${result.totalParts}`, "instances placed")}
-                    {statCard("Utilization", `${result.utilizationPercent.toFixed(1)}%`, "material used",
-                      result.utilizationPercent >= 75 ? "text-emerald-400" : result.utilizationPercent >= 50 ? "text-amber-400" : "text-red-400")}
-                    {statCard("Waste", `${result.wastePercent.toFixed(1)}%`, "material wasted",
-                      result.wastePercent <= 25 ? "text-emerald-400" : result.wastePercent <= 50 ? "text-amber-400" : "text-red-400")}
-                    {statCard("Total Area", `${(result.totalSheetArea / 1000).toFixed(1)} cm²`, `${result.totalSheetArea.toLocaleString()} mm²`)}
-                    {statCard("Used Area", `${(result.totalUsedArea / 1000).toFixed(1)} cm²`, `${result.totalUsedArea.toLocaleString()} mm²`)}
+                <button disabled={currentSheet === result.sheets.length - 1} onClick={() => setCurrentSheet(s => s + 1)}
+                  className="p-1 nm-bg-page border nm-border rounded nm-text-main disabled:opacity-30 nm-bg-hover">
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            )}
+
+            <div className="flex-1 min-h-0 p-3">
+              {!result ? (
+                <div className="h-full flex flex-col items-center justify-center nm-text-muted select-none">
+                  <div className="w-32 h-32 rounded-2xl nm-bg-card border nm-border flex items-center justify-center mb-4">
+                    <Layers size={52} className="opacity-20" />
                   </div>
+                  <p className="text-base font-medium nm-text-sub">No nesting result yet</p>
+                  <p className="text-sm mt-1">Configure parts and click <strong>Run Nesting</strong></p>
+                  <div className="flex flex-col items-start gap-2 mt-6 text-xs nm-text-muted bg-indigo-500/5 border border-indigo-500/20 rounded-xl p-4 max-w-xs">
+                    <div className="flex items-center gap-2"><ArrowRight size={12} className="text-indigo-400" /> Add parts in the left panel</div>
+                    <div className="flex items-center gap-2"><ArrowRight size={12} className="text-indigo-400" /> Set sheet size &amp; kerf gap</div>
+                    <div className="flex items-center gap-2"><ArrowRight size={12} className="text-indigo-400" /> Click Run Nesting to optimize</div>
+                    <div className="flex items-center gap-2"><ArrowRight size={12} className="text-indigo-400" /> Export SVG or text report</div>
+                  </div>
+                </div>
+              ) : sheetData ? (
+                <SheetCanvas
+                  sheet={sheetData}
+                  selectedPartId={selectedPartId}
+                  onSelect={setSelectedPartId}
+                  showGrid={showGrid}
+                  showRulers={showRulers}
+                />
+              ) : null}
+            </div>
+          </div>
 
-                  {result.unplacedParts.length > 0 && (
-                    <div className="flex items-start gap-2 px-3 py-2 bg-amber-500/20 border border-amber-500/40 rounded-lg text-amber-300 text-sm flex-shrink-0">
-                      <AlertTriangle size={15} className="mt-0.5 flex-shrink-0" />
-                      <div>
-                        <span className="font-semibold">Some parts could not be placed: </span>
-                        {result.unplacedParts.map(u => `${u.part.name} (${u.remaining} pcs)`).join(", ")}.
-                        Parts may be too large for the sheet.
+          {/* ── Right panel ── */}
+          {rightOpen && result && (
+            <div className="w-60 flex-shrink-0 flex flex-col border-l nm-border nm-bg-card overflow-y-auto">
+              {/* Utilization */}
+              <div className="p-3 border-b nm-border">
+                <div className="text-xs font-semibold nm-text-main uppercase tracking-wider mb-2">Efficiency</div>
+                <div className="space-y-2">
+                  {[
+                    { label: "Utilization", value: result.utilizationPercent, suffix: "%", invert: false },
+                    { label: "Waste", value: result.wastePercent, suffix: "%", invert: true },
+                  ].map(({ label, value, suffix, invert }) => {
+                    const good = invert ? value <= 25 : value >= 75;
+                    const mid = invert ? value <= 50 : value >= 50;
+                    const color = good ? "#10b981" : mid ? "#f59e0b" : "#ef4444";
+                    return (
+                      <div key={label}>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="nm-text-sub">{label}</span>
+                          <span className="font-bold nm-text-main">{value.toFixed(1)}{suffix}</span>
+                        </div>
+                        <div className="h-2 nm-bg-input rounded-full overflow-hidden">
+                          <div className="h-full rounded-full transition-all" style={{ width: `${value}%`, backgroundColor: color }} />
+                        </div>
                       </div>
+                    );
+                  })}
+                </div>
+
+                <div className="grid grid-cols-2 gap-1.5 mt-3">
+                  {[
+                    { label: "Sheets", value: String(result.sheets.length) },
+                    { label: "Placed", value: `${result.placedCount}/${result.totalParts}` },
+                    { label: "Sheet area", value: `${(result.totalSheetArea / 100).toFixed(0)} cm²` },
+                    { label: "Used area", value: `${(result.totalUsedArea / 100).toFixed(0)} cm²` },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="nm-bg-page rounded-lg p-2 text-center">
+                      <div className="text-xs nm-text-muted">{label}</div>
+                      <div className="text-sm font-bold nm-text-main">{value}</div>
                     </div>
-                  )}
+                  ))}
+                </div>
+              </div>
 
-                  {result.unplacedParts.length === 0 && result.placedCount === result.totalParts && (
-                    <div className="flex items-center gap-2 px-3 py-2 bg-emerald-500/20 border border-emerald-500/40 rounded-lg text-emerald-300 text-sm flex-shrink-0">
-                      <CheckCircle size={15} /> All {result.totalParts} parts successfully placed across {result.sheets.length} sheet{result.sheets.length !== 1 ? "s" : ""}.
-                    </div>
-                  )}
-
-                  <div className="flex-1 min-h-0 flex gap-3">
-                    <div className="flex-1 min-h-0 flex flex-col gap-2">
-                      <div className="flex items-center justify-between flex-shrink-0">
-                        <div className="flex items-center gap-2">
-                          <button
-                            disabled={currentSheet === 0}
-                            onClick={() => setCurrentSheet(s => s - 1)}
-                            className="p-1.5 nm-bg-card border nm-border nm-bg-hover disabled:opacity-30 nm-text-main rounded"
-                          ><ChevronLeft size={14} /></button>
-                          <span className="nm-text-main text-sm">
-                            Sheet {currentSheet + 1} of {result.sheets.length}
-                          </span>
-                          <button
-                            disabled={currentSheet === result.sheets.length - 1}
-                            onClick={() => setCurrentSheet(s => s + 1)}
-                            className="p-1.5 nm-bg-card border nm-border nm-bg-hover disabled:opacity-30 nm-text-main rounded"
-                          ><ChevronRight size={14} /></button>
-                        </div>
-                        <div className="text-xs nm-text-sub">
-                          {sheetData?.placedParts.length} parts · {sheetData?.utilization.toFixed(1)}% utilization
-                        </div>
-                      </div>
-                      <div className="flex-1 min-h-0">
-                        {sheetData && (
-                          <SheetCanvas
-                            sheet={sheetData}
-                            selectedPartId={selectedPartId}
-                            onSelect={setSelectedPartId}
-                          />
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="w-56 flex flex-col gap-2 flex-shrink-0 overflow-y-auto">
-                      {selectedPart && (
-                        <div className="bg-indigo-500/20 border border-indigo-500/40 rounded-xl p-3 flex-shrink-0">
-                          <div className="flex items-center gap-2 mb-2">
-                            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: selectedPart.color }} />
-                            <span className="nm-text-main font-semibold text-sm">{selectedPart.name}</span>
-                          </div>
-                          <div className="space-y-1 text-xs nm-text-sub">
-                            <div className="flex justify-between"><span>Size:</span><span className="nm-text-main">{selectedPart.width}×{selectedPart.height} mm</span></div>
-                            <div className="flex justify-between"><span>Area:</span><span className="nm-text-main">{(selectedPart.width * selectedPart.height).toLocaleString()} mm²</span></div>
-                            <div className="flex justify-between"><span>Qty:</span><span className="nm-text-main">{selectedPart.quantity} pcs</span></div>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="nm-bg-card border nm-border rounded-xl p-3 flex-shrink-0">
-                        <h3 className="text-xs font-semibold nm-text-sub mb-2 uppercase tracking-wide">Sheet {currentSheet + 1} Parts</h3>
-                        <div className="space-y-1">
-                          {sheetData?.placedParts.map((p, i) => (
-                            <button
-                              key={i}
-                              onClick={() => setSelectedPartId(p.partId === selectedPartId ? null : p.partId)}
-                              className={cn(
-                                "w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition",
-                                p.partId === selectedPartId ? "bg-indigo-500/30 nm-text-main" : "nm-bg-hover nm-text-sub"
-                              )}
-                            >
-                              <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: p.color }} />
-                              <span className="text-xs truncate flex-1">{p.name}</span>
-                              {p.rotated && <RotateCw size={10} className="nm-text-muted" />}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="nm-bg-card border nm-border rounded-xl p-3">
-                        <h3 className="text-xs font-semibold nm-text-sub mb-2 uppercase tracking-wide">All Sheets</h3>
-                        <div className="space-y-1.5">
-                          {result.sheets.map((s, i) => (
-                            <button
-                              key={i}
-                              onClick={() => setCurrentSheet(i)}
-                              className={cn(
-                                "w-full flex items-center justify-between px-2 py-1.5 rounded text-xs transition",
-                                i === currentSheet ? "bg-indigo-500/30 nm-text-main" : "nm-bg-hover nm-text-sub"
-                              )}
-                            >
-                              <span>Sheet {i + 1}</span>
-                              <div className="flex items-center gap-2">
-                                <span>{s.placedParts.length} pcs</span>
-                                <div className="w-12 h-1.5 nm-bg-input rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full rounded-full"
-                                    style={{
-                                      width: `${s.utilization}%`,
-                                      backgroundColor: s.utilization >= 75 ? "#10b981" : s.utilization >= 50 ? "#f59e0b" : "#ef4444",
-                                    }}
-                                  />
-                                </div>
-                                <span>{s.utilization.toFixed(0)}%</span>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="nm-bg-card border nm-border rounded-xl p-3">
-                        <h3 className="text-xs font-semibold nm-text-sub mb-2 uppercase tracking-wide flex items-center gap-1">
-                          <Info size={11} /> Legend
-                        </h3>
-                        <div className="space-y-1">
-                          {parts.map(p => (
-                            <div key={p.id} className="flex items-center gap-2">
-                              <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: p.color }} />
-                              <span className="text-xs nm-text-sub truncate">{p.name}</span>
-                              <span className="text-xs nm-text-muted ml-auto">×{p.quantity}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+              {/* Alerts */}
+              {result.unplacedParts.length > 0 && (
+                <div className="p-3 border-b nm-border">
+                  <div className="flex items-start gap-2 p-2 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-700 dark:text-amber-300">
+                    <AlertTriangle size={13} className="mt-0.5 flex-shrink-0" />
+                    <div>
+                      <div className="font-semibold mb-0.5">Unplaced parts:</div>
+                      {result.unplacedParts.map(u => (
+                        <div key={u.part.id}>{u.part.name} ×{u.remaining}</div>
+                      ))}
                     </div>
                   </div>
-                </>
+                </div>
               )}
+              {result.unplacedParts.length === 0 && (
+                <div className="px-3 py-2 border-b nm-border">
+                  <div className="flex items-center gap-2 p-2 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-xs text-emerald-700 dark:text-emerald-300">
+                    <CheckCircle size={13} /> All {result.totalParts} parts placed
+                  </div>
+                </div>
+              )}
+
+              {/* Selected part info */}
+              {selectedPart && sheetData && (
+                <div className="p-3 border-b nm-border">
+                  <div className="text-xs font-semibold nm-text-main uppercase tracking-wider mb-2">Selected Part</div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-4 h-4 rounded flex-shrink-0" style={{ backgroundColor: selectedPart.color }} />
+                    <span className="nm-text-main font-medium text-sm truncate">{selectedPart.name}</span>
+                  </div>
+                  <div className="space-y-1 text-xs">
+                    {[
+                      ["Size", `${selectedPart.width}×${selectedPart.height} mm`],
+                      ["Area", `${(selectedPart.width * selectedPart.height / 100).toFixed(1)} cm²`],
+                      ["Quantity", `${selectedPart.quantity} pcs`],
+                    ].map(([k, v]) => (
+                      <div key={k} className="flex justify-between nm-text-sub">
+                        <span>{k}:</span><span className="nm-text-main">{v}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Current sheet parts */}
+              {sheetData && (
+                <div className="p-3 border-b nm-border flex-1">
+                  <div className="text-xs font-semibold nm-text-main uppercase tracking-wider mb-2">
+                    Sheet {currentSheet + 1} — {sheetData.placedParts.length} parts
+                  </div>
+                  <div className="space-y-0.5 max-h-48 overflow-y-auto">
+                    {sheetData.placedParts.map((p, i) => (
+                      <button key={i}
+                        onClick={() => setSelectedPartId(p.partId === selectedPartId ? null : p.partId)}
+                        className={cn(
+                          "w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition",
+                          p.partId === selectedPartId ? "bg-indigo-500/20 nm-text-main" : "hover:nm-bg-page nm-text-sub"
+                        )}>
+                        <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: p.color }} />
+                        <span className="text-xs truncate flex-1">{p.name}</span>
+                        {p.rotated && <RotateCw size={9} className="nm-text-muted flex-shrink-0" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Legend */}
+              <div className="p-3">
+                <div className="text-xs font-semibold nm-text-main uppercase tracking-wider mb-2">Legend</div>
+                <div className="space-y-1 max-h-40 overflow-y-auto">
+                  {parts.map(p => (
+                    <div key={p.id} className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: p.color }} />
+                      <span className="text-xs nm-text-sub truncate flex-1">{p.name}</span>
+                      <span className="text-xs nm-text-muted">×{p.quantity}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Export */}
+              <div className="p-3 border-t nm-border mt-auto">
+                <div className="text-xs font-semibold nm-text-main uppercase tracking-wider mb-2">Export</div>
+                <div className="space-y-1.5">
+                  <button onClick={() => exportSvg(currentSheet)}
+                    className="w-full flex items-center gap-2 px-3 py-2 nm-bg-page border nm-border nm-bg-hover nm-text-main text-xs rounded-lg">
+                    <Download size={12} /> Export Sheet {currentSheet + 1} SVG
+                  </button>
+                  <button onClick={exportReport}
+                    className="w-full flex items-center gap-2 px-3 py-2 nm-bg-page border nm-border nm-bg-hover nm-text-main text-xs rounded-lg">
+                    <FileText size={12} /> Export Full Report
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
       </div>
+
       {dwgDialog && (
-        <DwgImportDialog
-          entries={dwgDialog}
-          onConfirm={confirmDwgImport}
-          onCancel={() => setDwgDialog(null)}
-        />
+        <DwgImportDialog entries={dwgDialog} onConfirm={entries => {
+          partCounter++;
+          const newParts: Part[] = entries.map((e, i) => ({
+            id: `dwg-${Date.now()}-${i}`, name: e.name,
+            width: e.width, height: e.height, quantity: e.quantity,
+            color: PART_COLORS[(parts.length + i) % PART_COLORS.length],
+            allowRotation: true, grainDirection: "none",
+            sourceFile: e.info.fileName,
+          }));
+          setParts(p => [...p, ...newParts]);
+          setDwgDialog(null);
+        }} onCancel={() => setDwgDialog(null)} />
       )}
     </Layout>
   );
