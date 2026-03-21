@@ -334,6 +334,84 @@ function mergeBBoxes(bboxes: BoundingBox[]): BoundingBox | null {
   return { minX, minY, maxX, maxY };
 }
 
+/** Extract all outline points from a DXF entity (polylines, lines, arcs approximated) */
+function entityToPoints(entity: any): { x: number; y: number }[] {
+  switch (entity.type) {
+    case "LWPOLYLINE":
+    case "POLYLINE":
+      return (entity.vertices ?? []).map((v: any) => ({ x: v.x ?? 0, y: v.y ?? 0 }));
+    case "LINE":
+      return [
+        { x: entity.startPoint?.x ?? 0, y: entity.startPoint?.y ?? 0 },
+        { x: entity.endPoint?.x ?? 0, y: entity.endPoint?.y ?? 0 },
+      ];
+    case "CIRCLE": {
+      const cx = entity.center?.x ?? 0, cy = entity.center?.y ?? 0, r = entity.radius ?? 0;
+      const pts: { x: number; y: number }[] = [];
+      for (let i = 0; i <= 32; i++) {
+        const a = (i / 32) * Math.PI * 2;
+        pts.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r });
+      }
+      return pts;
+    }
+    case "ARC": {
+      const cx = entity.center?.x ?? 0, cy = entity.center?.y ?? 0, r = entity.radius ?? 0;
+      const startA = ((entity.startAngle ?? 0) * Math.PI) / 180;
+      const endA = ((entity.endAngle ?? 360) * Math.PI) / 180;
+      const pts: { x: number; y: number }[] = [];
+      const steps = 16;
+      for (let i = 0; i <= steps; i++) {
+        const a = startA + (endA - startA) * (i / steps);
+        pts.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r });
+      }
+      return pts;
+    }
+    case "SPLINE":
+      return (entity.controlPoints ?? []).map((v: any) => ({ x: v.x ?? 0, y: v.y ?? 0 }));
+    case "ELLIPSE": {
+      const cx = entity.center?.x ?? 0, cy = entity.center?.y ?? 0;
+      const ax = entity.majorAxisEndPoint?.x ?? 1, ay = entity.majorAxisEndPoint?.y ?? 0;
+      const ratio = entity.axisRatio ?? 1;
+      const a = Math.sqrt(ax * ax + ay * ay);
+      const b = a * ratio;
+      const angle = Math.atan2(ay, ax);
+      const pts: { x: number; y: number }[] = [];
+      for (let i = 0; i <= 32; i++) {
+        const t = (i / 32) * Math.PI * 2;
+        pts.push({
+          x: cx + Math.cos(t) * a * Math.cos(angle) - Math.sin(t) * b * Math.sin(angle),
+          y: cy + Math.cos(t) * a * Math.sin(angle) + Math.sin(t) * b * Math.cos(angle),
+        });
+      }
+      return pts;
+    }
+    default:
+      return [];
+  }
+}
+
+/** Build a normalized geometry polygon from entities, relative to their bounding box */
+function entitiesToGeometry(ents: any[]): { geometry: { x: number; y: number }[] | undefined; bbox: BoundingBox | null } {
+  const bboxes = ents.map(entityToBBox).filter((b): b is BoundingBox => b !== null);
+  const merged = mergeBBoxes(bboxes);
+  if (!merged) return { geometry: undefined, bbox: null };
+
+  const allPoints: { x: number; y: number }[] = [];
+  for (const ent of ents) {
+    const pts = entityToPoints(ent);
+    for (const pt of pts) allPoints.push(pt);
+  }
+
+  if (allPoints.length < 3) return { geometry: undefined, bbox: merged };
+
+  const normalized = allPoints.map(pt => ({
+    x: Math.round((pt.x - merged.minX) * 100) / 100,
+    y: Math.round((pt.y - merged.minY) * 100) / 100,
+  }));
+
+  return { geometry: normalized, bbox: merged };
+}
+
 export async function parseDxfFile(file: File): Promise<Part[]> {
   const text = await file.text();
   const DxfParser = (await import("dxf-parser")).default;
@@ -362,13 +440,12 @@ export async function parseDxfFile(file: File): Promise<Part[]> {
   for (const [blockName, block] of Object.entries<any>(blocks)) {
     if (blockName.startsWith("*")) continue;
     const ents: any[] = block?.entities ?? [];
-    const bboxes = ents.map(entityToBBox).filter((b): b is BoundingBox => b !== null);
-    const merged = mergeBBoxes(bboxes);
-    if (!merged) continue;
-    const w = Math.round((merged.maxX - merged.minX) * 10) / 10;
-    const h = Math.round((merged.maxY - merged.minY) * 10) / 10;
+    const { geometry, bbox } = entitiesToGeometry(ents);
+    if (!bbox) continue;
+    const w = Math.round((bbox.maxX - bbox.minX) * 10) / 10;
+    const h = Math.round((bbox.maxY - bbox.minY) * 10) / 10;
     if (w >= 1 && h >= 1) {
-      parts.push({ id: `dxf-block-${blockIdx++}`, name: blockName, width: w, height: h, quantity: 1, sourceFile: file.name });
+      parts.push({ id: `dxf-block-${blockIdx++}`, name: blockName, width: w, height: h, quantity: 1, sourceFile: file.name, geometry });
     }
   }
 
@@ -378,25 +455,23 @@ export async function parseDxfFile(file: File): Promise<Part[]> {
     let idx = 0;
     for (const [layer, ents] of layerGroups.entries()) {
       if (/^(0|Defpoints|DIM|TEXT|TITLE|BORDER|HATCH)$/i.test(layer)) continue;
-      const bboxes = ents.map(entityToBBox).filter((b): b is BoundingBox => b !== null);
-      const merged = mergeBBoxes(bboxes);
-      if (!merged) continue;
-      const w = Math.round((merged.maxX - merged.minX) * 10) / 10;
-      const h = Math.round((merged.maxY - merged.minY) * 10) / 10;
+      const { geometry, bbox } = entitiesToGeometry(ents);
+      if (!bbox) continue;
+      const w = Math.round((bbox.maxX - bbox.minX) * 10) / 10;
+      const h = Math.round((bbox.maxY - bbox.minY) * 10) / 10;
       if (w >= 1 && h >= 1) {
-        parts.push({ id: `dxf-layer-${idx++}`, name: `${layer}`, width: w, height: h, quantity: 1, sourceFile: file.name });
+        parts.push({ id: `dxf-layer-${idx++}`, name: `${layer}`, width: w, height: h, quantity: 1, sourceFile: file.name, geometry });
       }
     }
   }
 
   if (parts.length === 0) {
-    const bboxes = entities.map(entityToBBox).filter((b): b is BoundingBox => b !== null);
-    const merged = mergeBBoxes(bboxes);
-    if (merged) {
-      const w = Math.round((merged.maxX - merged.minX) * 10) / 10;
-      const h = Math.round((merged.maxY - merged.minY) * 10) / 10;
+    const { geometry, bbox } = entitiesToGeometry(entities);
+    if (bbox) {
+      const w = Math.round((bbox.maxX - bbox.minX) * 10) / 10;
+      const h = Math.round((bbox.maxY - bbox.minY) * 10) / 10;
       if (w >= 1 && h >= 1)
-        parts.push({ id: `dxf-whole-0`, name: file.name.replace(/\.dxf$/i, ""), width: w, height: h, quantity: 1, sourceFile: file.name });
+        parts.push({ id: `dxf-whole-0`, name: file.name.replace(/\.dxf$/i, ""), width: w, height: h, quantity: 1, sourceFile: file.name, geometry });
     }
   }
 

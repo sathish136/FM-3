@@ -16,6 +16,52 @@ interface DwgPartEntry extends SuggestedPart {
   color?: string;
 }
 
+function PartShapePreview({ part, color, size = 36 }: { part: Part; color: string; size?: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const isDark = useIsDark();
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const W = canvas.width;
+    const H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    const pad = 3;
+    const scaleX = (W - pad * 2) / (part.width || 1);
+    const scaleY = (H - pad * 2) / (part.height || 1);
+    const scale = Math.min(scaleX, scaleY);
+    const ox = pad + ((W - pad * 2) - part.width * scale) / 2;
+    const oy = pad + ((H - pad * 2) - part.height * scale) / 2;
+
+    ctx.fillStyle = isDark ? "#1e2030" : "#f1f5f9";
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.fillStyle = color + "99";
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+
+    const geom = part.geometry;
+    ctx.beginPath();
+    if (geom && geom.length >= 3) {
+      for (let i = 0; i < geom.length; i++) {
+        const pt = geom[i];
+        const sx = ox + pt.x * scale;
+        const sy = oy + pt.y * scale;
+        if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+      }
+      ctx.closePath();
+    } else {
+      ctx.rect(ox, oy, part.width * scale, part.height * scale);
+    }
+    ctx.fill();
+    ctx.stroke();
+  }, [part, color, isDark]);
+
+  return <canvas ref={canvasRef} width={size} height={size} className="rounded border nm-border flex-shrink-0" />;
+}
+
 function DwgAnalysisDialog({ analysis, onConfirm, onCancel, nextColor }: {
   analysis: DwgAnalysis;
   onConfirm: (parts: DwgPartEntry[]) => void;
@@ -401,24 +447,53 @@ function SheetCanvas({ sheet, selectedPartId, onSelect, showGrid, showRulers }: 
       const isSelected = selectedPartId === part.partId;
       const isHovered = hoveredPart?.partId === part.partId && hoveredPart?.instanceIndex === part.instanceIndex;
 
+      const geom = part.geometry;
+      const origW = part.originalWidth ?? part.width;
+
+      const buildPath = () => {
+        ctx.beginPath();
+        if (geom && geom.length >= 3) {
+          for (let i = 0; i < geom.length; i++) {
+            const pt = geom[i];
+            let sx: number, sy: number;
+            if (part.rotated) {
+              sx = px + pt.y * zoom;
+              sy = py + (origW - pt.x) * zoom;
+            } else {
+              sx = px + pt.x * zoom;
+              sy = py + pt.y * zoom;
+            }
+            if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+          }
+          ctx.closePath();
+        } else {
+          ctx.rect(px, py, pw, ph);
+        }
+      };
+
       const alpha = isSelected ? "dd" : isHovered ? "cc" : "aa";
       ctx.fillStyle = part.color + alpha;
-      ctx.fillRect(px, py, pw, ph);
+      buildPath();
+      ctx.fill();
 
       if (isSelected) {
+        buildPath();
         ctx.strokeStyle = part.color;
         ctx.lineWidth = 2.5;
         ctx.setLineDash([]);
-        ctx.strokeRect(px, py, pw, ph);
+        ctx.stroke();
+        buildPath();
         ctx.strokeStyle = "#ffffff";
         ctx.lineWidth = 1;
         ctx.setLineDash([4, 3]);
-        ctx.strokeRect(px + 1.5, py + 1.5, pw - 3, ph - 3);
+        ctx.stroke();
         ctx.setLineDash([]);
       } else {
+        buildPath();
         ctx.strokeStyle = isHovered ? part.color : part.color + "99";
         ctx.lineWidth = isHovered ? 1.5 : 1;
-        ctx.strokeRect(px, py, pw, ph);
+        ctx.setLineDash([]);
+        ctx.stroke();
       }
 
       if (part.rotated && pw > 14 && ph > 14) {
@@ -584,7 +659,34 @@ function SheetThumbnail({ sheet, active, onClick, partColors }: {
     ctx.strokeRect(ox, oy, sheet.width * scale, sheet.height * scale);
     for (const p of sheet.placedParts) {
       ctx.fillStyle = (p.color ?? partColors[p.partId] ?? "#6366f1") + "cc";
-      ctx.fillRect(ox + p.x * scale, oy + p.y * scale, p.width * scale, p.height * scale);
+      ctx.strokeStyle = (p.color ?? partColors[p.partId] ?? "#6366f1");
+      ctx.lineWidth = 0.5;
+      const px = ox + p.x * scale;
+      const py = oy + p.y * scale;
+      const pw = p.width * scale;
+      const ph = p.height * scale;
+      const geom = p.geometry;
+      const origW = p.originalWidth ?? p.width;
+      ctx.beginPath();
+      if (geom && geom.length >= 3) {
+        for (let i = 0; i < geom.length; i++) {
+          const pt = geom[i];
+          let sx: number, sy: number;
+          if (p.rotated) {
+            sx = px + pt.y * scale;
+            sy = py + (origW - pt.x) * scale;
+          } else {
+            sx = px + pt.x * scale;
+            sy = py + pt.y * scale;
+          }
+          if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+        }
+        ctx.closePath();
+      } else {
+        ctx.rect(px, py, pw, ph);
+      }
+      ctx.fill();
+      ctx.stroke();
     }
   }, [sheet, isDark, partColors]);
 
@@ -692,6 +794,134 @@ export default function Nesting() {
     setResult(res); setCurrentSheet(0); setSelectedPartId(null);
     setRunning(false); setRunProgress(0);
     setRightOpen(true);
+  };
+
+  const exportPartsReport = () => {
+    const renderPartPreview = (part: Part, color: string, size = 56): string => {
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return "";
+      const pad = 4;
+      const scaleX = (size - pad * 2) / (part.width || 1);
+      const scaleY = (size - pad * 2) / (part.height || 1);
+      const scale = Math.min(scaleX, scaleY);
+      const ox = pad + ((size - pad * 2) - part.width * scale) / 2;
+      const oy = pad + ((size - pad * 2) - part.height * scale) / 2;
+      ctx.fillStyle = "#f8fafc";
+      ctx.fillRect(0, 0, size, size);
+      ctx.fillStyle = color + "99";
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      const geom = part.geometry;
+      ctx.beginPath();
+      if (geom && geom.length >= 3) {
+        for (let i = 0; i < geom.length; i++) {
+          const pt = geom[i];
+          const sx = ox + pt.x * scale;
+          const sy = oy + pt.y * scale;
+          if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+        }
+        ctx.closePath();
+      } else {
+        ctx.rect(ox, oy, part.width * scale, part.height * scale);
+      }
+      ctx.fill();
+      ctx.stroke();
+      return canvas.toDataURL("image/png");
+    };
+
+    const rows = parts.map((part, idx) => {
+      const color = part.color ?? PART_COLORS[idx % PART_COLORS.length];
+      const imgSrc = renderPartPreview(part, color);
+      return `
+        <tr>
+          <td>${idx + 1}</td>
+          <td class="name">${part.name}</td>
+          <td class="center">${part.quantity}</td>
+          <td class="center">—</td>
+          <td class="center">${part.height}</td>
+          <td class="center">${part.width}</td>
+          <td class="preview"><img src="${imgSrc}" width="48" height="48" /></td>
+        </tr>`;
+    }).join("");
+
+    const summaryRows = result ? `
+      <tr><td class="k">Sheets Used</td><td class="v">${result.sheets.length}</td></tr>
+      <tr><td class="k">Parts Placed</td><td class="v">${result.placedCount} / ${result.totalParts}</td></tr>
+      <tr><td class="k">Utilization</td><td class="v">${result.utilizationPercent.toFixed(2)}%</td></tr>
+      <tr><td class="k">Waste</td><td class="v">${result.wastePercent.toFixed(2)}%</td></tr>
+    ` : "";
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Nesting Parts Report</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; font-size: 13px; color: #222; background: #fff; padding: 24px; }
+    h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+    .sub { color: #64748b; font-size: 12px; margin-bottom: 20px; }
+    .meta { display: flex; gap: 32px; margin-bottom: 20px; }
+    .meta-table td.k { color: #64748b; padding-right: 12px; }
+    .meta-table td.v { font-weight: 600; }
+    table.parts { width: 100%; border-collapse: collapse; }
+    table.parts th { background: #f1f5f9; text-align: center; padding: 8px 10px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; border: 1px solid #e2e8f0; color: #475569; }
+    table.parts th:nth-child(2) { text-align: left; }
+    table.parts td { padding: 7px 10px; border: 1px solid #e2e8f0; text-align: center; vertical-align: middle; }
+    table.parts td.name { text-align: left; font-weight: 500; }
+    table.parts td.preview { padding: 4px; }
+    table.parts td.preview img { display: block; border: 1px solid #e2e8f0; border-radius: 4px; }
+    table.parts tr:nth-child(even) td { background: #f8fafc; }
+    .section-title { font-size: 14px; font-weight: 700; margin: 20px 0 8px; color: #1e40af; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px; }
+    .config { display: flex; gap: 40px; }
+    .config-item { font-size: 12px; color: #64748b; }
+    .config-item span { font-weight: 600; color: #222; }
+    @media print { body { padding: 12px; } }
+  </style>
+</head>
+<body>
+  <h1>Parts</h1>
+  <p class="sub">Here you configure the shapes that will be nested. &nbsp;·&nbsp; Generated: ${new Date().toLocaleString()}</p>
+
+  <div class="section-title">Sheet Configuration</div>
+  <div class="config">
+    <div class="config-item">Sheet Size: <span>${sheetW} × ${sheetH} mm</span></div>
+    <div class="config-item">Kerf / Gap: <span>${kerf} mm</span></div>
+    <div class="config-item">Allow Rotation: <span>${allowRotation ? "Yes" : "No"}</span></div>
+    <div class="config-item">Strategy: <span>${result?.strategy ?? "—"}</span></div>
+  </div>
+
+  ${result ? `
+  <div class="section-title">Nesting Results</div>
+  <table class="meta-table"><tbody>${summaryRows}</tbody></table>
+  ` : ""}
+
+  <div class="section-title">Parts List (${parts.length} types · ${totalPcs} pcs)</div>
+  <table class="parts">
+    <thead>
+      <tr>
+        <th>No.</th>
+        <th>Name</th>
+        <th>Quantity</th>
+        <th>Priority</th>
+        <th>Length</th>
+        <th>Width</th>
+        <th>Preview</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+</body>
+</html>`;
+
+    const win = window.open("", "_blank");
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+    }
   };
 
   const exportReport = () => {
@@ -807,6 +1037,12 @@ export default function Nesting() {
               )}>
               <Grid size={12} /> Grid
             </button>
+            {parts.length > 0 && (
+              <button onClick={exportPartsReport}
+                className="flex items-center gap-1 px-2.5 py-1.5 nm-bg-card border nm-border nm-bg-hover nm-text-main text-xs rounded-lg">
+                <FileText size={12} /> Parts Report
+              </button>
+            )}
             {result && (
               <>
                 <button onClick={() => exportSvg(currentSheet)}
@@ -950,21 +1186,30 @@ export default function Nesting() {
                       "border-b nm-border p-2.5 transition",
                       selectedPartId === part.id ? "bg-indigo-500/10" : "hover:nm-bg-page"
                     )}>
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <input
-                          type="color"
-                          value={part.color ?? PART_COLORS[idx % PART_COLORS.length]}
-                          onChange={e => updatePart(part.id, { color: e.target.value })}
-                          className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0 flex-shrink-0"
-                          style={{ WebkitAppearance: "none" }}
+                      <div className="flex items-start gap-2 mb-1.5">
+                        <PartShapePreview
+                          part={part}
+                          color={part.color ?? PART_COLORS[idx % PART_COLORS.length]}
+                          size={40}
                         />
-                        <input
-                          value={part.name}
-                          onChange={e => updatePart(part.id, { name: e.target.value })}
-                          className="flex-1 bg-transparent nm-text-main text-xs font-medium focus:outline-none min-w-0"
-                        />
-                        <button onClick={() => duplicatePart(part)} className="nm-text-muted hover:nm-text-main p-0.5"><Copy size={11} /></button>
-                        <button onClick={() => removePart(part.id)} className="text-red-400 hover:text-red-500 p-0.5"><Trash2 size={11} /></button>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <input
+                              type="color"
+                              value={part.color ?? PART_COLORS[idx % PART_COLORS.length]}
+                              onChange={e => updatePart(part.id, { color: e.target.value })}
+                              className="w-4 h-4 rounded cursor-pointer border-0 bg-transparent p-0 flex-shrink-0"
+                              style={{ WebkitAppearance: "none" }}
+                            />
+                            <input
+                              value={part.name}
+                              onChange={e => updatePart(part.id, { name: e.target.value })}
+                              className="flex-1 bg-transparent nm-text-main text-xs font-medium focus:outline-none min-w-0"
+                            />
+                            <button onClick={() => duplicatePart(part)} className="nm-text-muted hover:nm-text-main p-0.5"><Copy size={11} /></button>
+                            <button onClick={() => removePart(part.id)} className="text-red-400 hover:text-red-500 p-0.5"><Trash2 size={11} /></button>
+                          </div>
+                        </div>
                       </div>
                       <div className="grid grid-cols-3 gap-1.5">
                         <div>
@@ -1192,6 +1437,10 @@ export default function Nesting() {
                   <button onClick={exportReport}
                     className="w-full flex items-center gap-2 px-3 py-2 nm-bg-page border nm-border nm-bg-hover nm-text-main text-xs rounded-lg">
                     <FileText size={12} /> Export Full Report
+                  </button>
+                  <button onClick={exportPartsReport}
+                    className="w-full flex items-center gap-2 px-3 py-2 bg-indigo-500/10 border border-indigo-500/30 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-xs rounded-lg">
+                    <FileText size={12} /> Parts Report (Printable)
                   </button>
                 </div>
               </div>

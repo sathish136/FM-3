@@ -8,6 +8,7 @@ export interface Part {
   sourceFile?: string;
   allowRotation?: boolean;
   grainDirection?: "none" | "horizontal" | "vertical";
+  geometry?: { x: number; y: number }[];
 }
 
 export interface PlacedPart {
@@ -21,6 +22,9 @@ export interface PlacedPart {
   color: string;
   sheetIndex: number;
   instanceIndex: number;
+  geometry?: { x: number; y: number }[];
+  originalWidth?: number;
+  originalHeight?: number;
 }
 
 export interface Sheet {
@@ -91,6 +95,7 @@ interface Instance {
   instanceIndex: number;
   allowRotation: boolean;
   grainDirection: "none" | "horizontal" | "vertical";
+  geometry?: { x: number; y: number }[];
 }
 
 function scoreRect(free: Rect, pw: number, ph: number, mode: ScoreMode): number {
@@ -156,6 +161,9 @@ function nestOnSheet(
       color: inst.color,
       sheetIndex,
       instanceIndex: inst.instanceIndex,
+      geometry: inst.geometry,
+      originalWidth: inst.width,
+      originalHeight: inst.height,
     });
 
     const newFree: Rect[] = [];
@@ -199,6 +207,7 @@ function runStrategy(
         instanceIndex: q,
         allowRotation: part.allowRotation !== false,
         grainDirection: part.grainDirection ?? "none",
+        geometry: part.geometry,
       });
     }
   });
@@ -278,6 +287,7 @@ export function runNesting(
         color, instanceIndex: q,
         allowRotation: part.allowRotation !== false,
         grainDirection: part.grainDirection ?? "none",
+        geometry: part.geometry,
       });
     }
   });
