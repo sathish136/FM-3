@@ -172,8 +172,19 @@ const SYSTEMS = [
 ];
 
 const STORAGE_KEY = "project-drawings-v3";
+const FILE_KEY = (id: string) => `drawing-file-${id}`;
 
-const fileDataCache = new Map<string, string>();
+function saveFileData(id: string, data: string) {
+  try { localStorage.setItem(FILE_KEY(id), data); } catch { /* ignore quota */ }
+}
+
+function loadFileData(id: string): string {
+  try { return localStorage.getItem(FILE_KEY(id)) || ""; } catch { return ""; }
+}
+
+function deleteFileData(id: string) {
+  try { localStorage.removeItem(FILE_KEY(id)); } catch { /* ignore */ }
+}
 
 function stripFileData(d: ProjectDrawing): ProjectDrawing {
   return {
@@ -210,25 +221,7 @@ function saveDrawings(drawings: ProjectDrawing[]) {
 }
 
 function getFileData(drawing: ProjectDrawing): string {
-  return fileDataCache.get(drawing.id) || drawing.fileData || "";
-}
-
-async function uploadToErpNext(
-  fileData: string,
-  fileName: string,
-): Promise<string | null> {
-  try {
-    const res = await fetch(`${BASE}/api/drawings/upload-file`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fileData, fileName }),
-    });
-    if (!res.ok) return null;
-    const json = await res.json();
-    return json.fileUrl || null;
-  } catch {
-    return null;
-  }
+  return loadFileData(drawing.id) || drawing.fileData || "";
 }
 
 function formatDate(iso: string) {
@@ -534,29 +527,17 @@ function PdfViewer({
             <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3 pt-20">
               <FileText className="w-12 h-12 opacity-30" />
               <p className="text-sm">Unable to render this PDF.</p>
-              {drawing.erpFileUrl && (
-                <p className="text-xs text-emerald-400 text-center max-w-xs">
-                  File saved on ERPNext:{" "}
-                  <span className="break-all">{drawing.erpFileUrl}</span>
-                </p>
-              )}
+              <p className="text-xs text-gray-500 text-center max-w-xs">The file may be corrupted. Try re-uploading the drawing.</p>
             </div>
           ) : !getFileData(drawing) ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3 pt-20">
               <FileText className="w-12 h-12 opacity-30" />
               <p className="text-sm font-medium text-gray-300">
-                PDF not cached in this session
+                PDF not available
               </p>
               <p className="text-xs text-gray-500 text-center max-w-xs">
-                The drawing file is stored in ERPNext. Re-upload or re-open from
-                a fresh upload to view the PDF.
+                No drawing file found. Please re-upload the PDF to view it here.
               </p>
-              {drawing.erpFileUrl && (
-                <p className="text-xs text-emerald-400 text-center max-w-xs mt-1">
-                  ERPNext path:{" "}
-                  <span className="break-all">{drawing.erpFileUrl}</span>
-                </p>
-              )}
             </div>
           ) : (
             <div className="relative">
@@ -1834,34 +1815,31 @@ export default function ProjectDrawings() {
       uploadedBy: string;
     }>,
   ) => {
-    const newDrawings: ProjectDrawing[] = await Promise.all(
-      items.map(async (data) => {
-        const id = generateUUID();
-        const erpFileUrl = await uploadToErpNext(data.fileData, data.fileName);
-        if (data.fileData) fileDataCache.set(id, data.fileData);
-        return {
-          id,
-          drawingNo: data.drawingNo,
-          title: data.title,
-          project: data.project,
-          department: data.department,
-          systemName: data.systemName || "",
-          uploadedAt: new Date().toISOString(),
-          status: "draft" as DrawingStatus,
-          revisionNo: 0,
-          revisionLabel: "Draft",
-          fileData: "",
-          fileName: data.fileName,
-          note: data.note,
-          uploadedBy: data.uploadedBy,
-          history: [],
-          viewLog: [],
-          checkedBy: null,
-          approvedBy: null,
-          erpFileUrl,
-        };
-      }),
-    );
+    const newDrawings: ProjectDrawing[] = items.map((data) => {
+      const id = generateUUID();
+      if (data.fileData) saveFileData(id, data.fileData);
+      return {
+        id,
+        drawingNo: data.drawingNo,
+        title: data.title,
+        project: data.project,
+        department: data.department,
+        systemName: data.systemName || "",
+        uploadedAt: new Date().toISOString(),
+        status: "draft" as DrawingStatus,
+        revisionNo: 0,
+        revisionLabel: "Draft",
+        fileData: "",
+        fileName: data.fileName,
+        note: data.note,
+        uploadedBy: data.uploadedBy,
+        history: [],
+        viewLog: [],
+        checkedBy: null,
+        approvedBy: null,
+        erpFileUrl: null,
+      };
+    });
     persist([...newDrawings, ...drawings]);
     setModal({ type: "none" });
   };
@@ -1878,11 +1856,9 @@ export default function ProjectDrawings() {
       fileName: drawing.fileName,
       note: drawing.note,
       revisedBy: drawing.uploadedBy,
-      erpFileUrl: drawing.erpFileUrl || undefined,
     };
     const newRevNo = drawing.status === "draft" ? 1 : drawing.revisionNo + 1;
-    const erpFileUrl = await uploadToErpNext(data.fileData, data.fileName);
-    if (data.fileData) fileDataCache.set(drawing.id, data.fileData);
+    if (data.fileData) saveFileData(drawing.id, data.fileData);
     const updated: ProjectDrawing = {
       ...drawing,
       status: "revision",
@@ -1896,7 +1872,7 @@ export default function ProjectDrawings() {
       history: [...drawing.history, historyEntry],
       checkedBy: null,
       approvedBy: null,
-      erpFileUrl,
+      erpFileUrl: null,
     };
     persist(drawings.map((d) => (d.id === drawing.id ? updated : d)));
     setModal({ type: "none" });
@@ -2421,6 +2397,7 @@ export default function ProjectDrawings() {
               </button>
               <button
                 onClick={() => {
+                  deleteFileData(modal.drawing.id);
                   persist(drawings.filter((d) => d.id !== modal.drawing.id));
                   setModal({ type: "none" });
                 }}
