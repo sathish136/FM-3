@@ -199,7 +199,8 @@ authRouter.post("/auth/login", async (req, res) => {
 
     const loginId = typeof usr === "string" ? usr : String(usr);
     let fullName: string = (data as any)?.full_name || loginId;
-    let email = loginId;
+    // Prefer email from login response if available
+    let email: string = (data as any)?.email || (loginId.includes("@") ? loginId : "");
     let photo: string | null = null;
 
     try {
@@ -212,6 +213,12 @@ authRouter.post("/auth/login", async (req, res) => {
       }
     } catch (profileErr) {
       console.warn("Could not fetch user profile:", profileErr);
+    }
+
+    // Ensure we have a valid email address before sending OTP
+    if (!email || !email.includes("@")) {
+      console.error("Could not determine valid email for user:", loginId);
+      return res.status(400).json({ error: "Could not determine your email address. Please log in using your email instead of username." });
     }
 
     // Generate OTP and send to the user's email
