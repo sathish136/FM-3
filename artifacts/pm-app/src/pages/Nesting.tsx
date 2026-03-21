@@ -1085,7 +1085,7 @@ export default function Nesting() {
         <div className="flex flex-1 min-h-0 overflow-hidden">
           {/* ── Left panel ── */}
           {leftOpen && (
-            <div className="w-72 flex-shrink-0 flex flex-col border-r nm-border nm-bg-card overflow-y-auto">
+            <div className="w-80 flex-shrink-0 flex flex-col border-r nm-border nm-bg-card overflow-y-auto">
               {/* Sheet config */}
               <div className="p-3 border-b nm-border">
                 <div className="flex items-center gap-1.5 mb-2.5">
@@ -1163,9 +1163,9 @@ export default function Nesting() {
                 </div>
               </div>
 
-              {/* Parts list */}
+              {/* Parts list — card grid */}
               <div className="flex-1 min-h-0 flex flex-col">
-                <div className="flex items-center justify-between px-3 py-2 border-b nm-border">
+                <div className="flex items-center justify-between px-3 py-2 border-b nm-border flex-shrink-0">
                   <div className="flex items-center gap-1.5">
                     <Package size={13} className="text-amber-400" />
                     <span className="text-xs font-semibold nm-text-main uppercase tracking-wider">Parts</span>
@@ -1177,77 +1177,81 @@ export default function Nesting() {
                   </button>
                 </div>
 
-                <div className="overflow-y-auto flex-1">
+                <div className="overflow-y-auto flex-1 p-2">
                   {parts.length === 0 && (
-                    <div className="p-4 text-center nm-text-muted text-xs">No parts added yet</div>
+                    <div className="p-6 text-center nm-text-muted text-xs">No parts added yet</div>
                   )}
-                  {parts.map((part, idx) => (
-                    <div key={part.id} className={cn(
-                      "border-b nm-border p-2.5 transition",
-                      selectedPartId === part.id ? "bg-indigo-500/10" : "hover:nm-bg-page"
-                    )}>
-                      <div className="flex items-start gap-2 mb-1.5">
-                        <PartShapePreview
-                          part={part}
-                          color={part.color ?? PART_COLORS[idx % PART_COLORS.length]}
-                          size={40}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 mb-1">
+                  <div className="grid grid-cols-2 gap-2">
+                    {parts.map((part, idx) => {
+                      const color = part.color ?? PART_COLORS[idx % PART_COLORS.length];
+                      return (
+                        <div key={part.id}
+                          onClick={() => setSelectedPartId(part.id === selectedPartId ? null : part.id)}
+                          className={cn(
+                            "rounded-xl border cursor-pointer transition flex flex-col overflow-hidden",
+                            selectedPartId === part.id
+                              ? "border-indigo-400 bg-indigo-500/10 shadow-sm"
+                              : "nm-border nm-bg-page hover:border-indigo-400/50"
+                          )}>
+                          {/* Card header */}
+                          <div className="flex items-start justify-between gap-1 px-2 pt-2 pb-1">
+                            <span className="text-xs font-semibold nm-text-main truncate leading-tight flex-1" title={part.name}>
+                              {part.name.length > 14 ? part.name.slice(0, 6) + "…" + part.name.slice(-6) : part.name}
+                            </span>
+                            <div className="flex items-center gap-0.5 flex-shrink-0">
+                              <input
+                                type="color"
+                                value={color}
+                                title="Change color"
+                                onClick={e => e.stopPropagation()}
+                                onChange={e => updatePart(part.id, { color: e.target.value })}
+                                className="w-3.5 h-3.5 rounded cursor-pointer border-0 bg-transparent p-0"
+                                style={{ WebkitAppearance: "none" }}
+                              />
+                              <button
+                                onClick={e => { e.stopPropagation(); removePart(part.id); }}
+                                className="text-red-400 hover:text-red-500 p-0.5 rounded">
+                                <Trash2 size={11} />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Shape preview */}
+                          <div className="flex-1 flex items-center justify-center px-2 py-1 min-h-[80px]">
+                            <PartShapePreview part={part} color={color} size={80} />
+                          </div>
+
+                          {/* Dimensions */}
+                          <div className="flex items-center justify-center gap-1 pb-1">
+                            <span className="text-[10px] nm-text-muted">{part.width}×{part.height} mm</span>
+                          </div>
+
+                          {/* Quantity */}
+                          <div className="flex items-center gap-1.5 px-2 pb-2" onClick={e => e.stopPropagation()}>
+                            <label className="text-[10px] nm-text-muted whitespace-nowrap">Qty:</label>
                             <input
-                              type="color"
-                              value={part.color ?? PART_COLORS[idx % PART_COLORS.length]}
-                              onChange={e => updatePart(part.id, { color: e.target.value })}
-                              className="w-4 h-4 rounded cursor-pointer border-0 bg-transparent p-0 flex-shrink-0"
-                              style={{ WebkitAppearance: "none" }}
+                              type="number"
+                              value={part.quantity}
+                              min={1}
+                              onChange={e => updatePart(part.id, { quantity: Math.max(1, Number(e.target.value)) })}
+                              className="flex-1 nm-bg-input border nm-border rounded px-1.5 py-0.5 nm-text-main text-xs text-center w-0"
                             />
-                            <input
-                              value={part.name}
-                              onChange={e => updatePart(part.id, { name: e.target.value })}
-                              className="flex-1 bg-transparent nm-text-main text-xs font-medium focus:outline-none min-w-0"
-                            />
-                            <button onClick={() => duplicatePart(part)} className="nm-text-muted hover:nm-text-main p-0.5"><Copy size={11} /></button>
-                            <button onClick={() => removePart(part.id)} className="text-red-400 hover:text-red-500 p-0.5"><Trash2 size={11} /></button>
+                            <button
+                              onClick={e => { e.stopPropagation(); updatePart(part.id, { allowRotation: !part.allowRotation }); }}
+                              title="Toggle rotation"
+                              className={cn(
+                                "p-0.5 rounded border text-[10px] transition",
+                                part.allowRotation !== false
+                                  ? "bg-indigo-500/15 border-indigo-500/30 text-indigo-500"
+                                  : "nm-bg-input nm-border nm-text-muted"
+                              )}>
+                              <RotateCw size={9} />
+                            </button>
                           </div>
                         </div>
-                      </div>
-                      <div className="grid grid-cols-3 gap-1.5">
-                        <div>
-                          <label className="text-xs nm-text-muted block mb-0.5">W (mm)</label>
-                          <input type="number" value={part.width} min={1}
-                            onChange={e => updatePart(part.id, { width: Number(e.target.value) })}
-                            className="w-full nm-bg-input border nm-border rounded px-2 py-1 nm-text-main text-xs" />
-                        </div>
-                        <div>
-                          <label className="text-xs nm-text-muted block mb-0.5">H (mm)</label>
-                          <input type="number" value={part.height} min={1}
-                            onChange={e => updatePart(part.id, { height: Number(e.target.value) })}
-                            className="w-full nm-bg-input border nm-border rounded px-2 py-1 nm-text-main text-xs" />
-                        </div>
-                        <div>
-                          <label className="text-xs nm-text-muted block mb-0.5">Qty</label>
-                          <input type="number" value={part.quantity} min={1}
-                            onChange={e => updatePart(part.id, { quantity: Math.max(1, Number(e.target.value)) })}
-                            className="w-full nm-bg-input border nm-border rounded px-2 py-1 nm-text-main text-xs" />
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 mt-1.5">
-                        <button
-                          onClick={() => updatePart(part.id, { allowRotation: !part.allowRotation })}
-                          className={cn(
-                            "flex items-center gap-1 px-1.5 py-0.5 rounded text-xs border transition flex-1 justify-center",
-                            part.allowRotation !== false
-                              ? "bg-indigo-500/15 border-indigo-500/30 text-indigo-600 dark:text-indigo-400"
-                              : "nm-bg-input nm-border nm-text-muted"
-                          )}>
-                          <RotateCw size={9} /> {part.allowRotation !== false ? "Rot ✓" : "No rot"}
-                        </button>
-                        <div className="text-xs nm-text-muted">
-                          {(part.width * part.height / 100).toFixed(0)} cm²
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </div>
