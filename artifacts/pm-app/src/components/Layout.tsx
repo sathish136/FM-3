@@ -152,7 +152,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
           <WaterDropAnimation size="sm" />
           <div className="flex flex-col">
             <span className="text-lg font-black tracking-tight leading-none flex items-baseline gap-0">
-              <span style={{ background: "linear-gradient(90deg, #818cf8, #a78bfa, #60a5fa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>FlowMatri</span><span style={{ color: "#22d3ee", textShadow: "0 0 12px rgba(34,211,238,0.7)", fontSize: "1.35em", lineHeight: 1 }}>x</span>
+              <span style={{ background: "linear-gradient(90deg, #818cf8, #a78bfa, #60a5fa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Nexa</span><span style={{ color: "#22d3ee", textShadow: "0 0 12px rgba(34,211,238,0.7)" }}>Flow</span>
             </span>
             <span className="text-[9px] font-semibold tracking-[0.15em] uppercase text-slate-600 mt-0.5">Project Management</span>
           </div>
