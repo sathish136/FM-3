@@ -89,14 +89,22 @@ const erpHeaders = () => ({
 // Resolve a login ID (username OR email) to the User document from ERPNext.
 // ERPNext User docs are keyed by email. If the login ID is a username (no @),
 // we search by the `username` field first to get the actual email.
-async function resolveUserDoc(loginId: string): Promise<Record<string, any>> {
+async function resolveUserDoc(
+  loginId: string,
+  cookies?: string,
+): Promise<Record<string, any>> {
   const fields = `["full_name","email","user_image","mobile_no","phone","username","creation","last_login","language","time_zone","enabled"]`;
+
+  // Use session cookies if available, otherwise use API key/secret
+  const headers = cookies
+    ? { Cookie: cookies, Accept: "application/json" }
+    : erpHeaders();
 
   // If it looks like an email, try direct lookup first
   if (loginId.includes("@")) {
     const r = await fetch(
       `${ERP_URL}/api/resource/User/${encodeURIComponent(loginId)}?fields=${encodeURIComponent(fields)}`,
-      { headers: erpHeaders() },
+      { headers },
     );
     if (r.ok) {
       const d = ((await safeJson(r)) as any)?.data;
@@ -105,25 +113,45 @@ async function resolveUserDoc(loginId: string): Promise<Record<string, any>> {
   }
 
   // Fall back: search by username field
+  console.log("Searching for user by username:", loginId);
   const searchRes = await fetch(
     `${ERP_URL}/api/resource/User?filters=${encodeURIComponent(`[["username","=","${loginId}"]]`)}&fields=${encodeURIComponent(fields)}&limit=1`,
-    { headers: erpHeaders() },
+    { headers },
   );
+  console.log("Username search response status:", searchRes.status);
   if (searchRes.ok) {
     const list = ((await safeJson(searchRes)) as any)?.data || [];
+    console.log("Username search results:", list);
     if (list.length > 0) return list[0];
   }
 
   // Last fallback: try direct lookup with login ID as-is
+  console.log("Trying direct lookup with login ID:", loginId);
   const r2 = await fetch(
     `${ERP_URL}/api/resource/User/${encodeURIComponent(loginId)}?fields=${encodeURIComponent(fields)}`,
-    { headers: erpHeaders() },
+    { headers },
   );
+  console.log("Direct lookup response status:", r2.status);
   if (r2.ok) {
     const d = ((await safeJson(r2)) as any)?.data;
+    console.log("Direct lookup result:", d);
     if (d) return d;
   }
 
+  // Additional fallback: try searching by employee name (case insensitive)
+  console.log("Trying employee name search:", loginId.toUpperCase());
+  const empSearch = await fetch(
+    `${ERP_URL}/api/resource/User?filters=${encodeURIComponent(`[["full_name","like","%${loginId}%"]]`)}&fields=${encodeURIComponent(fields)}&limit=5`,
+    { headers },
+  );
+  console.log("Employee name search response status:", empSearch.status);
+  if (empSearch.ok) {
+    const list = ((await safeJson(empSearch)) as any)?.data || [];
+    console.log("Employee name search results:", list);
+    if (list.length > 0) return list[0];
+  }
+
+  console.log("User document resolution failed for:", loginId);
   return {};
 }
 
@@ -212,19 +240,19 @@ authRouter.post("/auth/login", async (req, res) => {
       return res.status(401).json({ error: msg });
     }
 
-    // Extract session cookie from the ERPNext login response
-    const setCookieHeader = response.headers.get("set-cookie") || "";
-    const sidMatch = setCookieHeader.match(/sid=([^;]+)/);
-    const sessionCookie = sidMatch ? `sid=${sidMatch[1]}` : null;
+    // Extract cookies from login response to use for subsequent API calls
+    const cookies = response.headers.get("set-cookie") || "";
+    console.log("Login successful, got cookies:", cookies ? "yes" : "no");
 
     const loginId = typeof usr === "string" ? usr : String(usr);
     let fullName: string = (data as any)?.full_name || loginId;
-    let email: string = loginId.includes("@") ? loginId : "";
+    let email = loginId;
     let photo: string | null = null;
 
-    // Strategy 1: API key/secret lookup by username or email
     try {
-      const userDoc = await resolveUserDoc(loginId);
+      console.log("Resolving user document for loginId:", loginId);
+      const userDoc = await resolveUserDoc(loginId, cookies);
+      console.log("User document resolved:", userDoc);
       if (userDoc.full_name) fullName = userDoc.full_name;
       if (userDoc.email) email = userDoc.email;
       if (userDoc.user_image) {
@@ -232,65 +260,15 @@ authRouter.post("/auth/login", async (req, res) => {
         photo = img.startsWith("http") ? img : `${ERP_URL}${img}`;
       }
     } catch (profileErr) {
-      console.warn("Could not fetch user profile via API key:", profileErr);
+      console.warn("Could not fetch user profile:", profileErr);
     }
 
-    // Strategy 2: use session cookie + frappe.auth.get_logged_user to get the real email
-    if ((!email || !email.includes("@")) && sessionCookie) {
-      try {
-        const meRes = await fetch(
-          `${ERP_URL}/api/method/frappe.auth.get_logged_user`,
-          { headers: { Accept: "application/json", Cookie: sessionCookie } }
-        );
-        if (meRes.ok) {
-          const meEmail = ((await meRes.json()) as any)?.message;
-          if (meEmail && meEmail.includes("@")) {
-            email = meEmail;
-            const profileRes = await fetch(
-              `${ERP_URL}/api/resource/User/${encodeURIComponent(meEmail)}`,
-              { headers: erpHeaders() }
-            );
-            if (profileRes.ok) {
-              const pd = ((await profileRes.json()) as any)?.data;
-              if (pd?.full_name) fullName = pd.full_name;
-              if (pd?.user_image) {
-                const img = String(pd.user_image);
-                photo = img.startsWith("http") ? img : `${ERP_URL}${img}`;
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("Session-based email lookup failed:", e);
-      }
-    }
-
-    // Strategy 3: use session cookie + frappe.client.get_value filtered by username
-    if ((!email || !email.includes("@")) && sessionCookie) {
-      try {
-        const gvRes = await fetch(
-          `${ERP_URL}/api/method/frappe.client.get_value?doctype=User&filters=${encodeURIComponent(`[["username","=","${loginId}"]]`)}&fieldname=${encodeURIComponent(`["name","email","full_name","user_image"]`)}`,
-          { headers: { Accept: "application/json", Cookie: sessionCookie } }
-        );
-        if (gvRes.ok) {
-          const gvData = ((await gvRes.json()) as any)?.message;
-          if (gvData?.email) email = gvData.email;
-          if (gvData?.name && gvData.name.includes("@") && !email.includes("@")) email = gvData.name;
-          if (gvData?.full_name) fullName = gvData.full_name;
-          if (gvData?.user_image) {
-            const img = String(gvData.user_image);
-            photo = img.startsWith("http") ? img : `${ERP_URL}${img}`;
-          }
-        }
-      } catch (e) {
-        console.warn("frappe.client.get_value lookup failed:", e);
-      }
-    }
-
+    // Validate that we have a proper email address
     if (!email || !email.includes("@")) {
-      console.error("Could not resolve a valid email for login ID:", loginId);
+      console.error("Invalid email address resolved:", email);
       return res.status(400).json({
-        error: "Could not determine your email address. Please log in using your full email address.",
+        error:
+          "Could not resolve email address for this username. Please use your email address to login.",
       });
     }
 
@@ -307,7 +285,8 @@ authRouter.post("/auth/login", async (req, res) => {
     } catch (mailErr) {
       console.error("Failed to send OTP email:", mailErr);
       return res.status(500).json({
-        error: "Could not send verification code. Please check email configuration.",
+        error:
+          "Could not send verification code. Please check email configuration.",
       });
     }
 
