@@ -1190,9 +1190,6 @@ export default function ProjectDrawings() {
       .then(data => {
         if (data) {
           setUserProfile({ department: data.department || null, designation: data.designation || null });
-          if (data.department && !deptFilter) {
-            setDeptFilter(data.department);
-          }
         }
       })
       .catch(() => {});
