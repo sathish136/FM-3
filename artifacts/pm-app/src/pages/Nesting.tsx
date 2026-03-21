@@ -1,83 +1,217 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Layout } from "@/components/Layout";
 import { runNesting, Part, NestingResult, PlacedPart, PART_COLORS } from "@/lib/nestingAlgorithm";
-import { parseDxfFile, parseSvgFile, readDwgFileInfo, DwgFileInfo } from "@/lib/dxfParser";
+import { parseDxfFile, parseSvgFile, analyzeDwgFile, DwgAnalysis, SuggestedPart } from "@/lib/dxfParser";
 import {
   Upload, Plus, Trash2, Play, Download, ChevronLeft, ChevronRight,
-  RotateCw, Info, AlertTriangle, CheckCircle, Layers, Package,
+  RotateCw, AlertTriangle, CheckCircle, Layers, Package,
   FileText, Settings2, ZoomIn, ZoomOut, Maximize2, X, FileX,
-  ChevronDown, ChevronUp, Grid, Ruler, PanelLeft, PanelRight,
-  RefreshCw, Copy, Printer, ArrowRight, Minus,
+  Grid, Ruler, PanelLeft, PanelRight,
+  RefreshCw, Copy, ArrowRight, Search, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface DwgDialogEntry {
-  info: DwgFileInfo;
-  name: string;
-  width: number;
-  height: number;
-  quantity: number;
+interface DwgPartEntry extends SuggestedPart {
+  selected: boolean;
+  color?: string;
 }
 
-function DwgImportDialog({ entries, onConfirm, onCancel }: {
-  entries: DwgDialogEntry[];
-  onConfirm: (entries: DwgDialogEntry[]) => void;
+function DwgAnalysisDialog({ analysis, onConfirm, onCancel, nextColor }: {
+  analysis: DwgAnalysis;
+  onConfirm: (parts: DwgPartEntry[]) => void;
   onCancel: () => void;
+  nextColor: (i: number) => string;
 }) {
-  const [local, setLocal] = useState<DwgDialogEntry[]>(entries);
-  const update = (idx: number, changes: Partial<DwgDialogEntry>) =>
-    setLocal(l => l.map((e, i) => (i === idx ? { ...e, ...changes } : e)));
+  const [parts, setParts] = useState<DwgPartEntry[]>(() =>
+    analysis.suggestedParts.map((p, i) => ({ ...p, selected: true, color: nextColor(i) }))
+  );
+  const [activeTab, setActiveTab] = useState<"parts" | "analysis">("parts");
+  const [material, setMaterial] = useState(analysis.materialType);
+  const [thickness, setThickness] = useState(analysis.thickness);
+
+  const update = (i: number, c: Partial<DwgPartEntry>) =>
+    setParts(l => l.map((e, j) => j === i ? { ...e, ...c } : e));
+
+  const addRow = () => setParts(l => [...l, {
+    name: `Part ${l.length + 1}`, width: 100, height: 100, quantity: 1,
+    source: "Manual", confidence: "low", selected: true, color: nextColor(l.length),
+  }]);
+
+  const selectedCount = parts.filter(p => p.selected).length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="nm-bg-card border nm-border rounded-2xl shadow-2xl w-full max-w-lg">
-        <div className="flex items-center justify-between px-5 py-4 border-b nm-border">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="nm-bg-card border nm-border rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b nm-border flex-shrink-0">
           <div>
-            <h2 className="nm-text-main font-semibold flex items-center gap-2">
-              <FileX size={16} className="text-amber-500" /> DWG File Import
+            <h2 className="nm-text-main font-bold text-base flex items-center gap-2">
+              <Sparkles size={16} className="text-amber-400" /> DWG Drawing Analysis
             </h2>
-            <p className="nm-text-sub text-xs mt-0.5">Enter part dimensions manually for DWG files.</p>
+            <p className="nm-text-muted text-xs mt-0.5 font-mono">{analysis.fileName} · {analysis.versionName} · {(analysis.fileSize / 1024).toFixed(0)} KB</p>
           </div>
-          <button onClick={onCancel} className="nm-text-muted hover:nm-text-main"><X size={18} /></button>
+          <button onClick={onCancel} className="nm-text-muted hover:nm-text-main p-1"><X size={18} /></button>
         </div>
-        <div className="px-5 py-4 space-y-4 max-h-[60vh] overflow-y-auto">
-          {local.map((entry, idx) => (
-            <div key={idx} className="nm-bg-page border nm-border rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="px-2 py-0.5 bg-amber-500/20 text-amber-600 dark:text-amber-300 text-xs rounded font-mono">{entry.info.versionName}</div>
-                <span className="nm-text-sub text-xs truncate">{entry.info.fileName}</span>
+
+        {/* Detected info bar */}
+        <div className="px-5 py-3 nm-bg-page border-b nm-border flex-shrink-0">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { label: "Drawing No.", value: analysis.drawingNumber || "—", highlight: !!analysis.drawingNumber },
+              { label: "Title", value: analysis.drawingTitle || "—", highlight: !!analysis.drawingTitle },
+              { label: "Material", value: material || "—", editable: true, onChange: setMaterial },
+              { label: "Thickness", value: thickness || "—", editable: true, onChange: setThickness },
+            ].map(({ label, value, highlight, editable, onChange }) => (
+              <div key={label} className={cn("rounded-lg px-3 py-2 border", highlight || editable ? "nm-bg-card nm-border" : "nm-bg-page nm-border")}>
+                <div className="text-xs nm-text-muted mb-0.5">{label}</div>
+                {editable ? (
+                  <input value={value} onChange={e => onChange?.(e.target.value)}
+                    className="bg-transparent nm-text-main text-xs font-medium w-full focus:outline-none" />
+                ) : (
+                  <div className={cn("text-xs font-medium truncate", highlight ? "text-indigo-500 dark:text-indigo-400" : "nm-text-sub")}>{value}</div>
+                )}
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2">
-                  <label className="text-xs nm-text-sub mb-1 block">Part Name</label>
-                  <input value={entry.name} onChange={e => update(idx, { name: e.target.value })}
-                    className="w-full nm-bg-input border nm-border rounded-lg px-3 py-2 nm-text-main text-sm" />
+            ))}
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 px-5 pt-3 flex-shrink-0">
+          {(["parts", "analysis"] as const).map(t => (
+            <button key={t} onClick={() => setActiveTab(t)}
+              className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition capitalize",
+                activeTab === t ? "bg-indigo-600 text-white" : "nm-bg-page nm-border border nm-text-sub nm-bg-hover"
+              )}>
+              {t === "parts" ? `Parts to Import (${selectedCount})` : "Drawing Analysis"}
+            </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto px-5 py-3 min-h-0">
+          {activeTab === "parts" && (
+            <div className="space-y-2">
+              {analysis.detectedDimensions.length > 0 && (
+                <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
+                  <Search size={12} className="mt-0.5 flex-shrink-0" />
+                  <div>
+                    <span className="font-semibold">Detected {analysis.detectedDimensions.length} dimension(s) in drawing: </span>
+                    {analysis.detectedDimensions.slice(0, 6).map(d => (
+                      <span key={d.raw} className="inline-block px-1.5 py-0.5 bg-amber-500/20 rounded font-mono mr-1 mb-0.5">{d.width}×{d.height}</span>
+                    ))}
+                    {analysis.detectedDimensions.length > 6 && <span>+{analysis.detectedDimensions.length - 6} more</span>}
+                  </div>
                 </div>
-                <div>
-                  <label className="text-xs nm-text-sub mb-1 block">Width (mm)</label>
-                  <input type="number" value={entry.width} min={1} onChange={e => update(idx, { width: Number(e.target.value) })}
-                    className="w-full nm-bg-input border nm-border rounded-lg px-3 py-2 nm-text-main text-sm" />
+              )}
+
+              <div className="grid grid-cols-[auto_1fr_80px_80px_60px_auto] gap-x-2 gap-y-0.5 text-xs nm-text-muted px-1 mb-1">
+                <span></span><span>Part Name</span><span>Width (mm)</span><span>Height (mm)</span><span>Qty</span><span></span>
+              </div>
+
+              {parts.map((p, i) => (
+                <div key={i} className={cn(
+                  "grid grid-cols-[auto_1fr_80px_80px_60px_auto] gap-x-2 items-center rounded-lg px-2 py-2 border transition",
+                  p.selected ? "nm-bg-page nm-border" : "nm-bg-page border-transparent opacity-40"
+                )}>
+                  <input type="checkbox" checked={p.selected} onChange={e => update(i, { selected: e.target.checked })}
+                    className="rounded w-3.5 h-3.5 cursor-pointer accent-indigo-500" />
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <input type="color" value={p.color ?? "#6366f1"} onChange={e => update(i, { color: e.target.value })}
+                      className="w-4 h-4 rounded cursor-pointer border-0 bg-transparent p-0 flex-shrink-0" style={{ WebkitAppearance: "none" }} />
+                    <input value={p.name} onChange={e => update(i, { name: e.target.value })}
+                      className="flex-1 bg-transparent nm-text-main text-xs font-medium focus:outline-none min-w-0" />
+                    <span className={cn("text-xs px-1 py-0.5 rounded flex-shrink-0", {
+                      "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400": p.confidence === "high",
+                      "bg-amber-500/15 text-amber-600 dark:text-amber-400": p.confidence === "medium",
+                      "bg-slate-500/15 nm-text-muted": p.confidence === "low",
+                    })}>{p.confidence}</span>
+                  </div>
+                  <input type="number" value={p.width} min={1} onChange={e => update(i, { width: Number(e.target.value) })}
+                    className="nm-bg-input border nm-border rounded px-2 py-1 nm-text-main text-xs" />
+                  <input type="number" value={p.height} min={1} onChange={e => update(i, { height: Number(e.target.value) })}
+                    className="nm-bg-input border nm-border rounded px-2 py-1 nm-text-main text-xs" />
+                  <input type="number" value={p.quantity} min={1} onChange={e => update(i, { quantity: Math.max(1, Number(e.target.value)) })}
+                    className="nm-bg-input border nm-border rounded px-2 py-1 nm-text-main text-xs" />
+                  <button onClick={() => setParts(l => l.filter((_, j) => j !== i))}
+                    className="text-red-400 hover:text-red-500 p-0.5 flex-shrink-0"><Trash2 size={12} /></button>
                 </div>
+              ))}
+
+              <button onClick={addRow}
+                className="w-full flex items-center justify-center gap-1.5 py-2 nm-bg-page border border-dashed nm-border nm-text-sub nm-bg-hover rounded-lg text-xs transition mt-1">
+                <Plus size={12} /> Add part manually
+              </button>
+
+              <div className="p-2.5 bg-blue-500/10 border border-blue-500/20 rounded-lg text-xs text-blue-700 dark:text-blue-300 flex items-start gap-2">
+                <FileX size={12} className="mt-0.5 flex-shrink-0" />
                 <div>
-                  <label className="text-xs nm-text-sub mb-1 block">Height (mm)</label>
-                  <input type="number" value={entry.height} min={1} onChange={e => update(idx, { height: Number(e.target.value) })}
-                    className="w-full nm-bg-input border nm-border rounded-lg px-3 py-2 nm-text-main text-sm" />
-                </div>
-                <div>
-                  <label className="text-xs nm-text-sub mb-1 block">Quantity</label>
-                  <input type="number" value={entry.quantity} min={1} onChange={e => update(idx, { quantity: Math.max(1, Number(e.target.value)) })}
-                    className="w-full nm-bg-input border nm-border rounded-lg px-3 py-2 nm-text-main text-sm" />
+                  <span className="font-semibold">Tip:</span> DWG binary geometry cannot be auto-extracted in the browser.
+                  For best results, <span className="font-semibold">export from AutoCAD as DXF</span> (File → Save As → AutoCAD DXF) — parts will be extracted automatically.
                 </div>
               </div>
             </div>
-          ))}
+          )}
+
+          {activeTab === "analysis" && (
+            <div className="space-y-3 text-xs">
+              {analysis.detectedDimensions.length > 0 && (
+                <div>
+                  <div className="nm-text-muted font-semibold uppercase tracking-wider mb-1.5">Detected Dimensions ({analysis.detectedDimensions.length})</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {analysis.detectedDimensions.map((d, i) => (
+                      <button key={i} onClick={() => {
+                        // Add as a new part row
+                        setParts(l => [...l, { name: `Part ${l.length + 1}`, width: d.width, height: d.height, quantity: 1, source: d.raw, confidence: "medium", selected: true, color: nextColor(l.length) }]);
+                        setActiveTab("parts");
+                      }}
+                        className="px-2 py-1 nm-bg-page border nm-border rounded-lg nm-text-main nm-bg-hover flex items-center gap-1">
+                        <span className="font-mono">{d.width}×{d.height}</span>
+                        <span className="nm-text-muted text-xs">mm</span>
+                        <Plus size={9} className="text-indigo-400" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {analysis.layerNames.length > 0 && (
+                <div>
+                  <div className="nm-text-muted font-semibold uppercase tracking-wider mb-1.5">Layer Names ({analysis.layerNames.length})</div>
+                  <div className="flex flex-wrap gap-1">
+                    {analysis.layerNames.map(l => (
+                      <span key={l} className="px-1.5 py-0.5 nm-bg-page border nm-border rounded text-xs nm-text-sub font-mono">{l}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {analysis.textStrings.length > 0 && (
+                <div>
+                  <div className="nm-text-muted font-semibold uppercase tracking-wider mb-1.5">Extracted Text Strings</div>
+                  <div className="nm-bg-page border nm-border rounded-lg p-2 max-h-40 overflow-y-auto">
+                    {analysis.textStrings.map((s, i) => (
+                      <div key={i} className="text-xs nm-text-sub font-mono py-0.5 border-b nm-border last:border-0 truncate">{s}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
-        <div className="flex justify-end gap-2 px-5 py-4 border-t nm-border">
-          <button onClick={onCancel} className="px-4 py-2 nm-text-sub hover:nm-text-main text-sm">Cancel</button>
-          <button onClick={() => onConfirm(local)}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm rounded-lg font-medium">
-            Add {local.length} Part{local.length !== 1 ? "s" : ""}
-          </button>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-5 py-3 border-t nm-border flex-shrink-0">
+          <span className="text-xs nm-text-muted">{selectedCount} part{selectedCount !== 1 ? "s" : ""} selected</span>
+          <div className="flex gap-2">
+            <button onClick={onCancel} className="px-4 py-2 nm-text-sub hover:nm-text-main text-sm">Cancel</button>
+            <button
+              onClick={() => onConfirm(parts.filter(p => p.selected))}
+              disabled={selectedCount === 0}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm rounded-lg font-medium">
+              Import {selectedCount} Part{selectedCount !== 1 ? "s" : ""}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -492,7 +626,7 @@ export default function Nesting() {
   const [runProgress, setRunProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [dwgDialog, setDwgDialog] = useState<DwgDialogEntry[] | null>(null);
+  const [dwgDialog, setDwgDialog] = useState<DwgAnalysis | null>(null);
   const [showGrid, setShowGrid] = useState(true);
   const [showRulers, setShowRulers] = useState(true);
   const [leftOpen, setLeftOpen] = useState(true);
@@ -520,7 +654,6 @@ export default function Nesting() {
     if (!files) return;
     setError(null);
     const newParts: Part[] = [];
-    const dwgEntries: DwgDialogEntry[] = [];
 
     for (const file of Array.from(files)) {
       try {
@@ -534,8 +667,10 @@ export default function Nesting() {
           parsed.forEach((p, i) => { p.color = PART_COLORS[(parts.length + newParts.length + i) % PART_COLORS.length]; });
           newParts.push(...parsed);
         } else if (ext === "dwg") {
-          const info = await readDwgFileInfo(file);
-          dwgEntries.push({ info, name: file.name.replace(/\.dwg$/i, ""), width: 100, height: 100, quantity: 1 });
+          const analysis = await analyzeDwgFile(file);
+          if (newParts.length > 0) setParts(p => [...p, ...newParts]);
+          setDwgDialog(analysis);
+          return; // open dialog for DWG
         } else {
           setError(`Unsupported: ${ext?.toUpperCase()}. Supported: DWG, DXF, SVG`);
         }
@@ -543,7 +678,6 @@ export default function Nesting() {
     }
 
     if (newParts.length > 0) setParts(p => [...p, ...newParts]);
-    if (dwgEntries.length > 0) setDwgDialog(dwgEntries);
   };
 
   const runNest = async () => {
@@ -1067,18 +1201,26 @@ export default function Nesting() {
       </div>
 
       {dwgDialog && (
-        <DwgImportDialog entries={dwgDialog} onConfirm={entries => {
-          partCounter++;
-          const newParts: Part[] = entries.map((e, i) => ({
-            id: `dwg-${Date.now()}-${i}`, name: e.name,
-            width: e.width, height: e.height, quantity: e.quantity,
-            color: PART_COLORS[(parts.length + i) % PART_COLORS.length],
-            allowRotation: true, grainDirection: "none",
-            sourceFile: e.info.fileName,
-          }));
-          setParts(p => [...p, ...newParts]);
-          setDwgDialog(null);
-        }} onCancel={() => setDwgDialog(null)} />
+        <DwgAnalysisDialog
+          analysis={dwgDialog}
+          nextColor={i => PART_COLORS[(parts.length + i) % PART_COLORS.length]}
+          onConfirm={entries => {
+            const newParts: Part[] = entries.map((e, i) => ({
+              id: `dwg-${Date.now()}-${i}`,
+              name: e.name,
+              width: e.width,
+              height: e.height,
+              quantity: e.quantity,
+              color: e.color ?? PART_COLORS[(parts.length + i) % PART_COLORS.length],
+              allowRotation: true,
+              grainDirection: "none" as const,
+              sourceFile: dwgDialog.fileName,
+            }));
+            setParts(p => [...p, ...newParts]);
+            setDwgDialog(null);
+          }}
+          onCancel={() => setDwgDialog(null)}
+        />
       )}
     </Layout>
   );
