@@ -1,13 +1,117 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Layout } from "@/components/Layout";
 import { runNesting, Part, NestingResult, PlacedPart } from "@/lib/nestingAlgorithm";
-import { parseDxfFile, parseSvgFile } from "@/lib/dxfParser";
+import { parseDxfFile, parseSvgFile, readDwgFileInfo, DwgFileInfo } from "@/lib/dxfParser";
 import {
   Upload, Plus, Trash2, Play, Download, ChevronLeft, ChevronRight,
   RotateCw, Info, AlertTriangle, CheckCircle, Layers, Package,
-  FileText, Settings2, ZoomIn, ZoomOut, Maximize2,
+  FileText, Settings2, ZoomIn, ZoomOut, Maximize2, X, FileX,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+interface DwgDialogEntry {
+  info: DwgFileInfo;
+  name: string;
+  width: number;
+  height: number;
+  quantity: number;
+}
+
+function DwgImportDialog({
+  entries,
+  onConfirm,
+  onCancel,
+}: {
+  entries: DwgDialogEntry[];
+  onConfirm: (entries: DwgDialogEntry[]) => void;
+  onCancel: () => void;
+}) {
+  const [local, setLocal] = useState<DwgDialogEntry[]>(entries);
+
+  const update = (idx: number, changes: Partial<DwgDialogEntry>) =>
+    setLocal(l => l.map((e, i) => (i === idx ? { ...e, ...changes } : e)));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-[#1e1e2e] border border-white/20 rounded-2xl shadow-2xl w-full max-w-lg">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+          <div>
+            <h2 className="text-white font-semibold flex items-center gap-2">
+              <FileX size={16} className="text-amber-400" /> DWG File Import
+            </h2>
+            <p className="text-white/50 text-xs mt-0.5">
+              DWG binary geometry cannot be auto-extracted in the browser. Enter part dimensions below.
+            </p>
+          </div>
+          <button onClick={onCancel} className="text-white/40 hover:text-white"><X size={18} /></button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4 max-h-[60vh] overflow-y-auto">
+          {local.map((entry, idx) => (
+            <div key={idx} className="bg-white/5 border border-white/10 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="px-2 py-0.5 bg-amber-500/20 text-amber-300 text-xs rounded font-mono">
+                  {entry.info.versionName}
+                </div>
+                <span className="text-white/50 text-xs truncate">{entry.info.fileName}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="col-span-2">
+                  <label className="text-xs text-white/50 mb-1 block">Part Name</label>
+                  <input
+                    value={entry.name}
+                    onChange={e => update(idx, { name: e.target.value })}
+                    className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-white/50 mb-1 block">Width (mm)</label>
+                  <input
+                    type="number" value={entry.width} min={1}
+                    onChange={e => update(idx, { width: Number(e.target.value) })}
+                    className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-white/50 mb-1 block">Height (mm)</label>
+                  <input
+                    type="number" value={entry.height} min={1}
+                    onChange={e => update(idx, { height: Number(e.target.value) })}
+                    className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-white/50 mb-1 block">Quantity</label>
+                  <input
+                    type="number" value={entry.quantity} min={1}
+                    onChange={e => update(idx, { quantity: Math.max(1, Number(e.target.value)) })}
+                    className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-amber-300/70 bg-amber-500/10 rounded-lg px-3 py-2">
+                <Info size={11} />
+                Open in AutoCAD/LibreCAD → check part dimensions → enter above.
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-white/10">
+          <button onClick={onCancel} className="px-4 py-2 text-white/60 hover:text-white text-sm">
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm(local)}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm rounded-lg font-medium"
+          >
+            Add {local.length} Part{local.length !== 1 ? "s" : ""}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const SHEET_PRESETS = [
   { label: "A4 (210×297 mm)", width: 210, height: 297 },
@@ -234,6 +338,7 @@ export default function Nesting() {
   const [error, setError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [activeTab, setActiveTab] = useState<"config" | "results">("config");
+  const [dwgDialog, setDwgDialog] = useState<DwgDialogEntry[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handlePresetChange = (idx: number) => {
@@ -255,6 +360,8 @@ export default function Nesting() {
     if (!files) return;
     setError(null);
     const newParts: Part[] = [];
+    const dwgEntries: DwgDialogEntry[] = [];
+
     for (const file of Array.from(files)) {
       try {
         const ext = file.name.split(".").pop()?.toLowerCase();
@@ -270,17 +377,41 @@ export default function Nesting() {
             p.color = PART_COLORS[(parts.length + newParts.length + i) % PART_COLORS.length];
           });
           newParts.push(...parsed);
+        } else if (ext === "dwg") {
+          const info = await readDwgFileInfo(file);
+          const baseName = file.name.replace(/\.dwg$/i, "");
+          dwgEntries.push({ info, name: baseName, width: 100, height: 100, quantity: 1 });
         } else {
-          setError(`Unsupported format: ${ext?.toUpperCase()}. Supported: DXF, SVG`);
+          setError(`Unsupported format: ${ext?.toUpperCase()}. Supported: DWG, DXF, SVG`);
         }
       } catch (e: any) {
         setError(e.message ?? "Failed to parse file.");
       }
     }
+
     if (newParts.length > 0) {
       setParts(p => [...p, ...newParts]);
       setActiveTab("config");
     }
+
+    if (dwgEntries.length > 0) {
+      setDwgDialog(dwgEntries);
+    }
+  };
+
+  const confirmDwgImport = (entries: DwgDialogEntry[]) => {
+    const newParts: Part[] = entries.map((e, i) => ({
+      id: `dwg-${Date.now()}-${i}`,
+      name: e.name,
+      width: e.width,
+      height: e.height,
+      quantity: e.quantity,
+      color: PART_COLORS[(parts.length + i) % PART_COLORS.length],
+      sourceFile: e.info.fileName,
+    }));
+    setParts(p => [...p, ...newParts]);
+    setDwgDialog(null);
+    setActiveTab("config");
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -488,13 +619,13 @@ export default function Nesting() {
                 onClick={() => fileInputRef.current?.click()}
               >
                 <Upload size={28} className="mx-auto text-white/40 mb-2" />
-                <p className="text-white/60 text-sm">Drop DXF or SVG files here, or click to browse</p>
-                <p className="text-white/30 text-xs mt-1">Parts are automatically extracted from layers / shapes</p>
+                <p className="text-white/60 text-sm">Drop DWG, DXF, or SVG files here, or click to browse</p>
+                <p className="text-white/30 text-xs mt-1">DXF/SVG: parts auto-extracted · DWG: enter dimensions in dialog</p>
                 <input
                   ref={fileInputRef}
                   type="file"
                   multiple
-                  accept=".dxf,.svg"
+                  accept=".dxf,.svg,.dwg"
                   className="hidden"
                   onChange={e => handleFiles(e.target.files)}
                 />
@@ -718,6 +849,13 @@ export default function Nesting() {
           )}
         </div>
       </div>
+      {dwgDialog && (
+        <DwgImportDialog
+          entries={dwgDialog}
+          onConfirm={confirmDwgImport}
+          onCancel={() => setDwgDialog(null)}
+        />
+      )}
     </Layout>
   );
 }

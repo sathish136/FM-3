@@ -1,5 +1,51 @@
 import { Part } from "./nestingAlgorithm";
 
+export interface DwgFileInfo {
+  fileName: string;
+  version: string;
+  versionName: string;
+}
+
+const DWG_VERSIONS: Record<string, string> = {
+  "AC1.0": "AutoCAD R1.0",
+  "AC1.2": "AutoCAD R1.2",
+  "AC1.4": "AutoCAD R1.4",
+  "AC1.50": "AutoCAD R2.0",
+  "AC2.10": "AutoCAD R2.10",
+  "AC1002": "AutoCAD R2.5",
+  "AC1003": "AutoCAD R2.6",
+  "AC1004": "AutoCAD R9",
+  "AC1006": "AutoCAD R10",
+  "AC1009": "AutoCAD R11/R12",
+  "AC1012": "AutoCAD R13",
+  "AC1014": "AutoCAD R14",
+  "AC1015": "AutoCAD 2000/2002",
+  "AC1018": "AutoCAD 2004/2005/2006",
+  "AC1021": "AutoCAD 2007/2008/2009",
+  "AC1024": "AutoCAD 2010/2011/2012",
+  "AC1027": "AutoCAD 2013/2014/2015/2016/2017",
+  "AC1032": "AutoCAD 2018/2019/2020/2021/2022/2023",
+};
+
+export async function readDwgFileInfo(file: File): Promise<DwgFileInfo> {
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+
+  const header = String.fromCharCode(...Array.from(bytes.slice(0, 6)));
+
+  if (!header.startsWith("AC")) {
+    throw new Error("Not a valid DWG file (invalid header).");
+  }
+
+  const versionName = DWG_VERSIONS[header] ?? `DWG format (${header})`;
+
+  return {
+    fileName: file.name,
+    version: header,
+    versionName,
+  };
+}
+
 interface BoundingBox {
   minX: number;
   minY: number;
