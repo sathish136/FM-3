@@ -282,43 +282,63 @@ function PdfWatermark({
   status: DrawingStatus;
   revisionLbl: string;
 }) {
-  const cfg = STATUS_CONFIG[status];
-  const text =
+  const statusText =
     status === "revision"
-      ? `${cfg.watermarkText} — ${revisionLbl}`
-      : cfg.watermarkText;
+      ? `${STATUS_CONFIG[status].watermarkText} — ${revisionLbl}`
+      : STATUS_CONFIG[status].watermarkText;
 
-  const colorMap: Record<DrawingStatus, { border: string; text: string; bg: string }> = {
-    draft:    { border: "#d97706", text: "#d97706", bg: "rgba(217,119,6,0.08)" },
-    revision: { border: "#2563eb", text: "#2563eb", bg: "rgba(37,99,235,0.08)" },
-    final:    { border: "#059669", text: "#059669", bg: "rgba(5,150,105,0.08)" },
+  const statusColor: Record<DrawingStatus, string> = {
+    draft:    "rgba(217,119,6,0.55)",
+    revision: "rgba(37,99,235,0.55)",
+    final:    "rgba(5,150,105,0.55)",
   };
-  const c = colorMap[status];
 
   return (
     <div
-      className="absolute bottom-3 right-3 pointer-events-none"
+      className="absolute top-10 right-10 pointer-events-none select-none flex flex-col items-end gap-0.5"
       style={{ zIndex: 10 }}
     >
-      <div
+      <span
         style={{
-          border: `2px solid ${c.border}`,
-          background: c.bg,
-          color: c.text,
-          padding: "4px 12px",
-          borderRadius: "4px",
-          fontSize: "11px",
+          fontSize: "18px",
+          fontFamily: "'Trebuchet MS', 'Century Gothic', 'Gill Sans', Arial, sans-serif",
           fontWeight: 800,
           letterSpacing: "0.18em",
           textTransform: "uppercase",
-          fontFamily: "Arial, sans-serif",
-          userSelect: "none",
-          whiteSpace: "nowrap",
-          opacity: 0.85,
+          lineHeight: 1.1,
+          opacity: 0.28,
+          color: "#ffffff",
         }}
       >
-        {text}
-      </div>
+        WTT INTERNATIONAL
+      </span>
+      <span
+        style={{
+          fontSize: "9px",
+          fontFamily: "'Trebuchet MS', 'Century Gothic', 'Gill Sans', Arial, sans-serif",
+          fontWeight: 400,
+          letterSpacing: "0.12em",
+          fontStyle: "italic",
+          textTransform: "uppercase",
+          opacity: 0.2,
+          color: "#ffffff",
+        }}
+      >
+        Water Loving Technology
+      </span>
+      <span
+        style={{
+          marginTop: "4px",
+          fontSize: "11px",
+          fontFamily: "'Trebuchet MS', 'Century Gothic', 'Gill Sans', Arial, sans-serif",
+          fontWeight: 900,
+          letterSpacing: "0.2em",
+          textTransform: "uppercase",
+          color: statusColor[status],
+        }}
+      >
+        {statusText}
+      </span>
     </div>
   );
 }
@@ -2208,7 +2228,7 @@ export default function ProjectDrawings() {
                     <div className="text-xs text-gray-500">
                       {formatDate(drawing.uploadedAt)}
                     </div>
-                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-0.5">
                       <button
                         onClick={() => {
                           const idx = filtered.findIndex(
