@@ -4,7 +4,7 @@ import {
   X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCcw,
   Highlighter, PanelRight, Info, Layers, Plus, Trash2,
   RefreshCw, FolderOpen, Shield, ArrowUpCircle, Building2,
-  Filter, ChevronDown, Cpu,
+  Filter, ChevronDown, Briefcase,
 } from "lucide-react";
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
@@ -33,7 +33,6 @@ interface ProjectDrawing {
   title: string;
   project: string;
   department: string;
-  systemName: string;
   uploadedAt: string;
   status: DrawingStatus;
   revisionNo: number;
@@ -225,7 +224,7 @@ function PdfViewer({
             {drawing.drawingNo}{drawing.title ? ` — ${drawing.title}` : ""}
           </p>
           <p className="text-xs text-gray-400 truncate">
-            {[drawing.project, drawing.department, drawing.systemName].filter(Boolean).join(" · ")}
+            {[drawing.project, drawing.department].filter(Boolean).join(" · ")}
           </p>
         </div>
         {total > 1 && (
@@ -324,7 +323,6 @@ function PdfViewer({
                   {[
                     { label: "Drawing No.", value: drawing.drawingNo },
                     { label: "Title", value: drawing.title },
-                    { label: "System Name", value: drawing.systemName },
                     { label: "Project", value: drawing.project },
                     { label: "Department", value: drawing.department },
                     { label: "Uploaded By", value: drawing.uploadedBy },
@@ -412,7 +410,11 @@ interface FileEntry {
   file: File;
   drawingNo: string;
   title: string;
-  systemName: string;
+}
+
+interface ErpProject {
+  id: number;
+  name: string;
 }
 
 interface UploadModalProps {
@@ -421,7 +423,7 @@ interface UploadModalProps {
   onClose: () => void;
   onSubmit: (drawings: Array<{
     drawingNo: string; title: string; project: string; department: string;
-    systemName: string; fileData: string; fileName: string; note: string; uploadedBy: string;
+    fileData: string; fileName: string; note: string; uploadedBy: string;
   }>) => void;
 }
 
@@ -432,7 +434,32 @@ function UploadModal({ userDept, userName, onClose, onSubmit }: UploadModalProps
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [erpProjects, setErpProjects] = useState<ErpProject[]>([]);
+  const [projectSearch, setProjectSearch] = useState("");
+  const [showProjectDrop, setShowProjectDrop] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const projectRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetch(`${BASE}/api/projects`)
+      .then(r => r.ok ? r.json() : [])
+      .then((data: ErpProject[]) => setErpProjects(data))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (projectRef.current && !projectRef.current.contains(e.target as Node)) {
+        setShowProjectDrop(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const filteredProjects = erpProjects.filter(p =>
+    p.name.toLowerCase().includes(projectSearch.toLowerCase())
+  );
 
   const addFiles = useCallback((incoming: File[]) => {
     const pdfs = incoming.filter(f => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
@@ -444,7 +471,6 @@ function UploadModal({ userDept, userName, onClose, onSubmit }: UploadModalProps
           file: f,
           drawingNo: f.name.replace(/\.pdf$/i, ""),
           title: "",
-          systemName: "",
         }));
       return [...prev, ...newEntries];
     });
@@ -463,7 +489,7 @@ function UploadModal({ userDept, userName, onClose, onSubmit }: UploadModalProps
     setLoading(true);
     const results: Array<{
       drawingNo: string; title: string; project: string; department: string;
-      systemName: string; fileData: string; fileName: string; note: string; uploadedBy: string;
+      fileData: string; fileName: string; note: string; uploadedBy: string;
     }> = [];
 
     for (const entry of files) {
@@ -477,7 +503,6 @@ function UploadModal({ userDept, userName, onClose, onSubmit }: UploadModalProps
         title: entry.title,
         project,
         department,
-        systemName: entry.systemName,
         fileData,
         fileName: entry.file.name,
         note,
@@ -510,12 +535,54 @@ function UploadModal({ userDept, userName, onClose, onSubmit }: UploadModalProps
         <div className="flex-1 overflow-auto p-6 space-y-5">
           {/* Common fields */}
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Project *</label>
-              <input value={project} onChange={e => setProject(e.target.value)}
-                placeholder="Project name"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            {/* Project — ERP dropdown */}
+            <div ref={projectRef} className="relative">
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Project * {erpProjects.length > 0 && <span className="text-gray-400 font-normal">({erpProjects.length} from ERP)</span>}
+              </label>
+              <div
+                onClick={() => setShowProjectDrop(v => !v)}
+                className={`w-full border rounded-lg px-3 py-2 text-sm cursor-pointer flex items-center justify-between gap-2 ${project ? "border-blue-400 bg-blue-50" : "border-gray-300 bg-white"} focus:outline-none`}
+              >
+                <span className={project ? "text-gray-900" : "text-gray-400"}>
+                  {project || "Select project…"}
+                </span>
+                <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
+              </div>
+              {showProjectDrop && (
+                <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+                  <div className="p-2 border-b border-gray-100">
+                    <input
+                      value={projectSearch}
+                      onChange={e => setProjectSearch(e.target.value)}
+                      placeholder="Search projects…"
+                      className="w-full text-xs px-2 py-1.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+                      autoFocus
+                      onClick={e => e.stopPropagation()}
+                    />
+                  </div>
+                  <div className="max-h-48 overflow-auto">
+                    {filteredProjects.length === 0 ? (
+                      <p className="text-xs text-gray-400 text-center py-4">
+                        {erpProjects.length === 0 ? "Loading projects…" : "No projects found"}
+                      </p>
+                    ) : (
+                      filteredProjects.map(p => (
+                        <button
+                          key={p.id}
+                          onClick={() => { setProject(p.name); setShowProjectDrop(false); setProjectSearch(""); }}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 hover:text-blue-700 transition-colors flex items-center gap-2 ${project === p.name ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700"}`}
+                        >
+                          <Briefcase className="w-3.5 h-3.5 flex-shrink-0 opacity-50" />
+                          {p.name}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
+
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Department</label>
               <select value={department} onChange={e => setDepartment(e.target.value)}
@@ -568,7 +635,7 @@ function UploadModal({ userDept, userName, onClose, onSubmit }: UploadModalProps
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-[10px] text-gray-500 mb-0.5">Drawing No.</label>
                       <input value={entry.drawingNo}
@@ -581,13 +648,6 @@ function UploadModal({ userDept, userName, onClose, onSubmit }: UploadModalProps
                       <input value={entry.title}
                         onChange={e => updateEntry(idx, "title", e.target.value)}
                         placeholder="Drawing title"
-                        className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] text-gray-500 mb-0.5">System Name</label>
-                      <input value={entry.systemName}
-                        onChange={e => updateEntry(idx, "systemName", e.target.value)}
-                        placeholder="e.g. Pump A"
                         className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
                     </div>
                   </div>
@@ -757,6 +817,14 @@ export default function ProjectDrawings() {
   const [viewerIdx, setViewerIdx] = useState<number | null>(null);
   const [modal, setModal] = useState<ModalState>({ type: "none" });
   const [userProfile, setUserProfile] = useState<{ department: string | null; designation: string | null }>({ department: null, designation: null });
+  const [erpProjectList, setErpProjectList] = useState<ErpProject[]>([]);
+
+  useEffect(() => {
+    fetch(`${BASE}/api/projects`)
+      .then(r => r.ok ? r.json() : [])
+      .then((data: ErpProject[]) => setErpProjectList(data))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!user?.email) return;
@@ -797,7 +865,7 @@ export default function ProjectDrawings() {
 
   const handleUpload = (items: Array<{
     drawingNo: string; title: string; project: string; department: string;
-    systemName: string; fileData: string; fileName: string; note: string; uploadedBy: string;
+    fileData: string; fileName: string; note: string; uploadedBy: string;
   }>) => {
     const newDrawings: ProjectDrawing[] = items.map(data => ({
       id: crypto.randomUUID(),
@@ -805,7 +873,6 @@ export default function ProjectDrawings() {
       title: data.title,
       project: data.project,
       department: data.department,
-      systemName: data.systemName,
       uploadedAt: new Date().toISOString(),
       status: "draft",
       revisionNo: 0,
@@ -994,9 +1061,9 @@ export default function ProjectDrawings() {
             </div>
           ) : (
             <div className="grid gap-2.5">
-              <div className="hidden md:grid grid-cols-[1.5fr_2.5fr_1.5fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 px-4 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-200">
+              <div className="hidden md:grid grid-cols-[1.5fr_2.5fr_2fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 px-4 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-200">
                 <span>Drawing No.</span>
-                <span>Title / System</span>
+                <span>Title</span>
                 <span>Project</span>
                 <span>Department</span>
                 <span>Status</span>
@@ -1008,17 +1075,12 @@ export default function ProjectDrawings() {
               {filtered.map((drawing) => (
                 <div key={drawing.id}
                   className="bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-blue-300 hover:shadow-sm transition-all group">
-                  <div className="hidden md:grid grid-cols-[1.5fr_2.5fr_1.5fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 items-center">
+                  <div className="hidden md:grid grid-cols-[1.5fr_2.5fr_2fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 items-center">
                     <div className="font-mono text-sm font-semibold text-gray-900 truncate" title={drawing.drawingNo}>
                       {drawing.drawingNo}
                     </div>
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-gray-900 truncate">{drawing.title || <span className="text-gray-400 italic">—</span>}</p>
-                      {drawing.systemName && (
-                        <p className="text-xs text-indigo-600 truncate flex items-center gap-1 mt-0.5">
-                          <Cpu className="w-3 h-3" />{drawing.systemName}
-                        </p>
-                      )}
                     </div>
                     <div className="text-xs text-gray-600 truncate" title={drawing.project}>{drawing.project || "—"}</div>
                     <div className="text-xs text-gray-600 truncate" title={drawing.department}>{drawing.department || "—"}</div>
