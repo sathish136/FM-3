@@ -138,11 +138,6 @@ export default function Settings() {
 
   const renderContent = () => {
     switch (activeSection) {
-      case "users": return (
-        <div className="h-[620px] rounded-2xl overflow-hidden border border-border shadow-sm">
-          <UserManagementContent />
-        </div>
-      );
       case "notifications": return <NotificationsSettings />;
       case "appearance": return <AppearanceSettings />;
       case "api": return <APIKeys />;
@@ -164,15 +159,14 @@ export default function Settings() {
 
   return (
     <Layout>
-      <div className="space-y-6">
-        <div>
+      <div className="flex flex-col h-full">
+        {/* Page header */}
+        <div className="px-6 pt-6 pb-0">
           <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-          <p className="text-muted-foreground text-sm mt-1">Manage your workspace and preferences</p>
-        </div>
+          <p className="text-muted-foreground text-sm mt-0.5">Manage your workspace and preferences</p>
 
-        {/* Top Tab Bar */}
-        <div className="border-b border-border">
-          <nav className="flex gap-1">
+          {/* Top Tab Bar */}
+          <nav className="flex gap-1 mt-4 border-b border-border">
             {settingsSections.map((section) => {
               const Icon = section.icon;
               const isActive = activeSection === section.id;
@@ -195,9 +189,17 @@ export default function Settings() {
         </div>
 
         {/* Content */}
-        <motion.div key={activeSection} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }}>
-          {renderContent()}
-        </motion.div>
+        <div className="flex-1 overflow-y-auto">
+          <motion.div key={activeSection} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }} className="h-full">
+            {activeSection === "users" ? (
+              <UserManagementContent />
+            ) : (
+              <div className="px-6 py-6">
+                {renderContent()}
+              </div>
+            )}
+          </motion.div>
+        </div>
       </div>
     </Layout>
   );
