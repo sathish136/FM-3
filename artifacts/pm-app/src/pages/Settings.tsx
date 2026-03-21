@@ -1,132 +1,17 @@
 import { Layout } from "@/components/Layout";
 import { useState } from "react";
-import { Users, Shield, Bell, Palette, Globe, Key, Plus, Trash2, Mail, ChevronRight, Check, UserPlus, Edit2 } from "lucide-react";
+import { Shield, Bell, Palette, Globe, Key, Plus, Trash2, Sun, Moon, Check } from "lucide-react";
 import { motion } from "framer-motion";
+import { useTheme, THEME_PRESETS } from "@/hooks/useTheme";
+import { UserManagementContent } from "@/pages/UserManagement";
 
 const settingsSections = [
-  { id: "users", label: "User Management", icon: Users },
-  { id: "roles", label: "Roles & Permissions", icon: Shield },
+  { id: "users", label: "User Management", icon: Shield },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "integrations", label: "Integrations", icon: Globe },
   { id: "api", label: "API Keys", icon: Key },
 ];
-
-const mockUsers = [
-  { id: 1, name: "Alice Chen", email: "alice@company.com", role: "Admin", department: "Product", status: "active", lastActive: "2 hours ago" },
-  { id: 2, name: "Bob Smith", email: "bob@company.com", role: "Editor", department: "Engineering", status: "active", lastActive: "1 day ago" },
-  { id: 3, name: "Carol Davis", email: "carol@company.com", role: "Editor", department: "Marketing", status: "active", lastActive: "3 hours ago" },
-  { id: 4, name: "Dave Wilson", email: "dave@company.com", role: "Viewer", department: "Engineering", status: "inactive", lastActive: "1 week ago" },
-  { id: 5, name: "Eve Martinez", email: "eve@company.com", role: "Editor", department: "Design", status: "active", lastActive: "30 min ago" },
-  { id: 6, name: "Frank Lee", email: "frank@company.com", role: "Admin", department: "Marketing", status: "active", lastActive: "5 hours ago" },
-  { id: 7, name: "Grace Kim", email: "grace@company.com", role: "Viewer", department: "Sales", status: "pending", lastActive: "Never" },
-];
-
-const roles = [
-  { name: "Admin", desc: "Full access to all features and settings", count: 2, color: "bg-red-100 text-red-700" },
-  { name: "Editor", desc: "Can create and edit content, manage projects", count: 3, color: "bg-blue-100 text-blue-700" },
-  { name: "Viewer", desc: "Read-only access to projects and reports", count: 2, color: "bg-green-100 text-green-700" },
-];
-
-const statusColors: Record<string, string> = {
-  active: "bg-emerald-100 text-emerald-700",
-  inactive: "bg-gray-100 text-gray-600",
-  pending: "bg-amber-100 text-amber-700",
-};
-
-function UserManagement() {
-  const [search, setSearch] = useState("");
-  const filtered = mockUsers.filter(u => u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase()));
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-foreground">User Management</h2>
-          <p className="text-sm text-muted-foreground">{mockUsers.length} members in your workspace</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
-            <Mail className="w-4 h-4" /> Invite by Email
-          </button>
-          <button className="btn-primary">
-            <UserPlus className="w-4 h-4" /> Add User
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-border">
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search users..." className="w-full max-w-sm px-4 py-2 text-sm bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all" />
-        </div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/20">
-              <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">User</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Role</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Department</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Status</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Last Active</th>
-              <th className="px-4 py-3"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {filtered.map((user) => (
-              <tr key={user.id} className="hover:bg-muted/30 transition-colors">
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary/70 to-violet-500/70 flex items-center justify-center text-white text-xs font-bold shrink-0">
-                      {user.name.split(" ").map(n => n[0]).join("")}
-                    </div>
-                    <div>
-                      <p className="font-medium text-foreground">{user.name}</p>
-                      <p className="text-xs text-muted-foreground">{user.email}</p>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${roles.find(r => r.name === user.role)?.color}`}>
-                    {user.role}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">{user.department}</td>
-                <td className="px-4 py-3">
-                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium capitalize ${statusColors[user.status]}`}>
-                    {user.status === "active" && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />}
-                    {user.status}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-muted-foreground text-xs">{user.lastActive}</td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-1 justify-end">
-                    <button className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
-                    <button className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div>
-        <h3 className="text-base font-semibold text-foreground mb-4">Roles & Permissions</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {roles.map((role) => (
-            <div key={role.name} className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-3">
-                <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${role.color}`}>{role.name}</span>
-                <span className="text-sm font-bold text-foreground">{role.count}</span>
-              </div>
-              <p className="text-sm text-muted-foreground">{role.desc}</p>
-              <button className="mt-4 w-full text-xs text-primary hover:underline text-left">Edit permissions →</button>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function NotificationsSettings() {
   const [settings, setSettings] = useState({
@@ -195,13 +80,71 @@ function APIKeys() {
   );
 }
 
+function AppearanceSettings() {
+  const { theme, themeIndex, setTheme, darkMode, toggleDarkMode } = useTheme();
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-lg font-semibold text-foreground">Appearance</h2>
+
+      <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+        <div className="p-5 border-b border-border">
+          <p className="text-sm font-semibold text-foreground mb-1">Color Mode</p>
+          <p className="text-xs text-muted-foreground mb-4">Choose between light and dark interface</p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => { if (darkMode) toggleDarkMode(); }}
+              className={`flex-1 flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${!darkMode ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/40"}`}
+            >
+              <Sun className={`w-5 h-5 ${!darkMode ? "text-primary" : "text-muted-foreground"}`} />
+              <span className={`text-sm font-medium ${!darkMode ? "text-primary" : "text-muted-foreground"}`}>Light</span>
+              {!darkMode && <Check className="w-3.5 h-3.5 text-primary" />}
+            </button>
+            <button
+              onClick={() => { if (!darkMode) toggleDarkMode(); }}
+              className={`flex-1 flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${darkMode ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/40"}`}
+            >
+              <Moon className={`w-5 h-5 ${darkMode ? "text-primary" : "text-muted-foreground"}`} />
+              <span className={`text-sm font-medium ${darkMode ? "text-primary" : "text-muted-foreground"}`}>Dark</span>
+              {darkMode && <Check className="w-3.5 h-3.5 text-primary" />}
+            </button>
+          </div>
+        </div>
+
+        <div className="p-5">
+          <p className="text-sm font-semibold text-foreground mb-1">Accent Color</p>
+          <p className="text-xs text-muted-foreground mb-4">Pick a color theme for the interface</p>
+          <div className="grid grid-cols-4 gap-3">
+            {THEME_PRESETS.map((preset, i) => (
+              <button
+                key={preset.name}
+                onClick={() => setTheme(i)}
+                className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${i === themeIndex ? "border-primary" : "border-border hover:border-muted-foreground/40"}`}
+              >
+                <span className="w-8 h-8 rounded-full shadow-sm" style={{ backgroundColor: preset.accent }} />
+                <span className="text-xs font-medium text-muted-foreground">{preset.name}</span>
+                {i === themeIndex && <Check className="w-3 h-3 text-primary" />}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Settings() {
   const [activeSection, setActiveSection] = useState("users");
 
   const renderContent = () => {
     switch (activeSection) {
-      case "users": return <UserManagement />;
+      case "users": return (
+        <div className="h-[620px] rounded-2xl overflow-hidden border border-border shadow-sm">
+          <UserManagementContent />
+        </div>
+      );
       case "notifications": return <NotificationsSettings />;
+      case "appearance": return <AppearanceSettings />;
       case "api": return <APIKeys />;
       default:
         return (
@@ -227,31 +170,34 @@ export default function Settings() {
           <p className="text-muted-foreground text-sm mt-1">Manage your workspace and preferences</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          {/* Sidebar Nav */}
-          <div className="md:col-span-1">
-            <nav className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-              {settingsSections.map((section) => {
-                const Icon = section.icon;
-                const isActive = activeSection === section.id;
-                return (
-                  <button key={section.id} onClick={() => setActiveSection(section.id)} className={`w-full flex items-center gap-3 px-4 py-3.5 text-sm font-medium transition-colors border-b border-border last:border-0 ${isActive ? "bg-primary/8 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}>
-                    <Icon className="w-4 h-4" />
-                    {section.label}
-                    {isActive && <ChevronRight className="w-3.5 h-3.5 ml-auto" />}
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
-
-          {/* Content */}
-          <div className="md:col-span-3">
-            <motion.div key={activeSection} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2 }}>
-              {renderContent()}
-            </motion.div>
-          </div>
+        {/* Top Tab Bar */}
+        <div className="border-b border-border">
+          <nav className="flex gap-1">
+            {settingsSections.map((section) => {
+              const Icon = section.icon;
+              const isActive = activeSection === section.id;
+              return (
+                <button
+                  key={section.id}
+                  onClick={() => setActiveSection(section.id)}
+                  className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-all -mb-px ${
+                    isActive
+                      ? "border-primary text-primary"
+                      : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  {section.label}
+                </button>
+              );
+            })}
+          </nav>
         </div>
+
+        {/* Content */}
+        <motion.div key={activeSection} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }}>
+          {renderContent()}
+        </motion.div>
       </div>
     </Layout>
   );

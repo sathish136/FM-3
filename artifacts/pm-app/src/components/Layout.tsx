@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Box, PenTool, GitBranch,
   Briefcase, ChevronDown, FileText,
   ChevronRight, LogOut, ChevronLeft, ChevronRight as ChevronRightIcon, Menu,
-  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, Users, UserCircle, LayoutGrid, Mail, MessageSquare, Palette, Sun, Moon, AlertTriangle, Layers, FolderOpen, Sparkles,
+  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, UserCircle, LayoutGrid, Mail, MessageSquare, Palette, Sun, Moon, Layers, FolderOpen, Sparkles,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
@@ -95,7 +95,6 @@ const navGroups: { label?: string; items: NavItem[] }[] = [
   {
     label: "Admin",
     items: [
-      { path: "/user-management", label: "User Management", icon: Users, color: "text-rose-400" },
       { path: "/settings", label: "Settings", icon: Settings, color: "text-slate-400" },
     ],
   },
@@ -334,7 +333,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
             <span className="text-[11px]">Theme</span>
             <Palette className="w-3 h-3 ml-auto" />
           </button>
-          <Link href="/profile" className="p-1.5 rounded-xl hover:bg-white/[0.07] transition-all cursor-pointer group">
+          <Link href="/settings" className="p-1.5 rounded-xl hover:bg-white/[0.07] transition-all cursor-pointer group">
             <Settings className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400 transition-colors" />
           </Link>
         </div>

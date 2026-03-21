@@ -95,7 +95,7 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
-export default function UserManagement() {
+export function UserManagementContent() {
   const { toast } = useToast();
   const [users, setUsers]         = useState<ErpUser[]>([]);
   const [perms, setPerms]         = useState<Record<string, Permission>>({});
@@ -203,8 +203,7 @@ export default function UserManagement() {
   }
 
   return (
-    <Layout>
-      <div className="h-full flex flex-col bg-[#f1f5f9] overflow-hidden">
+      <div className="h-full flex flex-col overflow-hidden">
 
         {/* Header */}
         <div className="bg-white border-b border-gray-100 px-6 py-3 flex items-center gap-4 shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
@@ -442,6 +441,13 @@ export default function UserManagement() {
           )}
         </div>
       </div>
+  );
+}
+
+export default function UserManagement() {
+  return (
+    <Layout>
+      <UserManagementContent />
     </Layout>
   );
 }
