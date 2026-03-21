@@ -35,6 +35,7 @@ import EmailSettings from "@/pages/EmailSettings";
 import Chat from "@/pages/Chat";
 import HRIncidents from "@/pages/HRIncidents";
 import Nesting from "@/pages/Nesting";
+import ProjectDrawings from "@/pages/ProjectDrawings";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -90,6 +91,7 @@ function ProtectedRoutes() {
       <Route path="/chat" component={Chat} />
       <Route path="/hrms/incidents" component={HRIncidents} />
       <Route path="/nesting" component={Nesting} />
+      <Route path="/project-drawings" component={ProjectDrawings} />
       <Route component={NotFound} />
     </Switch>
   );
