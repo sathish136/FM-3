@@ -12,6 +12,7 @@ import emailRouter from "./email";
 import emailSettingsRouter from "./emailSettings";
 import chatRouter from "./chat";
 import incidentsRouter from "./incidents";
+import drawingsRouter from "./drawings";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(emailRouter);
 router.use(emailSettingsRouter);
 router.use(chatRouter);
 router.use(incidentsRouter);
+router.use(drawingsRouter);
 
 export default router;
