@@ -108,6 +108,14 @@ const DEPARTMENTS = [
 ];
 
 const SYSTEMS = [
+  "RO",
+  "MBR",
+  "BIOLOGICAL",
+  "CLARIFIER",
+  "COOLING TOWER",
+  "SCREENER",
+  "ICS",
+  "RO-90",
   "MBR System",
   "ETP System",
   "STP System",
@@ -683,6 +691,7 @@ interface FileEntry {
 interface ErpProject {
   id: number;
   name: string;
+  erpnextName?: string;
 }
 
 interface UploadModalProps {
@@ -729,7 +738,8 @@ function UploadModal({ userDept, userName, onClose, onSubmit }: UploadModalProps
   }, []);
 
   const filteredProjects = erpProjects.filter(p =>
-    p.name.toLowerCase().includes(projectSearch.toLowerCase())
+    p.name.toLowerCase().includes(projectSearch.toLowerCase()) ||
+    (p.erpnextName || "").toLowerCase().includes(projectSearch.toLowerCase())
   );
 
   const addFiles = useCallback((incoming: File[]) => {
@@ -819,9 +829,18 @@ function UploadModal({ userDept, userName, onClose, onSubmit }: UploadModalProps
                 onClick={() => setShowProjectDrop(v => !v)}
                 className={`w-full border rounded-lg px-3 py-2 text-sm cursor-pointer flex items-center justify-between gap-2 ${project ? "border-blue-400 bg-blue-50" : "border-gray-300 bg-white"} focus:outline-none`}
               >
-                <span className={project ? "text-gray-900" : "text-gray-400"}>
-                  {project || "Select project…"}
+                {project ? (
+                <span className="text-gray-900 flex items-center gap-2">
+                  {erpProjects.find(p => p.name === project)?.erpnextName && (
+                    <span className="text-[10px] font-mono font-semibold text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded flex-shrink-0">
+                      {erpProjects.find(p => p.name === project)?.erpnextName}
+                    </span>
+                  )}
+                  <span className="truncate">{project}</span>
                 </span>
+              ) : (
+                <span className="text-gray-400">Select project…</span>
+              )}
                 <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
               </div>
               {showProjectDrop && (
@@ -846,10 +865,19 @@ function UploadModal({ userDept, userName, onClose, onSubmit }: UploadModalProps
                         <button
                           key={p.id}
                           onClick={() => { setProject(p.name); setShowProjectDrop(false); setProjectSearch(""); }}
-                          className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 hover:text-blue-700 transition-colors flex items-center gap-2 ${project === p.name ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700"}`}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 transition-colors flex items-center gap-2 ${project === p.name ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700"}`}
                         >
-                          <Briefcase className="w-3.5 h-3.5 flex-shrink-0 opacity-50" />
-                          {p.name}
+                          <Briefcase className="w-3.5 h-3.5 flex-shrink-0 opacity-50 shrink-0" />
+                          <div className="flex flex-col min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              {p.erpnextName && (
+                                <span className="text-[10px] font-mono font-bold text-blue-600 bg-blue-50 border border-blue-200 px-1 py-0.5 rounded flex-shrink-0">
+                                  {p.erpnextName}
+                                </span>
+                              )}
+                              <span className="truncate text-xs">{p.name}</span>
+                            </div>
+                          </div>
                         </button>
                       ))
                     )}
