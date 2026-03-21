@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Box, PenTool, GitBranch,
   Briefcase, ChevronDown, FileText,
   ChevronRight, LogOut, ChevronLeft, ChevronRight as ChevronRightIcon, Menu,
-  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, Users, UserCircle, LayoutGrid, Mail, MessageSquare, Palette, Sun, Moon, AlertTriangle, Layers, FolderOpen,
+  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, Users, UserCircle, LayoutGrid, Mail, MessageSquare, Palette, Sun, Moon, AlertTriangle, Layers, FolderOpen, Sparkles,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
@@ -51,6 +51,16 @@ const navGroups: { label?: string; items: NavItem[] }[] = [
     ],
   },
   {
+    label: "Project Management",
+    items: [
+      { path: "/projects", label: "Projects", icon: Briefcase, color: "text-blue-400" },
+      { path: "/project-board", label: "Project Board", icon: LayoutGrid, color: "text-indigo-400" },
+      { path: "/meeting-minutes", label: "Meeting Minutes", icon: FileText, color: "text-teal-400" },
+      { path: "/material-request", label: "Material Request", icon: ShoppingCart, color: "text-amber-400" },
+      { path: "/presentation", label: "Presentation", icon: MonitorPlay, color: "text-orange-400" },
+    ],
+  },
+  {
     label: "Design & Engineering",
     items: [
       {
@@ -69,22 +79,11 @@ const navGroups: { label?: string; items: NavItem[] }[] = [
     ],
   },
   {
-    label: "Workspace",
+    label: "Communication",
     items: [
-      { path: "/presentation", label: "Presentation", icon: MonitorPlay, color: "text-orange-400" },
-      { path: "/projects", label: "Projects", icon: Briefcase, color: "text-blue-400" },
-      { path: "/project-board", label: "Project Board", icon: LayoutGrid, color: "text-blue-400" },
-      { path: "/meeting-minutes", label: "Meeting Minutes", icon: FileText, color: "text-teal-400" },
       { path: "/email", label: "Email", icon: Mail, color: "text-sky-400" },
-      { path: "/email-settings", label: "Email Settings", icon: Settings, color: "text-sky-400" },
       { path: "/chat", label: "FlowTalk", icon: MessageSquare, color: "text-violet-400" },
       { path: "/sheets", label: "Sheets", icon: Table2, color: "text-lime-400" },
-    ],
-  },
-  {
-    label: "Procurement",
-    items: [
-      { path: "/material-request", label: "Material Request", icon: ShoppingCart, color: "text-indigo-400" },
     ],
   },
   {
@@ -98,6 +97,7 @@ const navGroups: { label?: string; items: NavItem[] }[] = [
     label: "Admin",
     items: [
       { path: "/user-management", label: "User Management", icon: Users, color: "text-rose-400" },
+      { path: "/settings", label: "Settings", icon: Settings, color: "text-slate-400" },
     ],
   },
 ];
@@ -110,6 +110,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   const [collapsed, setCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showThemePicker, setShowThemePicker] = useState(false);
+  const [aiTrigger, setAiTrigger] = useState(0);
   const { user, logout } = useAuth();
   const { theme, themeIndex, setTheme, darkMode, toggleDarkMode } = useTheme();
   const themePickerRef = useRef<HTMLDivElement>(null);
@@ -339,6 +340,16 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
           </Link>
         </div>
 
+        {/* Ask AI */}
+        <button
+          onClick={() => setAiTrigger(t => t + 1)}
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all mb-1"
+          style={{ background: "linear-gradient(135deg, rgba(99,102,241,0.2), rgba(168,85,247,0.15))", border: "1px solid rgba(99,102,241,0.3)", color: "#a5b4fc" }}
+        >
+          <Sparkles className="w-3.5 h-3.5 shrink-0 text-indigo-400" />
+          Ask AI
+        </button>
+
         {/* Sign out */}
         <button
           onClick={logout}
@@ -426,6 +437,14 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
 
       {/* Footer: avatar + expand */}
       <div className="relative flex flex-col items-center gap-2 pt-2 pb-3 border-t border-white/[0.07] w-full px-2 shrink-0">
+        <button
+          onClick={() => setAiTrigger(t => t + 1)}
+          className="w-full h-9 rounded-xl flex items-center justify-center transition-all"
+          style={{ background: "linear-gradient(135deg, rgba(99,102,241,0.25), rgba(168,85,247,0.2))", border: "1px solid rgba(99,102,241,0.35)" }}
+          title="Ask AI"
+        >
+          <Sparkles className="w-4 h-4 text-indigo-400" />
+        </button>
         <Link href="/profile" className="block hover:ring-2 hover:ring-indigo-500/40 rounded-full transition-all cursor-pointer">
           <UserAvatar user={user} size="md" />
         </Link>
@@ -493,7 +512,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
             </div>
           </div>
           <div className="flex-1 flex justify-center px-4">
-            <AISearch currentPath={location} />
+            <AISearch currentPath={location} forceOpen={aiTrigger} />
           </div>
           <div className="flex items-center gap-2.5">
             <div className="flex items-center gap-2">

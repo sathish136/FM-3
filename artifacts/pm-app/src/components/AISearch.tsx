@@ -44,7 +44,7 @@ const MODULE_HINTS: Record<string, string> = {
   "/viewer-options/mechanical":"Mechanical Viewer – 3D STEP file viewer for mechanical systems with mesh panel and view controls",
 };
 
-export function AISearch({ currentPath }: { currentPath?: string }) {
+export function AISearch({ currentPath, forceOpen }: { currentPath?: string; forceOpen?: number }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -57,6 +57,10 @@ export function AISearch({ currentPath }: { currentPath?: string }) {
 
   const moduleHint = currentPath ? (MODULE_HINTS[currentPath] ?? "") : "";
   const moduleLabel = moduleHint.split("–")[0]?.trim() ?? "";
+
+  useEffect(() => {
+    if (forceOpen) setOpen(true);
+  }, [forceOpen]);
 
   useEffect(() => {
     if (open) {
