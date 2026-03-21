@@ -28,11 +28,18 @@ function generateOtp(): string {
 
 function maskEmail(email: string): string {
   const [local, domain] = email.split("@");
-  const masked = local.length <= 2 ? local[0] + "*" : local[0] + "*".repeat(local.length - 2) + local[local.length - 1];
+  const masked =
+    local.length <= 2
+      ? local[0] + "*"
+      : local[0] + "*".repeat(local.length - 2) + local[local.length - 1];
   return `${masked}@${domain}`;
 }
 
-async function sendOtpEmail(to: string, otp: string, name: string): Promise<void> {
+async function sendOtpEmail(
+  to: string,
+  otp: string,
+  name: string,
+): Promise<void> {
   const gmailUser = process.env.GMAIL_USER || "noreply@wttint.com";
   const gmailPass = process.env.GMAIL_APP_PASSWORD || "ejjjsfufipqmvpuh";
 
@@ -89,10 +96,10 @@ async function resolveUserDoc(loginId: string): Promise<Record<string, any>> {
   if (loginId.includes("@")) {
     const r = await fetch(
       `${ERP_URL}/api/resource/User/${encodeURIComponent(loginId)}?fields=${encodeURIComponent(fields)}`,
-      { headers: erpHeaders() }
+      { headers: erpHeaders() },
     );
     if (r.ok) {
-      const d = (await safeJson(r) as any)?.data;
+      const d = ((await safeJson(r)) as any)?.data;
       if (d?.email) return d;
     }
   }
@@ -100,20 +107,20 @@ async function resolveUserDoc(loginId: string): Promise<Record<string, any>> {
   // Fall back: search by username field
   const searchRes = await fetch(
     `${ERP_URL}/api/resource/User?filters=${encodeURIComponent(`[["username","=","${loginId}"]]`)}&fields=${encodeURIComponent(fields)}&limit=1`,
-    { headers: erpHeaders() }
+    { headers: erpHeaders() },
   );
   if (searchRes.ok) {
-    const list = (await safeJson(searchRes) as any)?.data || [];
+    const list = ((await safeJson(searchRes)) as any)?.data || [];
     if (list.length > 0) return list[0];
   }
 
   // Last fallback: try direct lookup with login ID as-is
   const r2 = await fetch(
     `${ERP_URL}/api/resource/User/${encodeURIComponent(loginId)}?fields=${encodeURIComponent(fields)}`,
-    { headers: erpHeaders() }
+    { headers: erpHeaders() },
   );
   if (r2.ok) {
-    const d = (await safeJson(r2) as any)?.data;
+    const d = ((await safeJson(r2)) as any)?.data;
     if (d) return d;
   }
 
@@ -121,17 +128,20 @@ async function resolveUserDoc(loginId: string): Promise<Record<string, any>> {
 }
 
 // Fetch the linked Employee document — tries multiple strategies
-async function resolveEmployeeDoc(actualEmail: string, username?: string): Promise<Record<string, any>> {
+async function resolveEmployeeDoc(
+  actualEmail: string,
+  username?: string,
+): Promise<Record<string, any>> {
   const fields = `["employee_name","employee_number","designation","department","company","branch","date_of_joining","employment_type","gender","date_of_birth","cell_number","personal_email","status","image","reports_to","grade","user_id","name"]`;
   const hdr = erpHeaders();
 
   // Strategy 1: filter by user_id = actual email
   const r1 = await fetch(
     `${ERP_URL}/api/resource/Employee?filters=${encodeURIComponent(`[["user_id","=","${actualEmail}"]]`)}&fields=${encodeURIComponent(fields)}&limit=1`,
-    { headers: hdr }
+    { headers: hdr },
   );
   if (r1.ok) {
-    const list = (await safeJson(r1) as any)?.data || [];
+    const list = ((await safeJson(r1)) as any)?.data || [];
     if (list.length > 0) return list[0];
   }
 
@@ -139,19 +149,19 @@ async function resolveEmployeeDoc(actualEmail: string, username?: string): Promi
   if (username) {
     const r2 = await fetch(
       `${ERP_URL}/api/resource/Employee/${encodeURIComponent(username.toUpperCase())}?fields=${encodeURIComponent(fields)}`,
-      { headers: hdr }
+      { headers: hdr },
     );
     if (r2.ok) {
-      const d = (await safeJson(r2) as any)?.data;
+      const d = ((await safeJson(r2)) as any)?.data;
       if (d) return d;
     }
     // Also try lowercase
     const r2b = await fetch(
       `${ERP_URL}/api/resource/Employee/${encodeURIComponent(username)}?fields=${encodeURIComponent(fields)}`,
-      { headers: hdr }
+      { headers: hdr },
     );
     if (r2b.ok) {
-      const d = (await safeJson(r2b) as any)?.data;
+      const d = ((await safeJson(r2b)) as any)?.data;
       if (d) return d;
     }
   }
@@ -160,10 +170,10 @@ async function resolveEmployeeDoc(actualEmail: string, username?: string): Promi
   const emailPrefix = actualEmail.split("@")[0];
   const r3 = await fetch(
     `${ERP_URL}/api/resource/Employee?filters=${encodeURIComponent(`[["user_id","like","%${emailPrefix}%"]]`)}&fields=${encodeURIComponent(fields)}&limit=1`,
-    { headers: hdr }
+    { headers: hdr },
   );
   if (r3.ok) {
-    const list = (await safeJson(r3) as any)?.data || [];
+    const list = ((await safeJson(r3)) as any)?.data || [];
     if (list.length > 0) return list[0];
   }
 
@@ -173,12 +183,17 @@ async function resolveEmployeeDoc(actualEmail: string, username?: string): Promi
 authRouter.post("/auth/login", async (req, res) => {
   const { usr, pwd } = req.body;
   if (!usr || !pwd) {
-    return res.status(400).json({ error: "Username and password are required" });
+    return res
+      .status(400)
+      .json({ error: "Username and password are required" });
   }
   try {
     const response = await fetch(`${ERP_URL}/api/method/login`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
       body: JSON.stringify({ usr, pwd }),
     });
 
@@ -197,12 +212,17 @@ authRouter.post("/auth/login", async (req, res) => {
       return res.status(401).json({ error: msg });
     }
 
+    // Extract session cookie from the ERPNext login response
+    const setCookieHeader = response.headers.get("set-cookie") || "";
+    const sidMatch = setCookieHeader.match(/sid=([^;]+)/);
+    const sessionCookie = sidMatch ? `sid=${sidMatch[1]}` : null;
+
     const loginId = typeof usr === "string" ? usr : String(usr);
     let fullName: string = (data as any)?.full_name || loginId;
-    // Prefer email from login response if available
-    let email: string = (data as any)?.email || (loginId.includes("@") ? loginId : "");
+    let email: string = loginId.includes("@") ? loginId : "";
     let photo: string | null = null;
 
+    // Strategy 1: API key/secret lookup by username or email
     try {
       const userDoc = await resolveUserDoc(loginId);
       if (userDoc.full_name) fullName = userDoc.full_name;
@@ -212,13 +232,66 @@ authRouter.post("/auth/login", async (req, res) => {
         photo = img.startsWith("http") ? img : `${ERP_URL}${img}`;
       }
     } catch (profileErr) {
-      console.warn("Could not fetch user profile:", profileErr);
+      console.warn("Could not fetch user profile via API key:", profileErr);
     }
 
-    // Ensure we have a valid email address before sending OTP
+    // Strategy 2: use session cookie + frappe.auth.get_logged_user to get the real email
+    if ((!email || !email.includes("@")) && sessionCookie) {
+      try {
+        const meRes = await fetch(
+          `${ERP_URL}/api/method/frappe.auth.get_logged_user`,
+          { headers: { Accept: "application/json", Cookie: sessionCookie } }
+        );
+        if (meRes.ok) {
+          const meEmail = ((await meRes.json()) as any)?.message;
+          if (meEmail && meEmail.includes("@")) {
+            email = meEmail;
+            const profileRes = await fetch(
+              `${ERP_URL}/api/resource/User/${encodeURIComponent(meEmail)}`,
+              { headers: erpHeaders() }
+            );
+            if (profileRes.ok) {
+              const pd = ((await profileRes.json()) as any)?.data;
+              if (pd?.full_name) fullName = pd.full_name;
+              if (pd?.user_image) {
+                const img = String(pd.user_image);
+                photo = img.startsWith("http") ? img : `${ERP_URL}${img}`;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Session-based email lookup failed:", e);
+      }
+    }
+
+    // Strategy 3: use session cookie + frappe.client.get_value filtered by username
+    if ((!email || !email.includes("@")) && sessionCookie) {
+      try {
+        const gvRes = await fetch(
+          `${ERP_URL}/api/method/frappe.client.get_value?doctype=User&filters=${encodeURIComponent(`[["username","=","${loginId}"]]`)}&fieldname=${encodeURIComponent(`["name","email","full_name","user_image"]`)}`,
+          { headers: { Accept: "application/json", Cookie: sessionCookie } }
+        );
+        if (gvRes.ok) {
+          const gvData = ((await gvRes.json()) as any)?.message;
+          if (gvData?.email) email = gvData.email;
+          if (gvData?.name && gvData.name.includes("@") && !email.includes("@")) email = gvData.name;
+          if (gvData?.full_name) fullName = gvData.full_name;
+          if (gvData?.user_image) {
+            const img = String(gvData.user_image);
+            photo = img.startsWith("http") ? img : `${ERP_URL}${img}`;
+          }
+        }
+      } catch (e) {
+        console.warn("frappe.client.get_value lookup failed:", e);
+      }
+    }
+
     if (!email || !email.includes("@")) {
-      console.error("Could not determine valid email for user:", loginId);
-      return res.status(400).json({ error: "Could not determine your email address. Please log in using your email instead of username." });
+      console.error("Could not resolve a valid email for login ID:", loginId);
+      return res.status(400).json({
+        error: "Could not determine your email address. Please log in using your full email address.",
+      });
     }
 
     // Generate OTP and send to the user's email
@@ -233,13 +306,21 @@ authRouter.post("/auth/login", async (req, res) => {
       await sendOtpEmail(email, otp, fullName);
     } catch (mailErr) {
       console.error("Failed to send OTP email:", mailErr);
-      return res.status(500).json({ error: "Could not send verification code. Please check email configuration." });
+      return res.status(500).json({
+        error: "Could not send verification code. Please check email configuration.",
+      });
     }
 
-    return res.json({ status: "otp_sent", email, maskedEmail: maskEmail(email) });
+    return res.json({
+      status: "otp_sent",
+      email,
+      maskedEmail: maskEmail(email),
+    });
   } catch (err: any) {
     console.error("Login error:", err);
-    return res.status(500).json({ error: "Failed to connect to authentication server" });
+    return res
+      .status(500)
+      .json({ error: "Failed to connect to authentication server" });
   }
 });
 
@@ -251,14 +332,20 @@ authRouter.post("/auth/verify-otp", (req, res) => {
 
   const entry = otpStore.get(email);
   if (!entry) {
-    return res.status(401).json({ error: "No pending verification found. Please log in again." });
+    return res
+      .status(401)
+      .json({ error: "No pending verification found. Please log in again." });
   }
   if (Date.now() > entry.expires) {
     otpStore.delete(email);
-    return res.status(401).json({ error: "Verification code has expired. Please log in again." });
+    return res
+      .status(401)
+      .json({ error: "Verification code has expired. Please log in again." });
   }
   if (entry.otp !== String(otp).trim()) {
-    return res.status(401).json({ error: "Incorrect verification code. Please try again." });
+    return res
+      .status(401)
+      .json({ error: "Incorrect verification code. Please try again." });
   }
 
   otpStore.delete(email);
@@ -281,7 +368,11 @@ authRouter.get("/auth/me", async (req, res) => {
       const img = String(d.user_image);
       photo = img.startsWith("http") ? img : `${ERP_URL}${img}`;
     }
-    return res.json({ email: d.email, full_name: d.full_name || loginId, photo });
+    return res.json({
+      email: d.email,
+      full_name: d.full_name || loginId,
+      photo,
+    });
   } catch (err) {
     console.error("Me error:", err);
     return res.status(500).json({ error: "Failed to fetch profile" });
@@ -299,13 +390,18 @@ authRouter.get("/auth/profile", async (req, res) => {
     const actualEmail = userData.email || loginId;
 
     // Step 2: fetch Employee — pass username as fallback key (e.g. WTT1194 often = employee name)
-    const emp = await resolveEmployeeDoc(actualEmail, userData.username || undefined);
+    const emp = await resolveEmployeeDoc(
+      actualEmail,
+      userData.username || undefined,
+    );
 
     // Resolve photo URL via proxy
     const rawPhoto = userData.user_image || emp.image || null;
     let photo: string | null = null;
     if (rawPhoto) {
-      const abs = String(rawPhoto).startsWith("http") ? rawPhoto : `${ERP_URL}${rawPhoto}`;
+      const abs = String(rawPhoto).startsWith("http")
+        ? rawPhoto
+        : `${ERP_URL}${rawPhoto}`;
       photo = abs;
     }
 
@@ -391,7 +487,10 @@ authRouter.get("/file-proxy", async (req, res) => {
       jpg: "image/jpeg",
       jpeg: "image/jpeg",
     };
-    const contentType = mimeMap[ext] || fileRes.headers.get("content-type") || "application/octet-stream";
+    const contentType =
+      mimeMap[ext] ||
+      fileRes.headers.get("content-type") ||
+      "application/octet-stream";
 
     res.setHeader("Content-Type", contentType);
     res.setHeader("Cache-Control", "public, max-age=3600");
@@ -416,7 +515,8 @@ authRouter.get("/pptx-slides-count", async (req, res) => {
     const fileRes = await fetch(target, {
       headers: { Authorization: `token ${API_KEY}:${API_SECRET}` },
     });
-    if (!fileRes.ok) return res.status(fileRes.status).json({ error: "File not found" });
+    if (!fileRes.ok)
+      return res.status(fileRes.status).json({ error: "File not found" });
 
     const buf = Buffer.from(await fileRes.arrayBuffer());
     // PPTX (ZIP) stores filenames as ASCII in the central directory.
@@ -452,14 +552,18 @@ authRouter.get("/dwg-convert", async (req, res) => {
 
     await writeFile(dwgPath, buf);
 
-    await execFileAsync("/home/runner/.nix-profile/bin/dwg2dxf", ["-o", dxfPath, dwgPath], {
-      timeout: 30000,
-    });
+    await execFileAsync(
+      "/home/runner/.nix-profile/bin/dwg2dxf",
+      ["-o", dxfPath, dwgPath],
+      {
+        timeout: 30000,
+      },
+    );
 
     const dxfBuf = await readFile(dxfPath);
     res.setHeader("Content-Type", "application/dxf");
     res.setHeader("Cache-Control", "private, max-age=3600");
-    res.setHeader("Content-Disposition", "inline; filename=\"drawing.dxf\"");
+    res.setHeader("Content-Disposition", 'inline; filename="drawing.dxf"');
     res.send(dxfBuf);
   } catch (err: any) {
     console.error("DWG convert error:", err);
