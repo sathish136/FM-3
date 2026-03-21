@@ -628,7 +628,7 @@ function MeetingReport({ meeting, onClose }: { meeting: Meeting; onClose: () => 
         <div id="mom-report" className="bg-white rounded-2xl shadow-2xl overflow-hidden print:rounded-none print:shadow-none">
           {/* Company / Title Banner */}
           <div className="bg-gradient-to-r from-blue-700 to-indigo-600 px-10 py-8 text-white print:bg-blue-700">
-            <p className="text-xs font-bold tracking-widest text-blue-200 uppercase mb-1">WTT International India</p>
+            <p className="text-xs font-bold tracking-widest text-blue-200 uppercase mb-1">WTT INTERNATIONAL INDIA</p>
             <h1 className="text-2xl font-extrabold tracking-tight">Minutes of Meeting</h1>
             <h2 className="text-base font-medium text-blue-100 mt-1">{meeting.title}</h2>
           </div>
@@ -733,7 +733,7 @@ function MeetingReport({ meeting, onClose }: { meeting: Meeting; onClose: () => 
 
             {/* Footer */}
             <div className="mt-10 pt-5 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
-              <span>FlowMatriX · WTT International India</span>
+              <span>FlowMatriX · WTT INTERNATIONAL INDIA</span>
               <span>Generated on {today}</span>
             </div>
           </div>

@@ -58,7 +58,7 @@ async function sendOtpEmail(to: string, otp: string, name: string): Promise<void
         </div>
         <p style="color:#64748b;font-size:13px;">This code expires in <strong>5 minutes</strong>. Do not share it with anyone.</p>
         <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;" />
-        <p style="color:#94a3b8;font-size:12px;text-align:center;">© ${new Date().getFullYear()} WTT International India</p>
+        <p style="color:#94a3b8;font-size:12px;text-align:center;">© ${new Date().getFullYear()} WTT INTERNATIONAL INDIA</p>
       </div>
     `,
   });
