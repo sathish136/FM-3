@@ -906,7 +906,6 @@ export default function SmartInbox() {
         { key: "all",         label: "All Emails",    icon: Inbox,         color: "text-gray-600",   count: n(stats?.total) },
         { key: "important",   label: "Important",     icon: AlertTriangle, color: "text-red-600",    count: n(stats?.important) },
         { key: "information", label: "Information",   icon: Info,          color: "text-blue-600",   count: n(stats?.information) },
-        { key: "promotion",   label: "Promotion",     icon: Megaphone,     color: "text-purple-600", count: n(stats?.promotion) },
         { key: "unread",      label: "Unread",        icon: Eye,           color: "text-amber-600",  count: n(stats?.unread) },
         { key: "high",        label: "Needs Reply",   icon: Zap,           color: "text-rose-600",   count: n(stats?.needs_reply) },
         { key: "drafts",      label: "Pending Drafts",icon: Bot,           color: "text-orange-600", count: n(stats?.drafts_count) },
