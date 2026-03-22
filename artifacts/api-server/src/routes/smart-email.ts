@@ -425,12 +425,19 @@ router.get("/smart-email/body/:uid", async (req, res) => {
 // POST /smart-email/ingest — add emails from the existing email_cache
 router.post("/smart-email/ingest", async (req, res) => {
   const autoReply = req.body?.auto_reply !== false;
+  const userEmail = req.body?.user_email as string | undefined;
   try {
+    const account = await getAccount(userEmail).catch(() => null);
+    const accountFilter = account && account.id
+      ? `AND e.account_id = ${account.id}`
+      : "";
+
     const cached = await pool.query(`
       SELECT e.uid::text as uid, e.subject, e.from_addr, e.to_addr, e.cc_addr,
              e.email_date, e.body_text, e.body_html, e.seen, e.has_attachment
       FROM email_cache e
       WHERE e.folder_path = 'INBOX'
+      ${accountFilter}
       ORDER BY e.email_date DESC NULLS LAST
       LIMIT 200
     `);
@@ -645,7 +652,7 @@ router.get("/smart-email/draft/:uid", async (req, res) => {
 
 // POST /smart-email/send-draft/:uid — MD approves and sends the draft
 router.post("/smart-email/send-draft/:uid", async (req, res) => {
-  const { edited_text } = req.body;
+  const { edited_text, user_email } = req.body;
   try {
     const draftRes = await pool.query("SELECT * FROM smart_email_drafts WHERE email_uid=$1 AND sent=false ORDER BY created_at DESC LIMIT 1", [req.params.uid]);
     const draft = draftRes.rows[0];
@@ -661,13 +668,13 @@ router.post("/smart-email/send-draft/:uid", async (req, res) => {
       </p>
     `;
 
-    const account = await getAccount();
+    const account = await getAccount(user_email);
     await sendEmail(account, draft.to_addr, draft.subject, htmlBody);
 
     await pool.query("UPDATE smart_email_drafts SET sent=true, sent_at=NOW() WHERE email_uid=$1 AND sent=false", [req.params.uid]);
     await pool.query("UPDATE smart_email_inbox SET auto_replied=true, auto_reply_sent_at=NOW() WHERE uid=$1", [req.params.uid]);
 
-    res.json({ ok: true, sent_to: draft.to_addr });
+    res.json({ ok: true, sent_to: draft.to_addr, sent_from: account.emailAddress });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

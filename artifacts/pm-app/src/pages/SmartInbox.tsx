@@ -8,6 +8,7 @@ import {
   Plus, Download, Bell, BellOff, BrainCircuit, CloudDownload, MailCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
 
 const API = "/api";
 
@@ -279,7 +280,7 @@ function EmailDetail({ email, onClose, onDeleted, userEmail }: {
       await api(`/smart-email/send-draft/${email.uid}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ edited_text: draftEdited }),
+        body: JSON.stringify({ edited_text: draftEdited, user_email: userEmail }),
       });
       setAutoReplied(true);
       setHasDraft(false);
@@ -658,6 +659,9 @@ function EmailDetail({ email, onClose, onDeleted, userEmail }: {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function SmartInbox() {
+  const { user } = useAuth();
+  const userEmail = user?.email;
+
   const [emails, setEmails] = useState<SmartEmail[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [projects, setProjects] = useState<ProjectCount[]>([]);
@@ -727,7 +731,7 @@ export default function SmartInbox() {
       await api("/smart-email/ingest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ auto_reply: autoReplyEnabled }),
+        body: JSON.stringify({ auto_reply: autoReplyEnabled, user_email: userEmail }),
       });
       await loadEmails(activeFilter, filterValue, search || undefined);
       await loadStats();
@@ -741,7 +745,7 @@ export default function SmartInbox() {
       await api("/smart-email/classify-batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ auto_reply: autoReplyEnabled }),
+        body: JSON.stringify({ auto_reply: autoReplyEnabled, user_email: userEmail }),
       });
       setTimeout(async () => {
         await loadEmails(activeFilter, filterValue, search || undefined);
@@ -1109,6 +1113,7 @@ export default function SmartInbox() {
               email={selected}
               onClose={() => setSelected(null)}
               onDeleted={handleEmailDeleted}
+              userEmail={userEmail}
             />
           ) : (
             <div className="flex flex-col items-center justify-center h-full bg-[#f4f6fb] gap-5">
