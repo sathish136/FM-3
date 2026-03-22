@@ -1,5 +1,5 @@
 import { Layout } from "@/components/Layout";
-import { useState, useEffect, useRef, useCallback, Fragment } from "react";
+import { useState, useEffect, useRef, useCallback, Fragment, type ElementType } from "react";
 import {
   GanttChartSquare, ShoppingCart, AlertTriangle, ChevronDown,
   RefreshCw, CalendarDays, CheckCircle2,
@@ -225,10 +225,12 @@ function OverviewView({
   data,
   projectDetail,
   selectedProject,
+  taskAllocations,
 }: {
   data: TimelineData;
   projectDetail: ProjectDetail | null;
   selectedProject: string;
+  taskAllocations: TaskAllocation[];
 }) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -403,6 +405,199 @@ function OverviewView({
           <p className="text-[10px] text-gray-500 mt-0.5">{pendingPOs} pending · {latePOs} late</p>
         </div>
       </div>
+
+      {/* ── Who Is Causing Delays? ── */}
+      {(() => {
+        // People delay map
+        const personDelays = new Map<string, { name: string; tasks: Task[]; hoursLost: number }>();
+        for (const t of tasks) {
+          const end = parseDate(t.exp_end_date);
+          if (end && end < today && t.status !== "Completed" && t.status !== "Cancelled") {
+            const who = t.assigned_to ? t.assigned_to.split("@")[0] : "Unassigned";
+            if (!personDelays.has(who)) personDelays.set(who, { name: who, tasks: [], hoursLost: 0 });
+            personDelays.get(who)!.tasks.push(t);
+          }
+        }
+        // Supplier delay map
+        const supplierDelays = new Map<string, { name: string; pos: PO[]; maxDays: number; pendingValue: number }>();
+        for (const po of pos) {
+          const del = parseDate(po.schedule_date);
+          if (del && del < today && po.per_received < 100 && po.status !== "Cancelled") {
+            const key = po.supplier;
+            if (!supplierDelays.has(key)) supplierDelays.set(key, { name: po.supplier_name || po.supplier, pos: [], maxDays: 0, pendingValue: 0 });
+            const s = supplierDelays.get(key)!;
+            s.pos.push(po);
+            s.maxDays = Math.max(s.maxDays, daysBetween(del, today));
+            s.pendingValue += po.grand_total * (1 - po.per_received / 100);
+          }
+        }
+        // Unattended MRs
+        const unattendedMRs = mrs.filter(m => m.status === "Open" || m.status === "Pending" || m.status === "Draft");
+        // Unpaid POs
+        const unpaidPOs = pos.filter(p => p.per_billed < 100 && p.status !== "Cancelled");
+        const totalUnpaid = unpaidPOs.reduce((s, p) => s + p.grand_total * (1 - p.per_billed / 100), 0);
+
+        const hasDelays = personDelays.size > 0 || supplierDelays.size > 0 || unattendedMRs.length > 0 || unpaidPOs.length > 0;
+        if (!hasDelays) return null;
+
+        // Build action plan items
+        type Action = { priority: "critical" | "high" | "medium"; icon: ElementType; title: string; detail: string; tag: string };
+        const actions: Action[] = [];
+
+        // Critical overdue tasks
+        const criticalTasks = tasks.filter(t => {
+          const end = parseDate(t.exp_end_date);
+          return end && daysBetween(end, today) > 14 && t.status !== "Completed" && t.status !== "Cancelled";
+        }).sort((a, b) => {
+          const da = parseDate(a.exp_end_date)!; const db = parseDate(b.exp_end_date)!;
+          return da.getTime() - db.getTime();
+        });
+        if (criticalTasks.length > 0) {
+          const worst = criticalTasks[0];
+          const d = daysBetween(parseDate(worst.exp_end_date)!, today);
+          actions.push({ priority: "critical", icon: AlertTriangle, title: `${criticalTasks.length} task${criticalTasks.length > 1 ? "s" : ""} critically overdue (14+ days)`, detail: `Longest: "${worst.subject}" · +${d}d · ${worst.assigned_to ? worst.assigned_to.split("@")[0] : "Unassigned"}`, tag: "Tasks" });
+        }
+
+        // Supplier delays
+        const sortedSuppliers = Array.from(supplierDelays.values()).sort((a, b) => b.maxDays - a.maxDays);
+        for (const s of sortedSuppliers.slice(0, 3)) {
+          actions.push({ priority: s.maxDays > 30 ? "critical" : "high", icon: Truck, title: `${s.name} — ${s.pos.length} PO${s.pos.length > 1 ? "s" : ""} not delivered`, detail: `Max +${s.maxDays}d late · ${fmtMoney(s.pendingValue)} pending delivery`, tag: "Supplier" });
+        }
+        if (sortedSuppliers.length > 3) {
+          actions.push({ priority: "high", icon: Truck, title: `+${sortedSuppliers.length - 3} more suppliers with late deliveries`, detail: `Total ${sortedSuppliers.length} suppliers causing delivery delays`, tag: "Supplier" });
+        }
+
+        // Moderate overdue tasks (not already captured)
+        const moderateTasks = tasks.filter(t => {
+          const end = parseDate(t.exp_end_date);
+          return end && daysBetween(end, today) > 0 && daysBetween(end, today) <= 14 && t.status !== "Completed" && t.status !== "Cancelled";
+        });
+        if (moderateTasks.length > 0) {
+          actions.push({ priority: "high", icon: AlertCircle, title: `${moderateTasks.length} task${moderateTasks.length > 1 ? "s" : ""} overdue by 1–14 days`, detail: `Assigned to: ${[...new Set(moderateTasks.filter(t => t.assigned_to).map(t => t.assigned_to!.split("@")[0]))].slice(0, 3).join(", ") || "Various"}`, tag: "Tasks" });
+        }
+
+        // Unattended MRs
+        if (unattendedMRs.length > 0) {
+          const overdueCount = unattendedMRs.filter(m => { const d = parseDate(m.schedule_date); return d && d < today; }).length;
+          actions.push({ priority: "high", icon: Package, title: `${unattendedMRs.length} material request${unattendedMRs.length > 1 ? "s" : ""} with no PO raised`, detail: overdueCount > 0 ? `${overdueCount} already past required date — procurement action needed` : `Pending procurement action`, tag: "Procurement" });
+        }
+
+        // Unpaid POs
+        if (totalUnpaid > 0) {
+          actions.push({ priority: "medium", icon: CreditCard, title: `${fmtMoney(totalUnpaid)} payment pending to ${unpaidPOs.length} supplier${unpaidPOs.length > 1 ? "s" : ""}`, detail: `${unpaidPOs.length} PO${unpaidPOs.length > 1 ? "s" : ""} have incomplete billing — follow up with accounts`, tag: "Finance" });
+        }
+
+        const priorityColor: Record<string, string> = {
+          critical: "bg-red-500",
+          high: "bg-orange-500",
+          medium: "bg-amber-400",
+        };
+        const priorityBg: Record<string, string> = {
+          critical: "bg-red-50 border-red-200",
+          high: "bg-orange-50 border-orange-200",
+          medium: "bg-amber-50 border-amber-100",
+        };
+
+        return (
+          <div className="space-y-4">
+            {/* Who Is Causing Delays — 2 column grid */}
+            {(personDelays.size > 0 || supplierDelays.size > 0) && (
+              <div className="grid sm:grid-cols-2 gap-3">
+                {/* People */}
+                {personDelays.size > 0 && (
+                  <div className="bg-white border border-red-200 rounded-xl overflow-hidden shadow-sm">
+                    <div className="px-4 py-2.5 bg-red-50 border-b border-red-200 flex items-center gap-2">
+                      <Users className="w-4 h-4 text-red-500" />
+                      <span className="text-sm font-bold text-red-800">People Causing Delays</span>
+                      <span className="ml-auto text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full border border-red-200">{personDelays.size}</span>
+                    </div>
+                    <div className="divide-y divide-red-50">
+                      {Array.from(personDelays.values()).sort((a, b) => b.tasks.length - a.tasks.length).map(p => {
+                        const maxDelay = Math.max(...p.tasks.map(t => { const e = parseDate(t.exp_end_date); return e ? daysBetween(e, today) : 0; }));
+                        return (
+                          <div key={p.name} className="flex items-center gap-3 px-4 py-2.5">
+                            <div className="w-8 h-8 rounded-full bg-red-100 border border-red-200 flex items-center justify-center text-xs font-bold text-red-700 shrink-0 uppercase">
+                              {p.name.slice(0, 2)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-gray-800 truncate">{p.name}</p>
+                              <p className="text-[10px] text-red-500">{p.tasks.length} overdue task{p.tasks.length > 1 ? "s" : ""} · max +{maxDelay}d late</p>
+                            </div>
+                            <div className={cn("text-xs font-bold px-2 py-0.5 rounded-full", maxDelay > 30 ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700")}>
+                              +{maxDelay}d
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Suppliers */}
+                {supplierDelays.size > 0 && (
+                  <div className="bg-white border border-orange-200 rounded-xl overflow-hidden shadow-sm">
+                    <div className="px-4 py-2.5 bg-orange-50 border-b border-orange-200 flex items-center gap-2">
+                      <Truck className="w-4 h-4 text-orange-500" />
+                      <span className="text-sm font-bold text-orange-800">Suppliers Causing Delays</span>
+                      <span className="ml-auto text-xs font-bold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full border border-orange-200">{supplierDelays.size}</span>
+                    </div>
+                    <div className="divide-y divide-orange-50">
+                      {Array.from(supplierDelays.values()).sort((a, b) => b.maxDays - a.maxDays).map(s => (
+                        <div key={s.name} className="flex items-center gap-3 px-4 py-2.5">
+                          <div className="w-8 h-8 rounded-full bg-orange-100 border border-orange-200 flex items-center justify-center text-xs font-bold text-orange-700 shrink-0 uppercase">
+                            {s.name.slice(0, 2)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-gray-800 truncate" title={s.name}>{s.name}</p>
+                            <p className="text-[10px] text-orange-500">{s.pos.length} PO{s.pos.length > 1 ? "s" : ""} late · {fmtMoney(s.pendingValue)} pending</p>
+                          </div>
+                          <div className={cn("text-xs font-bold px-2 py-0.5 rounded-full shrink-0", s.maxDays > 30 ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700")}>
+                            +{s.maxDays}d
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Action Plan */}
+            {actions.length > 0 && (
+              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+                  <Star className="w-4 h-4 text-amber-500" />
+                  <span className="text-sm font-bold text-gray-700">Action Plan</span>
+                  <span className="text-xs text-gray-400 ml-1">— priority items requiring attention</span>
+                  <span className="ml-auto text-xs text-gray-400">{actions.length} items</span>
+                </div>
+                <div className="divide-y divide-gray-100">
+                  {actions.map((action, i) => {
+                    const Icon = action.icon;
+                    return (
+                      <div key={i} className={cn("flex items-start gap-3 px-4 py-3 border-l-4", action.priority === "critical" ? "border-l-red-500 bg-red-50/40" : action.priority === "high" ? "border-l-orange-400 bg-orange-50/30" : "border-l-amber-400 bg-amber-50/20")}>
+                        <div className={cn("w-6 h-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5", priorityBg[action.priority])}>
+                          <Icon className={cn("w-3.5 h-3.5", action.priority === "critical" ? "text-red-600" : action.priority === "high" ? "text-orange-500" : "text-amber-600")} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className={cn("text-sm font-semibold", action.priority === "critical" ? "text-red-800" : action.priority === "high" ? "text-orange-800" : "text-amber-800")}>{action.title}</p>
+                            <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white uppercase tracking-wide shrink-0", priorityColor[action.priority])}>
+                              {action.priority}
+                            </span>
+                            <span className="text-[10px] text-gray-400 border border-gray-200 px-1.5 py-0.5 rounded-full">{action.tag}</span>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{action.detail}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Financial & Procurement Row */}
       {pos.length > 0 && (
@@ -2327,7 +2522,7 @@ export default function ProjectTimeline() {
           ) : (
             <>
               {tab === "overview" && (
-                <OverviewView data={data} projectDetail={projectDetail} selectedProject={selectedProject} />
+                <OverviewView data={data} projectDetail={projectDetail} selectedProject={selectedProject} taskAllocations={taskAllocations} />
               )}
               {tab === "gantt" && <GanttView tasks={data.tasks} />}
               {tab === "purchase" && <PurchaseView mrs={data.materialRequests} pos={data.purchaseOrders} />}
