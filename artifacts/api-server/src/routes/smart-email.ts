@@ -413,19 +413,25 @@ async function fetchProfileByEmail(email: string): Promise<UserProfile | null> {
 }
 
 function buildSignatureHtml(profile: UserProfile | null): string {
-  if (!profile || (!profile.full_name && !profile.company)) {
-    return `<br/><p style="color:#666;font-size:12px;">---<br/><strong>WTT International</strong></p>`;
-  }
   const lines: string[] = [];
-  lines.push(`<p style="margin:0;font-size:12px;color:#6b7280;font-style:italic;">Best Regards,</p>`);
-  if (profile.full_name) lines.push(`<p style="margin:0;font-size:14px;font-weight:700;color:#111827;">${profile.full_name}</p>`);
-  if (profile.designation) lines.push(`<p style="margin:0;font-size:12px;font-weight:600;color:#e05a00;">${profile.designation}</p>`);
-  if (profile.mobile_no || profile.phone) lines.push(`<p style="margin:0;font-size:12px;color:#4b5563;">${profile.mobile_no || profile.phone}</p>`);
-  if (profile.company) {
-    lines.push(`<p style="margin:4px 0 0;font-size:12px;font-weight:700;color:#111827;text-transform:uppercase;letter-spacing:0.05em;">${profile.company}</p>`);
-    if (profile.branch) lines.push(`<p style="margin:0;font-size:11px;color:#6b7280;">${profile.branch}</p>`);
+  lines.push(`<p style="margin:0 0 4px;font-size:12px;color:#6b7280;font-style:italic;">Best Regards,</p>`);
+  if (profile?.full_name) {
+    lines.push(`<p style="margin:0;font-size:14px;font-weight:700;color:#111827;letter-spacing:-0.01em;">${profile.full_name}</p>`);
+  } else {
+    lines.push(`<p style="margin:0;font-size:14px;font-weight:700;color:#111827;">WTT Team</p>`);
   }
-  return `<br/><hr style="border:none;border-top:1px dashed #e5e7eb;margin:12px 0;"/><div style="font-family:'Inter','Segoe UI',sans-serif;">${lines.join("")}</div>`;
+  if (profile?.designation) {
+    lines.push(`<p style="margin:2px 0 0;font-size:11px;font-weight:700;color:#e05a00;text-transform:uppercase;letter-spacing:0.06em;">${profile.designation}</p>`);
+  }
+  if (profile?.mobile_no || profile?.phone) {
+    lines.push(`<p style="margin:2px 0 0;font-size:12px;color:#374151;">${profile.mobile_no || profile.phone}</p>`);
+  }
+  const company = profile?.company || "WTT INTERNATIONAL PVT LTD";
+  lines.push(`<p style="margin:4px 0 0;font-size:12px;font-weight:700;color:#111827;text-transform:uppercase;letter-spacing:0.05em;">${company}</p>`);
+  if (profile?.branch) {
+    lines.push(`<p style="margin:0;font-size:11px;color:#6b7280;">${profile.branch}</p>`);
+  }
+  return `<br/><hr style="border:none;border-top:1px dashed #e5e7eb;margin:10px 0;"/><div style="font-family:'Inter','Segoe UI',sans-serif;line-height:1.5;">${lines.join("")}</div>`;
 }
 
 async function sendEmail(
@@ -1044,15 +1050,30 @@ router.post("/smart-email/send-draft/:uid", async (req, res) => {
     const draft = draftRes.rows[0];
     if (!draft) return res.status(404).json({ error: "No pending draft found" });
 
-    const finalText = edited_text || draft.draft_text;
-    const htmlBody = `
-      <p>${finalText.replace(/\n/g, "<br/>")}</p>
-      <br/>
-      <p style="color:#666;font-size:12px;">---<br/>
-      <strong>WTT International</strong><br/>
-      Water Loving Technology<br/>
-      </p>
-    `;
+    let htmlBody: string;
+    if (edited_text && edited_text.trim() !== (draft.draft_text || "").trim()) {
+      // User edited the body — rebuild HTML with fresh profile signature
+      let profile: UserProfile | null = null;
+      try {
+        const acctRes = await pool.query(
+          `SELECT ea.assigned_to FROM email_accounts ea
+           JOIN smart_email_inbox sei ON sei.account_id = ea.id
+           WHERE sei.uid = $1 LIMIT 1`, [req.params.uid]
+        );
+        const assignedTo = acctRes.rows[0]?.assigned_to as string | undefined;
+        if (assignedTo) profile = await fetchProfileByEmail(assignedTo);
+        if (!profile) {
+          const defRes = await pool.query("SELECT assigned_to FROM email_accounts WHERE is_default = true LIMIT 1");
+          const defEmail = defRes.rows[0]?.assigned_to as string | undefined;
+          if (defEmail) profile = await fetchProfileByEmail(defEmail);
+        }
+      } catch { /* continue with null profile */ }
+      const signatureHtml = buildSignatureHtml(profile);
+      htmlBody = `<p>${edited_text.replace(/\n/g, "<br/>")}</p>${signatureHtml}`;
+    } else {
+      // Not edited — use the stored HTML (has proper signature)
+      htmlBody = draft.draft_html || `<p>${(draft.draft_text || "").replace(/\n/g, "<br/>")}</p>`;
+    }
 
     const account = await getAccount(user_email);
     await sendEmail(account, draft.to_addr, draft.subject, htmlBody);

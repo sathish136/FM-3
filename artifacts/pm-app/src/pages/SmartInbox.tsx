@@ -258,7 +258,9 @@ function EmailDetail({ email, onClose, onDeleted, onDraftDiscarded, userEmail, i
   const [autoReplied, setAutoReplied] = useState(email.auto_replied);
   const [hasDraft, setHasDraft] = useState(email.has_draft || false);
   const [draftText, setDraftText] = useState("");
+  const [draftHtml, setDraftHtml] = useState("");
   const [draftEdited, setDraftEdited] = useState("");
+  const [isEditingDraft, setIsEditingDraft] = useState(false);
   const [draftSending, setDraftSending] = useState(false);
   const [discardingDraft, setDiscardingDraft] = useState(false);
   const [classifying, setClassifying] = useState(false);
@@ -282,8 +284,10 @@ function EmailDetail({ email, onClose, onDeleted, onDraftDiscarded, userEmail, i
       .then(d => {
         if (d) {
           setHasDraft(true);
-          setDraftText(d.draft_text);
-          setDraftEdited(d.draft_text);
+          setDraftText(d.draft_text || "");
+          setDraftHtml(d.draft_html || "");
+          setDraftEdited(d.draft_text || "");
+          setIsEditingDraft(false);
           setTab("draft");
         }
       })
@@ -367,8 +371,11 @@ function EmailDetail({ email, onClose, onDeleted, onDraftDiscarded, userEmail, i
         body: JSON.stringify({ force: isRegenerate, user_email: userEmail }),
       });
       const text = res.draft?.draft_text || "";
+      const html = res.draft?.draft_html || "";
       setDraftText(text);
+      setDraftHtml(html);
       setDraftEdited(text);
+      setIsEditingDraft(false);
       setHasDraft(!!text);
       setAutoReplied(false);
     } catch {}
@@ -619,6 +626,13 @@ function EmailDetail({ email, onClose, onDeleted, onDraftDiscarded, userEmail, i
                   <span className="text-sm font-bold text-gray-800">AI Generated Reply</span>
                   <span className="text-[10px] text-gray-400 ml-2">Review and edit, then send manually</span>
                 </div>
+                {hasDraft && !autoReplied && (
+                  <button onClick={() => setIsEditingDraft(v => !v)}
+                    className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors shrink-0">
+                    {isEditingDraft ? <Eye className="w-3 h-3" /> : <Wand2 className="w-3 h-3" />}
+                    {isEditingDraft ? "Preview" : "Edit"}
+                  </button>
+                )}
                 {(hasDraft || autoReplied) && (
                   <button onClick={handleAutoReply} disabled={autoReplying}
                     className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 disabled:opacity-60 transition-colors shrink-0">
@@ -648,13 +662,29 @@ function EmailDetail({ email, onClose, onDeleted, onDraftDiscarded, userEmail, i
                 </div>
               ) : hasDraft ? (
                 <>
-                  <textarea
-                    value={draftEdited}
-                    onChange={e => setDraftEdited(e.target.value)}
-                    rows={10}
-                    className="w-full border border-orange-200 rounded-xl p-4 text-[13px] text-gray-700 leading-relaxed font-sans bg-orange-50/30 focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 resize-none"
-                    placeholder="Draft content…"
-                  />
+                  {/* Read-only HTML preview */}
+                  {!isEditingDraft ? (
+                    <div className="w-full border border-orange-200 rounded-xl bg-white overflow-auto"
+                      style={{ minHeight: "220px", maxHeight: "400px" }}>
+                      {draftHtml ? (
+                        <div
+                          className="p-5 text-[13px] text-gray-800 leading-relaxed"
+                          dangerouslySetInnerHTML={{ __html: draftHtml }}
+                        />
+                      ) : (
+                        <div className="p-5 text-[13px] text-gray-700 leading-relaxed whitespace-pre-wrap">{draftText}</div>
+                      )}
+                    </div>
+                  ) : (
+                    /* Editable textarea — body text only */
+                    <textarea
+                      value={draftEdited}
+                      onChange={e => setDraftEdited(e.target.value)}
+                      rows={10}
+                      className="w-full border border-orange-200 rounded-xl p-4 text-[13px] text-gray-700 leading-relaxed font-sans bg-orange-50/30 focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 resize-none"
+                      placeholder="Edit the reply body here…"
+                    />
+                  )}
                   {autoReplied && (
                     <div className="flex items-center gap-2 text-[11px] text-green-600 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
                       <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
@@ -671,12 +701,14 @@ function EmailDetail({ email, onClose, onDeleted, onDraftDiscarded, userEmail, i
                         {draftSending ? "Sending…" : "Confirm & Send"}
                       </button>
                     )}
-                    <button
-                      onClick={() => setDraftEdited(draftText)}
-                      disabled={draftSending || discardingDraft}
-                      className="text-xs text-gray-400 hover:text-gray-600 disabled:opacity-50 transition-colors">
-                      Reset to original
-                    </button>
+                    {isEditingDraft && (
+                      <button
+                        onClick={() => { setDraftEdited(draftText); setIsEditingDraft(false); }}
+                        disabled={draftSending || discardingDraft}
+                        className="text-xs text-gray-400 hover:text-gray-600 disabled:opacity-50 transition-colors">
+                        Reset to original
+                      </button>
+                    )}
                     {!autoReplied && (
                       <button
                         onClick={handleDiscardDraft}
