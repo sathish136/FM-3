@@ -15,10 +15,11 @@ export default function Login() {
 
   const [otpEmail, setOtpEmail] = useState("");
   const [maskedEmail, setMaskedEmail] = useState("");
-  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  // Single string value for the OTP — much more mobile-friendly than 6 separate inputs
+  const [otpValue, setOtpValue] = useState("");
   const [resendCooldown, setResendCooldown] = useState(0);
 
-  const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const otpInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -28,7 +29,7 @@ export default function Login() {
 
   useEffect(() => {
     if (step === "otp") {
-      setTimeout(() => otpRefs.current[0]?.focus(), 100);
+      setTimeout(() => otpInputRef.current?.focus(), 150);
     }
   }, [step]);
 
@@ -40,7 +41,7 @@ export default function Login() {
       const result = await login(usr.trim(), pwd);
       setOtpEmail(result.email);
       setMaskedEmail(result.maskedEmail);
-      setOtp(["", "", "", "", "", ""]);
+      setOtpValue("");
       setStep("otp");
       setResendCooldown(60);
     } catch (err: any) {
@@ -50,35 +51,16 @@ export default function Login() {
     }
   };
 
-  const handleOtpInput = (index: number, value: string) => {
-    const cleaned = value.replace(/\D/g, "").slice(-1);
-    const next = [...otp];
-    next[index] = cleaned;
-    setOtp(next);
-    if (cleaned && index < 5) {
-      otpRefs.current[index + 1]?.focus();
-    }
-    if (next.every(d => d !== "") && cleaned) {
-      handleVerify(next.join(""));
-    }
-  };
-
-  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent) => {
-    if (e.key === "Backspace" && !otp[index] && index > 0) {
-      otpRefs.current[index - 1]?.focus();
-    }
-  };
-
-  const handleOtpPaste = (e: React.ClipboardEvent) => {
-    const text = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
-    if (text.length === 6) {
-      setOtp(text.split(""));
-      handleVerify(text);
+  const handleOtpChange = (value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 6);
+    setOtpValue(digits);
+    if (digits.length === 6) {
+      handleVerify(digits);
     }
   };
 
   const handleVerify = async (code?: string) => {
-    const finalOtp = code ?? otp.join("");
+    const finalOtp = code ?? otpValue;
     if (finalOtp.length !== 6) return;
     setError("");
     setLoading(true);
@@ -86,8 +68,8 @@ export default function Login() {
       await verifyOtp(otpEmail, finalOtp);
     } catch (err: any) {
       setError(err.message || "Invalid code. Please try again.");
-      setOtp(["", "", "", "", "", ""]);
-      setTimeout(() => otpRefs.current[0]?.focus(), 50);
+      setOtpValue("");
+      setTimeout(() => otpInputRef.current?.focus(), 100);
     } finally {
       setLoading(false);
     }
@@ -99,9 +81,9 @@ export default function Login() {
     setLoading(true);
     try {
       await login(usr.trim(), pwd);
-      setOtp(["", "", "", "", "", ""]);
+      setOtpValue("");
       setResendCooldown(60);
-      setTimeout(() => otpRefs.current[0]?.focus(), 100);
+      setTimeout(() => otpInputRef.current?.focus(), 150);
     } catch (err: any) {
       setError(err.message || "Failed to resend code.");
     } finally {
@@ -140,7 +122,7 @@ export default function Login() {
           )}
 
           {step === "credentials" ? (
-            <form onSubmit={handleCredentials} className="space-y-4">
+            <form onSubmit={handleCredentials} className="space-y-4" autoComplete="on">
               <div>
                 <label className="block text-gray-700 text-sm font-medium mb-1.5">Username or Email</label>
                 <div className="relative">
@@ -214,7 +196,10 @@ export default function Login() {
               </button>
             </form>
           ) : (
-            <div className="space-y-6">
+            <form
+              className="space-y-6"
+              onSubmit={e => { e.preventDefault(); handleVerify(); }}
+            >
               <div className="flex flex-col items-center text-center gap-3">
                 <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center">
                   <ShieldCheck className="w-7 h-7 text-blue-600" />
@@ -226,29 +211,61 @@ export default function Login() {
               </div>
 
               <div>
-                <label className="block text-gray-700 text-sm font-medium mb-3 text-center">Enter verification code</label>
-                <div className="flex gap-2 justify-center" onPaste={handleOtpPaste}>
-                  {otp.map((digit, i) => (
-                    <input
-                      key={i}
-                      ref={el => { otpRefs.current[i] = el; }}
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={1}
-                      value={digit}
-                      onChange={e => handleOtpInput(i, e.target.value)}
-                      onKeyDown={e => handleOtpKeyDown(i, e)}
-                      disabled={loading}
-                      className="w-11 h-13 text-center text-xl font-bold rounded-xl border-2 border-gray-200 bg-gray-50 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all disabled:opacity-50"
-                      style={{ height: "52px" }}
-                    />
-                  ))}
+                <label className="block text-gray-700 text-sm font-medium mb-3 text-center">
+                  Enter verification code
+                </label>
+                {/* Single hidden input — works perfectly on mobile (SMS autofill, no focus jumping) */}
+                <div className="relative flex justify-center">
+                  <input
+                    ref={otpInputRef}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    value={otpValue}
+                    onChange={e => handleOtpChange(e.target.value)}
+                    disabled={loading}
+                    aria-label="One-time password"
+                    style={{
+                      position: "absolute",
+                      opacity: 0,
+                      width: "100%",
+                      height: "100%",
+                      top: 0,
+                      left: 0,
+                      zIndex: 10,
+                      fontSize: "16px", // prevents iOS zoom on focus
+                      cursor: "text",
+                    }}
+                  />
+                  {/* Visual 6-box display */}
+                  <div
+                    className="flex gap-2 justify-center"
+                    onClick={() => otpInputRef.current?.focus()}
+                  >
+                    {Array.from({ length: 6 }, (_, i) => (
+                      <div
+                        key={i}
+                        className={`w-11 flex items-center justify-center text-xl font-bold rounded-xl border-2 transition-all select-none ${
+                          i === otpValue.length && !loading
+                            ? "border-blue-500 bg-blue-50 ring-2 ring-blue-500/20"
+                            : otpValue[i]
+                            ? "border-gray-300 bg-white text-gray-900"
+                            : "border-gray-200 bg-gray-50 text-gray-900"
+                        }`}
+                        style={{ height: "52px" }}
+                      >
+                        {otpValue[i] || ""}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
 
               <button
-                onClick={() => handleVerify()}
-                disabled={loading || otp.some(d => !d)}
+                type="submit"
+                disabled={loading || otpValue.length !== 6}
                 className="w-full py-3 rounded-xl font-semibold text-white text-sm transition-all flex items-center justify-center gap-2 shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{ background: loading ? "#4a7fc1" : "linear-gradient(135deg, #1a56db, #0a2463)" }}
               >
@@ -262,7 +279,7 @@ export default function Login() {
               <div className="flex items-center justify-between pt-1">
                 <button
                   type="button"
-                  onClick={() => { setStep("credentials"); setError(""); setOtp(["", "", "", "", "", ""]); }}
+                  onClick={() => { setStep("credentials"); setError(""); setOtpValue(""); }}
                   className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" /> Back
@@ -277,7 +294,7 @@ export default function Login() {
                   {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend code"}
                 </button>
               </div>
-            </div>
+            </form>
           )}
         </div>
 
