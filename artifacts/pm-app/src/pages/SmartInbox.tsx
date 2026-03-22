@@ -977,13 +977,6 @@ export default function SmartInbox() {
 
           {/* Action buttons */}
           <div className="px-3 py-3 space-y-2 border-b border-gray-100">
-            <button onClick={handleSync} disabled={syncing}
-              className="w-full flex items-center gap-2.5 px-3 py-2.5 bg-[#1B2A5E] text-white text-[11px] font-semibold rounded-lg hover:bg-[#243870] active:scale-[0.98] transition-all disabled:opacity-50">
-              {syncing
-                ? <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-                : <RefreshCw className="w-3.5 h-3.5 shrink-0" />}
-              <span>{syncing ? "Syncing…" : "Sync Emails"}</span>
-            </button>
             <button onClick={handleClassifyAll} disabled={classifying}
               className="w-full flex items-center gap-2.5 px-3 py-2.5 bg-indigo-600 text-white text-[11px] font-semibold rounded-lg hover:bg-indigo-700 active:scale-[0.98] transition-all disabled:opacity-50">
               {classifying
@@ -1247,7 +1240,7 @@ export default function SmartInbox() {
           <div className="flex-1 overflow-y-auto min-h-0">
             {error && (
               <div className="m-3 bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-600">
-                {error} — Click "Sync Emails" to load emails from your mailbox.
+                {error} — Your inbox will retry automatically on the next sync cycle.
               </div>
             )}
             {loading ? (
@@ -1261,12 +1254,7 @@ export default function SmartInbox() {
                   <Inbox className="w-6 h-6 text-gray-300" />
                 </div>
                 <p className="text-sm font-semibold text-gray-500">No emails found</p>
-                <p className="text-xs text-gray-400">Click "Sync Emails" in the sidebar to load your mailbox</p>
-                <button onClick={handleSync} disabled={syncing}
-                  className="flex items-center gap-2 px-4 py-2 bg-[#1B2A5E] text-white text-xs font-semibold rounded-lg hover:bg-[#243870] transition-colors mt-1 disabled:opacity-50">
-                  {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                  {syncing ? "Syncing…" : "Sync Now"}
-                </button>
+                <p className="text-xs text-gray-400">Your inbox syncs automatically every 5 minutes</p>
               </div>
             ) : emails.map(email => {
               const isSelected = selected?.uid === email.uid;
@@ -1418,12 +1406,13 @@ export default function SmartInbox() {
                 ))}
               </div>
 
-              {/* Sync CTA */}
-              <button onClick={handleSync} disabled={syncing}
-                className="flex items-center gap-2 px-5 py-2 bg-[#1B2A5E] text-white text-xs font-semibold rounded-lg hover:bg-[#243870] transition-colors disabled:opacity-50">
-                {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                {syncing ? "Syncing…" : "Sync Emails"}
-              </button>
+              {/* Auto-sync indicator */}
+              {syncing && (
+                <div className="flex items-center gap-2 px-5 py-2 text-xs text-gray-400">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Syncing…</span>
+                </div>
+              )}
             </div>
           )}
         </div>
