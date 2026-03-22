@@ -165,6 +165,7 @@ async function syncFolder(account: Account, folderPath: string): Promise<void> {
       const from = Math.max(1, total - 99);
       const range = `${from}:${total}`;
 
+      // Fetch headers for all recent messages
       const rows: any[] = [];
       for await (const msg of client.fetch(range, {
         envelope: true,
@@ -188,6 +189,15 @@ async function syncFolder(account: Account, folderPath: string): Promise<void> {
         });
       }
 
+      // Find which UIDs are new (not yet in DB with body)
+      const existingRes = await emailPool.query(
+        `SELECT uid FROM email_cache WHERE account_id=$1 AND folder_path=$2 AND body_fetched=true`,
+        [account.id, folderPath]
+      );
+      const existingWithBody = new Set(existingRes.rows.map((r: any) => r.uid));
+      const newUids = rows.filter(r => !existingWithBody.has(r.uid)).map(r => r.uid);
+
+      // Upsert headers first
       for (const r of rows) {
         await emailPool.query(
           `INSERT INTO email_cache
@@ -199,6 +209,26 @@ async function syncFolder(account: Account, folderPath: string): Promise<void> {
           [account.id, folderPath, r.uid, r.subject, r.from_addr, r.to_addr, r.cc_addr,
            r.email_date, r.seen, r.starred, r.size, r.has_attachment]
         );
+      }
+
+      // Fetch and store bodies for new emails (up to 50 at a time)
+      const uidsToFetch = newUids.slice(0, 50);
+      for (const uid of uidsToFetch) {
+        try {
+          const dl = await client.download(uid, undefined, { uid: true });
+          if (!dl) continue;
+          const chunks: Buffer[] = [];
+          for await (const chunk of dl.content) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+          const raw = Buffer.concat(chunks);
+          const parsed = await simpleParser(raw);
+          await emailPool.query(
+            `UPDATE email_cache SET body_html=$1, body_text=$2, body_fetched=true
+             WHERE account_id=$3 AND folder_path=$4 AND uid=$5`,
+            [parsed.html || null, parsed.text || null, account.id, folderPath, uid]
+          );
+        } catch {
+          // Body fetch failed for this email — skip, headers still saved
+        }
       }
     });
   } finally {

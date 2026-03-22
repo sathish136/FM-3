@@ -733,12 +733,19 @@ export default function SmartInbox() {
 
   const handleSync = async () => {
     setSyncing(true);
+    setError("");
     try {
+      // Step 1: Pull fresh emails from Gmail IMAP → email_cache
+      const syncUrl = `/email/sync?mailbox=INBOX${userEmail ? `&user=${encodeURIComponent(userEmail)}` : ""}`;
+      await api(syncUrl);
+
+      // Step 2: Move email_cache → smart_email_inbox and classify
       await api("/smart-email/ingest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ auto_reply: autoReplyEnabled, user_email: userEmail }),
       });
+
       await loadEmails(activeFilter, filterValue, search || undefined);
       await loadStats();
     } catch (e: any) { setError(e.message); }
