@@ -879,17 +879,40 @@ router.post("/smart-email/draft-batch", async (req, res) => {
   }
 });
 
-// POST /smart-email/classify-batch — classify all unclassified
+// POST /smart-email/classify-batch — classify all unclassified + OTP re-scan
 router.post("/smart-email/classify-batch", async (req, res) => {
   const autoReply = req.body?.auto_reply !== false;
   try {
+    // 1. Classify unclassified emails via AI as before
     const rows = await pool.query(
       "SELECT uid FROM smart_email_inbox WHERE NOT classified ORDER BY email_date DESC LIMIT 50"
     );
     for (const r of rows.rows) {
       classifyEmailRecord(r.uid, autoReply).catch(() => {});
     }
-    res.json({ ok: true, queued: rows.rows.length });
+
+    // 2. OTP keyword re-scan: check ALL non-OTP, non-deleted emails and move matches to OTP
+    const otpScanRows = await pool.query(
+      `SELECT uid, subject, body_text, body_html
+       FROM smart_email_inbox
+       WHERE is_deleted = false AND COALESCE(email_type,'') != 'otp'
+       ORDER BY email_date DESC LIMIT 200`
+    );
+    let otpMoved = 0;
+    for (const em of otpScanRows.rows) {
+      const bodySnippet = em.body_text || (em.body_html ? em.body_html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ") : "");
+      if (isOtpEmail(em.subject || "", bodySnippet)) {
+        await pool.query(
+          "UPDATE smart_email_inbox SET email_type='otp', classified=true, has_draft=false WHERE uid=$1",
+          [em.uid]
+        );
+        // Remove any pending (unsent) draft for OTP emails
+        await pool.query("DELETE FROM smart_email_drafts WHERE email_uid=$1 AND sent=false", [em.uid]);
+        otpMoved++;
+      }
+    }
+
+    res.json({ ok: true, queued: rows.rows.length, otp_moved: otpMoved });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
