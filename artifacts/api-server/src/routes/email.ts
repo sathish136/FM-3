@@ -4,6 +4,7 @@ import { ImapFlow } from "imapflow";
 import pg from "pg";
 import { simpleParser } from "mailparser";
 import OpenAI from "openai";
+import multer from "multer";
 
 let _openai: OpenAI | null = null;
 function getOpenAI(): OpenAI {
@@ -627,8 +628,10 @@ router.post("/email/ai-compose", async (req, res) => {
   }
 });
 
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+
 // POST /api/email/send
-router.post("/email/send", async (req, res) => {
+router.post("/email/send", upload.array("attachments"), async (req, res) => {
   const { to, cc, bcc, subject, body, html, user: reqUser } = req.body;
   if (!to || !subject) return res.status(400).json({ error: "to and subject are required" });
   try {
@@ -639,6 +642,12 @@ router.post("/email/send", async (req, res) => {
       secure: false,
       auth: { user: account.gmailUser, pass: account.gmailAppPassword },
     });
+    const files = (req.files as Express.Multer.File[]) || [];
+    const attachments = files.map(f => ({
+      filename: f.originalname,
+      content: f.buffer,
+      contentType: f.mimetype,
+    }));
     const info = await transporter.sendMail({
       from: `FlowMatriX <${account.emailAddress}>`,
       to,
@@ -647,6 +656,7 @@ router.post("/email/send", async (req, res) => {
       subject,
       text: body || "",
       html: html || undefined,
+      attachments,
     });
     res.json({ messageId: info.messageId, accepted: info.accepted });
   } catch (err: any) {

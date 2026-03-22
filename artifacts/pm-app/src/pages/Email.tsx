@@ -203,8 +203,16 @@ function ComposeModal({ onClose, defaultTo="", defaultCc="", defaultSubject="", 
     if (!to.trim() || !subject.trim()) { setError("To and Subject are required."); return; }
     setSending(true); setError("");
     try {
-      await apiFetch("/email/send", { method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ to, cc: cc||undefined, bcc: bcc||undefined, subject, html: fullBody, body: fullBody.replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim(), user: userEmail }) });
+      const fd = new FormData();
+      fd.append("to", to);
+      if (cc) fd.append("cc", cc);
+      if (bcc) fd.append("bcc", bcc);
+      fd.append("subject", subject);
+      fd.append("html", fullBody);
+      fd.append("body", fullBody.replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim());
+      if (userEmail) fd.append("user", userEmail);
+      attachments.forEach(f => fd.append("attachments", f));
+      await apiFetch("/email/send", { method: "POST", body: fd });
       setSent(true);
       setTimeout(() => { onSent?.(); onClose(); }, 1500);
     } catch (e: any) { setError(e.message || "Failed to send"); }

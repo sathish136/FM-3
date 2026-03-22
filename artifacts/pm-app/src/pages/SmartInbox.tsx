@@ -129,6 +129,8 @@ function ReplyModal({ to, subject, defaultBody, onClose, onSent, userEmail, draf
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [improving, setImproving] = useState(false);
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSend = async () => {
     setSending(true); setError("");
@@ -140,11 +142,13 @@ function ReplyModal({ to, subject, defaultBody, onClose, onSent, userEmail, draf
           body: JSON.stringify({ edited_text: body }),
         });
       } else {
-        await api("/smart-email/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ to, subject: `Re: ${subject}`, html: body.replace(/\n/g, "<br/>"), userEmail }),
-        });
+        const fd = new FormData();
+        fd.append("to", to);
+        fd.append("subject", `Re: ${subject}`);
+        fd.append("html", body.replace(/\n/g, "<br/>"));
+        if (userEmail) fd.append("userEmail", userEmail);
+        attachments.forEach(f => fd.append("attachments", f));
+        await api("/smart-email/send", { method: "POST", body: fd });
       }
       onSent(); onClose();
     } catch (e: any) { setError(e.message); }
@@ -164,9 +168,17 @@ function ReplyModal({ to, subject, defaultBody, onClose, onSent, userEmail, draf
     setImproving(false);
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setAttachments(prev => [...prev, ...Array.from(e.target.files || [])]);
+    e.target.value = "";
+  };
+
+  const removeAttachment = (idx: number) => setAttachments(prev => prev.filter((_, i) => i !== idx));
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-end p-4 pointer-events-none">
-      <div className="pointer-events-auto w-[600px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col max-h-[70vh]">
+      <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileChange} />
+      <div className="pointer-events-auto w-[600px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col max-h-[75vh]">
         <div className={cn("flex items-center gap-2 px-4 py-3 rounded-t-2xl", isDraft ? "bg-orange-600" : "bg-[#1B2A5E]", "text-white")}>
           {isDraft ? <Eye className="w-4 h-4 opacity-70" /> : <Reply className="w-4 h-4 opacity-70" />}
           <span className="font-semibold text-sm flex-1 truncate">
@@ -181,9 +193,21 @@ function ReplyModal({ to, subject, defaultBody, onClose, onSent, userEmail, draf
         <textarea
           value={body}
           onChange={e => setBody(e.target.value)}
-          className="flex-1 p-4 text-sm text-gray-800 outline-none resize-none font-sans leading-relaxed"
+          className="flex-1 p-4 text-sm text-gray-800 outline-none resize-none font-sans leading-relaxed min-h-[160px]"
           placeholder="Type your reply…"
         />
+        {attachments.length > 0 && (
+          <div className="px-4 py-2 bg-gray-50 border-t border-gray-100 flex flex-wrap gap-1.5">
+            {attachments.map((f, i) => (
+              <div key={i} className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-2.5 py-1 text-xs text-gray-700 shadow-sm">
+                <Paperclip className="w-3 h-3 text-blue-500 shrink-0" />
+                <span className="max-w-[120px] truncate font-medium">{f.name}</span>
+                <span className="text-gray-400">({(f.size / 1024).toFixed(0)} KB)</span>
+                <button onClick={() => removeAttachment(i)} className="ml-0.5 text-gray-400 hover:text-red-500"><X className="w-3 h-3" /></button>
+              </div>
+            ))}
+          </div>
+        )}
         {error && <p className="px-4 text-xs text-red-600">{error}</p>}
         <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-100">
           <button onClick={handleSend} disabled={sending}
@@ -196,6 +220,14 @@ function ReplyModal({ to, subject, defaultBody, onClose, onSent, userEmail, draf
             {improving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
             AI Polish
           </button>
+          {!isDraft && (
+            <button onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-500 text-sm rounded-lg hover:bg-gray-50 transition-colors">
+              <Paperclip className="w-3.5 h-3.5" />
+              Attach
+              {attachments.length > 0 && <span className="ml-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold px-1.5 rounded-full">{attachments.length}</span>}
+            </button>
+          )}
           <button onClick={onClose} className="ml-auto p-2 text-gray-400 hover:text-red-500"><X className="w-4 h-4" /></button>
         </div>
       </div>

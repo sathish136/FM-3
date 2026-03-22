@@ -2,6 +2,7 @@ import { Router } from "express";
 import nodemailer from "nodemailer";
 import pg from "pg";
 import OpenAI from "openai";
+import multer from "multer";
 
 const router = Router();
 const { Pool } = pg;
@@ -368,7 +369,13 @@ async function getAccount(userEmail?: string) {
   };
 }
 
-async function sendEmail(account: { gmailUser: string; gmailAppPassword: string; emailAddress: string }, to: string, subject: string, html: string) {
+async function sendEmail(
+  account: { gmailUser: string; gmailAppPassword: string; emailAddress: string },
+  to: string,
+  subject: string,
+  html: string,
+  attachments?: { filename: string; content: Buffer; contentType: string }[]
+) {
   const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
     port: 587,
@@ -380,8 +387,11 @@ async function sendEmail(account: { gmailUser: string; gmailAppPassword: string;
     to,
     subject,
     html,
+    attachments: attachments || [],
   });
 }
+
+const smartUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 const classifyQueue = new Set<string>();
 
@@ -840,12 +850,18 @@ router.post("/smart-email/ai-summary/:uid", async (req, res) => {
 });
 
 // POST /smart-email/send
-router.post("/smart-email/send", async (req, res) => {
+router.post("/smart-email/send", smartUpload.array("attachments"), async (req, res) => {
   const { to, subject, html, userEmail, replyToUid } = req.body;
   if (!to || !subject) return res.status(400).json({ error: "to and subject required" });
   try {
     const account = await getAccount(userEmail);
-    await sendEmail(account, to, subject, html || "");
+    const files = (req.files as Express.Multer.File[]) || [];
+    const attachments = files.map(f => ({
+      filename: f.originalname,
+      content: f.buffer,
+      contentType: f.mimetype,
+    }));
+    await sendEmail(account, to, subject, html || "", attachments);
     if (replyToUid) {
       await pool.query("UPDATE smart_email_inbox SET seen=true WHERE uid=$1", [replyToUid]);
     }
