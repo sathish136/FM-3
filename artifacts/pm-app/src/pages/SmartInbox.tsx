@@ -222,6 +222,22 @@ function ReplyModal({ to, subject, defaultBody, onClose, onSent, userEmail, draf
           className="flex-1 p-4 text-sm text-gray-800 outline-none resize-none font-sans leading-relaxed min-h-[160px]"
           placeholder="Type your reply…"
         />
+        {profile && (
+          <div className="px-4 pb-3 border-t border-dashed border-gray-200 bg-gray-50/60">
+            <div className="pt-3 font-sans text-xs leading-relaxed" style={{ fontFamily: "'Inter','Segoe UI',sans-serif" }}>
+              <p style={{ margin: 0, fontSize: 11, color: "#6b7280", fontStyle: "italic" }}>Best Regards,</p>
+              {profile.full_name && <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#111827" }}>{profile.full_name}</p>}
+              {profile.designation && <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: "#e05a00" }}>{profile.designation}</p>}
+              {(profile.mobile_no || profile.phone) && <p style={{ margin: 0, fontSize: 11, color: "#4b5563" }}>{profile.mobile_no || profile.phone}</p>}
+              {profile.company && (
+                <>
+                  <p style={{ margin: "4px 0 0", fontSize: 11, fontWeight: 700, color: "#111827", textTransform: "uppercase", letterSpacing: "0.05em" }}>{profile.company}</p>
+                  {profile.branch && <p style={{ margin: 0, fontSize: 10, color: "#6b7280" }}>{profile.branch}</p>}
+                </>
+              )}
+            </div>
+          </div>
+        )}
         {attachments.length > 0 && (
           <div className="px-4 py-2 bg-gray-50 border-t border-gray-100 flex flex-wrap gap-1.5">
             {attachments.map((f, i) => (
