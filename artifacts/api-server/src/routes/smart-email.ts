@@ -746,6 +746,32 @@ router.post("/smart-email/classify/:uid", async (req, res) => {
   }
 });
 
+// POST /smart-email/draft-batch — generate AI draft replies for all eligible emails without a draft
+router.post("/smart-email/draft-batch", async (req, res) => {
+  const userEmail = req.body?.user_email as string | undefined;
+  try {
+    // Target: classified, non-internal, non-promotional emails that don't yet have a draft and haven't been auto-replied
+    const rows = await pool.query(
+      `SELECT uid FROM smart_email_inbox
+       WHERE is_deleted = false
+         AND is_internal = false
+         AND COALESCE(email_type, '') != 'promotion'
+         AND has_draft = false
+         AND auto_replied = false
+       ORDER BY email_date DESC
+       LIMIT 50`
+    );
+    let queued = 0;
+    for (const r of rows.rows) {
+      triggerAutoReply(r.uid, userEmail, false).catch(() => {});
+      queued++;
+    }
+    res.json({ ok: true, queued });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /smart-email/classify-batch — classify all unclassified
 router.post("/smart-email/classify-batch", async (req, res) => {
   const autoReply = req.body?.auto_reply !== false;

@@ -898,6 +898,8 @@ export default function SmartInbox() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [classifying, setClassifying] = useState(false);
+  const [draftingAll, setDraftingAll] = useState(false);
+  const [draftAllResult, setDraftAllResult] = useState<string>("");
   const [selected, setSelected] = useState<SmartEmail | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
   const [filterValue, setFilterValue] = useState<string | undefined>();
@@ -1092,6 +1094,30 @@ export default function SmartInbox() {
     } catch { setClassifying(false); }
   };
 
+  const handleDraftAll = async () => {
+    setDraftingAll(true);
+    setDraftAllResult("");
+    try {
+      const res = await api("/smart-email/draft-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_email: userEmail }),
+      });
+      const queued = res.queued ?? 0;
+      setDraftAllResult(queued > 0 ? `Drafting ${queued} email${queued > 1 ? "s" : ""}…` : "No new emails to draft");
+      if (queued > 0) {
+        setTimeout(async () => {
+          await loadEmails(activeFilter, filterValue, search || undefined);
+          await loadStats();
+          setDraftAllResult("");
+          setDraftingAll(false);
+        }, 6000);
+      } else {
+        setDraftingAll(false);
+      }
+    } catch { setDraftingAll(false); }
+  };
+
   const toggleSection = (s: string) => {
     setExpandedSections(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
   };
@@ -1170,6 +1196,13 @@ export default function SmartInbox() {
                 ? <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
                 : <BrainCircuit className="w-3.5 h-3.5 shrink-0" />}
               <span>{classifying ? "Classifying…" : "AI Classify All"}</span>
+            </button>
+            <button onClick={handleDraftAll} disabled={draftingAll || classifying}
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 bg-amber-500 text-white text-[11px] font-semibold rounded-lg hover:bg-amber-600 active:scale-[0.98] transition-all disabled:opacity-50">
+              {draftingAll
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                : <Bot className="w-3.5 h-3.5 shrink-0" />}
+              <span>{draftingAll ? (draftAllResult || "Drafting…") : "AI Draft All Replies"}</span>
             </button>
           </div>
 
