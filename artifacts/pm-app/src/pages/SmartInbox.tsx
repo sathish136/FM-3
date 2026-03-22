@@ -95,7 +95,7 @@ const CAT_CONFIG: Record<string, { icon: any; color: string }> = {
   other:    { icon: Mail,       color: "text-gray-500" },
 };
 
-type FilterKey = "all"|"important"|"information"|"promotion"|"internal"|"project"|"supplier"|"unread"|"high"|string;
+type FilterKey = "all"|"important"|"information"|"promotion"|"internal"|"project"|"supplier"|"unread"|"high"|"drafts"|string;
 
 interface NavItem { key: FilterKey; label: string; icon: any; color: string; count?: number; value?: string; indent?: boolean; }
 

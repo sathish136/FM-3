@@ -322,6 +322,9 @@ router.get("/smart-email/messages", async (req, res) => {
     let where = "WHERE 1=1";
     const vals: any[] = [];
 
+    let fromClause = `FROM smart_email_inbox e
+       LEFT JOIN (SELECT email_uid FROM smart_email_drafts WHERE sent=false) d ON d.email_uid = e.uid`;
+
     if (filter === "important")    { where += " AND email_type='important'"; }
     else if (filter === "promotion")  { where += " AND email_type='promotion'"; }
     else if (filter === "information") { where += " AND email_type='information'"; }
@@ -336,6 +339,7 @@ router.get("/smart-email/messages", async (req, res) => {
     }
     else if (filter === "unread")     { where += " AND seen=false"; }
     else if (filter === "high")       { where += " AND priority='high'"; }
+    else if (filter === "drafts")     { where += " AND d.email_uid IS NOT NULL AND e.auto_replied=false"; }
 
     if (search) {
       vals.push(`%${search}%`);
@@ -343,15 +347,16 @@ router.get("/smart-email/messages", async (req, res) => {
     }
 
     const result = await pool.query(
-      `SELECT uid, subject, from_addr, to_addr, cc_addr, email_date, seen, has_attachment,
-              email_type, category, project_name, supplier_name, is_internal, priority,
-              auto_replied, classified,
-              LEFT(body_text, 200) AS snippet
-       FROM smart_email_inbox
+      `SELECT e.uid, e.subject, e.from_addr, e.to_addr, e.cc_addr, e.email_date, e.seen, e.has_attachment,
+              e.email_type, e.category, e.project_name, e.supplier_name, e.is_internal, e.priority,
+              e.auto_replied, e.classified,
+              LEFT(e.body_text, 200) AS snippet,
+              (d.email_uid IS NOT NULL) AS has_draft
+       ${fromClause}
        ${where}
        ORDER BY
-         CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
-         email_date DESC NULLS LAST
+         CASE e.priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+         e.email_date DESC NULLS LAST
        LIMIT 200`,
       vals
     );
@@ -376,7 +381,8 @@ router.get("/smart-email/stats", async (_req, res) => {
         COUNT(*) FILTER (WHERE is_internal=true) AS internal,
         COUNT(*) FILTER (WHERE priority='high' AND NOT auto_replied) AS needs_reply,
         COUNT(*) FILTER (WHERE auto_replied=true) AS auto_replied_count,
-        COUNT(*) AS total
+        COUNT(*) AS total,
+        (SELECT COUNT(*) FROM smart_email_drafts WHERE sent=false) AS drafts_count
       FROM smart_email_inbox
     `);
     const projects = await pool.query(
