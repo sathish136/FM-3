@@ -211,10 +211,12 @@ function EmailDetail({ email, onClose, onDeleted, userEmail, isTrash }: {
   const [bodyLoading, setBodyLoading] = useState(true);
   const [summary, setSummary] = useState("");
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryPanelOpen, setSummaryPanelOpen] = useState(false);
   const [replies, setReplies] = useState<{ tone: string; text: string }[]>([]);
   const [repliesLoading, setRepliesLoading] = useState(false);
+  const [repliesError, setRepliesError] = useState("");
   const [selectedReplyIdx, setSelectedReplyIdx] = useState<number | null>(null);
-  const [tab, setTab] = useState<"mail"|"draft"|"summary"|"reply">("mail");
+  const [tab, setTab] = useState<"mail"|"draft"|"reply">("mail");
   const [replyOpen, setReplyOpen] = useState(false);
   const [replyDraft, setReplyDraft] = useState("");
   const [replyIsDraft, setReplyIsDraft] = useState(false);
@@ -256,8 +258,15 @@ function EmailDetail({ email, onClose, onDeleted, userEmail, isTrash }: {
     setSummaryLoading(false);
   };
 
+  const toggleSummaryPanel = () => {
+    const next = !summaryPanelOpen;
+    setSummaryPanelOpen(next);
+    if (next && !summary && !summaryLoading) loadSummary();
+  };
+
   const loadReplies = async () => {
     setRepliesLoading(true);
+    setRepliesError("");
     setSelectedReplyIdx(null);
     try {
       const r = await api("/smart-email/ai-reply", {
@@ -266,13 +275,14 @@ function EmailDetail({ email, onClose, onDeleted, userEmail, isTrash }: {
         body: JSON.stringify({ uid: email.uid }),
       });
       setReplies(r.replies || []);
-    } catch {}
+    } catch (e: any) {
+      setRepliesError(e.message || "Failed to generate replies. Please try again.");
+    }
     setRepliesLoading(false);
   };
 
-  const handleTabChange = (t: "mail"|"draft"|"summary"|"reply") => {
+  const handleTabChange = (t: "mail"|"draft"|"reply") => {
     setTab(t);
-    if (t === "summary" && !summary && !summaryLoading) loadSummary();
     if (t === "reply" && replies.length === 0 && !repliesLoading) loadReplies();
   };
 
@@ -354,7 +364,8 @@ function EmailDetail({ email, onClose, onDeleted, userEmail, isTrash }: {
 
   return (
     <>
-      <div className="flex flex-col h-full bg-white border-l border-gray-100">
+      <div className="flex h-full bg-white border-l border-gray-100 overflow-hidden">
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         {/* Header */}
         <div className="px-5 pt-4 pb-3 border-b border-gray-100">
           <div className="flex items-start gap-3 mb-3">
@@ -455,10 +466,9 @@ function EmailDetail({ email, onClose, onDeleted, userEmail, isTrash }: {
         {/* Tabs */}
         <div className="flex border-b border-gray-100 px-5 gap-1">
           {([
-            { key: "mail",    label: "Email",         icon: Mail },
-            { key: "draft",   label: hasDraft ? "Draft ●" : "Draft", icon: Bot, hidden: autoReplied },
-            { key: "summary", label: "AI Summary",    icon: Sparkles },
-            { key: "reply",   label: "Smart Replies", icon: Wand2 },
+            { key: "mail",  label: "Email",         icon: Mail },
+            { key: "draft", label: hasDraft ? "Draft ●" : "Draft", icon: Bot, hidden: autoReplied },
+            { key: "reply", label: "Smart Replies", icon: Wand2 },
           ] as { key: string; label: string; icon: any; hidden?: boolean }[]).filter(t => !t.hidden).map(t => (
             <button key={t.key} onClick={() => handleTabChange(t.key as any)}
               className={cn(
@@ -473,6 +483,16 @@ function EmailDetail({ email, onClose, onDeleted, userEmail, isTrash }: {
               {t.label}
             </button>
           ))}
+          <button onClick={toggleSummaryPanel}
+            className={cn(
+              "ml-auto flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold border-b-2 transition-colors -mb-px whitespace-nowrap",
+              summaryPanelOpen
+                ? "border-purple-500 text-purple-600"
+                : "border-transparent text-gray-400 hover:text-gray-700"
+            )}>
+            <Sparkles className="w-3.5 h-3.5" />
+            AI Summary
+          </button>
         </div>
 
         {/* Content */}
@@ -551,47 +571,6 @@ function EmailDetail({ email, onClose, onDeleted, userEmail, isTrash }: {
             </div>
           )}
 
-          {tab === "summary" && (
-            <div className="p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
-                  <Sparkles className="w-3.5 h-3.5 text-white" />
-                </div>
-                <span className="text-sm font-bold text-gray-800">AI Email Summary</span>
-              </div>
-              {summaryLoading ? (
-                <div className="flex items-center gap-2 text-sm text-gray-400">
-                  <Loader2 className="w-4 h-4 animate-spin" />Generating summary…
-                </div>
-              ) : summary ? (
-                <div className="bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-100 rounded-xl p-4">
-                  <p className="text-sm text-gray-700 leading-relaxed">{summary}</p>
-                </div>
-              ) : (
-                <button onClick={loadSummary} className="flex items-center gap-2 px-4 py-2 bg-purple-100 text-purple-700 rounded-lg text-sm font-medium hover:bg-purple-200 transition-colors">
-                  <Sparkles className="w-4 h-4" />Generate Summary
-                </button>
-              )}
-
-              <div className="mt-5 grid grid-cols-2 gap-3">
-                {[
-                  { label: "Type", value: currentClassification.type || "—", icon: typeConf?.icon || Info, color: typeConf?.color || "text-gray-500" },
-                  { label: "Category", value: email.project_name || email.supplier_name || currentClassification.cat || "—", icon: CatIcon, color: catConf?.color || "text-gray-500" },
-                  { label: "Priority", value: currentClassification.priority || "—", icon: AlertTriangle, color: currentClassification.priority === "high" ? "text-red-600" : "text-gray-500" },
-                  { label: "Auto-Replied", value: autoReplied ? "Yes" : "No", icon: Bot, color: autoReplied ? "text-green-600" : "text-gray-400" },
-                ].map(item => (
-                  <div key={item.label} className="bg-white border border-gray-100 rounded-xl p-3 flex items-center gap-2.5">
-                    <item.icon className={cn("w-4 h-4 shrink-0", item.color)} />
-                    <div>
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wider">{item.label}</p>
-                      <p className="text-xs font-semibold text-gray-800 capitalize">{item.value}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {tab === "reply" && (
             <div className="p-5 space-y-3">
               <div className="flex items-center gap-2 mb-1">
@@ -606,6 +585,17 @@ function EmailDetail({ email, onClose, onDeleted, userEmail, isTrash }: {
                   </button>
                 )}
               </div>
+
+              {repliesError && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2 text-xs text-red-600">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold mb-1">Could not generate replies</p>
+                    <p className="text-red-500">{repliesError}</p>
+                    <button onClick={loadReplies} className="mt-2 underline text-red-600 font-medium">Try again</button>
+                  </div>
+                </div>
+              )}
 
               {repliesLoading ? (
                 <div className="flex flex-col items-center justify-center py-8 gap-3 text-gray-400">
@@ -680,6 +670,69 @@ function EmailDetail({ email, onClose, onDeleted, userEmail, isTrash }: {
             </div>
           )}
         </div>
+      </div>
+
+      {/* AI Summary Side Panel */}
+      {summaryPanelOpen && (
+        <div className="w-[280px] shrink-0 border-l border-gray-100 flex flex-col bg-gradient-to-b from-purple-50/60 to-white overflow-hidden">
+          <div className="px-4 py-3 border-b border-purple-100 flex items-center gap-2">
+            <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shrink-0">
+              <Sparkles className="w-3.5 h-3.5 text-white" />
+            </div>
+            <span className="text-xs font-bold text-gray-800 flex-1">AI Summary</span>
+            <button onClick={() => setSummaryPanelOpen(false)} className="p-1 text-gray-400 hover:text-gray-600 rounded transition-colors">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {summaryLoading ? (
+              <div className="flex items-center gap-2 text-sm text-gray-400 py-4 justify-center">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Summarising…</span>
+              </div>
+            ) : summary ? (
+              <>
+                <div className="bg-white border border-purple-100 rounded-xl p-3 shadow-sm">
+                  <p className="text-[13px] text-gray-700 leading-relaxed">{summary}</p>
+                </div>
+                <button onClick={loadSummary} disabled={summaryLoading}
+                  className="flex items-center gap-1.5 text-[11px] text-purple-500 hover:text-purple-700 transition-colors">
+                  <RefreshCw className="w-3 h-3" />Regenerate
+                </button>
+              </>
+            ) : (
+              <div className="flex flex-col items-center gap-3 py-6 text-center">
+                <div className="w-10 h-10 rounded-2xl bg-purple-100 flex items-center justify-center">
+                  <Sparkles className="w-5 h-5 text-purple-500" />
+                </div>
+                <p className="text-xs text-gray-500">Get a quick AI summary of this email</p>
+                <button onClick={loadSummary}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-xs font-semibold rounded-lg hover:bg-purple-700 transition-colors">
+                  <Sparkles className="w-3.5 h-3.5" />Generate Summary
+                </button>
+              </div>
+            )}
+
+            {/* Classification card */}
+            <div className="space-y-2 pt-2 border-t border-purple-100">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-purple-400">Classification</p>
+              {[
+                { label: "Type",     value: currentClassification.type || "—",                                                icon: typeConf?.icon || Info,    color: typeConf?.color || "text-gray-500" },
+                { label: "Category", value: email.project_name || email.supplier_name || currentClassification.cat || "—",   icon: CatIcon,                   color: catConf?.color  || "text-gray-500" },
+                { label: "Priority", value: currentClassification.priority || "—",                                           icon: AlertTriangle,             color: currentClassification.priority === "high" ? "text-red-600" : "text-gray-500" },
+              ].map(item => (
+                <div key={item.label} className="bg-white border border-gray-100 rounded-lg p-2.5 flex items-center gap-2">
+                  <item.icon className={cn("w-3.5 h-3.5 shrink-0", item.color)} />
+                  <div>
+                    <p className="text-[9px] text-gray-400 uppercase tracking-wider">{item.label}</p>
+                    <p className="text-[11px] font-semibold text-gray-800 capitalize">{item.value}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       </div>
 
       {replyOpen && (
