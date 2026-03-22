@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Layout } from "@/components/Layout";
 import { cn } from "@/lib/utils";
-import { Wifi, WifiOff, RefreshCw, Settings2, X, Clock, Activity, Home } from "lucide-react";
+import { Wifi, WifiOff, RefreshCw, Settings2, X, Clock, Activity, Home, Search } from "lucide-react";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "").replace(/\/pm-app$/, "");
 
@@ -145,6 +145,7 @@ export default function SiteData() {
   const [connected, setConnected] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [activeSite, setActiveSite] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState(2);
   const [error, setError] = useState<string | null>(null);
@@ -190,15 +191,46 @@ export default function SiteData() {
 
   const activeSiteData = activeSite ? sites.find(s => s.id === activeSite) ?? null : null;
 
+  const q = searchQuery.trim().toLowerCase();
+  const filteredSites = q
+    ? sites.filter(site =>
+        site.name.toLowerCase().includes(q) ||
+        site.sections.some(sec =>
+          (sec.title || "").toLowerCase().includes(q) ||
+          sec.tags.some(t => t.label.toLowerCase().includes(q) || t.adsTag.toLowerCase().includes(q))
+        )
+      )
+    : sites;
+
   return (
     <Layout>
       <div className="min-h-screen bg-[#060e1e] flex flex-col">
 
         {/* ── Top header bar ── */}
         <div className="bg-[#0a1628] border-b border-[#1a3050] px-4 py-2 flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <Activity className="w-5 h-5 text-[#4a9eda]" />
             <span className="text-white font-extrabold text-sm tracking-wider uppercase">WTT International — Live Site Data</span>
+          </div>
+
+          {/* ── Search ── */}
+          <div className="relative flex-1 min-w-[160px] max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#4a6a8a] pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search sites or tags…"
+              className="w-full pl-8 pr-7 py-1.5 rounded bg-[#0d1f30] border border-[#1a3050] text-[11px] text-[#c0cce0] placeholder-[#3a5a7a] outline-none focus:border-[#0060cc] transition-colors"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-[#4a6a8a] hover:text-[#c0cce0] transition-colors"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
           </div>
 
           <div className="ml-auto flex items-center gap-3">
@@ -258,9 +290,15 @@ export default function SiteData() {
             <div className="flex items-center justify-center h-64">
               <div className="text-[#2a4a6a] text-sm animate-pulse">Loading site configuration…</div>
             </div>
+          ) : filteredSites.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-48 gap-2">
+              <Search className="w-8 h-8 text-[#1a3050]" />
+              <p className="text-[#3a5a7a] text-sm">No sites match "<span className="text-[#4a9eda]">{searchQuery}</span>"</p>
+              <button onClick={() => setSearchQuery("")} className="text-[11px] text-[#0060cc] hover:underline">Clear search</button>
+            </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">
-              {sites.map(site => (
+              {filteredSites.map(site => (
                 <SitePanel
                   key={site.id}
                   site={site}
