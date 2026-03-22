@@ -135,9 +135,9 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
     setMobileSidebarOpen(false);
   }, [location]);
 
-  // Auto-collapse sidebar when on email — gives full reading width
+  // Auto-collapse sidebar when on email pages — gives full reading width
   useEffect(() => {
-    if (location === "/email") {
+    if (location === "/email" || location === "/smart-inbox") {
       setCollapsed(true);
     }
   }, [location]);
