@@ -711,7 +711,6 @@ export default function SmartInbox() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [classifying, setClassifying] = useState(false);
-  const [erpSyncing, setErpSyncing] = useState(false);
   const [selected, setSelected] = useState<SmartEmail | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
   const [filterValue, setFilterValue] = useState<string | undefined>();
@@ -864,15 +863,6 @@ export default function SmartInbox() {
     setSyncing(false);
   };
 
-  const handleErpSync = async () => {
-    setErpSyncing(true);
-    try {
-      await api("/smart-email/sync-erp", { method: "POST" });
-      await loadStats();
-    } catch { }
-    setErpSyncing(false);
-  };
-
   const handleClassifyAll = async () => {
     setClassifying(true);
     try {
@@ -975,13 +965,6 @@ export default function SmartInbox() {
                 ? <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
                 : <BrainCircuit className="w-3.5 h-3.5 shrink-0" />}
               <span>{classifying ? "Classifying…" : "AI Classify All"}</span>
-            </button>
-            <button onClick={handleErpSync} disabled={erpSyncing}
-              className="w-full flex items-center gap-2.5 px-3 py-2.5 bg-emerald-600 text-white text-[11px] font-semibold rounded-lg hover:bg-emerald-700 active:scale-[0.98] transition-all disabled:opacity-50">
-              {erpSyncing
-                ? <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-                : <CloudDownload className="w-3.5 h-3.5 shrink-0" />}
-              <span>{erpSyncing ? "Syncing ERP…" : "Sync from ERP"}</span>
             </button>
           </div>
 
