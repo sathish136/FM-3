@@ -5,7 +5,7 @@ import {
   FolderOpen, Truck, Users, RefreshCw, X, Send, Loader2, ChevronDown,
   ChevronRight, Bot, Wand2, Reply, Paperclip, Search, Shield,
   CheckCircle2, Clock, Zap, Star, Eye, Trash2, BarChart3, Settings,
-  Plus, Download, Bell, BellOff,
+  Plus, Download, Bell, BellOff, BrainCircuit, CloudDownload, MailCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -661,29 +661,38 @@ export default function SmartInbox() {
         {/* ── Left Sidebar ── */}
         <aside className="w-[220px] shrink-0 flex flex-col bg-white border-r border-gray-100 h-full overflow-y-auto">
           {/* Brand */}
-          <div className="px-4 py-4 border-b border-gray-100">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#1B2A5E] to-[#E05A00] flex items-center justify-center">
-                <Bot className="w-4 h-4 text-white" />
+          <div className="px-4 py-4 border-b border-gray-100 bg-white">
+            <div className="flex items-center gap-3">
+              <div className="relative shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-[#1B2A5E] flex items-center justify-center shadow-sm">
+                  <MailCheck className="w-[18px] h-[18px] text-white" />
+                </div>
+                <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-[#E05A00] border-2 border-white flex items-center justify-center">
+                  <Zap className="w-2 h-2 text-white" />
+                </div>
               </div>
               <div>
-                <p className="text-[13px] font-extrabold text-gray-900">Smart Inbox</p>
-                <p className="text-[9px] text-gray-400 uppercase tracking-widest">AI-Powered</p>
+                <p className="text-[13px] font-bold text-[#1B2A5E] tracking-tight leading-none">Smart Inbox</p>
+                <p className="text-[10px] text-gray-400 mt-0.5 tracking-wide font-medium">AI-Powered · WTT</p>
               </div>
             </div>
           </div>
 
           {/* Action buttons */}
-          <div className="px-3 py-3 space-y-1.5 border-b border-gray-100">
+          <div className="px-3 py-3 space-y-2 border-b border-gray-100">
             <button onClick={handleSync} disabled={syncing}
-              className="w-full flex items-center gap-2 px-3 py-2 bg-[#1B2A5E] text-white text-xs font-semibold rounded-xl hover:opacity-90 transition-opacity">
-              {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-              Sync & Ingest Emails
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 bg-[#1B2A5E] text-white text-[11px] font-semibold rounded-lg hover:bg-[#243870] active:scale-[0.98] transition-all disabled:opacity-50">
+              {syncing
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                : <RefreshCw className="w-3.5 h-3.5 shrink-0" />}
+              <span>{syncing ? "Syncing…" : "Sync Emails"}</span>
             </button>
             <button onClick={handleClassifyAll} disabled={classifying}
-              className="w-full flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white text-xs font-semibold rounded-xl hover:opacity-90 transition-opacity">
-              {classifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-              AI Classify All
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 bg-indigo-600 text-white text-[11px] font-semibold rounded-lg hover:bg-indigo-700 active:scale-[0.98] transition-all disabled:opacity-50">
+              {classifying
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                : <BrainCircuit className="w-3.5 h-3.5 shrink-0" />}
+              <span>{classifying ? "Classifying…" : "AI Classify All"}</span>
             </button>
           </div>
 
@@ -845,7 +854,7 @@ export default function SmartInbox() {
           <div className="flex-1 overflow-y-auto min-h-0">
             {error && (
               <div className="m-3 bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-600">
-                {error} — Click "Sync & Ingest Emails" to load emails from your mailbox.
+                {error} — Click "Sync Emails" to load emails from your mailbox.
               </div>
             )}
             {loading ? (
@@ -859,11 +868,11 @@ export default function SmartInbox() {
                   <Inbox className="w-6 h-6 text-gray-300" />
                 </div>
                 <p className="text-sm font-semibold text-gray-500">No emails found</p>
-                <p className="text-xs text-gray-400">Click "Sync & Ingest Emails" to load from your mailbox</p>
+                <p className="text-xs text-gray-400">Click "Sync Emails" in the sidebar to load your mailbox</p>
                 <button onClick={handleSync} disabled={syncing}
-                  className="flex items-center gap-2 px-4 py-2 bg-[#1B2A5E] text-white text-xs font-semibold rounded-xl hover:opacity-90 mt-1">
-                  {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                  Sync Now
+                  className="flex items-center gap-2 px-4 py-2 bg-[#1B2A5E] text-white text-xs font-semibold rounded-lg hover:bg-[#243870] transition-colors mt-1 disabled:opacity-50">
+                  {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  {syncing ? "Syncing…" : "Sync Now"}
                 </button>
               </div>
             ) : emails.map(email => {
@@ -953,36 +962,50 @@ export default function SmartInbox() {
               onDeleted={handleEmailDeleted}
             />
           ) : (
-            <div className="flex flex-col items-center justify-center h-full bg-[#f4f6fb] gap-4">
-              <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#1B2A5E] to-[#E05A00] flex items-center justify-center shadow-xl">
-                <Bot className="w-10 h-10 text-white opacity-80" />
+            <div className="flex flex-col items-center justify-center h-full bg-[#f4f6fb] gap-5">
+              {/* Icon mark */}
+              <div className="relative">
+                <div className="w-16 h-16 rounded-2xl bg-[#1B2A5E] flex items-center justify-center shadow-md">
+                  <MailCheck className="w-8 h-8 text-white" />
+                </div>
+                <div className="absolute -bottom-1.5 -right-1.5 w-6 h-6 rounded-full bg-[#E05A00] border-2 border-[#f4f6fb] flex items-center justify-center">
+                  <Zap className="w-3 h-3 text-white" />
+                </div>
               </div>
+
+              {/* Text */}
               <div className="text-center">
-                <h2 className="text-base font-extrabold text-gray-700 mb-1">AI Smart Inbox</h2>
-                <p className="text-xs text-gray-400 max-w-xs leading-relaxed">
-                  Emails are automatically classified by project, supplier, internal teams, and priority. Select an email to view AI summary and smart replies.
+                <h2 className="text-[15px] font-bold text-[#1B2A5E] mb-1">Smart Inbox</h2>
+                <p className="text-[11px] text-gray-400 max-w-[260px] leading-relaxed">
+                  Select an email to view its AI summary, classification, and smart reply options.
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-3 mt-2 max-w-sm w-full px-4">
+
+              {/* Stats grid */}
+              <div className="grid grid-cols-2 gap-2.5 max-w-[300px] w-full px-4">
                 {[
-                  { icon: AlertTriangle, label: "Important", count: n(stats?.important), color: "text-red-600", bg: "bg-red-50 border-red-200" },
-                  { icon: FolderOpen,   label: "Projects",  count: n(stats?.projects),  color: "text-indigo-600", bg: "bg-indigo-50 border-indigo-200" },
-                  { icon: Truck,        label: "Suppliers", count: n(stats?.suppliers), color: "text-orange-600", bg: "bg-orange-50 border-orange-200" },
-                  { icon: CheckCircle2, label: "Auto-Replied", count: n(stats?.auto_replied_count), color: "text-green-600", bg: "bg-green-50 border-green-200" },
+                  { icon: AlertTriangle, label: "Important",  count: n(stats?.important),          color: "text-red-600",    bg: "bg-white border-gray-200" },
+                  { icon: FolderOpen,   label: "Projects",   count: n(stats?.projects),            color: "text-indigo-600", bg: "bg-white border-gray-200" },
+                  { icon: Truck,        label: "Suppliers",  count: n(stats?.suppliers),           color: "text-orange-500", bg: "bg-white border-gray-200" },
+                  { icon: CheckCircle2, label: "Replied",    count: n(stats?.auto_replied_count),  color: "text-green-600",  bg: "bg-white border-gray-200" },
                 ].map(s => (
-                  <div key={s.label} className={cn("rounded-2xl border p-4 flex items-center gap-3", s.bg)}>
-                    <s.icon className={cn("w-5 h-5 shrink-0", s.color)} />
+                  <div key={s.label} className={cn("rounded-xl border p-3 flex items-center gap-3 shadow-sm", s.bg)}>
+                    <div className={cn("w-7 h-7 rounded-lg bg-gray-50 flex items-center justify-center shrink-0")}>
+                      <s.icon className={cn("w-3.5 h-3.5", s.color)} />
+                    </div>
                     <div>
-                      <p className="text-xl font-black text-gray-800">{s.count}</p>
-                      <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide">{s.label}</p>
+                      <p className="text-base font-bold text-gray-800 leading-none">{s.count}</p>
+                      <p className="text-[9px] text-gray-400 font-semibold uppercase tracking-wide mt-0.5">{s.label}</p>
                     </div>
                   </div>
                 ))}
               </div>
+
+              {/* Sync CTA */}
               <button onClick={handleSync} disabled={syncing}
-                className="flex items-center gap-2 px-6 py-2.5 bg-[#1B2A5E] text-white text-sm font-semibold rounded-xl hover:opacity-90 mt-2">
-                {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                Sync & Load Emails
+                className="flex items-center gap-2 px-5 py-2 bg-[#1B2A5E] text-white text-xs font-semibold rounded-lg hover:bg-[#243870] transition-colors disabled:opacity-50">
+                {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                {syncing ? "Syncing…" : "Sync Emails"}
               </button>
             </div>
           )}
