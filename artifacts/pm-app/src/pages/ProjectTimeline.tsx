@@ -517,7 +517,7 @@ function OverviewView({
       {(personDelays.size > 0 || supplierDelays.size > 0 || actions.length > 0) && (
         <div className="grid sm:grid-cols-2 gap-3 items-stretch">
 
-          {/* Left: Who Is Causing Delays */}
+          {/* Left: Who Is Causing Delays — mini summary */}
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm flex flex-col min-h-0">
             <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center gap-2 shrink-0">
               <Users className="w-4 h-4 text-gray-500" />
@@ -526,65 +526,57 @@ function OverviewView({
                 {personDelays.size + supplierDelays.size}
               </span>
             </div>
-            {/* Single unified scroll area fills remaining panel height */}
-            <div className="flex-1 overflow-y-auto min-h-0">
-              {/* People sub-section */}
-              {personDelays.size > 0 && (
-                <>
-                  <div className="px-4 py-1.5 bg-red-50 border-b border-red-100 flex items-center gap-1.5 sticky top-0 z-10">
-                    <Users className="w-3 h-3 text-red-500" />
-                    <span className="text-[10px] font-bold text-red-700 uppercase tracking-wide">People</span>
-                    <span className="ml-auto text-[10px] font-bold text-red-600">{personDelays.size}</span>
+            <div className="flex-1 p-4 space-y-3">
+              {/* People summary card */}
+              <div className={cn("rounded-xl border p-4 flex items-center gap-4", personDelays.size > 0 ? "bg-red-50 border-red-200" : "bg-gray-50 border-gray-200")}>
+                <div className={cn("w-12 h-12 rounded-full flex items-center justify-center shrink-0", personDelays.size > 0 ? "bg-red-100" : "bg-gray-100")}>
+                  <Users className={cn("w-6 h-6", personDelays.size > 0 ? "text-red-600" : "text-gray-400")} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={cn("text-2xl font-bold", personDelays.size > 0 ? "text-red-700" : "text-gray-400")}>{personDelays.size}</p>
+                  <p className={cn("text-xs font-semibold uppercase tracking-wide", personDelays.size > 0 ? "text-red-600" : "text-gray-400")}>People Causing Delays</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    {personDelays.size > 0
+                      ? `${Array.from(personDelays.values()).reduce((s, p) => s + p.tasks.length, 0)} overdue tasks · max +${Math.max(...Array.from(personDelays.values()).map(p => Math.max(...p.tasks.map(t => { const e = parseDate(t.exp_end_date); return e ? daysBetween(e, today) : 0; }))))}d late`
+                      : "No people delays"}
+                  </p>
+                </div>
+                {personDelays.size > 0 && (
+                  <div className="shrink-0 text-right">
+                    <p className="text-[10px] text-red-400 font-medium">Top offender</p>
+                    <p className="text-xs font-bold text-red-700 truncate max-w-[90px]">
+                      {Array.from(personDelays.values()).sort((a, b) => b.tasks.length - a.tasks.length)[0]?.name}
+                    </p>
                   </div>
-                  <div className="divide-y divide-gray-50">
-                    {Array.from(personDelays.values()).sort((a, b) => b.tasks.length - a.tasks.length).map(p => {
-                      const maxDelay = Math.max(...p.tasks.map(t => { const e = parseDate(t.exp_end_date); return e ? daysBetween(e, today) : 0; }));
-                      return (
-                        <div key={p.name} className="flex items-center gap-3 px-4 py-2">
-                          <div className="w-7 h-7 rounded-full bg-red-100 border border-red-200 flex items-center justify-center text-[10px] font-bold text-red-700 shrink-0 uppercase">
-                            {p.name.slice(0, 2)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-semibold text-gray-800 truncate">{p.name}</p>
-                            <p className="text-[10px] text-red-500">{p.tasks.length} overdue task{p.tasks.length > 1 ? "s" : ""}</p>
-                          </div>
-                          <div className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0", maxDelay > 30 ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700")}>
-                            +{maxDelay}d
-                          </div>
-                        </div>
-                      );
-                    })}
+                )}
+              </div>
+
+              {/* Suppliers summary card */}
+              <div className={cn("rounded-xl border p-4 flex items-center gap-4", supplierDelays.size > 0 ? "bg-orange-50 border-orange-200" : "bg-gray-50 border-gray-200")}>
+                <div className={cn("w-12 h-12 rounded-full flex items-center justify-center shrink-0", supplierDelays.size > 0 ? "bg-orange-100" : "bg-gray-100")}>
+                  <Truck className={cn("w-6 h-6", supplierDelays.size > 0 ? "text-orange-600" : "text-gray-400")} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={cn("text-2xl font-bold", supplierDelays.size > 0 ? "text-orange-700" : "text-gray-400")}>{supplierDelays.size}</p>
+                  <p className={cn("text-xs font-semibold uppercase tracking-wide", supplierDelays.size > 0 ? "text-orange-600" : "text-gray-400")}>Suppliers Causing Delays</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    {supplierDelays.size > 0
+                      ? `Max +${maxSupplierDelay}d late · ${fmtMoney(totalDelayedPOValue)} pending`
+                      : "No supplier delays"}
+                  </p>
+                </div>
+                {supplierDelays.size > 0 && (
+                  <div className="shrink-0 text-right">
+                    <p className="text-[10px] text-orange-400 font-medium">Worst delay</p>
+                    <p className="text-xs font-bold text-orange-700 truncate max-w-[90px]">
+                      {sortedSuppliers[0]?.name}
+                    </p>
                   </div>
-                </>
-              )}
-              {/* Suppliers sub-section */}
-              {supplierDelays.size > 0 && (
-                <>
-                  <div className="px-4 py-1.5 bg-orange-50 border-y border-orange-100 flex items-center gap-1.5 sticky top-0 z-10">
-                    <Truck className="w-3 h-3 text-orange-500" />
-                    <span className="text-[10px] font-bold text-orange-700 uppercase tracking-wide">Suppliers</span>
-                    <span className="ml-auto text-[10px] font-bold text-orange-600">{supplierDelays.size}</span>
-                  </div>
-                  <div className="divide-y divide-gray-50">
-                    {Array.from(supplierDelays.values()).sort((a, b) => b.maxDays - a.maxDays).map(s => (
-                      <div key={s.name} className="flex items-center gap-3 px-4 py-2">
-                        <div className="w-7 h-7 rounded-full bg-orange-100 border border-orange-200 flex items-center justify-center text-[10px] font-bold text-orange-700 shrink-0 uppercase">
-                          {s.name.slice(0, 2)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-gray-800 truncate" title={s.name}>{s.name}</p>
-                          <p className="text-[10px] text-orange-500">{s.pos.length} PO{s.pos.length > 1 ? "s" : ""} late · {fmtMoney(s.pendingValue)}</p>
-                        </div>
-                        <div className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0", s.maxDays > 30 ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700")}>
-                          +{s.maxDays}d
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
+                )}
+              </div>
+
               {personDelays.size === 0 && supplierDelays.size === 0 && (
-                <div className="flex flex-col items-center py-8 text-gray-400">
+                <div className="flex flex-col items-center py-6 text-gray-400">
                   <CheckCircle2 className="w-8 h-8 mb-2 text-emerald-400" />
                   <p className="text-xs font-medium text-gray-500">No active delays detected</p>
                 </div>
