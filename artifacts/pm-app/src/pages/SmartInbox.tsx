@@ -236,8 +236,8 @@ function ReplyModal({ to, subject, defaultBody, onClose, onSent, userEmail, draf
 }
 
 // ─── Email Detail Pane ────────────────────────────────────────────────────────
-function EmailDetail({ email, onClose, onDeleted, userEmail, isTrash }: {
-  email: SmartEmail; onClose: () => void; onDeleted: () => void; userEmail?: string; isTrash?: boolean;
+function EmailDetail({ email, onClose, onDeleted, onDraftDiscarded, userEmail, isTrash }: {
+  email: SmartEmail; onClose: () => void; onDeleted: () => void; onDraftDiscarded?: () => void; userEmail?: string; isTrash?: boolean;
 }) {
   const [body, setBody] = useState<{ html: string | null; text: string | null } | null>(null);
   const [bodyLoading, setBodyLoading] = useState(true);
@@ -350,6 +350,7 @@ function EmailDetail({ email, onClose, onDeleted, userEmail, isTrash }: {
       setDraftText("");
       setDraftEdited("");
       setTab("mail");
+      onDraftDiscarded?.();
     } catch {}
     setDiscardingDraft(false);
   };
@@ -1599,6 +1600,7 @@ export default function SmartInbox() {
               email={selected}
               onClose={() => setSelected(null)}
               onDeleted={handleEmailDeleted}
+              onDraftDiscarded={() => setDraftAllResult("")}
               userEmail={userEmail}
               isTrash={activeFilter === "trash"}
             />
