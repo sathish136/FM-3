@@ -355,122 +355,180 @@ function OverviewView({
   const priorityColor: Record<string, string> = { critical: "bg-red-500", high: "bg-orange-500", medium: "bg-amber-400" };
   const priorityBg: Record<string, string> = { critical: "bg-red-50 border-red-200", high: "bg-orange-50 border-orange-200", medium: "bg-amber-50 border-amber-100" };
 
+  // Derived health score for banner
+  const healthScore = (() => {
+    if (overdueTasks > 10 || supplierDelays.size > 50) return { label: "Critical", color: "text-red-300", dot: "bg-red-400" };
+    if (overdueTasks > 0 || supplierDelays.size > 10) return { label: "At Risk", color: "text-yellow-300", dot: "bg-yellow-400" };
+    return { label: "On Track", color: "text-emerald-300", dot: "bg-emerald-400" };
+  })();
+
   return (
-    <div className="p-4 space-y-5">
-      {/* Project Health Banner */}
+    <div className="p-4 space-y-4">
+
+      {/* ── Project Health Banner ── */}
       {projectDetail && (
-        <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-2xl p-4 text-white">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-4">
-              <div className="relative flex items-center justify-center w-16 h-16">
-                <ProgressRing pct={projPct} size={64} stroke={6} color="#34d399" />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-base font-bold text-white">{projPct.toFixed(0)}%</span>
+        <div className="relative bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-700 rounded-2xl overflow-hidden shadow-lg text-white">
+          {/* Background pattern */}
+          <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: "radial-gradient(circle at 80% 20%, white 1px, transparent 1px)", backgroundSize: "24px 24px" }} />
+          <div className="relative p-5">
+            <div className="flex flex-wrap items-start gap-5">
+              {/* Progress ring + name */}
+              <div className="flex items-center gap-4">
+                <div className="relative flex items-center justify-center w-20 h-20 shrink-0">
+                  <ProgressRing pct={projPct} size={80} stroke={7} color="#34d399" />
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-lg font-extrabold leading-none">{projPct.toFixed(0)}%</span>
+                    <span className="text-[9px] text-blue-200 mt-0.5">done</span>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-blue-200 text-[10px] font-semibold uppercase tracking-widest mb-0.5">Project Overview</p>
+                  <p className="text-xl font-extrabold leading-tight">{projectDetail.project_name}</p>
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                    <StatusBadge status={projectDetail.status} />
+                    <span className="flex items-center gap-1 text-[11px] font-semibold">
+                      <span className={cn("w-1.5 h-1.5 rounded-full inline-block", healthScore.dot)} />
+                      <span className={healthScore.color}>{healthScore.label}</span>
+                    </span>
+                    {projectDetail.department && (
+                      <span className="text-blue-300 text-[11px] flex items-center gap-1">
+                        <Building2 className="w-3 h-3" />{projectDetail.department}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
-              <div>
-                <p className="text-blue-100 text-xs font-medium uppercase tracking-wide">Overall Progress</p>
-                <p className="text-2xl font-bold">{projectDetail.project_name}</p>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <StatusBadge status={projectDetail.status} />
-                  {projectDetail.department && (
-                    <span className="text-blue-200 text-xs flex items-center gap-1">
-                      <Building2 className="w-3 h-3" />{projectDetail.department}
+
+              {/* Date stats */}
+              <div className="ml-auto flex items-center gap-6 flex-wrap">
+                {projectDetail.expected_start_date && (
+                  <div className="text-center">
+                    <p className="text-blue-300 text-[10px] font-semibold uppercase tracking-wide">Start</p>
+                    <p className="text-sm font-bold mt-0.5">{fmtDate(projectDetail.expected_start_date)}</p>
+                  </div>
+                )}
+                {projectDetail.expected_end_date && (
+                  <div className="text-center">
+                    <p className="text-blue-300 text-[10px] font-semibold uppercase tracking-wide">Deadline</p>
+                    <p className={cn("text-sm font-bold mt-0.5", remainingDays !== null && remainingDays < 30 && remainingDays >= 0 ? "text-yellow-300" : remainingDays !== null && remainingDays < 0 ? "text-red-300" : "")}>
+                      {fmtDate(projectDetail.expected_end_date)}
+                    </p>
+                  </div>
+                )}
+                {remainingDays !== null && (
+                  <div className={cn("text-center px-3 py-2 rounded-xl border", remainingDays < 0 ? "bg-red-500/20 border-red-400/40" : remainingDays < 30 ? "bg-yellow-500/20 border-yellow-400/40" : "bg-emerald-500/20 border-emerald-400/40")}>
+                    <p className="text-blue-200 text-[10px] font-semibold uppercase tracking-wide">
+                      {remainingDays < 0 ? "Overdue by" : "Time Left"}
+                    </p>
+                    <p className={cn("text-lg font-extrabold mt-0.5", remainingDays < 0 ? "text-red-300" : remainingDays < 30 ? "text-yellow-300" : "text-emerald-300")}>
+                      {Math.abs(remainingDays)}d
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Timeline bar */}
+            {timeElapsedPct !== null && (
+              <div className="mt-5">
+                <div className="flex justify-between text-[10px] text-blue-300 mb-1.5 font-medium">
+                  <span>Project Start</span>
+                  <span>Today · {timeElapsedPct.toFixed(0)}% of timeline elapsed</span>
+                  <span>Deadline</span>
+                </div>
+                <div className="relative h-4 bg-blue-900/60 rounded-full overflow-hidden border border-blue-500/30">
+                  <div className="absolute left-0 top-0 h-full bg-white/10 rounded-full" style={{ width: `${timeElapsedPct}%` }} />
+                  <div className="absolute left-0 top-0 h-full bg-emerald-400 rounded-full opacity-90" style={{ width: `${Math.min(projPct, 100)}%` }} />
+                  <div className="absolute top-0 bottom-0 w-0.5 bg-white/80 z-10" style={{ left: `${timeElapsedPct}%` }} title="Today" />
+                </div>
+                <div className="flex justify-between text-[11px] mt-1.5 font-semibold">
+                  <span className="text-emerald-300">Work done: {projPct.toFixed(0)}%</span>
+                  {scheduleVariance !== null && (
+                    <span className={cn("flex items-center gap-1", scheduleVariance >= 0 ? "text-emerald-300" : "text-red-300")}>
+                      {scheduleVariance >= 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                      {Math.abs(scheduleVariance).toFixed(0)}% {scheduleVariance >= 0 ? "ahead of" : "behind"} schedule
                     </span>
                   )}
                 </div>
               </div>
-            </div>
-            <div className="ml-auto grid grid-cols-2 sm:grid-cols-3 gap-3 text-center">
-              {projectDetail.expected_start_date && (
-                <div>
-                  <p className="text-blue-200 text-[10px] font-medium uppercase">Start</p>
-                  <p className="text-sm font-semibold">{fmtDate(projectDetail.expected_start_date)}</p>
-                </div>
-              )}
-              {projectDetail.expected_end_date && (
-                <div>
-                  <p className="text-blue-200 text-[10px] font-medium uppercase">Deadline</p>
-                  <p className={cn("text-sm font-semibold", remainingDays !== null && remainingDays < 30 && remainingDays >= 0 ? "text-yellow-300" : remainingDays !== null && remainingDays < 0 ? "text-red-300" : "")}>
-                    {fmtDate(projectDetail.expected_end_date)}
-                  </p>
-                </div>
-              )}
-              {remainingDays !== null && (
-                <div>
-                  <p className="text-blue-200 text-[10px] font-medium uppercase">Remaining</p>
-                  <p className={cn("text-sm font-semibold", remainingDays < 0 ? "text-red-300" : remainingDays < 30 ? "text-yellow-300" : "text-green-300")}>
-                    {remainingDays < 0 ? `${Math.abs(remainingDays)}d overdue` : `${remainingDays}d left`}
-                  </p>
-                </div>
-              )}
-            </div>
+            )}
           </div>
-
-          {/* Timeline bar */}
-          {timeElapsedPct !== null && (
-            <div className="mt-4">
-              <div className="flex justify-between text-[10px] text-blue-200 mb-1">
-                <span>Project Start</span>
-                <span>Today ({timeElapsedPct.toFixed(0)}% of timeline elapsed)</span>
-                <span>Deadline</span>
-              </div>
-              <div className="relative h-3 bg-blue-900 rounded-full overflow-hidden">
-                <div className="absolute left-0 top-0 h-full bg-blue-300 rounded-full opacity-50" style={{ width: `${timeElapsedPct}%` }} />
-                <div className="absolute left-0 top-0 h-full bg-emerald-400 rounded-full" style={{ width: `${projPct}%`, opacity: 0.8 }} />
-                <div className="absolute top-0 bottom-0 w-0.5 bg-white z-10" style={{ left: `${timeElapsedPct}%` }} title="Today" />
-              </div>
-              <div className="flex justify-between text-[10px] mt-1">
-                <span className="text-emerald-300 font-medium">Work done: {projPct.toFixed(0)}%</span>
-                {scheduleVariance !== null && (
-                  <span className={cn("font-semibold flex items-center gap-1", scheduleVariance >= 0 ? "text-emerald-300" : "text-red-300")}>
-                    {scheduleVariance >= 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
-                    {Math.abs(scheduleVariance).toFixed(0)}% {scheduleVariance >= 0 ? "ahead" : "behind"} schedule
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
         </div>
       )}
 
-      {/* KPI Cards Row 1 */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Total Tasks</span>
-            <Layers className="w-4 h-4 text-blue-400" />
-          </div>
-          <p className="text-2xl font-bold text-gray-900">{totalTasks}</p>
-          <p className="text-[10px] text-gray-500 mt-0.5">{completedTasks} completed · {openTasks} open</p>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Avg Progress</span>
-            <Activity className="w-4 h-4 text-emerald-400" />
-          </div>
-          <p className="text-2xl font-bold text-emerald-600">{avgProgress}%</p>
-          <div className="mt-1.5 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-            <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${avgProgress}%` }} />
+      {/* ── KPI Cards ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        {/* Tasks */}
+        <div className="bg-white rounded-xl border border-blue-100 shadow-sm overflow-hidden">
+          <div className="h-1 bg-blue-500" />
+          <div className="p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center">
+                <Layers className="w-3.5 h-3.5 text-blue-600" />
+              </div>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Tasks</span>
+            </div>
+            <p className="text-2xl font-extrabold text-gray-900">{totalTasks}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">{completedTasks} done · {openTasks} open</p>
           </div>
         </div>
-        <div className={cn("border rounded-xl p-3 shadow-sm", overdueTasks > 0 ? "bg-red-50 border-red-200" : "bg-white border-gray-200")}>
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Overdue Tasks</span>
-            <AlertTriangle className={cn("w-4 h-4", overdueTasks > 0 ? "text-red-500" : "text-gray-300")} />
+        {/* Avg Progress */}
+        <div className="bg-white rounded-xl border border-emerald-100 shadow-sm overflow-hidden">
+          <div className="h-1 bg-emerald-500" />
+          <div className="p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="w-7 h-7 bg-emerald-100 rounded-lg flex items-center justify-center">
+                <Activity className="w-3.5 h-3.5 text-emerald-600" />
+              </div>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Progress</span>
+            </div>
+            <p className="text-2xl font-extrabold text-emerald-600">{avgProgress}%</p>
+            <div className="mt-1.5 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${avgProgress}%` }} />
+            </div>
           </div>
-          <p className={cn("text-2xl font-bold", overdueTasks > 0 ? "text-red-600" : "text-gray-400")}>{overdueTasks}</p>
-          <p className="text-[10px] text-gray-500 mt-0.5">
-            {overdueTasks > 0 ? "Action required!" : "All on schedule"}
-          </p>
         </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Purchase Orders</span>
-            <ShoppingCart className="w-4 h-4 text-amber-400" />
+        {/* Overdue */}
+        <div className={cn("rounded-xl border shadow-sm overflow-hidden", overdueTasks > 0 ? "bg-red-50 border-red-200" : "bg-white border-gray-100")}>
+          <div className={cn("h-1", overdueTasks > 0 ? "bg-red-500" : "bg-gray-300")} />
+          <div className="p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center", overdueTasks > 0 ? "bg-red-100" : "bg-gray-100")}>
+                <AlertTriangle className={cn("w-3.5 h-3.5", overdueTasks > 0 ? "text-red-600" : "text-gray-400")} />
+              </div>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Overdue</span>
+            </div>
+            <p className={cn("text-2xl font-extrabold", overdueTasks > 0 ? "text-red-600" : "text-gray-400")}>{overdueTasks}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">{overdueTasks > 0 ? "Needs attention" : "All on schedule"}</p>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{pos.length}</p>
-          <p className="text-[10px] text-gray-500 mt-0.5">{pendingPOs} pending · {latePOs} late</p>
+        </div>
+        {/* Purchase Orders */}
+        <div className="bg-white rounded-xl border border-amber-100 shadow-sm overflow-hidden">
+          <div className="h-1 bg-amber-500" />
+          <div className="p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="w-7 h-7 bg-amber-100 rounded-lg flex items-center justify-center">
+                <ShoppingCart className="w-3.5 h-3.5 text-amber-600" />
+              </div>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">POs</span>
+            </div>
+            <p className="text-2xl font-extrabold text-gray-900">{pos.length}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">{pendingPOs} pending · <span className={latePOs > 0 ? "text-red-500 font-semibold" : ""}>{latePOs} late</span></p>
+          </div>
+        </div>
+        {/* Material Requests */}
+        <div className={cn("rounded-xl border shadow-sm overflow-hidden", lateMRs > 0 ? "bg-violet-50 border-violet-200" : "bg-white border-violet-100")}>
+          <div className={cn("h-1", lateMRs > 0 ? "bg-violet-600" : "bg-violet-400")} />
+          <div className="p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="w-7 h-7 bg-violet-100 rounded-lg flex items-center justify-center">
+                <Package className="w-3.5 h-3.5 text-violet-600" />
+              </div>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">MRs</span>
+            </div>
+            <p className="text-2xl font-extrabold text-gray-900">{mrs.length}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5"><span className={lateMRs > 0 ? "text-red-500 font-semibold" : ""}>{lateMRs} late</span> · {unattendedMRs.length} pending</p>
+          </div>
         </div>
       </div>
 
@@ -624,145 +682,187 @@ function OverviewView({
         </div>
       )}
 
-      {/* Financial & Procurement Row */}
+      {/* ── Financial & Procurement ── */}
       {pos.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-            <div className="flex items-center gap-2 mb-3">
-              <IndianRupee className="w-4 h-4 text-blue-500" />
-              <span className="text-sm font-bold text-gray-700">Total PO Value</span>
-            </div>
-            <p className="text-xl font-bold text-gray-900">{fmtMoney(totalPOValue)}</p>
-            <div className="mt-3 space-y-1.5">
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-500">Received</span>
-                <span className="font-medium text-emerald-600">{fmtMoney(receivedValue)}</span>
-              </div>
-              <MiniBar value={receivedValue} max={totalPOValue} color="bg-emerald-500" />
-              <div className="flex justify-between text-xs mt-2">
-                <span className="text-gray-500">Billed</span>
-                <span className="font-medium text-blue-600">{fmtMoney(billedValue)}</span>
-              </div>
-              <MiniBar value={billedValue} max={totalPOValue} color="bg-blue-500" />
-            </div>
-          </div>
-
-          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-            <div className="flex items-center gap-2 mb-3">
-              <Truck className="w-4 h-4 text-emerald-500" />
-              <span className="text-sm font-bold text-gray-700">Delivery Status</span>
-            </div>
-            <div className="space-y-2">
-              {[
-                { label: "Fully Received", count: pos.filter(p => p.per_received >= 100).length, color: "text-emerald-600", bg: "bg-emerald-100" },
-                { label: "Partial Receipt", count: pos.filter(p => p.per_received > 0 && p.per_received < 100).length, color: "text-blue-600", bg: "bg-blue-100" },
-                { label: "Not Yet Received", count: pos.filter(p => p.per_received === 0 && p.status !== "Cancelled").length, color: "text-amber-600", bg: "bg-amber-100" },
-                { label: "Delivery Late", count: latePOs, color: "text-red-600", bg: "bg-red-100" },
-              ].map(row => (
-                <div key={row.label} className="flex items-center justify-between">
-                  <span className="text-xs text-gray-600">{row.label}</span>
-                  <span className={cn("text-xs font-bold px-2 py-0.5 rounded-full", row.color, row.bg)}>{row.count}</span>
+          {/* Total PO Value */}
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="h-1 bg-blue-500" />
+            <div className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <IndianRupee className="w-3.5 h-3.5 text-blue-600" />
                 </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-            <div className="flex items-center gap-2 mb-3">
-              <Package className="w-4 h-4 text-amber-500" />
-              <span className="text-sm font-bold text-gray-700">Material Requests</span>
-            </div>
-            <p className="text-xl font-bold text-gray-900">{mrs.length}</p>
-            <div className="mt-3 space-y-2">
-              {[
-                { label: "Purchase", count: mrs.filter(m => m.material_request_type === "Purchase").length, color: "bg-blue-500" },
-                { label: "Transfer", count: mrs.filter(m => m.material_request_type === "Material Transfer").length, color: "bg-violet-500" },
-                { label: "Manufacture", count: mrs.filter(m => m.material_request_type === "Manufacture").length, color: "bg-orange-500" },
-                { label: "Late/Overdue", count: lateMRs, color: "bg-red-500" },
-              ].map(row => (
-                <div key={row.label} className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <div className={cn("w-2 h-2 rounded-full", row.color)} />
-                    <span className="text-xs text-gray-600">{row.label}</span>
+                <span className="text-sm font-bold text-gray-700">Total PO Value</span>
+              </div>
+              <p className="text-2xl font-extrabold text-gray-900">{fmtMoney(totalPOValue)}</p>
+              <div className="mt-3 space-y-2">
+                <div>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-gray-500">Received</span>
+                    <span className="font-semibold text-emerald-600">{fmtMoney(receivedValue)} <span className="text-gray-400 font-normal">({totalPOValue > 0 ? ((receivedValue/totalPOValue)*100).toFixed(0) : 0}%)</span></span>
                   </div>
-                  <span className="text-xs font-bold text-gray-700">{row.count}</span>
+                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${totalPOValue > 0 ? (receivedValue/totalPOValue)*100 : 0}%` }} />
+                  </div>
                 </div>
-              ))}
+                <div>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-gray-500">Billed</span>
+                    <span className="font-semibold text-blue-600">{fmtMoney(billedValue)} <span className="text-gray-400 font-normal">({totalPOValue > 0 ? ((billedValue/totalPOValue)*100).toFixed(0) : 0}%)</span></span>
+                  </div>
+                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-500 rounded-full" style={{ width: `${totalPOValue > 0 ? (billedValue/totalPOValue)*100 : 0}%` }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Delivery Status */}
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="h-1 bg-emerald-500" />
+            <div className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-7 h-7 bg-emerald-100 rounded-lg flex items-center justify-center">
+                  <Truck className="w-3.5 h-3.5 text-emerald-600" />
+                </div>
+                <span className="text-sm font-bold text-gray-700">Delivery Status</span>
+              </div>
+              <div className="space-y-2">
+                {[
+                  { label: "Fully Received", count: pos.filter(p => p.per_received >= 100).length, barColor: "bg-emerald-500", textColor: "text-emerald-700", bg: "bg-emerald-50" },
+                  { label: "Partial Receipt", count: pos.filter(p => p.per_received > 0 && p.per_received < 100).length, barColor: "bg-blue-500", textColor: "text-blue-700", bg: "bg-blue-50" },
+                  { label: "Not Received", count: pos.filter(p => p.per_received === 0 && p.status !== "Cancelled").length, barColor: "bg-amber-500", textColor: "text-amber-700", bg: "bg-amber-50" },
+                  { label: "Delivery Late", count: latePOs, barColor: "bg-red-500", textColor: "text-red-700", bg: "bg-red-50" },
+                ].map(row => (
+                  <div key={row.label} className="flex items-center gap-2">
+                    <div className={cn("w-2 h-2 rounded-full shrink-0", row.barColor)} />
+                    <span className="text-xs text-gray-600 flex-1">{row.label}</span>
+                    <span className={cn("text-xs font-bold px-2 py-0.5 rounded-full", row.textColor, row.bg)}>{row.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Material Requests */}
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="h-1 bg-violet-500" />
+            <div className="p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-7 h-7 bg-violet-100 rounded-lg flex items-center justify-center">
+                  <Package className="w-3.5 h-3.5 text-violet-600" />
+                </div>
+                <span className="text-sm font-bold text-gray-700">Material Requests</span>
+              </div>
+              <p className="text-2xl font-extrabold text-gray-900 mb-3">{mrs.length}</p>
+              <div className="space-y-2">
+                {[
+                  { label: "Purchase", count: mrs.filter(m => m.material_request_type === "Purchase").length, color: "bg-blue-500", text: "text-blue-700", bg: "bg-blue-50" },
+                  { label: "Transfer", count: mrs.filter(m => m.material_request_type === "Material Transfer").length, color: "bg-violet-500", text: "text-violet-700", bg: "bg-violet-50" },
+                  { label: "Manufacture", count: mrs.filter(m => m.material_request_type === "Manufacture").length, color: "bg-orange-500", text: "text-orange-700", bg: "bg-orange-50" },
+                  { label: "Late/Overdue", count: lateMRs, color: "bg-red-500", text: "text-red-700", bg: "bg-red-50" },
+                ].map(row => (
+                  <div key={row.label} className="flex items-center gap-2">
+                    <div className={cn("w-2 h-2 rounded-full shrink-0", row.color)} />
+                    <span className="text-xs text-gray-600 flex-1">{row.label}</span>
+                    <span className={cn("text-xs font-bold px-2 py-0.5 rounded-full", row.text, row.bg)}>{row.count}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Project Budget vs Actual (if available) */}
+      {/* ── Budget vs Actual ── */}
       {projectDetail && (projectDetail.estimated_costing > 0 || projectDetail.actual_expense > 0) && (
-        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-          <div className="flex items-center gap-2 mb-3">
-            <TrendingUp className="w-4 h-4 text-blue-500" />
-            <span className="text-sm font-bold text-gray-700">Budget vs Actual</span>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div>
-              <p className="text-[10px] text-gray-500 uppercase tracking-wide">Estimated</p>
-              <p className="text-lg font-bold text-gray-900">{fmtMoney(projectDetail.estimated_costing)}</p>
-            </div>
-            <div>
-              <p className="text-[10px] text-gray-500 uppercase tracking-wide">Actual Expense</p>
-              <p className={cn("text-lg font-bold", projectDetail.actual_expense > projectDetail.estimated_costing && projectDetail.estimated_costing > 0 ? "text-red-600" : "text-emerald-600")}>
-                {fmtMoney(projectDetail.actual_expense)}
-              </p>
-            </div>
-            {projectDetail.actual_time > 0 && (
-              <div>
-                <p className="text-[10px] text-gray-500 uppercase tracking-wide">Time Logged</p>
-                <p className="text-lg font-bold text-blue-600">{projectDetail.actual_time.toFixed(1)}h</p>
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="h-1 bg-indigo-500" />
+          <div className="p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-7 h-7 bg-indigo-100 rounded-lg flex items-center justify-center">
+                <TrendingUp className="w-3.5 h-3.5 text-indigo-600" />
               </div>
-            )}
-            {projectDetail.estimated_costing > 0 && projectDetail.actual_expense > 0 && (
-              <div>
-                <p className="text-[10px] text-gray-500 uppercase tracking-wide">Budget Used</p>
-                <p className={cn("text-lg font-bold", (projectDetail.actual_expense / projectDetail.estimated_costing * 100) > 90 ? "text-red-600" : "text-gray-900")}>
-                  {(projectDetail.actual_expense / projectDetail.estimated_costing * 100).toFixed(0)}%
+              <span className="text-sm font-bold text-gray-700">Budget vs Actual</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+              <div className="bg-gray-50 rounded-xl p-3">
+                <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Estimated</p>
+                <p className="text-lg font-extrabold text-gray-900 mt-0.5">{fmtMoney(projectDetail.estimated_costing)}</p>
+              </div>
+              <div className="bg-gray-50 rounded-xl p-3">
+                <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Actual Spent</p>
+                <p className={cn("text-lg font-extrabold mt-0.5", projectDetail.actual_expense > projectDetail.estimated_costing && projectDetail.estimated_costing > 0 ? "text-red-600" : "text-emerald-600")}>
+                  {fmtMoney(projectDetail.actual_expense)}
                 </p>
               </div>
+              {projectDetail.actual_time > 0 && (
+                <div className="bg-gray-50 rounded-xl p-3">
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Time Logged</p>
+                  <p className="text-lg font-extrabold text-blue-600 mt-0.5">{projectDetail.actual_time.toFixed(1)}h</p>
+                </div>
+              )}
+              {projectDetail.estimated_costing > 0 && projectDetail.actual_expense > 0 && (
+                <div className={cn("rounded-xl p-3", (projectDetail.actual_expense / projectDetail.estimated_costing * 100) > 90 ? "bg-red-50" : "bg-emerald-50")}>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">Budget Used</p>
+                  <p className={cn("text-lg font-extrabold mt-0.5", (projectDetail.actual_expense / projectDetail.estimated_costing * 100) > 90 ? "text-red-600" : "text-emerald-600")}>
+                    {(projectDetail.actual_expense / projectDetail.estimated_costing * 100).toFixed(0)}%
+                  </p>
+                </div>
+              )}
+            </div>
+            {projectDetail.estimated_costing > 0 && (
+              <div>
+                <div className="flex justify-between text-[10px] text-gray-500 mb-1 font-medium">
+                  <span>Budget utilization</span>
+                  <span>{(Math.min(projectDetail.actual_expense / projectDetail.estimated_costing, 1) * 100).toFixed(0)}%</span>
+                </div>
+                <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className={cn("h-full rounded-full transition-all", projectDetail.actual_expense > projectDetail.estimated_costing ? "bg-red-500" : "bg-indigo-500")}
+                    style={{ width: `${Math.min((projectDetail.actual_expense / projectDetail.estimated_costing) * 100, 100)}%` }} />
+                </div>
+              </div>
             )}
           </div>
-          {projectDetail.estimated_costing > 0 && (
-            <div className="mt-3">
-              <MiniBar value={projectDetail.actual_expense} max={projectDetail.estimated_costing}
-                color={projectDetail.actual_expense > projectDetail.estimated_costing ? "bg-red-500" : "bg-blue-500"} />
-            </div>
-          )}
         </div>
       )}
 
-      {/* Phase-by-Phase Breakdown */}
+      {/* ── Phase-by-Phase Breakdown ── */}
       {phaseStats.size > 0 && (
-        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-          <div className="flex items-center gap-2 mb-4">
-            <BarChart3 className="w-4 h-4 text-blue-500" />
-            <span className="text-sm font-bold text-gray-700">Phase-by-Phase Breakdown</span>
-          </div>
-          <div className="space-y-3">
-            {Array.from(phaseStats.values()).map(({ phase, total, completed, overdue, avgProg }) => (
-              <div key={phase.label} className="flex items-center gap-3">
-                <div className={cn("w-2.5 h-2.5 rounded-full shrink-0", phase.bar)} />
-                <div className="w-32 shrink-0">
-                  <span className={cn("text-xs font-semibold", phase.color)}>{phase.label}</span>
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="h-1 bg-gradient-to-r from-blue-500 via-violet-500 to-emerald-500" />
+          <div className="p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center">
+                <BarChart3 className="w-3.5 h-3.5 text-blue-600" />
+              </div>
+              <span className="text-sm font-bold text-gray-700">Phase-by-Phase Breakdown</span>
+              <span className="ml-auto text-xs text-gray-400">{phaseStats.size} phases</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {Array.from(phaseStats.values()).map(({ phase, total, completed, overdue, avgProg }) => (
+                <div key={phase.label} className={cn("rounded-xl border p-3", overdue > 0 ? "bg-red-50 border-red-100" : avgProg === 100 ? "bg-emerald-50 border-emerald-100" : "bg-gray-50 border-gray-100")}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className={cn("w-2 h-2 rounded-full", phase.bar)} />
+                      <span className={cn("text-xs font-bold", phase.color)}>{phase.label}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {overdue > 0 && <span className="text-[10px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full">+{overdue} late</span>}
+                      <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded-full", avgProg === 100 ? "text-emerald-700 bg-emerald-100" : "text-gray-600 bg-gray-200")}>{completed}/{total}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-2 bg-white rounded-full overflow-hidden border border-gray-200">
                       <div className={cn("h-full rounded-full", phase.bar)} style={{ width: `${avgProg}%` }} />
                     </div>
-                    <span className="text-xs font-bold text-gray-700 w-8 text-right">{avgProg}%</span>
+                    <span className="text-xs font-extrabold text-gray-700 w-9 text-right">{avgProg}%</span>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 text-[10px] text-gray-500 shrink-0">
-                  <span className="text-emerald-600 font-medium">{completed}/{total}</span>
-                  {overdue > 0 && <span className="text-red-500 font-bold">+{overdue} late</span>}
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       )}
