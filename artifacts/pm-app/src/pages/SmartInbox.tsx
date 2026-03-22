@@ -48,7 +48,7 @@ interface Stats {
   unread: string; important: string; information: string; promotion: string;
   projects: string; suppliers: string; internal: string;
   needs_reply: string; auto_replied_count: string; total: string;
-  drafts_count: string;
+  drafts_count: string; trash_count: string;
 }
 
 interface ProjectCount { project_name: string; count: string; }
@@ -100,7 +100,7 @@ const CAT_CONFIG: Record<string, { icon: any; color: string }> = {
   other:    { icon: Mail,       color: "text-gray-500" },
 };
 
-type FilterKey = "all"|"important"|"information"|"promotion"|"internal"|"project"|"supplier"|"unread"|"high"|"drafts"|"dept"|string;
+type FilterKey = "all"|"important"|"information"|"promotion"|"internal"|"project"|"supplier"|"unread"|"high"|"drafts"|"dept"|"trash"|string;
 
 interface NavItem { key: FilterKey; label: string; icon: any; color: string; count?: number; value?: string; indent?: boolean; }
 
@@ -204,8 +204,8 @@ function ReplyModal({ to, subject, defaultBody, onClose, onSent, userEmail, draf
 }
 
 // ─── Email Detail Pane ────────────────────────────────────────────────────────
-function EmailDetail({ email, onClose, onDeleted, userEmail }: {
-  email: SmartEmail; onClose: () => void; onDeleted: () => void; userEmail?: string;
+function EmailDetail({ email, onClose, onDeleted, userEmail, isTrash }: {
+  email: SmartEmail; onClose: () => void; onDeleted: () => void; userEmail?: string; isTrash?: boolean;
 }) {
   const [body, setBody] = useState<{ html: string | null; text: string | null } | null>(null);
   const [bodyLoading, setBodyLoading] = useState(true);
@@ -325,6 +325,29 @@ function EmailDetail({ email, onClose, onDeleted, userEmail }: {
     catch {} setDeleting(false);
   };
 
+  const handleRestore = async () => {
+    setDeleting(true);
+    try {
+      await api("/smart-email/restore-batch", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uids: [email.uid] }),
+      });
+      onDeleted();
+    } catch {} setDeleting(false);
+  };
+
+  const handlePurge = async () => {
+    if (!window.confirm("Permanently delete this email? This cannot be undone.")) return;
+    setDeleting(true);
+    try {
+      await api("/smart-email/purge-batch", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uids: [email.uid] }),
+      });
+      onDeleted();
+    } catch {} setDeleting(false);
+  };
+
   const typeConf = currentClassification.type ? TYPE_CONFIG[currentClassification.type] : null;
   const catConf = currentClassification.cat ? CAT_CONFIG[currentClassification.cat] : null;
   const CatIcon = catConf?.icon || Mail;
@@ -401,15 +424,31 @@ function EmailDetail({ email, onClose, onDeleted, userEmail }: {
                 <CheckCircle2 className="w-3.5 h-3.5" />Sent
               </span>
             )}
-            <button onClick={handleReclassify} disabled={classifying}
-              className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-50">
-              {classifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-              Reclassify
-            </button>
-            <button onClick={handleDelete} disabled={deleting}
-              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors ml-auto">
-              {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-            </button>
+            {!isTrash && (
+              <button onClick={handleReclassify} disabled={classifying}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-50">
+                {classifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                Reclassify
+              </button>
+            )}
+            {isTrash ? (
+              <>
+                <button onClick={handleRestore} disabled={deleting}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-lg hover:opacity-90 disabled:opacity-50 ml-auto">
+                  {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                  Restore
+                </button>
+                <button onClick={handlePurge} disabled={deleting}
+                  className="flex items-center gap-1.5 px-3 py-1.5 border border-red-200 text-red-600 text-xs font-medium rounded-lg hover:bg-red-50 disabled:opacity-50">
+                  <Trash2 className="w-3.5 h-3.5" /> Delete Forever
+                </button>
+              </>
+            ) : (
+              <button onClick={handleDelete} disabled={deleting}
+                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors ml-auto">
+                {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+              </button>
+            )}
           </div>
         </div>
 
@@ -680,6 +719,8 @@ export default function SmartInbox() {
   const [expandedSections, setExpandedSections] = useState<string[]>(["type", "category"]);
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(true);
   const [error, setError] = useState("");
+  const [checkedUids, setCheckedUids] = useState<Set<string>>(new Set());
+  const [bulkWorking, setBulkWorking] = useState(false);
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadEmails = useCallback(async (filter: FilterKey = activeFilter, value?: string, q?: string) => {
@@ -719,7 +760,77 @@ export default function SmartInbox() {
     setActiveFilter(key);
     setFilterValue(value);
     setSelected(null);
+    setCheckedUids(new Set());
     loadEmails(key, value, search || undefined);
+  };
+
+  const toggleCheck = (uid: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCheckedUids(prev => {
+      const next = new Set(prev);
+      next.has(uid) ? next.delete(uid) : next.add(uid);
+      return next;
+    });
+  };
+
+  const toggleCheckAll = () => {
+    if (checkedUids.size === emails.length && emails.length > 0) {
+      setCheckedUids(new Set());
+    } else {
+      setCheckedUids(new Set(emails.map(e => e.uid)));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (checkedUids.size === 0 || bulkWorking) return;
+    setBulkWorking(true);
+    try {
+      await api("/smart-email/delete-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uids: Array.from(checkedUids) }),
+      });
+      setEmails(prev => prev.filter(e => !checkedUids.has(e.uid)));
+      if (selected && checkedUids.has(selected.uid)) setSelected(null);
+      setCheckedUids(new Set());
+      loadStats();
+    } catch {}
+    setBulkWorking(false);
+  };
+
+  const handleBulkRestore = async () => {
+    if (checkedUids.size === 0 || bulkWorking) return;
+    setBulkWorking(true);
+    try {
+      await api("/smart-email/restore-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uids: Array.from(checkedUids) }),
+      });
+      setEmails(prev => prev.filter(e => !checkedUids.has(e.uid)));
+      if (selected && checkedUids.has(selected.uid)) setSelected(null);
+      setCheckedUids(new Set());
+      loadStats();
+    } catch {}
+    setBulkWorking(false);
+  };
+
+  const handleBulkPurge = async () => {
+    if (checkedUids.size === 0 || bulkWorking) return;
+    if (!window.confirm(`Permanently delete ${checkedUids.size} email(s)? This cannot be undone.`)) return;
+    setBulkWorking(true);
+    try {
+      await api("/smart-email/purge-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uids: Array.from(checkedUids) }),
+      });
+      setEmails(prev => prev.filter(e => !checkedUids.has(e.uid)));
+      if (selected && checkedUids.has(selected.uid)) setSelected(null);
+      setCheckedUids(new Set());
+      loadStats();
+    } catch {}
+    setBulkWorking(false);
   };
 
   const handleSearch = (q: string) => {
@@ -799,6 +910,7 @@ export default function SmartInbox() {
         { key: "unread",      label: "Unread",        icon: Eye,           color: "text-amber-600",  count: n(stats?.unread) },
         { key: "high",        label: "Needs Reply",   icon: Zap,           color: "text-rose-600",   count: n(stats?.needs_reply) },
         { key: "drafts",      label: "Pending Drafts",icon: Bot,           color: "text-orange-600", count: n(stats?.drafts_count) },
+        { key: "trash",       label: "Trash",         icon: Trash2,        color: "text-gray-500",   count: n(stats?.trash_count) },
       ] as NavItem[],
     },
     {
@@ -1051,15 +1163,60 @@ export default function SmartInbox() {
           </div>
 
           {/* List header */}
-          <div className="px-4 py-2 flex items-center justify-between border-b border-gray-50 shrink-0">
-            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-              {emails.length} email{emails.length !== 1 ? "s" : ""}
+          <div className="px-3 py-2 flex items-center gap-2 border-b border-gray-50 shrink-0">
+            <button
+              onClick={toggleCheckAll}
+              className={cn(
+                "w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors",
+                checkedUids.size > 0 && checkedUids.size === emails.length
+                  ? "bg-[#1B2A5E] border-[#1B2A5E]"
+                  : checkedUids.size > 0
+                    ? "bg-[#1B2A5E]/30 border-[#1B2A5E]"
+                    : "border-gray-300 bg-white hover:border-gray-500"
+              )}>
+              {checkedUids.size > 0 && (
+                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d={checkedUids.size === emails.length ? "M5 13l4 4L19 7" : "M5 12h14"} />
+                </svg>
+              )}
+            </button>
+            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex-1">
+              {checkedUids.size > 0 ? `${checkedUids.size} selected` : `${emails.length} email${emails.length !== 1 ? "s" : ""}`}
             </span>
             <button onClick={() => loadEmails(activeFilter, filterValue, search || undefined)}
               className="p-1 text-gray-400 hover:text-gray-700 rounded transition-colors">
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
           </div>
+
+          {/* Bulk action bar */}
+          {checkedUids.size > 0 && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#eef2fb] border-b border-[#c8d6ef] shrink-0">
+              {activeFilter === "trash" ? (
+                <>
+                  <button onClick={handleBulkRestore} disabled={bulkWorking}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-semibold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 transition-colors disabled:opacity-50">
+                    {bulkWorking ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                    Restore
+                  </button>
+                  <button onClick={handleBulkPurge} disabled={bulkWorking}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition-colors disabled:opacity-50">
+                    <Trash2 className="w-3 h-3" /> Delete Forever
+                  </button>
+                </>
+              ) : (
+                <button onClick={handleBulkDelete} disabled={bulkWorking}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition-colors disabled:opacity-50">
+                  {bulkWorking ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                  Move to Trash
+                </button>
+              )}
+              <button onClick={() => setCheckedUids(new Set())}
+                className="ml-auto p-1 text-gray-400 hover:text-gray-600 rounded transition-colors">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
           {/* Email list */}
           <div className="flex-1 overflow-y-auto min-h-0">
@@ -1088,6 +1245,7 @@ export default function SmartInbox() {
               </div>
             ) : emails.map(email => {
               const isSelected = selected?.uid === email.uid;
+              const isChecked = checkedUids.has(email.uid);
               const typeConf = email.email_type ? TYPE_CONFIG[email.email_type] : null;
               const CatIcon = email.category ? CAT_CONFIG[email.category]?.icon : Mail;
               const catColor = email.category ? CAT_CONFIG[email.category]?.color : "text-gray-400";
@@ -1097,23 +1255,39 @@ export default function SmartInbox() {
                   onClick={() => handleSelectEmail(email)}
                   className={cn(
                     "group flex items-stretch border-b border-gray-50 cursor-pointer transition-colors relative",
-                    isSelected
-                      ? "bg-[#edf2fb] border-[#c8d6ef]"
-                      : email.seen
-                        ? "bg-white hover:bg-[#f8f9ff]"
-                        : "bg-white hover:bg-[#f0f4ff]"
+                    isChecked
+                      ? "bg-[#eef2fb]"
+                      : isSelected
+                        ? "bg-[#edf2fb] border-[#c8d6ef]"
+                        : email.seen
+                          ? "bg-white hover:bg-[#f8f9ff]"
+                          : "bg-white hover:bg-[#f0f4ff]"
                   )}>
                   {/* Priority stripe */}
                   {email.priority === "high" && (
                     <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-red-500 rounded-r" />
                   )}
-                  {!email.seen && email.priority !== "high" && (
+                  {!email.seen && email.priority !== "high" && !isChecked && (
                     <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-[#1B2A5E] rounded-r" />
                   )}
 
-                  {/* Avatar */}
-                  <div className="flex items-start pl-3 pt-3 shrink-0">
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[11px]"
+                  {/* Checkbox + Avatar */}
+                  <div className="flex items-start pl-2 pt-2.5 pr-1 shrink-0 gap-1.5">
+                    <button
+                      onClick={e => toggleCheck(email.uid, e)}
+                      className={cn(
+                        "w-4 h-4 rounded border flex items-center justify-center shrink-0 mt-0.5 transition-colors",
+                        isChecked
+                          ? "bg-[#1B2A5E] border-[#1B2A5E]"
+                          : "border-gray-300 bg-white hover:border-[#1B2A5E] opacity-0 group-hover:opacity-100"
+                      )}>
+                      {isChecked && (
+                        <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[11px] shrink-0"
                       style={{ backgroundColor: avatarColor(email.from_addr) }}>
                       {senderInitial(email.from_addr)}
                     </div>
@@ -1177,6 +1351,7 @@ export default function SmartInbox() {
               onClose={() => setSelected(null)}
               onDeleted={handleEmailDeleted}
               userEmail={userEmail}
+              isTrash={activeFilter === "trash"}
             />
           ) : (
             <div className="flex flex-col items-center justify-center h-full bg-[#f4f6fb] gap-5">

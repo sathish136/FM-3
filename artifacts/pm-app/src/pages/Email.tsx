@@ -797,6 +797,46 @@ export default function Email() {
     setCheckedUids(prev => { const n = new Set(prev); n.has(uid) ? n.delete(uid) : n.add(uid); return n; });
   };
 
+  const toggleCheckAll = () => {
+    if (checkedUids.size === filtered.length && filtered.length > 0) {
+      setCheckedUids(new Set());
+    } else {
+      setCheckedUids(new Set(filtered.map(e => e.uid)));
+    }
+  };
+
+  const [bulkWorking, setBulkWorking] = useState(false);
+
+  const handleBulkTrash = async () => {
+    if (checkedUids.size === 0 || bulkWorking) return;
+    setBulkWorking(true);
+    const uids = Array.from(checkedUids);
+    try {
+      await Promise.all(uids.map(uid =>
+        apiFetch(`/email/${uid}?mailbox=${encodeURIComponent(activeFolderPath)}${userParam}`, { method: "DELETE" }).catch(() => {})
+      ));
+      setEmails(prev => prev.filter(e => !checkedUids.has(e.uid)));
+      if (selected && checkedUids.has(selected.uid)) setSelected(null);
+      setCheckedUids(new Set());
+    } catch {}
+    setBulkWorking(false);
+  };
+
+  const handleBulkArchive = async () => {
+    if (checkedUids.size === 0 || bulkWorking) return;
+    setBulkWorking(true);
+    const uids = Array.from(checkedUids);
+    try {
+      await Promise.all(uids.map(uid =>
+        apiFetch(`/email/${uid}/archive?mailbox=${encodeURIComponent(activeFolderPath)}${userParam}`, { method: "POST" }).catch(() => {})
+      ));
+      setEmails(prev => prev.filter(e => !checkedUids.has(e.uid)));
+      if (selected && checkedUids.has(selected.uid)) setSelected(null);
+      setCheckedUids(new Set());
+    } catch {}
+    setBulkWorking(false);
+  };
+
   const unread = emails.filter(e => !e.seen).length;
   let filtered = search.trim()
     ? emails.filter(e => e.subject.toLowerCase().includes(search.toLowerCase()) || e.from.toLowerCase().includes(search.toLowerCase()))
@@ -945,6 +985,20 @@ export default function Email() {
 
           {/* List toolbar */}
           <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-100 bg-[#fafbfd] shrink-0">
+            <button onClick={toggleCheckAll}
+              className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                checkedUids.size > 0 && checkedUids.size === filtered.length
+                  ? "bg-[#1B2A5E] border-[#1B2A5E]"
+                  : checkedUids.size > 0
+                    ? "bg-[#1B2A5E]/30 border-[#1B2A5E]"
+                    : "border-gray-300 bg-white hover:border-gray-500"
+              }`}>
+              {checkedUids.size > 0 && (
+                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d={checkedUids.size === filtered.length ? "M5 13l4 4L19 7" : "M5 12h14"} />
+                </svg>
+              )}
+            </button>
             <span className="text-xs font-bold text-[#1B2A5E]">{folderLabel(activeFolderPath)}</span>
             {unread > 0 && <span className="text-[10px] font-bold text-white rounded-full px-1.5 leading-5" style={{ backgroundColor:"#E05A00" }}>{unread}</span>}
             <div className="flex-1"/>
@@ -960,10 +1014,16 @@ export default function Email() {
 
           {/* Bulk actions bar */}
           {checkedUids.size > 0 && (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border-b border-blue-100 text-xs shrink-0">
-              <span className="font-semibold text-blue-700">{checkedUids.size} selected</span>
-              <button className="flex items-center gap-1 text-gray-600 hover:text-gray-900"><Archive className="w-3 h-3"/> Archive</button>
-              <button className="flex items-center gap-1 text-gray-600 hover:text-red-600"><Trash2 className="w-3 h-3"/> Delete</button>
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-[#eef2fb] border-b border-[#c8d6ef] text-xs shrink-0">
+              <span className="font-semibold text-[#1B2A5E]">{checkedUids.size} selected</span>
+              <button onClick={handleBulkArchive} disabled={bulkWorking}
+                className="flex items-center gap-1 px-2 py-0.5 rounded text-gray-600 hover:bg-white hover:text-gray-900 border border-transparent hover:border-gray-200 transition-colors disabled:opacity-50">
+                {bulkWorking ? <Loader2 className="w-3 h-3 animate-spin"/> : <Archive className="w-3 h-3"/>} Archive
+              </button>
+              <button onClick={handleBulkTrash} disabled={bulkWorking}
+                className="flex items-center gap-1 px-2 py-0.5 rounded text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors disabled:opacity-50">
+                {bulkWorking ? <Loader2 className="w-3 h-3 animate-spin"/> : <Trash2 className="w-3 h-3"/>} Trash
+              </button>
               <button onClick={() => setCheckedUids(new Set())} className="ml-auto text-gray-400 hover:text-gray-600"><X className="w-3 h-3"/></button>
             </div>
           )}

@@ -78,6 +78,8 @@ async function initTables() {
   // Migrations
   await pool.query(`ALTER TABLE smart_email_inbox ADD COLUMN IF NOT EXISTS account_id INTEGER`);
   await pool.query(`ALTER TABLE smart_email_inbox ADD COLUMN IF NOT EXISTS department TEXT`);
+  await pool.query(`ALTER TABLE smart_email_inbox ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT false`);
+  await pool.query(`ALTER TABLE smart_email_inbox ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS smart_email_projects (
@@ -378,25 +380,31 @@ router.get("/smart-email/messages", async (req, res) => {
     let fromClause = `FROM smart_email_inbox e
        LEFT JOIN (SELECT email_uid FROM smart_email_drafts WHERE sent=false) d ON d.email_uid = e.uid`;
 
-    if (filter === "important")    { where += " AND email_type='important'"; }
-    else if (filter === "promotion")  { where += " AND email_type='promotion'"; }
-    else if (filter === "information") { where += " AND email_type='information'"; }
-    else if (filter === "internal")   { where += " AND is_internal=true"; }
-    else if (filter === "dept") {
-      where += " AND is_internal=true";
-      if (value) { vals.push(value); where += ` AND department=$${vals.length}`; }
+    if (filter === "trash") {
+      where += " AND e.is_deleted=true";
+    } else {
+      // All non-trash views exclude deleted emails
+      where += " AND e.is_deleted=false";
+      if (filter === "important")    { where += " AND email_type='important'"; }
+      else if (filter === "promotion")  { where += " AND email_type='promotion'"; }
+      else if (filter === "information") { where += " AND email_type='information'"; }
+      else if (filter === "internal")   { where += " AND is_internal=true"; }
+      else if (filter === "dept") {
+        where += " AND is_internal=true";
+        if (value) { vals.push(value); where += ` AND department=$${vals.length}`; }
+      }
+      else if (filter === "project")    {
+        where += " AND category='project'";
+        if (value) { vals.push(value); where += ` AND project_name=$${vals.length}`; }
+      }
+      else if (filter === "supplier") {
+        where += " AND category='supplier'";
+        if (value) { vals.push(value); where += ` AND supplier_name=$${vals.length}`; }
+      }
+      else if (filter === "unread")     { where += " AND seen=false"; }
+      else if (filter === "high")       { where += " AND priority='high'"; }
+      else if (filter === "drafts")     { where += " AND d.email_uid IS NOT NULL AND e.auto_replied=false"; }
     }
-    else if (filter === "project")    {
-      where += " AND category='project'";
-      if (value) { vals.push(value); where += ` AND project_name=$${vals.length}`; }
-    }
-    else if (filter === "supplier") {
-      where += " AND category='supplier'";
-      if (value) { vals.push(value); where += ` AND supplier_name=$${vals.length}`; }
-    }
-    else if (filter === "unread")     { where += " AND seen=false"; }
-    else if (filter === "high")       { where += " AND priority='high'"; }
-    else if (filter === "drafts")     { where += " AND d.email_uid IS NOT NULL AND e.auto_replied=false"; }
 
     if (search) {
       vals.push(`%${search}%`);
@@ -440,31 +448,33 @@ router.get("/smart-email/stats", async (req, res) => {
     const acctFilter = accountId ? `AND (account_id=$1 OR account_id IS NULL)` : "";
     const acctVals = accountId ? [accountId] : [];
 
+    const acctNotDeletedFilter = acctFilter ? `${acctFilter} AND NOT is_deleted` : `AND NOT is_deleted`;
     const r = await pool.query(`
       SELECT
-        COUNT(*) FILTER (WHERE NOT seen ${acctFilter}) AS unread,
-        COUNT(*) FILTER (WHERE email_type='important' ${acctFilter}) AS important,
-        COUNT(*) FILTER (WHERE email_type='information' ${acctFilter}) AS information,
-        COUNT(*) FILTER (WHERE email_type='promotion' ${acctFilter}) AS promotion,
-        COUNT(*) FILTER (WHERE category='project' ${acctFilter}) AS projects,
-        COUNT(*) FILTER (WHERE category='supplier' ${acctFilter}) AS suppliers,
-        COUNT(*) FILTER (WHERE is_internal=true ${acctFilter}) AS internal,
-        COUNT(*) FILTER (WHERE priority='high' AND NOT auto_replied ${acctFilter}) AS needs_reply,
-        COUNT(*) FILTER (WHERE auto_replied=true ${acctFilter}) AS auto_replied_count,
-        COUNT(*) FILTER (WHERE 1=1 ${acctFilter}) AS total,
+        COUNT(*) FILTER (WHERE NOT seen AND NOT is_deleted ${acctFilter}) AS unread,
+        COUNT(*) FILTER (WHERE email_type='important' AND NOT is_deleted ${acctFilter}) AS important,
+        COUNT(*) FILTER (WHERE email_type='information' AND NOT is_deleted ${acctFilter}) AS information,
+        COUNT(*) FILTER (WHERE email_type='promotion' AND NOT is_deleted ${acctFilter}) AS promotion,
+        COUNT(*) FILTER (WHERE category='project' AND NOT is_deleted ${acctFilter}) AS projects,
+        COUNT(*) FILTER (WHERE category='supplier' AND NOT is_deleted ${acctFilter}) AS suppliers,
+        COUNT(*) FILTER (WHERE is_internal=true AND NOT is_deleted ${acctFilter}) AS internal,
+        COUNT(*) FILTER (WHERE priority='high' AND NOT auto_replied AND NOT is_deleted ${acctFilter}) AS needs_reply,
+        COUNT(*) FILTER (WHERE auto_replied=true AND NOT is_deleted ${acctFilter}) AS auto_replied_count,
+        COUNT(*) FILTER (WHERE NOT is_deleted ${acctFilter}) AS total,
+        COUNT(*) FILTER (WHERE is_deleted=true ${acctFilter}) AS trash_count,
         (SELECT COUNT(*) FROM smart_email_drafts WHERE sent=false) AS drafts_count
       FROM smart_email_inbox
     `, acctVals);
     const projects = await pool.query(
-      `SELECT project_name, COUNT(*) as count FROM smart_email_inbox WHERE category='project' AND project_name IS NOT NULL ${acctFilter} GROUP BY project_name ORDER BY count DESC`,
+      `SELECT project_name, COUNT(*) as count FROM smart_email_inbox WHERE category='project' AND project_name IS NOT NULL AND NOT is_deleted ${acctFilter} GROUP BY project_name ORDER BY count DESC`,
       acctVals
     );
     const suppliers = await pool.query(
-      `SELECT supplier_name, COUNT(*) as count FROM smart_email_inbox WHERE category='supplier' AND supplier_name IS NOT NULL ${acctFilter} GROUP BY supplier_name ORDER BY count DESC LIMIT 20`,
+      `SELECT supplier_name, COUNT(*) as count FROM smart_email_inbox WHERE category='supplier' AND supplier_name IS NOT NULL AND NOT is_deleted ${acctFilter} GROUP BY supplier_name ORDER BY count DESC LIMIT 20`,
       acctVals
     );
     const departments = await pool.query(
-      `SELECT department, COUNT(*) as count FROM smart_email_inbox WHERE is_internal=true AND department IS NOT NULL ${acctFilter} GROUP BY department ORDER BY count DESC`,
+      `SELECT department, COUNT(*) as count FROM smart_email_inbox WHERE is_internal=true AND department IS NOT NULL AND NOT is_deleted ${acctFilter} GROUP BY department ORDER BY count DESC`,
       acctVals
     );
     res.json({
@@ -802,11 +812,59 @@ router.post("/smart-email/suppliers", async (req, res) => {
   }
 });
 
-// DELETE /smart-email/:uid
+// DELETE /smart-email/:uid — soft delete (move to trash)
 router.delete("/smart-email/:uid", async (req, res) => {
   try {
-    await pool.query("DELETE FROM smart_email_inbox WHERE uid=$1", [req.params.uid]);
+    await pool.query(
+      "UPDATE smart_email_inbox SET is_deleted=true, deleted_at=NOW() WHERE uid=$1",
+      [req.params.uid]
+    );
     res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /smart-email/delete-batch — soft delete multiple emails
+router.post("/smart-email/delete-batch", async (req, res) => {
+  const { uids } = req.body as { uids: string[] };
+  if (!Array.isArray(uids) || uids.length === 0) return res.json({ ok: true, count: 0 });
+  try {
+    const r = await pool.query(
+      `UPDATE smart_email_inbox SET is_deleted=true, deleted_at=NOW() WHERE uid = ANY($1)`,
+      [uids]
+    );
+    res.json({ ok: true, count: r.rowCount });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /smart-email/restore-batch — restore (un-delete) multiple emails
+router.post("/smart-email/restore-batch", async (req, res) => {
+  const { uids } = req.body as { uids: string[] };
+  if (!Array.isArray(uids) || uids.length === 0) return res.json({ ok: true, count: 0 });
+  try {
+    const r = await pool.query(
+      `UPDATE smart_email_inbox SET is_deleted=false, deleted_at=NULL WHERE uid = ANY($1)`,
+      [uids]
+    );
+    res.json({ ok: true, count: r.rowCount });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /smart-email/purge-batch — permanently delete from trash
+router.post("/smart-email/purge-batch", async (req, res) => {
+  const { uids } = req.body as { uids: string[] };
+  if (!Array.isArray(uids) || uids.length === 0) return res.json({ ok: true, count: 0 });
+  try {
+    const r = await pool.query(
+      `DELETE FROM smart_email_inbox WHERE uid = ANY($1) AND is_deleted=true`,
+      [uids]
+    );
+    res.json({ ok: true, count: r.rowCount });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
