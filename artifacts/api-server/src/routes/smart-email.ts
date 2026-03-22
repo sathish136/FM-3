@@ -532,8 +532,9 @@ router.post("/smart-email/ingest", async (req, res) => {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
          ON CONFLICT (uid) DO UPDATE SET
            account_id=COALESCE(EXCLUDED.account_id, smart_email_inbox.account_id),
-           seen=$10, body_text=COALESCE(EXCLUDED.body_text, smart_email_inbox.body_text),
-           body_html=COALESCE(EXCLUDED.body_html, smart_email_inbox.body_html)`,
+           seen=$10,
+           body_text=COALESCE(NULLIF(EXCLUDED.body_text,''), smart_email_inbox.body_text),
+           body_html=COALESCE(NULLIF(EXCLUDED.body_html,''), smart_email_inbox.body_html)`,
         [row.uid, accountId, row.subject, row.from_addr, row.to_addr, row.cc_addr,
          row.email_date, row.body_text, row.body_html, row.seen, row.has_attachment]
       );
