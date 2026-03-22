@@ -39,12 +39,14 @@ interface SmartEmail {
   auto_replied: boolean;
   classified: boolean;
   snippet: string | null;
+  has_draft: boolean;
 }
 
 interface Stats {
   unread: string; important: string; information: string; promotion: string;
   projects: string; suppliers: string; internal: string;
   needs_reply: string; auto_replied_count: string; total: string;
+  drafts_count: string;
 }
 
 interface ProjectCount { project_name: string; count: string; }
@@ -597,7 +599,11 @@ export default function SmartInbox() {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      await api("/smart-email/ingest", { method: "POST" });
+      await api("/smart-email/ingest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ auto_reply: autoReplyEnabled }),
+      });
       await loadEmails(activeFilter, filterValue, search || undefined);
       await loadStats();
     } catch (e: any) { setError(e.message); }
@@ -607,12 +613,16 @@ export default function SmartInbox() {
   const handleClassifyAll = async () => {
     setClassifying(true);
     try {
-      await api("/smart-email/classify-batch", { method: "POST" });
+      await api("/smart-email/classify-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ auto_reply: autoReplyEnabled }),
+      });
       setTimeout(async () => {
         await loadEmails(activeFilter, filterValue, search || undefined);
         await loadStats();
         setClassifying(false);
-      }, 4000);
+      }, 5000);
     } catch { setClassifying(false); }
   };
 
@@ -624,6 +634,13 @@ export default function SmartInbox() {
     setSelected(null);
     loadEmails(activeFilter, filterValue, search || undefined);
     loadStats();
+  };
+
+  const handleSelectEmail = (email: SmartEmail) => {
+    setSelected(email);
+    if (!email.seen) {
+      setEmails(prev => prev.map(e => e.uid === email.uid ? { ...e, seen: true } : e));
+    }
   };
 
   const n = (v?: string) => parseInt(v || "0");
@@ -639,6 +656,7 @@ export default function SmartInbox() {
         { key: "promotion",   label: "Promotion",     icon: Megaphone,     color: "text-purple-600", count: n(stats?.promotion) },
         { key: "unread",      label: "Unread",        icon: Eye,           color: "text-amber-600",  count: n(stats?.unread) },
         { key: "high",        label: "Needs Reply",   icon: Zap,           color: "text-rose-600",   count: n(stats?.needs_reply) },
+        { key: "drafts",      label: "Pending Drafts",icon: Bot,           color: "text-orange-600", count: n(stats?.drafts_count) },
       ] as NavItem[],
     },
     {
@@ -807,14 +825,15 @@ export default function SmartInbox() {
         <div className="flex flex-col w-[340px] shrink-0 border-r border-gray-100 bg-white h-full">
           {/* Stats bar */}
           {stats && (
-            <div className="grid grid-cols-3 gap-0 border-b border-gray-100 shrink-0">
+            <div className="grid grid-cols-4 gap-0 border-b border-gray-100 shrink-0">
               {[
                 { label: "Unread",     value: n(stats.unread),         color: "text-[#1B2A5E]" },
                 { label: "Important",  value: n(stats.important),      color: "text-red-600" },
-                { label: "Auto-Reply", value: n(stats.auto_replied_count), color: "text-green-600" },
+                { label: "Drafts",     value: n(stats.drafts_count),   color: "text-orange-600" },
+                { label: "Replied",    value: n(stats.auto_replied_count), color: "text-green-600" },
               ].map(s => (
-                <div key={s.label} className="flex flex-col items-center py-2.5 border-r last:border-r-0 border-gray-100">
-                  <span className={cn("text-lg font-black", s.color)}>{s.value}</span>
+                <div key={s.label} className="flex flex-col items-center py-2 border-r last:border-r-0 border-gray-100">
+                  <span className={cn("text-base font-black", s.color)}>{s.value}</span>
                   <span className="text-[9px] text-gray-400 uppercase tracking-wider font-semibold">{s.label}</span>
                 </div>
               ))}
@@ -883,7 +902,7 @@ export default function SmartInbox() {
 
               return (
                 <div key={email.uid}
-                  onClick={() => setSelected(email)}
+                  onClick={() => handleSelectEmail(email)}
                   className={cn(
                     "group flex items-stretch border-b border-gray-50 cursor-pointer transition-colors relative",
                     isSelected
@@ -931,6 +950,11 @@ export default function SmartInbox() {
                         <span className={cn("text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-gray-100 border border-gray-200 flex items-center gap-0.5", catColor)}>
                           <CatIcon className="w-2 h-2" />
                           {email.project_name || email.supplier_name || email.category}
+                        </span>
+                      )}
+                      {email.has_draft && !email.auto_replied && (
+                        <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-orange-50 border border-orange-300 text-orange-700 flex items-center gap-0.5 animate-pulse">
+                          <Bot className="w-2 h-2" />Draft Ready
                         </span>
                       )}
                       {email.auto_replied && (

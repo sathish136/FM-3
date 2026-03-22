@@ -241,7 +241,7 @@ async function sendEmail(account: { gmailUser: string; gmailAppPassword: string;
 
 const classifyQueue = new Set<string>();
 
-async function classifyEmailRecord(uid: string) {
+async function classifyEmailRecord(uid: string, autoReply = true) {
   if (classifyQueue.has(uid)) return;
   classifyQueue.add(uid);
   try {
@@ -252,16 +252,20 @@ async function classifyEmailRecord(uid: string) {
     const bodySnippet = email.body_text || (email.body_html ? email.body_html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ") : "");
     const classification = await classifyWithAI(email.subject || "", email.from_addr || "", bodySnippet);
 
+    const snippetText = bodySnippet.replace(/\s+/g, " ").trim().slice(0, 200);
+
     await pool.query(
       `UPDATE smart_email_inbox SET
         email_type=$1, category=$2, project_name=$3, supplier_name=$4,
-        priority=$5, is_internal=$6, classified=true
+        priority=$5, is_internal=$6, classified=true,
+        body_text=COALESCE(NULLIF(body_text,''), $8)
        WHERE uid=$7`,
       [classification.email_type, classification.category, classification.project_name,
-       classification.supplier_name, classification.priority, classification.is_internal, uid]
+       classification.supplier_name, classification.priority, classification.is_internal, uid,
+       snippetText]
     );
 
-    if (classification.email_type === "important" && classification.priority === "high") {
+    if (autoReply && classification.email_type === "important" && classification.priority === "high") {
       triggerAutoReply(uid).catch(() => {});
     }
   } finally {
@@ -350,7 +354,10 @@ router.get("/smart-email/messages", async (req, res) => {
       `SELECT e.uid, e.subject, e.from_addr, e.to_addr, e.cc_addr, e.email_date, e.seen, e.has_attachment,
               e.email_type, e.category, e.project_name, e.supplier_name, e.is_internal, e.priority,
               e.auto_replied, e.classified,
-              LEFT(e.body_text, 200) AS snippet,
+              LEFT(COALESCE(
+                NULLIF(e.body_text, ''),
+                regexp_replace(e.body_html, '<[^>]+>', ' ', 'g')
+              ), 200) AS snippet,
               (d.email_uid IS NOT NULL) AS has_draft
        ${fromClause}
        ${where}
@@ -417,6 +424,7 @@ router.get("/smart-email/body/:uid", async (req, res) => {
 
 // POST /smart-email/ingest — add emails from the existing email_cache
 router.post("/smart-email/ingest", async (req, res) => {
+  const autoReply = req.body?.auto_reply !== false;
   try {
     const cached = await pool.query(`
       SELECT e.uid::text as uid, e.subject, e.from_addr, e.to_addr, e.cc_addr,
@@ -446,7 +454,7 @@ router.post("/smart-email/ingest", async (req, res) => {
       "SELECT uid FROM smart_email_inbox WHERE NOT classified ORDER BY email_date DESC LIMIT 30"
     );
     for (const r of unclassified.rows) {
-      classifyEmailRecord(r.uid).catch(() => {});
+      classifyEmailRecord(r.uid, autoReply).catch(() => {});
     }
 
     res.json({ ok: true, ingested, classifying: unclassified.rows.length });
@@ -491,13 +499,14 @@ router.post("/smart-email/classify/:uid", async (req, res) => {
 });
 
 // POST /smart-email/classify-batch — classify all unclassified
-router.post("/smart-email/classify-batch", async (_req, res) => {
+router.post("/smart-email/classify-batch", async (req, res) => {
+  const autoReply = req.body?.auto_reply !== false;
   try {
     const rows = await pool.query(
       "SELECT uid FROM smart_email_inbox WHERE NOT classified ORDER BY email_date DESC LIMIT 50"
     );
     for (const r of rows.rows) {
-      classifyEmailRecord(r.uid).catch(() => {});
+      classifyEmailRecord(r.uid, autoReply).catch(() => {});
     }
     res.json({ ok: true, queued: rows.rows.length });
   } catch (err: any) {
