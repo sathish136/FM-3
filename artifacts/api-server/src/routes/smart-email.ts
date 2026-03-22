@@ -344,14 +344,14 @@ async function getAccount(userEmail?: string) {
   let row: any = null;
   if (userEmail) {
     const res = await pool.query(
-      "SELECT id, gmail_user, gmail_app_password, email_address FROM email_accounts WHERE assigned_to = $1 LIMIT 1",
+      "SELECT id, gmail_user, gmail_app_password, email_address, assigned_to FROM email_accounts WHERE assigned_to = $1 LIMIT 1",
       [userEmail]
     );
     row = res.rows[0] ?? null;
   }
   if (!row) {
     const res = await pool.query(
-      "SELECT id, gmail_user, gmail_app_password, email_address FROM email_accounts WHERE is_default = true LIMIT 1"
+      "SELECT id, gmail_user, gmail_app_password, email_address, assigned_to FROM email_accounts WHERE is_default = true LIMIT 1"
     );
     row = res.rows[0] ?? null;
   }
@@ -359,14 +359,48 @@ async function getAccount(userEmail?: string) {
     const envUser = process.env.GMAIL_USER;
     const envPass = process.env.GMAIL_APP_PASSWORD?.replace(/\s/g, "");
     if (!envUser || !envPass) throw new Error("No email account configured.");
-    return { gmailUser: envUser, gmailAppPassword: envPass, emailAddress: envUser };
+    return { gmailUser: envUser, gmailAppPassword: envPass, emailAddress: envUser, assignedTo: null as string | null };
   }
   return {
     id: row.id as number,
     gmailUser: row.gmail_user,
     gmailAppPassword: row.gmail_app_password?.replace(/\s/g, ""),
     emailAddress: row.email_address || row.gmail_user,
+    assignedTo: (row.assigned_to as string | null) ?? null,
   };
+}
+
+type UserProfile = {
+  full_name?: string; designation?: string;
+  mobile_no?: string; phone?: string;
+  company?: string; branch?: string;
+};
+
+async function fetchProfileByEmail(email: string): Promise<UserProfile | null> {
+  try {
+    const port = process.env.PORT || 8080;
+    const r = await fetch(`http://localhost:${port}/api/auth/profile?email=${encodeURIComponent(email)}`);
+    if (!r.ok) return null;
+    return await r.json() as UserProfile;
+  } catch {
+    return null;
+  }
+}
+
+function buildSignatureHtml(profile: UserProfile | null): string {
+  if (!profile || (!profile.full_name && !profile.company)) {
+    return `<br/><p style="color:#666;font-size:12px;">---<br/><strong>WTT International</strong></p>`;
+  }
+  const lines: string[] = [];
+  lines.push(`<p style="margin:0;font-size:12px;color:#6b7280;font-style:italic;">Best Regards,</p>`);
+  if (profile.full_name) lines.push(`<p style="margin:0;font-size:14px;font-weight:700;color:#111827;">${profile.full_name}</p>`);
+  if (profile.designation) lines.push(`<p style="margin:0;font-size:12px;font-weight:600;color:#e05a00;">${profile.designation}</p>`);
+  if (profile.mobile_no || profile.phone) lines.push(`<p style="margin:0;font-size:12px;color:#4b5563;">${profile.mobile_no || profile.phone}</p>`);
+  if (profile.company) {
+    lines.push(`<p style="margin:4px 0 0;font-size:12px;font-weight:700;color:#111827;text-transform:uppercase;letter-spacing:0.05em;">${profile.company}</p>`);
+    if (profile.branch) lines.push(`<p style="margin:0;font-size:11px;color:#6b7280;">${profile.branch}</p>`);
+  }
+  return `<br/><hr style="border:none;border-top:1px dashed #e5e7eb;margin:12px 0;"/><div style="font-family:'Inter','Segoe UI',sans-serif;">${lines.join("")}</div>`;
 }
 
 async function sendEmail(
@@ -463,6 +497,33 @@ async function triggerAutoReply(uid: string, userEmail?: string, force = false) 
     await pool.query("DELETE FROM smart_email_drafts WHERE email_uid=$1 AND sent=false", [uid]);
   }
 
+  // Look up the account that owns this email to get the sender's profile
+  let profile: UserProfile | null = null;
+  try {
+    const acctRes = await pool.query(
+      `SELECT ea.assigned_to FROM email_accounts ea
+       JOIN smart_email_inbox sei ON sei.account_id = ea.id
+       WHERE sei.uid = $1 LIMIT 1`,
+      [uid]
+    );
+    const assignedTo = acctRes.rows[0]?.assigned_to as string | undefined;
+    if (assignedTo) {
+      profile = await fetchProfileByEmail(assignedTo);
+    }
+    // Fallback: use default account
+    if (!profile) {
+      const defRes = await pool.query(
+        "SELECT assigned_to FROM email_accounts WHERE is_default = true LIMIT 1"
+      );
+      const defEmail = defRes.rows[0]?.assigned_to as string | undefined;
+      if (defEmail) profile = await fetchProfileByEmail(defEmail);
+    }
+  } catch { /* silently continue with no profile */ }
+
+  const senderName = profile?.full_name || "our team";
+  const senderTitle = profile?.designation ? `, ${profile.designation}` : "";
+  const companyName = profile?.company || "WTT International";
+
   const bodyText = email.body_text || (email.body_html ? email.body_html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ") : "");
 
   const completion = await getOpenAI().chat.completions.create({
@@ -471,13 +532,14 @@ async function triggerAutoReply(uid: string, userEmail?: string, force = false) 
     messages: [
       {
         role: "system",
-        content: `You are drafting a reply on behalf of the Managing Director of WTT International, a water treatment technology company. 
+        content: `You are drafting a reply on behalf of ${senderName}${senderTitle} at ${companyName}, a water treatment technology company. 
 Write a concise, professional reply that directly addresses the content and key points of the email. 
 - If it's a request, acknowledge it specifically and indicate it will be reviewed.
 - If it's a quotation or order, confirm receipt and say it will be processed.
 - If it's an inquiry, acknowledge the specific question and say a detailed response will follow.
 - Keep it to 3-5 sentences. Do not make firm commitments or share pricing/confidential details.
-- Sound like a senior executive, not a template.`,
+- Sound like a senior professional, not a template.
+- Do NOT include any sign-off, signature, or "Best regards" — the signature is added separately.`,
       },
       {
         role: "user",
@@ -486,16 +548,10 @@ Write a concise, professional reply that directly addresses the content and key 
     ],
   });
 
-  const replyText = completion.choices[0]?.message?.content || "Thank you for your email. The Managing Director has received your message and will respond at the earliest opportunity.";
+  const replyText = completion.choices[0]?.message?.content || `Thank you for your email. ${senderName} has received your message and will respond at the earliest opportunity.`;
 
-  const htmlReply = `
-    <p>${replyText.replace(/\n/g, "<br/>")}</p>
-    <br/>
-    <p style="color:#666;font-size:12px;">---<br/>
-    <strong>WTT International</strong><br/>
-    Water Loving Technology<br/>
-    </p>
-  `;
+  const signatureHtml = buildSignatureHtml(profile);
+  const htmlReply = `<p>${replyText.replace(/\n/g, "<br/>")}</p>${signatureHtml}`;
 
   await pool.query(
     `INSERT INTO smart_email_drafts (email_uid, draft_text, draft_html, to_addr, subject)
