@@ -2,19 +2,38 @@ import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Eye, EyeOff, Loader2, User, Lock, LogIn, ShieldCheck, RefreshCw, ArrowLeft } from "lucide-react";
 
+const OTP_SESSION_KEY = "wtt_otp_pending";
+
+function saveOtpSession(data: { email: string; maskedEmail: string; usr: string; pwd: string }) {
+  try { sessionStorage.setItem(OTP_SESSION_KEY, JSON.stringify(data)); } catch {}
+}
+function loadOtpSession() {
+  try {
+    const raw = sessionStorage.getItem(OTP_SESSION_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as { email: string; maskedEmail: string; usr: string; pwd: string };
+  } catch { return null; }
+}
+function clearOtpSession() {
+  try { sessionStorage.removeItem(OTP_SESSION_KEY); } catch {}
+}
+
 export default function Login() {
   const { login, verifyOtp } = useAuth();
 
-  const [step, setStep] = useState<"credentials" | "otp">("credentials");
-  const [usr, setUsr] = useState("");
-  const [pwd, setPwd] = useState("");
+  // Restore OTP step if the mobile browser reloaded while awaiting OTP
+  const pending = loadOtpSession();
+
+  const [step, setStep] = useState<"credentials" | "otp">(pending ? "otp" : "credentials");
+  const [usr, setUsr] = useState(pending?.usr ?? "");
+  const [pwd, setPwd] = useState(pending?.pwd ?? "");
   const [showPwd, setShowPwd] = useState(false);
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const [otpEmail, setOtpEmail] = useState("");
-  const [maskedEmail, setMaskedEmail] = useState("");
+  const [otpEmail, setOtpEmail] = useState(pending?.email ?? "");
+  const [maskedEmail, setMaskedEmail] = useState(pending?.maskedEmail ?? "");
   // Single string value for the OTP — much more mobile-friendly than 6 separate inputs
   const [otpValue, setOtpValue] = useState("");
   const [resendCooldown, setResendCooldown] = useState(0);
@@ -42,6 +61,8 @@ export default function Login() {
       setOtpEmail(result.email);
       setMaskedEmail(result.maskedEmail);
       setOtpValue("");
+      // Persist OTP step so mobile tab reload restores it
+      saveOtpSession({ email: result.email, maskedEmail: result.maskedEmail, usr: usr.trim(), pwd });
       setStep("otp");
       setResendCooldown(60);
     } catch (err: any) {
@@ -66,6 +87,7 @@ export default function Login() {
     setLoading(true);
     try {
       await verifyOtp(otpEmail, finalOtp);
+      clearOtpSession(); // Clean up on success
     } catch (err: any) {
       setError(err.message || "Invalid code. Please try again.");
       setOtpValue("");
@@ -279,7 +301,7 @@ export default function Login() {
               <div className="flex items-center justify-between pt-1">
                 <button
                   type="button"
-                  onClick={() => { setStep("credentials"); setError(""); setOtpValue(""); }}
+                  onClick={() => { clearOtpSession(); setStep("credentials"); setError(""); setOtpValue(""); }}
                   className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" /> Back
