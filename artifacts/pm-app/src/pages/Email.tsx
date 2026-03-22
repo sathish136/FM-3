@@ -495,6 +495,7 @@ function EmailDetail({ email, folderPath, onBack, onReply, onReplyAll, onDelete,
   const [body, setBody] = useState<EmailBody|null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [attachList, setAttachList] = useState<{ index: number; filename: string; contentType: string; size: number }[]>([]);
   const [headerExpanded, setHeaderExpanded] = useState(false);
   const [showAI, setShowAI] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -502,9 +503,14 @@ function EmailDetail({ email, folderPath, onBack, onReply, onReplyAll, onDelete,
   const isTrash = folderPath === "[Gmail]/Trash";
 
   useEffect(() => {
-    setLoading(true); setBody(null); setShowAI(false);
+    setLoading(true); setBody(null); setShowAI(false); setAttachList([]);
     apiFetch(`/email/${email.uid}/body?mailbox=${encodeURIComponent(folderPath)}${userParam}`)
       .then(d => { setBody(d); setLoading(false); }).catch(() => setLoading(false));
+    if (email.hasAttachment) {
+      apiFetch(`/email/${email.uid}/attachments?mailbox=${encodeURIComponent(folderPath)}${userParam}`)
+        .then(d => setAttachList(d || []))
+        .catch(() => {});
+    }
   }, [email.uid, folderPath]);
 
   useEffect(() => {
@@ -653,6 +659,39 @@ function EmailDetail({ email, folderPath, onBack, onReply, onReplyAll, onDelete,
           {!loading && body?.html && <iframe ref={iframeRef} className="w-full border-0" style={{ minHeight:300, display:"block" }} title="email-body" sandbox="allow-same-origin allow-popups"/>}
           {!loading && !body?.html && body?.text && <pre className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed font-sans">{body.text}</pre>}
           {!loading && !body?.html && !body?.text && <p className="text-sm text-gray-400 italic">No content available.</p>}
+
+          {/* Attachments */}
+          {!loading && attachList.length > 0 && (
+            <div className="mt-6 border-t border-gray-100 pt-5">
+              <div className="flex items-center gap-2 mb-3">
+                <Paperclip className="w-3.5 h-3.5 text-gray-400" />
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{attachList.length} Attachment{attachList.length > 1 ? "s" : ""}</span>
+              </div>
+              <div className="flex flex-col gap-2">
+                {attachList.map(att => {
+                  const isImage = att.contentType.startsWith("image/");
+                  const isPdf = att.contentType === "application/pdf";
+                  const ext = att.filename.split(".").pop()?.toLowerCase() || "";
+                  const icon = isPdf ? "📄" : isImage ? "🖼️" : ["xlsx","xls","csv"].includes(ext) ? "📊" : ["docx","doc"].includes(ext) ? "📝" : ["zip","rar","7z"].includes(ext) ? "🗜️" : "📎";
+                  const kb = att.size ? (att.size > 1048576 ? (att.size / 1048576).toFixed(1) + " MB" : (att.size / 1024).toFixed(1) + " KB") : "";
+                  const href = `/api/email/${email.uid}/attachment/${att.index}?mailbox=${encodeURIComponent(folderPath)}${userParam}`;
+                  return (
+                    <a key={att.index} href={href} download={att.filename} target="_blank" rel="noreferrer"
+                      className="flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-100 bg-gray-50 hover:bg-blue-50 hover:border-blue-200 transition-colors group w-full max-w-sm">
+                      <span className="text-2xl leading-none">{icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-semibold text-gray-700 truncate group-hover:text-blue-700">{att.filename}</p>
+                        {kb && <p className="text-[11px] text-gray-400">{kb}</p>}
+                      </div>
+                      <svg className="w-4 h-4 text-gray-300 group-hover:text-blue-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/>
+                      </svg>
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Quick reply buttons at bottom */}
           {!loading && (

@@ -418,6 +418,61 @@ router.get("/email/:uid/body", async (req, res) => {
   }
 });
 
+// GET /api/email/:uid/attachments?mailbox=PATH&user=EMAIL — list attachments
+router.get("/email/:uid/attachments", async (req, res) => {
+  const uid = parseInt(req.params.uid);
+  const folderPath = (req.query.mailbox as string) || "INBOX";
+  try {
+    const account = await getAccount(req.query.user as string | undefined);
+    const attachments = await withImap(account.gmailUser, account.gmailAppPassword, async (client) => {
+      await client.mailboxOpen(folderPath);
+      const dl = await client.download(uid, undefined, { uid: true });
+      if (!dl) return [];
+      const chunks: Buffer[] = [];
+      for await (const chunk of dl.content) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      const raw = Buffer.concat(chunks);
+      const parsed = await simpleParser(raw);
+      return (parsed.attachments || []).map((a, i) => ({
+        index: i,
+        filename: a.filename || `attachment-${i + 1}`,
+        contentType: a.contentType || "application/octet-stream",
+        size: a.size || (a.content ? a.content.length : 0),
+      }));
+    });
+    res.json(attachments);
+  } catch (err: any) {
+    console.error("attachments error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email/:uid/attachment/:index?mailbox=PATH&user=EMAIL — download one attachment
+router.get("/email/:uid/attachment/:index", async (req, res) => {
+  const uid = parseInt(req.params.uid);
+  const index = parseInt(req.params.index);
+  const folderPath = (req.query.mailbox as string) || "INBOX";
+  try {
+    const account = await getAccount(req.query.user as string | undefined);
+    await withImap(account.gmailUser, account.gmailAppPassword, async (client) => {
+      await client.mailboxOpen(folderPath);
+      const dl = await client.download(uid, undefined, { uid: true });
+      if (!dl) { res.status(404).json({ error: "Email not found" }); return; }
+      const chunks: Buffer[] = [];
+      for await (const chunk of dl.content) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      const raw = Buffer.concat(chunks);
+      const parsed = await simpleParser(raw);
+      const att = (parsed.attachments || [])[index];
+      if (!att) { res.status(404).json({ error: "Attachment not found" }); return; }
+      res.setHeader("Content-Type", att.contentType || "application/octet-stream");
+      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(att.filename || `attachment-${index + 1}`)}`);
+      res.send(att.content);
+    });
+  } catch (err: any) {
+    console.error("attachment download error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/email/:uid/ai-summary — AI summarize email body
 router.post("/email/:uid/ai-summary", async (req, res) => {
   const { bodyText, bodyHtml, subject } = req.body;
