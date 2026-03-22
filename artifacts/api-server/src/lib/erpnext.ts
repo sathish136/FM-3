@@ -930,6 +930,33 @@ export async function fetchErpNextPurchaseOrders(project?: string): Promise<ErpP
   return (json.data || []) as ErpPurchaseOrder[];
 }
 
+export interface ErpPOItem {
+  parent: string;
+  item_code: string;
+  item_name: string;
+  description: string | null;
+  qty: number;
+  uom: string;
+  rate: number;
+  amount: number;
+  received_qty: number;
+}
+
+export async function fetchErpNextPOItems(poNames: string[]): Promise<ErpPOItem[]> {
+  if (!ERPNEXT_URL || poNames.length === 0) return [];
+  const fields = JSON.stringify([
+    "parent", "item_code", "item_name", "description",
+    "qty", "uom", "rate", "amount", "received_qty",
+  ]);
+  const filters = JSON.stringify([["Purchase Order Item", "parent", "in", poNames]]);
+  const params = new URLSearchParams({ fields, filters, limit_page_length: "2000" });
+  const url = `${ERPNEXT_URL}/api/resource/Purchase Order Item?${params}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader() } });
+  if (!res.ok) return [];
+  const json = await res.json();
+  return (json.data || []) as ErpPOItem[];
+}
+
 export async function fetchErpNextUsers(): Promise<ErpUser[]> {
   if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
   const fields = JSON.stringify(["name", "full_name", "user_image", "enabled"]);

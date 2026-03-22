@@ -5,6 +5,7 @@ import {
   fetchErpNextTasks,
   fetchErpNextMaterialRequests,
   fetchErpNextPurchaseOrders,
+  fetchErpNextPOItems,
   fetchErpNextTaskAllocations,
   isErpNextConfigured,
 } from "../lib/erpnext";
@@ -70,12 +71,25 @@ router.get("/timeline", async (req, res) => {
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
     const fromDate = sixMonthsAgo.toISOString().split("T")[0];
 
-    const [tasks, materialRequests, purchaseOrders, allAllocations] = await Promise.all([
+    const [tasks, materialRequests, rawPOs, allAllocations] = await Promise.all([
       fetchErpNextTasks(project || undefined),
       fetchErpNextMaterialRequests(project ? { project } : undefined),
       fetchErpNextPurchaseOrders(project || undefined),
       fetchErpNextTaskAllocations({ fromDate }),
     ]);
+
+    // Fetch items for all POs and merge them in
+    const poNames = rawPOs.map(p => p.name);
+    const poItemsList = await fetchErpNextPOItems(poNames);
+    const poItemsMap = new Map<string, typeof poItemsList>();
+    for (const item of poItemsList) {
+      if (!poItemsMap.has(item.parent)) poItemsMap.set(item.parent, []);
+      poItemsMap.get(item.parent)!.push(item);
+    }
+    const purchaseOrders = rawPOs.map(po => ({
+      ...po,
+      items: poItemsMap.get(po.name) || [],
+    }));
 
     // Filter task allocations to those related to this project's tasks
     const projectTaskNames = new Set(tasks.map(t => t.name));

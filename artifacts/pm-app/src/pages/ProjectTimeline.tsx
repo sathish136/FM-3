@@ -1,5 +1,5 @@
 import { Layout } from "@/components/Layout";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Fragment } from "react";
 import {
   GanttChartSquare, ShoppingCart, AlertTriangle, ChevronDown,
   RefreshCw, CalendarDays, CheckCircle2,
@@ -58,6 +58,18 @@ type MR = {
   project: string | null;
 };
 
+type POItem = {
+  parent: string;
+  item_code: string;
+  item_name: string;
+  description: string | null;
+  qty: number;
+  uom: string;
+  rate: number;
+  amount: number;
+  received_qty: number;
+};
+
 type PO = {
   name: string;
   project: string | null;
@@ -71,6 +83,7 @@ type PO = {
   owner: string;
   per_received: number;
   per_billed: number;
+  items: POItem[];
 };
 
 type TaskAllocationEntry = {
@@ -1344,17 +1357,45 @@ function PurchaseView({ mrs, pos }: { mrs: MR[]; pos: PO[] }) {
                         <p className="text-[10px] text-gray-500">Payment Pending</p>
                       </div>
                     </div>
-                    <div className="w-full mt-1 space-y-1">
+                    <div className="w-full mt-2 space-y-2">
                       {s.latePOs.map(po => {
                         const del = parseDate(po.schedule_date);
                         const d = del ? daysBetween(del, today) : 0;
+                        // Sort items by amount desc, show major items (top by value)
+                        const majorItems = (po.items || [])
+                          .slice()
+                          .sort((a, b) => b.amount - a.amount)
+                          .slice(0, 6);
                         return (
-                          <div key={po.name} className="flex items-center justify-between text-xs bg-red-50 rounded-lg px-2 py-1">
-                            <span className="font-mono text-blue-600">{po.name}</span>
-                            <span className="text-gray-600">{fmtDate(po.schedule_date)}</span>
-                            <span className="font-medium">{fmtMoney(po.grand_total)}</span>
-                            <span className="font-bold text-red-600">+{d}d late</span>
-                            <span className="text-gray-500">{po.per_received.toFixed(0)}% received</span>
+                          <div key={po.name} className="bg-white border border-red-100 rounded-xl overflow-hidden">
+                            <div className="flex items-center gap-3 px-3 py-2 bg-red-50 flex-wrap">
+                              <span className="font-mono text-blue-600 font-medium text-xs">{po.name}</span>
+                              <span className="text-gray-500 text-xs">{fmtDate(po.schedule_date)}</span>
+                              <span className="font-semibold text-gray-800 text-xs">{fmtMoney(po.grand_total)}</span>
+                              <span className="font-bold text-red-600 text-xs ml-auto">+{d}d late</span>
+                              <span className="text-gray-500 text-xs">{po.per_received.toFixed(0)}% rcvd</span>
+                            </div>
+                            {majorItems.length > 0 && (
+                              <div className="px-3 py-2 flex flex-wrap gap-1.5">
+                                {majorItems.map((item, idx) => (
+                                  <div key={idx} className="flex items-center gap-1 bg-gray-100 border border-gray-200 rounded-lg px-2 py-1 text-[10px] max-w-[260px]">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                                    <span className="font-medium text-gray-700 truncate" title={item.item_name}>{item.item_name}</span>
+                                    <span className="text-gray-400 shrink-0 ml-1">{item.qty} {item.uom}</span>
+                                    <span className="text-gray-500 font-semibold shrink-0 ml-1">{fmtMoney(item.amount)}</span>
+                                    {item.received_qty > 0 && item.received_qty < item.qty && (
+                                      <span className="text-amber-600 shrink-0 ml-1">{item.received_qty}/{item.qty} rcvd</span>
+                                    )}
+                                    {item.received_qty === 0 && (
+                                      <span className="text-red-500 shrink-0 ml-1 font-bold">0 rcvd</span>
+                                    )}
+                                  </div>
+                                ))}
+                                {(po.items || []).length > 6 && (
+                                  <span className="text-[10px] text-gray-400 self-center">+{po.items.length - 6} more items</span>
+                                )}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -1687,8 +1728,10 @@ function PurchaseView({ mrs, pos }: { mrs: MR[]; pos: PO[] }) {
                   const delivDate = parseDate(po.schedule_date);
                   const isLate = delivDate && delivDate < today && po.per_received < 100 && po.status !== "Cancelled";
                   const daysLate = isLate && delivDate ? daysBetween(delivDate, today) : 0;
+                  const majorItems = (po.items || []).slice().sort((a, b) => b.amount - a.amount).slice(0, 4);
                   return (
-                    <tr key={po.name} className={cn("border-b border-gray-100 hover:bg-gray-50", isLate && "bg-red-50 hover:bg-red-100")}>
+                    <Fragment key={po.name}>
+                    <tr className={cn("border-b border-gray-100 hover:bg-gray-50", isLate && "bg-red-50 hover:bg-red-100")}>
                       <td className="px-3 py-2 font-mono text-blue-600 font-medium whitespace-nowrap">{po.name}</td>
                       <td className="px-3 py-2 text-gray-700 max-w-[150px] truncate" title={po.supplier_name}>
                         {po.supplier_name || po.supplier}
@@ -1727,6 +1770,28 @@ function PurchaseView({ mrs, pos }: { mrs: MR[]; pos: PO[] }) {
                         )}
                       </td>
                     </tr>
+                    {majorItems.length > 0 && (
+                      <tr className={cn("border-b border-gray-100", isLate ? "bg-red-50/40" : "bg-gray-50/60")}>
+                        <td colSpan={9} className="px-4 py-1.5">
+                          <div className="flex flex-wrap gap-1">
+                            {majorItems.map((item, idx) => (
+                              <span key={idx} className="inline-flex items-center gap-1 text-[10px] bg-white border border-gray-200 rounded-md px-1.5 py-0.5 text-gray-600">
+                                <span className="w-1 h-1 rounded-full bg-blue-400 shrink-0" />
+                                <span className="font-medium" title={item.item_name}>{item.item_name}</span>
+                                <span className="text-gray-400">·</span>
+                                <span>{item.qty} {item.uom}</span>
+                                <span className="text-gray-400">·</span>
+                                <span className="font-semibold text-gray-700">{fmtMoney(item.amount)}</span>
+                              </span>
+                            ))}
+                            {(po.items || []).length > 4 && (
+                              <span className="text-[10px] text-gray-400 self-center">+{po.items.length - 4} more</span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
               </tbody>
