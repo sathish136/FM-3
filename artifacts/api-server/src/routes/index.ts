@@ -13,6 +13,7 @@ import emailSettingsRouter from "./emailSettings";
 import chatRouter from "./chat";
 import incidentsRouter from "./incidents";
 import drawingsRouter from "./drawings";
+import timelineRouter from "./timeline";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(emailSettingsRouter);
 router.use(chatRouter);
 router.use(incidentsRouter);
 router.use(drawingsRouter);
+router.use(timelineRouter);
 
 export default router;

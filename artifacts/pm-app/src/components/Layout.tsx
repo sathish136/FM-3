@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Box, PenTool, GitBranch,
   Briefcase, ChevronDown, FileText,
   ChevronRight, LogOut, ChevronLeft, ChevronRight as ChevronRightIcon, Menu,
-  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, UserCircle, LayoutGrid, Mail, MailOpen, MessageSquare, Palette, Sun, Moon, Layers, FolderOpen, Sparkles, X, MoreHorizontal,
+  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, UserCircle, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Palette, Sun, Moon, Layers, FolderOpen, Sparkles, X, MoreHorizontal,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
@@ -55,6 +55,7 @@ const navGroups: { label?: string; items: NavItem[] }[] = [
     items: [
       { path: "/projects", label: "Projects", icon: Briefcase, color: "text-blue-400" },
       { path: "/project-board", label: "Project Board", icon: LayoutGrid, color: "text-indigo-400" },
+      { path: "/project-timeline", label: "Project Timeline", icon: GanttChartSquare, color: "text-cyan-400" },
       { path: "/meeting-minutes", label: "Meeting Minutes", icon: FileText, color: "text-teal-400" },
       { path: "/material-request", label: "Material Request", icon: ShoppingCart, color: "text-amber-400" },
       { path: "/presentation", label: "Presentation", icon: MonitorPlay, color: "text-orange-400" },

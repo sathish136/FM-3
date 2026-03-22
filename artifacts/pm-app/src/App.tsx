@@ -36,6 +36,7 @@ import Chat from "@/pages/Chat";
 import HRIncidents from "@/pages/HRIncidents";
 import Nesting from "@/pages/Nesting";
 import ProjectDrawings from "@/pages/ProjectDrawings";
+import ProjectTimeline from "@/pages/ProjectTimeline";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -92,6 +93,7 @@ function ProtectedRoutes() {
       <Route path="/hrms/incidents" component={HRIncidents} />
       <Route path="/nesting" component={Nesting} />
       <Route path="/project-drawings" component={ProjectDrawings} />
+      <Route path="/project-timeline" component={ProjectTimeline} />
       <Route component={NotFound} />
     </Switch>
   );

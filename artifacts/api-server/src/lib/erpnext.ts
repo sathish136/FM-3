@@ -739,6 +739,95 @@ export async function createErpNextTaskAllocation(data: {
   return { name: result.data?.name || result.name || "created" };
 }
 
+// ── Tasks ─────────────────────────────────────────────────────────────────────
+
+export interface ErpTask {
+  name: string;
+  subject: string;
+  project: string;
+  status: string;
+  priority: string;
+  exp_start_date: string | null;
+  exp_end_date: string | null;
+  completed_on: string | null;
+  progress: number;
+  description: string | null;
+  assigned_to: string | null;
+}
+
+export async function fetchErpNextTasks(project?: string): Promise<ErpTask[]> {
+  if (!ERPNEXT_URL) return [];
+  const fields = JSON.stringify([
+    "name", "subject", "project", "status", "priority",
+    "exp_start_date", "exp_end_date", "completed_on", "progress",
+    "description", "_assign",
+  ]);
+  const fArr: any[] = [];
+  if (project) fArr.push(["Task", "project", "=", project]);
+  const params = new URLSearchParams({
+    fields,
+    limit_page_length: "500",
+    order_by: "exp_start_date asc",
+  });
+  if (fArr.length) params.set("filters", JSON.stringify(fArr));
+  const url = `${ERPNEXT_URL}/api/resource/Task?${params}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader() } });
+  if (!res.ok) return [];
+  const json = await res.json();
+  return ((json.data || []) as any[]).map((t: any) => ({
+    name: t.name,
+    subject: t.subject,
+    project: t.project,
+    status: t.status,
+    priority: t.priority || "Medium",
+    exp_start_date: t.exp_start_date || null,
+    exp_end_date: t.exp_end_date || null,
+    completed_on: t.completed_on || null,
+    progress: t.progress || 0,
+    description: t.description || null,
+    assigned_to: t._assign ? (() => { try { const a = JSON.parse(t._assign); return Array.isArray(a) ? a[0] : null; } catch { return null; } })() : null,
+  })) as ErpTask[];
+}
+
+// ── Purchase Orders ───────────────────────────────────────────────────────────
+
+export interface ErpPurchaseOrder {
+  name: string;
+  project: string | null;
+  supplier: string;
+  supplier_name: string;
+  transaction_date: string;
+  schedule_date: string | null;
+  status: string;
+  grand_total: number;
+  currency: string;
+  owner: string;
+  per_received: number;
+  per_billed: number;
+}
+
+export async function fetchErpNextPurchaseOrders(project?: string): Promise<ErpPurchaseOrder[]> {
+  if (!ERPNEXT_URL) return [];
+  const fields = JSON.stringify([
+    "name", "project", "supplier", "supplier_name",
+    "transaction_date", "schedule_date", "status",
+    "grand_total", "currency", "owner", "per_received", "per_billed",
+  ]);
+  const fArr: any[] = [["Purchase Order", "docstatus", "=", 1]];
+  if (project) fArr.push(["Purchase Order", "project", "=", project]);
+  const params = new URLSearchParams({
+    fields,
+    limit_page_length: "500",
+    order_by: "transaction_date desc",
+  });
+  params.set("filters", JSON.stringify(fArr));
+  const url = `${ERPNEXT_URL}/api/resource/Purchase Order?${params}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader() } });
+  if (!res.ok) return [];
+  const json = await res.json();
+  return (json.data || []) as ErpPurchaseOrder[];
+}
+
 export async function fetchErpNextUsers(): Promise<ErpUser[]> {
   if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
   const fields = JSON.stringify(["name", "full_name", "user_image", "enabled"]);
