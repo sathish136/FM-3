@@ -506,6 +506,7 @@ Write a concise, professional reply that directly addresses the content and key 
 
   // Mark email as having a pending draft
   await pool.query("UPDATE smart_email_inbox SET has_draft=true WHERE uid=$1", [uid]);
+  console.log(`[triggerAutoReply] draft created for uid=${uid}, to=${email.from_addr}`);
 }
 
 // ── Routes ──────────────────────────────────────────────────────────────────
@@ -556,7 +557,7 @@ router.get("/smart-email/messages", async (req, res) => {
       }
       else if (filter === "unread")     { where += " AND seen=false"; }
       else if (filter === "high")       { where += " AND priority='high'"; }
-      else if (filter === "drafts")     { where += " AND d.email_uid IS NOT NULL AND e.auto_replied=false"; }
+      else if (filter === "drafts")     { where += " AND (e.has_draft = true OR d.email_uid IS NOT NULL) AND e.auto_replied=false"; }
     }
 
     if (search) {
@@ -615,7 +616,7 @@ router.get("/smart-email/stats", async (req, res) => {
         COUNT(*) FILTER (WHERE auto_replied=true AND NOT is_deleted ${acctFilter}) AS auto_replied_count,
         COUNT(*) FILTER (WHERE NOT is_deleted ${acctFilter}) AS total,
         COUNT(*) FILTER (WHERE is_deleted=true ${acctFilter}) AS trash_count,
-        (SELECT COUNT(*) FROM smart_email_drafts WHERE sent=false) AS drafts_count
+        COUNT(*) FILTER (WHERE has_draft=true AND NOT auto_replied AND NOT is_deleted ${acctFilter}) AS drafts_count
       FROM smart_email_inbox
     `, acctVals);
     const projects = await pool.query(
@@ -763,9 +764,12 @@ router.post("/smart-email/draft-batch", async (req, res) => {
     let queued = 0;
     for (const r of rows.rows) {
       // Pass undefined for userEmail so the to_addr restriction is skipped in batch mode
-      triggerAutoReply(r.uid, undefined, false).catch(() => {});
+      triggerAutoReply(r.uid, undefined, false).catch(e => {
+        console.error(`[draft-batch] failed for uid=${r.uid}:`, e.message);
+      });
       queued++;
     }
+    console.log(`[draft-batch] queued ${queued} drafts`);
     res.json({ ok: true, queued });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
