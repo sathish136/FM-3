@@ -531,6 +531,56 @@ export async function fetchErpNextProjectList(): Promise<{ name: string; project
   return (json.data || []) as { name: string; project_name: string }[];
 }
 
+export interface ErpProjectDetail {
+  name: string;
+  project_name: string;
+  status: string;
+  priority: string;
+  percent_complete: number;
+  expected_start_date: string | null;
+  expected_end_date: string | null;
+  estimated_costing: number;
+  actual_expense: number;
+  actual_time: number;
+  department: string | null;
+  notes: string | null;
+  creation: string;
+  modified: string;
+}
+
+export async function fetchErpNextProjectDetail(projectName: string): Promise<ErpProjectDetail | null> {
+  if (!ERPNEXT_URL) return null;
+  const fields = JSON.stringify([
+    "name", "project_name", "status", "priority", "percent_complete",
+    "expected_start_date", "expected_end_date",
+    "estimated_costing", "actual_expense", "actual_time",
+    "department", "notes", "creation", "modified",
+  ]);
+  const params = new URLSearchParams({ fields });
+  const url = `${ERPNEXT_URL}/api/resource/Project/${encodeURIComponent(projectName)}?${params}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader() } });
+  if (!res.ok) return null;
+  const json = await res.json();
+  const d = json.data;
+  if (!d) return null;
+  return {
+    name: d.name,
+    project_name: d.project_name || d.name,
+    status: d.status || "Unknown",
+    priority: d.priority || "Medium",
+    percent_complete: d.percent_complete || 0,
+    expected_start_date: d.expected_start_date || null,
+    expected_end_date: d.expected_end_date || null,
+    estimated_costing: d.estimated_costing || 0,
+    actual_expense: d.actual_expense || 0,
+    actual_time: d.actual_time || 0,
+    department: d.department || null,
+    notes: d.notes || null,
+    creation: d.creation || "",
+    modified: d.modified || "",
+  };
+}
+
 // ── HRMS ─────────────────────────────────────────────────────────────────────
 
 export interface ErpEmployee {

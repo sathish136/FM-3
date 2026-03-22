@@ -2,15 +2,34 @@ import { Layout } from "@/components/Layout";
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   GanttChartSquare, ShoppingCart, AlertTriangle, ChevronDown,
-  RefreshCw, CalendarDays, ArrowRight, Clock, CheckCircle2,
-  XCircle, AlertCircle, Circle, TrendingUp, Package, Truck,
-  User, ChevronRight,
+  RefreshCw, CalendarDays, Clock, CheckCircle2,
+  AlertCircle, Circle, TrendingUp, Package, Truck,
+  User, ChevronRight, BarChart3, Target, IndianRupee,
+  Activity, Layers, ArrowUp, ArrowDown, Minus,
+  Info, Building2, Star,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const API = "/api";
 
 type Project = { name: string; project_name: string };
+
+type ProjectDetail = {
+  name: string;
+  project_name: string;
+  status: string;
+  priority: string;
+  percent_complete: number;
+  expected_start_date: string | null;
+  expected_end_date: string | null;
+  estimated_costing: number;
+  actual_expense: number;
+  actual_time: number;
+  department: string | null;
+  notes: string | null;
+  creation: string;
+  modified: string;
+};
 
 type Task = {
   name: string;
@@ -55,45 +74,47 @@ type PO = {
 
 type TimelineData = { tasks: Task[]; materialRequests: MR[]; purchaseOrders: PO[] };
 
-const PHASE_KEYWORDS: { label: string; color: string; bg: string; border: string; keywords: string[] }[] = [
+const PHASE_KEYWORDS: { label: string; color: string; bg: string; border: string; bar: string; keywords: string[] }[] = [
   {
     label: "Process Design",
-    color: "text-violet-700", bg: "bg-violet-100", border: "border-violet-300",
+    color: "text-violet-700", bg: "bg-violet-50", border: "border-violet-200", bar: "bg-violet-500",
     keywords: ["process", "design", "p&id", "pid", "flow", "schematic", "basic engineering", "detail"],
   },
   {
     label: "Engineering",
-    color: "text-blue-700", bg: "bg-blue-100", border: "border-blue-300",
+    color: "text-blue-700", bg: "bg-blue-50", border: "border-blue-200", bar: "bg-blue-500",
     keywords: ["drawing", "mechanical", "electrical", "civil", "structural", "layout", "engineering", "instrument", "2d", "3d"],
   },
   {
     label: "Procurement",
-    color: "text-amber-700", bg: "bg-amber-100", border: "border-amber-300",
+    color: "text-amber-700", bg: "bg-amber-50", border: "border-amber-200", bar: "bg-amber-500",
     keywords: ["purchase", "procure", "mr", "material", "order", "supplier", "vendor", "rfq", "quotation", "po", "buy", "indent"],
   },
   {
-    label: "Manufacturing / Fabrication",
-    color: "text-orange-700", bg: "bg-orange-100", border: "border-orange-300",
+    label: "Manufacturing",
+    color: "text-orange-700", bg: "bg-orange-50", border: "border-orange-200", bar: "bg-orange-500",
     keywords: ["fabricat", "manufactur", "weld", "assem", "production", "shop"],
   },
   {
     label: "Site / Installation",
-    color: "text-emerald-700", bg: "bg-emerald-100", border: "border-emerald-300",
+    color: "text-emerald-700", bg: "bg-emerald-50", border: "border-emerald-200", bar: "bg-emerald-500",
     keywords: ["site", "install", "erect", "civil work", "foundation", "piping", "cable", "wiring"],
   },
   {
     label: "Commissioning",
-    color: "text-rose-700", bg: "bg-rose-100", border: "border-rose-300",
+    color: "text-rose-700", bg: "bg-rose-50", border: "border-rose-200", bar: "bg-rose-500",
     keywords: ["commission", "test", "startup", "start-up", "handover", "trial", "fat", "sat", "punch"],
   },
 ];
+
+const OTHER_PHASE = { label: "Other", color: "text-gray-600", bg: "bg-gray-50", border: "border-gray-200", bar: "bg-gray-400", keywords: [] };
 
 function classifyTask(subject: string): (typeof PHASE_KEYWORDS)[0] {
   const s = subject.toLowerCase();
   for (const phase of PHASE_KEYWORDS) {
     if (phase.keywords.some(k => s.includes(k))) return phase;
   }
-  return { label: "Other", color: "text-gray-600", bg: "bg-gray-100", border: "border-gray-300", keywords: [] };
+  return OTHER_PHASE;
 }
 
 function parseDate(d: string | null): Date | null {
@@ -113,10 +134,25 @@ function fmtDate(d: string | null) {
   return p.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-function fmtMoney(n: number, currency = "INR") {
+function fmtMoney(n: number, _currency = "INR") {
+  if (!n) return "—";
   if (n >= 1e7) return `₹${(n / 1e7).toFixed(2)} Cr`;
   if (n >= 1e5) return `₹${(n / 1e5).toFixed(2)} L`;
   return `₹${n.toLocaleString("en-IN")}`;
+}
+
+function ProgressRing({ pct, size = 56, stroke = 5, color = "#3b82f6" }: { pct: number; size?: number; stroke?: number; color?: string }) {
+  const r = (size - stroke * 2) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (pct / 100) * circ;
+  return (
+    <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e5e7eb" strokeWidth={stroke} />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke}
+        strokeDasharray={`${circ} ${circ}`} strokeDashoffset={offset} strokeLinecap="round"
+        style={{ transition: "stroke-dashoffset 0.5s ease" }} />
+    </svg>
+  );
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -135,11 +171,383 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function MiniBar({ value, max, color = "bg-blue-500" }: { value: number; max: number; color?: string }) {
+  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+        <div className={cn("h-full rounded-full transition-all", color)} style={{ width: `${pct}%` }} />
+      </div>
+      <span className="text-[10px] text-gray-500 w-7 text-right">{pct.toFixed(0)}%</span>
+    </div>
+  );
+}
+
+// ─── Overview Tab ─────────────────────────────────────────────────────────────
+
+function OverviewView({
+  data,
+  projectDetail,
+  selectedProject,
+}: {
+  data: TimelineData;
+  projectDetail: ProjectDetail | null;
+  selectedProject: string;
+}) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const { tasks, materialRequests: mrs, purchaseOrders: pos } = data;
+
+  // Task stats
+  const totalTasks = tasks.length;
+  const completedTasks = tasks.filter(t => t.status === "Completed").length;
+  const overdueTasks = tasks.filter(t => {
+    const end = parseDate(t.exp_end_date);
+    return end && end < today && t.status !== "Completed" && t.status !== "Cancelled";
+  }).length;
+  const openTasks = tasks.filter(t => t.status !== "Completed" && t.status !== "Cancelled").length;
+  const avgProgress = totalTasks > 0 ? Math.round(tasks.reduce((s, t) => s + (t.progress || 0), 0) / totalTasks) : 0;
+
+  // PO financials
+  const totalPOValue = pos.reduce((s, p) => s + (p.grand_total || 0), 0);
+  const receivedValue = pos.reduce((s, p) => s + (p.grand_total || 0) * (p.per_received / 100), 0);
+  const billedValue = pos.reduce((s, p) => s + (p.grand_total || 0) * (p.per_billed / 100), 0);
+  const pendingPOs = pos.filter(p => p.per_received < 100 && p.status !== "Cancelled").length;
+  const latePOs = pos.filter(p => {
+    const d = parseDate(p.schedule_date);
+    return d && d < today && p.per_received < 100 && p.status !== "Cancelled";
+  }).length;
+  const lateMRs = mrs.filter(m => {
+    const d = parseDate(m.schedule_date);
+    return d && d < today && m.status !== "Stopped" && !m.status.toLowerCase().includes("complete");
+  }).length;
+
+  // Schedule health
+  const projPct = projectDetail?.percent_complete ?? avgProgress;
+  const expectedEnd = parseDate(projectDetail?.expected_end_date || null);
+  const expectedStart = parseDate(projectDetail?.expected_start_date || null);
+  const totalProjectDays = expectedStart && expectedEnd ? daysBetween(expectedStart, expectedEnd) : null;
+  const elapsedDays = expectedStart ? daysBetween(expectedStart, today) : null;
+  const remainingDays = expectedEnd ? daysBetween(today, expectedEnd) : null;
+  const timeElapsedPct = totalProjectDays && elapsedDays ? Math.min(100, Math.max(0, (elapsedDays / totalProjectDays) * 100)) : null;
+  const scheduleVariance = timeElapsedPct !== null ? projPct - timeElapsedPct : null;
+
+  // Phase breakdown
+  const phaseStats: Map<string, { phase: typeof OTHER_PHASE; total: number; completed: number; overdue: number; avgProg: number }> = new Map();
+  for (const t of tasks) {
+    const phase = classifyTask(t.subject);
+    if (!phaseStats.has(phase.label)) phaseStats.set(phase.label, { phase, total: 0, completed: 0, overdue: 0, avgProg: 0 });
+    const s = phaseStats.get(phase.label)!;
+    s.total++;
+    if (t.status === "Completed") s.completed++;
+    const end = parseDate(t.exp_end_date);
+    if (end && end < today && t.status !== "Completed" && t.status !== "Cancelled") s.overdue++;
+    s.avgProg += t.progress || 0;
+  }
+  for (const [, s] of phaseStats) {
+    s.avgProg = s.total > 0 ? Math.round(s.avgProg / s.total) : 0;
+  }
+
+  return (
+    <div className="p-4 space-y-5">
+      {/* Project Health Banner */}
+      {projectDetail && (
+        <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-2xl p-4 text-white">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-4">
+              <div className="relative flex items-center justify-center w-16 h-16">
+                <ProgressRing pct={projPct} size={64} stroke={6} color="#34d399" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-base font-bold text-white">{projPct.toFixed(0)}%</span>
+                </div>
+              </div>
+              <div>
+                <p className="text-blue-100 text-xs font-medium uppercase tracking-wide">Overall Progress</p>
+                <p className="text-2xl font-bold">{projectDetail.project_name}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <StatusBadge status={projectDetail.status} />
+                  {projectDetail.department && (
+                    <span className="text-blue-200 text-xs flex items-center gap-1">
+                      <Building2 className="w-3 h-3" />{projectDetail.department}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="ml-auto grid grid-cols-2 sm:grid-cols-3 gap-3 text-center">
+              {projectDetail.expected_start_date && (
+                <div>
+                  <p className="text-blue-200 text-[10px] font-medium uppercase">Start</p>
+                  <p className="text-sm font-semibold">{fmtDate(projectDetail.expected_start_date)}</p>
+                </div>
+              )}
+              {projectDetail.expected_end_date && (
+                <div>
+                  <p className="text-blue-200 text-[10px] font-medium uppercase">Deadline</p>
+                  <p className={cn("text-sm font-semibold", remainingDays !== null && remainingDays < 30 && remainingDays >= 0 ? "text-yellow-300" : remainingDays !== null && remainingDays < 0 ? "text-red-300" : "")}>
+                    {fmtDate(projectDetail.expected_end_date)}
+                  </p>
+                </div>
+              )}
+              {remainingDays !== null && (
+                <div>
+                  <p className="text-blue-200 text-[10px] font-medium uppercase">Remaining</p>
+                  <p className={cn("text-sm font-semibold", remainingDays < 0 ? "text-red-300" : remainingDays < 30 ? "text-yellow-300" : "text-green-300")}>
+                    {remainingDays < 0 ? `${Math.abs(remainingDays)}d overdue` : `${remainingDays}d left`}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Timeline bar */}
+          {timeElapsedPct !== null && (
+            <div className="mt-4">
+              <div className="flex justify-between text-[10px] text-blue-200 mb-1">
+                <span>Project Start</span>
+                <span>Today ({timeElapsedPct.toFixed(0)}% of timeline elapsed)</span>
+                <span>Deadline</span>
+              </div>
+              <div className="relative h-3 bg-blue-900 rounded-full overflow-hidden">
+                <div className="absolute left-0 top-0 h-full bg-blue-300 rounded-full opacity-50" style={{ width: `${timeElapsedPct}%` }} />
+                <div className="absolute left-0 top-0 h-full bg-emerald-400 rounded-full" style={{ width: `${projPct}%`, opacity: 0.8 }} />
+                <div className="absolute top-0 bottom-0 w-0.5 bg-white z-10" style={{ left: `${timeElapsedPct}%` }} title="Today" />
+              </div>
+              <div className="flex justify-between text-[10px] mt-1">
+                <span className="text-emerald-300 font-medium">Work done: {projPct.toFixed(0)}%</span>
+                {scheduleVariance !== null && (
+                  <span className={cn("font-semibold flex items-center gap-1", scheduleVariance >= 0 ? "text-emerald-300" : "text-red-300")}>
+                    {scheduleVariance >= 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                    {Math.abs(scheduleVariance).toFixed(0)}% {scheduleVariance >= 0 ? "ahead" : "behind"} schedule
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* KPI Cards Row 1 */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Total Tasks</span>
+            <Layers className="w-4 h-4 text-blue-400" />
+          </div>
+          <p className="text-2xl font-bold text-gray-900">{totalTasks}</p>
+          <p className="text-[10px] text-gray-500 mt-0.5">{completedTasks} completed · {openTasks} open</p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Avg Progress</span>
+            <Activity className="w-4 h-4 text-emerald-400" />
+          </div>
+          <p className="text-2xl font-bold text-emerald-600">{avgProgress}%</p>
+          <div className="mt-1.5 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${avgProgress}%` }} />
+          </div>
+        </div>
+        <div className={cn("border rounded-xl p-3 shadow-sm", overdueTasks > 0 ? "bg-red-50 border-red-200" : "bg-white border-gray-200")}>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Overdue Tasks</span>
+            <AlertTriangle className={cn("w-4 h-4", overdueTasks > 0 ? "text-red-500" : "text-gray-300")} />
+          </div>
+          <p className={cn("text-2xl font-bold", overdueTasks > 0 ? "text-red-600" : "text-gray-400")}>{overdueTasks}</p>
+          <p className="text-[10px] text-gray-500 mt-0.5">
+            {overdueTasks > 0 ? "Action required!" : "All on schedule"}
+          </p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Purchase Orders</span>
+            <ShoppingCart className="w-4 h-4 text-amber-400" />
+          </div>
+          <p className="text-2xl font-bold text-gray-900">{pos.length}</p>
+          <p className="text-[10px] text-gray-500 mt-0.5">{pendingPOs} pending · {latePOs} late</p>
+        </div>
+      </div>
+
+      {/* Financial & Procurement Row */}
+      {pos.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <IndianRupee className="w-4 h-4 text-blue-500" />
+              <span className="text-sm font-bold text-gray-700">Total PO Value</span>
+            </div>
+            <p className="text-xl font-bold text-gray-900">{fmtMoney(totalPOValue)}</p>
+            <div className="mt-3 space-y-1.5">
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">Received</span>
+                <span className="font-medium text-emerald-600">{fmtMoney(receivedValue)}</span>
+              </div>
+              <MiniBar value={receivedValue} max={totalPOValue} color="bg-emerald-500" />
+              <div className="flex justify-between text-xs mt-2">
+                <span className="text-gray-500">Billed</span>
+                <span className="font-medium text-blue-600">{fmtMoney(billedValue)}</span>
+              </div>
+              <MiniBar value={billedValue} max={totalPOValue} color="bg-blue-500" />
+            </div>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <Truck className="w-4 h-4 text-emerald-500" />
+              <span className="text-sm font-bold text-gray-700">Delivery Status</span>
+            </div>
+            <div className="space-y-2">
+              {[
+                { label: "Fully Received", count: pos.filter(p => p.per_received >= 100).length, color: "text-emerald-600", bg: "bg-emerald-100" },
+                { label: "Partial Receipt", count: pos.filter(p => p.per_received > 0 && p.per_received < 100).length, color: "text-blue-600", bg: "bg-blue-100" },
+                { label: "Not Yet Received", count: pos.filter(p => p.per_received === 0 && p.status !== "Cancelled").length, color: "text-amber-600", bg: "bg-amber-100" },
+                { label: "Delivery Late", count: latePOs, color: "text-red-600", bg: "bg-red-100" },
+              ].map(row => (
+                <div key={row.label} className="flex items-center justify-between">
+                  <span className="text-xs text-gray-600">{row.label}</span>
+                  <span className={cn("text-xs font-bold px-2 py-0.5 rounded-full", row.color, row.bg)}>{row.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <Package className="w-4 h-4 text-amber-500" />
+              <span className="text-sm font-bold text-gray-700">Material Requests</span>
+            </div>
+            <p className="text-xl font-bold text-gray-900">{mrs.length}</p>
+            <div className="mt-3 space-y-2">
+              {[
+                { label: "Purchase", count: mrs.filter(m => m.material_request_type === "Purchase").length, color: "bg-blue-500" },
+                { label: "Transfer", count: mrs.filter(m => m.material_request_type === "Material Transfer").length, color: "bg-violet-500" },
+                { label: "Manufacture", count: mrs.filter(m => m.material_request_type === "Manufacture").length, color: "bg-orange-500" },
+                { label: "Late/Overdue", count: lateMRs, color: "bg-red-500" },
+              ].map(row => (
+                <div key={row.label} className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <div className={cn("w-2 h-2 rounded-full", row.color)} />
+                    <span className="text-xs text-gray-600">{row.label}</span>
+                  </div>
+                  <span className="text-xs font-bold text-gray-700">{row.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Project Budget vs Actual (if available) */}
+      {projectDetail && (projectDetail.estimated_costing > 0 || projectDetail.actual_expense > 0) && (
+        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp className="w-4 h-4 text-blue-500" />
+            <span className="text-sm font-bold text-gray-700">Budget vs Actual</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div>
+              <p className="text-[10px] text-gray-500 uppercase tracking-wide">Estimated</p>
+              <p className="text-lg font-bold text-gray-900">{fmtMoney(projectDetail.estimated_costing)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-gray-500 uppercase tracking-wide">Actual Expense</p>
+              <p className={cn("text-lg font-bold", projectDetail.actual_expense > projectDetail.estimated_costing && projectDetail.estimated_costing > 0 ? "text-red-600" : "text-emerald-600")}>
+                {fmtMoney(projectDetail.actual_expense)}
+              </p>
+            </div>
+            {projectDetail.actual_time > 0 && (
+              <div>
+                <p className="text-[10px] text-gray-500 uppercase tracking-wide">Time Logged</p>
+                <p className="text-lg font-bold text-blue-600">{projectDetail.actual_time.toFixed(1)}h</p>
+              </div>
+            )}
+            {projectDetail.estimated_costing > 0 && projectDetail.actual_expense > 0 && (
+              <div>
+                <p className="text-[10px] text-gray-500 uppercase tracking-wide">Budget Used</p>
+                <p className={cn("text-lg font-bold", (projectDetail.actual_expense / projectDetail.estimated_costing * 100) > 90 ? "text-red-600" : "text-gray-900")}>
+                  {(projectDetail.actual_expense / projectDetail.estimated_costing * 100).toFixed(0)}%
+                </p>
+              </div>
+            )}
+          </div>
+          {projectDetail.estimated_costing > 0 && (
+            <div className="mt-3">
+              <MiniBar value={projectDetail.actual_expense} max={projectDetail.estimated_costing}
+                color={projectDetail.actual_expense > projectDetail.estimated_costing ? "bg-red-500" : "bg-blue-500"} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Phase-by-Phase Breakdown */}
+      {phaseStats.size > 0 && (
+        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-4">
+            <BarChart3 className="w-4 h-4 text-blue-500" />
+            <span className="text-sm font-bold text-gray-700">Phase-by-Phase Breakdown</span>
+          </div>
+          <div className="space-y-3">
+            {Array.from(phaseStats.values()).map(({ phase, total, completed, overdue, avgProg }) => (
+              <div key={phase.label} className="flex items-center gap-3">
+                <div className={cn("w-2.5 h-2.5 rounded-full shrink-0", phase.bar)} />
+                <div className="w-32 shrink-0">
+                  <span className={cn("text-xs font-semibold", phase.color)}>{phase.label}</span>
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div className={cn("h-full rounded-full", phase.bar)} style={{ width: `${avgProg}%` }} />
+                    </div>
+                    <span className="text-xs font-bold text-gray-700 w-8 text-right">{avgProg}%</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-[10px] text-gray-500 shrink-0">
+                  <span className="text-emerald-600 font-medium">{completed}/{total}</span>
+                  {overdue > 0 && <span className="text-red-500 font-bold">+{overdue} late</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Notes */}
+      {projectDetail?.notes && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Info className="w-4 h-4 text-blue-500" />
+            <span className="text-sm font-bold text-blue-700">Project Notes</span>
+          </div>
+          <p className="text-xs text-blue-800 leading-relaxed whitespace-pre-wrap">{projectDetail.notes}</p>
+        </div>
+      )}
+
+      {!selectedProject && (
+        <div className="flex flex-col items-center py-10 text-gray-400">
+          <Target className="w-10 h-10 mb-2 opacity-40" />
+          <p className="text-sm font-medium text-gray-500">Select a project to see detailed overview</p>
+          <p className="text-xs mt-1">Use the project dropdown above</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Gantt Chart ──────────────────────────────────────────────────────────────
 
 function GanttView({ tasks }: { tasks: Task[] }) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set(PHASE_KEYWORDS.map(p => p.label).concat(["Other"])));
+
+  const togglePhase = (label: string) => {
+    setExpandedPhases(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  };
 
   const scheduledTasks = tasks.filter(t => t.exp_start_date && t.exp_end_date);
   const unscheduled = tasks.filter(t => !t.exp_start_date || !t.exp_end_date);
@@ -169,6 +577,7 @@ function GanttView({ tasks }: { tasks: Task[] }) {
   const totalDays = daysBetween(minDate, maxDate) || 1;
   const todayPct = Math.max(0, Math.min(100, (daysBetween(minDate, today) / totalDays) * 100));
 
+  // Month headers
   const months: { label: string; left: number; width: number }[] = [];
   const cur = new Date(minDate);
   while (cur < maxDate) {
@@ -184,33 +593,40 @@ function GanttView({ tasks }: { tasks: Task[] }) {
     cur.setMonth(cur.getMonth() + 1);
   }
 
-  const phaseGroups: Map<string, { phase: (typeof PHASE_KEYWORDS)[0]; tasks: Task[] }> = new Map();
+  // Week lines (for finer grid)
+  const weeks: number[] = [];
+  const wCur = new Date(minDate);
+  // Advance to first Monday
+  while (wCur.getDay() !== 1) wCur.setDate(wCur.getDate() + 1);
+  while (wCur < maxDate) {
+    weeks.push((daysBetween(minDate, wCur) / totalDays) * 100);
+    wCur.setDate(wCur.getDate() + 7);
+  }
+
+  const phaseGroups: Map<string, { phase: typeof OTHER_PHASE; tasks: Task[] }> = new Map();
   for (const t of scheduledTasks) {
     const phase = classifyTask(t.subject);
     if (!phaseGroups.has(phase.label)) phaseGroups.set(phase.label, { phase, tasks: [] });
     phaseGroups.get(phase.label)!.tasks.push(t);
   }
 
-  const LABEL_W = 220;
-  const MIN_CHART_W = 800;
+  const LABEL_W = 240;
+  const MIN_CHART_W = 900;
 
   return (
     <div className="overflow-x-auto">
       <div style={{ minWidth: MIN_CHART_W + LABEL_W }}>
         {/* Month headers */}
-        <div className="flex sticky top-0 z-10 bg-white border-b border-gray-200 shadow-sm">
+        <div className="flex sticky top-0 z-10 bg-white border-b-2 border-gray-200 shadow-sm">
           <div style={{ width: LABEL_W, minWidth: LABEL_W }} className="border-r border-gray-200 px-3 py-2 text-xs font-semibold text-gray-500 bg-gray-50 shrink-0">
-            Task
+            Task / Phase
           </div>
           <div className="relative flex-1" style={{ minWidth: MIN_CHART_W }}>
             <div className="flex h-8 bg-gray-50">
               {months.map(m => (
-                <div
-                  key={m.label}
-                  className="absolute h-full border-l border-gray-200 flex items-center px-1"
-                  style={{ left: `${m.left}%`, width: `${m.width}%` }}
-                >
-                  <span className="text-[10px] font-semibold text-gray-500 truncate">{m.label}</span>
+                <div key={m.label} className="absolute h-full border-l border-gray-300 flex items-center px-1"
+                  style={{ left: `${m.left}%`, width: `${m.width}%` }}>
+                  <span className="text-[10px] font-bold text-gray-600 truncate">{m.label}</span>
                 </div>
               ))}
             </div>
@@ -218,122 +634,188 @@ function GanttView({ tasks }: { tasks: Task[] }) {
         </div>
 
         {/* Phase groups */}
-        {Array.from(phaseGroups.values()).map(({ phase, tasks: pTasks }) => (
-          <div key={phase.label}>
-            {/* Phase header */}
-            <div className={cn("flex items-center gap-2 px-3 py-1.5 border-b", phase.bg, phase.border)}>
-              <div style={{ width: LABEL_W - 12, minWidth: LABEL_W - 12 }} className="shrink-0">
-                <span className={cn("text-xs font-bold uppercase tracking-wide", phase.color)}>{phase.label}</span>
-              </div>
-              <span className={cn("text-[10px] font-medium ml-auto", phase.color)}>{pTasks.length} tasks</span>
-            </div>
+        {Array.from(phaseGroups.values()).map(({ phase, tasks: pTasks }) => {
+          const isExpanded = expandedPhases.has(phase.label);
+          const phaseCompleted = pTasks.filter(t => t.status === "Completed").length;
+          const phaseOverdue = pTasks.filter(t => {
+            const end = parseDate(t.exp_end_date);
+            return end && end < today && t.status !== "Completed" && t.status !== "Cancelled";
+          }).length;
+          const phaseAvgProg = pTasks.length > 0 ? Math.round(pTasks.reduce((s, t) => s + t.progress, 0) / pTasks.length) : 0;
 
-            {/* Task rows */}
-            {pTasks.map(task => {
-              const start = parseDate(task.exp_start_date)!;
-              const end = parseDate(task.exp_end_date)!;
-              const leftPct = (daysBetween(minDate, start) / totalDays) * 100;
-              const widthPct = Math.max(0.5, (daysBetween(start, end) / totalDays) * 100);
-              const isOverdue = end < today && task.status !== "Completed" && task.status !== "Cancelled";
-              const isCompleted = task.status === "Completed" || task.status === "Cancelled";
-              const isCritical = task.priority?.toLowerCase() === "high" || task.priority?.toLowerCase() === "urgent";
+          // Phase bar: earliest start to latest end
+          const pDates = pTasks.flatMap(t => [parseDate(t.exp_start_date)!, parseDate(t.exp_end_date)!]).filter(Boolean);
+          const pMin = pDates.length ? new Date(Math.min(...pDates.map(d => d.getTime()))) : null;
+          const pMax = pDates.length ? new Date(Math.max(...pDates.map(d => d.getTime()))) : null;
+          const pLeft = pMin ? (daysBetween(minDate, pMin) / totalDays) * 100 : null;
+          const pWidth = pMin && pMax ? Math.max(0.5, (daysBetween(pMin, pMax) / totalDays) * 100) : null;
 
-              const barColor = isCompleted
-                ? "bg-emerald-500"
-                : isOverdue
-                ? "bg-red-500"
-                : isCritical
-                ? "bg-violet-500"
-                : "bg-blue-500";
-
-              return (
-                <div key={task.name} className="flex border-b border-gray-100 hover:bg-gray-50 group">
-                  <div
-                    style={{ width: LABEL_W, minWidth: LABEL_W }}
-                    className="border-r border-gray-200 px-3 py-2 shrink-0 flex flex-col justify-center"
-                  >
-                    <div className="flex items-start gap-1.5">
-                      {isCompleted ? (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
-                      ) : isOverdue ? (
-                        <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
-                      ) : (
-                        <Circle className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
-                      )}
-                      <span className="text-xs font-medium text-gray-800 leading-tight line-clamp-2">{task.subject}</span>
-                    </div>
-                    {task.assigned_to && (
-                      <div className="flex items-center gap-1 mt-0.5 ml-5">
-                        <User className="w-2.5 h-2.5 text-gray-400" />
-                        <span className="text-[10px] text-gray-400 truncate">{task.assigned_to.split("@")[0]}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="relative flex-1 flex items-center py-2" style={{ minWidth: MIN_CHART_W }}>
-                    {/* Today line */}
-                    {todayPct >= 0 && todayPct <= 100 && (
-                      <div
-                        className="absolute top-0 bottom-0 w-px bg-red-400 z-10 pointer-events-none"
-                        style={{ left: `${todayPct}%` }}
-                      />
-                    )}
-
-                    {/* Month gridlines */}
-                    {months.map(m => (
-                      <div
-                        key={m.label}
-                        className="absolute top-0 bottom-0 w-px bg-gray-100"
-                        style={{ left: `${m.left}%` }}
-                      />
-                    ))}
-
-                    {/* Task bar */}
-                    <div
-                      className={cn("absolute h-6 rounded flex items-center overflow-hidden", barColor)}
-                      style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
-                      title={`${task.subject}\n${fmtDate(task.exp_start_date)} → ${fmtDate(task.exp_end_date)}\nProgress: ${task.progress}%\nStatus: ${task.status}`}
+          return (
+            <div key={phase.label}>
+              {/* Phase header row */}
+              <div
+                className={cn("flex items-center cursor-pointer border-b", phase.bg, `border-${phase.border}`)}
+                onClick={() => togglePhase(phase.label)}
+              >
+                <div style={{ width: LABEL_W, minWidth: LABEL_W }}
+                  className="border-r border-gray-200 px-3 py-2 shrink-0 flex items-center gap-2">
+                  <ChevronDown className={cn("w-3.5 h-3.5 shrink-0 transition-transform", phase.color, !isExpanded && "-rotate-90")} />
+                  <span className={cn("text-xs font-bold uppercase tracking-wide", phase.color)}>{phase.label}</span>
+                  <span className="text-[10px] text-gray-400 ml-auto">{pTasks.length}t</span>
+                </div>
+                <div className="relative flex-1 flex items-center py-2" style={{ minWidth: MIN_CHART_W, height: 36 }}>
+                  {/* Week gridlines */}
+                  {weeks.map((w, i) => (
+                    <div key={i} className="absolute top-0 bottom-0 w-px bg-gray-100" style={{ left: `${w}%` }} />
+                  ))}
+                  {/* Month gridlines */}
+                  {months.map(m => (
+                    <div key={m.label} className="absolute top-0 bottom-0 w-px bg-gray-200" style={{ left: `${m.left}%` }} />
+                  ))}
+                  {/* Today line */}
+                  {todayPct >= 0 && todayPct <= 100 && (
+                    <div className="absolute top-0 bottom-0 w-0.5 bg-red-400 z-10" style={{ left: `${todayPct}%` }} />
+                  )}
+                  {/* Phase summary bar */}
+                  {pLeft !== null && pWidth !== null && (
+                    <div className="absolute h-3 rounded-sm opacity-30"
+                      style={{ left: `${pLeft}%`, width: `${pWidth}%` }}
                     >
-                      {/* Progress fill */}
-                      <div
-                        className="absolute left-0 top-0 h-full bg-white/25 rounded"
-                        style={{ width: `${task.progress}%` }}
-                      />
-                      <span className="relative text-[9px] text-white font-bold px-1.5 truncate">
-                        {widthPct > 5 ? `${task.progress}%` : ""}
-                      </span>
+                      <div className={cn("h-full rounded-sm", phase.bar)} style={{ width: `${phaseAvgProg}%` }} />
+                      <div className="absolute inset-0 border rounded-sm border-gray-400 opacity-50" />
                     </div>
-
-                    {/* Delay badge */}
-                    {isOverdue && (
-                      <div
-                        className="absolute text-[9px] font-bold text-red-600 bg-red-50 border border-red-200 px-1 rounded"
-                        style={{ left: `calc(${leftPct + widthPct}% + 4px)` }}
-                      >
-                        +{daysBetween(end, today)}d late
-                      </div>
-                    )}
+                  )}
+                  {/* Phase stats */}
+                  <div className="absolute right-2 flex items-center gap-2 text-[10px]">
+                    <span className="text-emerald-600 font-semibold">{phaseCompleted}/{pTasks.length}</span>
+                    {phaseOverdue > 0 && <span className="text-red-500 font-bold">{phaseOverdue} late</span>}
+                    <span className={cn("font-bold", phase.color)}>{phaseAvgProg}% done</span>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        ))}
+              </div>
 
-        {/* Today legend */}
-        <div className="flex items-center gap-4 px-4 py-3 border-t border-gray-100 bg-gray-50 text-[11px] text-gray-500">
-          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-emerald-500 inline-block" /> Completed</span>
-          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-500 inline-block" /> Overdue</span>
-          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-violet-500 inline-block" /> High Priority</span>
-          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-500 inline-block" /> In Progress</span>
-          <span className="flex items-center gap-1.5"><span className="w-px h-4 bg-red-400 inline-block" /> Today</span>
+              {/* Task rows */}
+              {isExpanded && pTasks.map(task => {
+                const start = parseDate(task.exp_start_date)!;
+                const end = parseDate(task.exp_end_date)!;
+                const leftPct = (daysBetween(minDate, start) / totalDays) * 100;
+                const widthPct = Math.max(0.5, (daysBetween(start, end) / totalDays) * 100);
+                const isOverdue = end < today && task.status !== "Completed" && task.status !== "Cancelled";
+                const isCompleted = task.status === "Completed" || task.status === "Cancelled";
+                const isCritical = task.priority?.toLowerCase() === "high" || task.priority?.toLowerCase() === "urgent";
+                const daysLate = isOverdue ? daysBetween(end, today) : 0;
+                const durationDays = daysBetween(start, end);
+
+                const barColor = isCompleted
+                  ? "bg-emerald-500"
+                  : isOverdue
+                  ? "bg-red-500"
+                  : isCritical
+                  ? "bg-violet-500"
+                  : phase.bar;
+
+                return (
+                  <div key={task.name} className="flex border-b border-gray-100 hover:bg-blue-50/40 group transition-colors">
+                    <div style={{ width: LABEL_W, minWidth: LABEL_W }}
+                      className="border-r border-gray-200 px-3 py-2 shrink-0 flex flex-col justify-center">
+                      <div className="flex items-start gap-1.5">
+                        {isCompleted ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                        ) : isOverdue ? (
+                          <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
+                        ) : isCritical ? (
+                          <Star className="w-3.5 h-3.5 text-violet-500 shrink-0 mt-0.5" />
+                        ) : (
+                          <Circle className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+                        )}
+                        <span className="text-xs font-medium text-gray-800 leading-tight line-clamp-2">{task.subject}</span>
+                      </div>
+                      <div className="ml-5 flex flex-wrap items-center gap-1.5 mt-0.5">
+                        {task.assigned_to && (
+                          <div className="flex items-center gap-0.5">
+                            <User className="w-2.5 h-2.5 text-gray-400" />
+                            <span className="text-[10px] text-gray-400 truncate max-w-[80px]">{task.assigned_to.split("@")[0]}</span>
+                          </div>
+                        )}
+                        <span className="text-[10px] text-gray-400">{durationDays}d</span>
+                        {isCritical && !isCompleted && (
+                          <span className="text-[9px] font-bold text-violet-600 bg-violet-50 border border-violet-200 px-1 rounded">HIGH</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="relative flex-1 flex items-center py-2" style={{ minWidth: MIN_CHART_W }}>
+                      {/* Week gridlines */}
+                      {weeks.map((w, i) => (
+                        <div key={i} className="absolute top-0 bottom-0 w-px bg-gray-50" style={{ left: `${w}%` }} />
+                      ))}
+                      {/* Month gridlines */}
+                      {months.map(m => (
+                        <div key={m.label} className="absolute top-0 bottom-0 w-px bg-gray-100" style={{ left: `${m.left}%` }} />
+                      ))}
+                      {/* Today line */}
+                      {todayPct >= 0 && todayPct <= 100 && (
+                        <div className="absolute top-0 bottom-0 w-0.5 bg-red-400 z-10 opacity-70" style={{ left: `${todayPct}%` }} />
+                      )}
+
+                      {/* Task bar */}
+                      <div
+                        className={cn("absolute h-6 rounded flex items-center overflow-hidden shadow-sm", barColor)}
+                        style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+                        title={`${task.subject}\n${fmtDate(task.exp_start_date)} → ${fmtDate(task.exp_end_date)}\nDuration: ${durationDays} days\nProgress: ${task.progress}%\nStatus: ${task.status}\nAssigned: ${task.assigned_to || "—"}`}
+                      >
+                        {/* Progress fill */}
+                        <div className="absolute left-0 top-0 h-full bg-white/30 rounded" style={{ width: `${task.progress}%` }} />
+                        {/* Progress divider */}
+                        {task.progress > 0 && task.progress < 100 && (
+                          <div className="absolute top-0 bottom-0 w-0.5 bg-white/70" style={{ left: `${task.progress}%` }} />
+                        )}
+                        <span className="relative text-[9px] text-white font-bold px-1.5 truncate drop-shadow">
+                          {widthPct > 4 ? `${task.progress}%` : ""}
+                        </span>
+                      </div>
+
+                      {/* Delay badge */}
+                      {isOverdue && (
+                        <div
+                          className="absolute text-[9px] font-bold text-red-600 bg-red-50 border border-red-200 px-1 py-0.5 rounded shadow-sm"
+                          style={{ left: `calc(${leftPct + widthPct}% + 4px)` }}
+                        >
+                          +{daysLate}d
+                        </div>
+                      )}
+
+                      {/* Date labels (on hover via group) */}
+                      <div
+                        className="absolute opacity-0 group-hover:opacity-100 transition-opacity text-[9px] text-gray-400 whitespace-nowrap pointer-events-none"
+                        style={{ left: `${leftPct}%`, top: "calc(100% - 4px)" }}
+                      >
+                        {fmtDate(task.exp_start_date)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+
+        {/* Legend */}
+        <div className="flex flex-wrap items-center gap-4 px-4 py-3 border-t border-gray-100 bg-gray-50 text-[11px] text-gray-500 sticky bottom-0">
+          <span className="flex items-center gap-1.5"><span className="w-3 h-2 rounded-sm bg-emerald-500 inline-block" /> Completed</span>
+          <span className="flex items-center gap-1.5"><span className="w-3 h-2 rounded-sm bg-red-500 inline-block" /> Overdue</span>
+          <span className="flex items-center gap-1.5"><span className="w-3 h-2 rounded-sm bg-violet-500 inline-block" /> High Priority</span>
+          <span className="flex items-center gap-1.5"><span className="w-0.5 h-4 bg-red-400 inline-block" /> Today</span>
+          <span className="flex items-center gap-1.5"><span className="w-3 h-2 rounded-sm bg-white/30 border border-gray-300 inline-block" /> Progress fill</span>
+          <span className="text-xs text-gray-400 ml-auto">Hover task for dates</span>
         </div>
 
         {/* Unscheduled */}
         {unscheduled.length > 0 && (
           <div className="border-t border-dashed border-amber-200 bg-amber-50 p-3">
             <p className="text-xs font-semibold text-amber-700 mb-2">
-              {unscheduled.length} Unscheduled Tasks (no start/end date)
+              <AlertTriangle className="w-3.5 h-3.5 inline mr-1" />
+              {unscheduled.length} Unscheduled Tasks — set start/end dates in ERPNext
             </p>
             <div className="flex flex-wrap gap-1.5">
               {unscheduled.map(t => (
@@ -354,12 +836,17 @@ function GanttView({ tasks }: { tasks: Task[] }) {
 function PurchaseView({ mrs, pos }: { mrs: MR[]; pos: PO[] }) {
   const today = new Date();
 
-  const poByMr = new Map<string, PO[]>();
-  for (const po of pos) {
-    const key = po.name.split("-MR-")[1] || po.name;
-    if (!poByMr.has(key)) poByMr.set(key, []);
-    poByMr.get(key)!.push(po);
-  }
+  const totalPOValue = pos.reduce((s, p) => s + (p.grand_total || 0), 0);
+  const receivedValue = pos.reduce((s, p) => s + (p.grand_total || 0) * (p.per_received / 100), 0);
+  const pendingValue = totalPOValue - receivedValue;
+  const latePOs = pos.filter(p => {
+    const d = parseDate(p.schedule_date);
+    return d && d < today && p.per_received < 100 && p.status !== "Cancelled";
+  });
+  const lateMRs = mrs.filter(m => {
+    const d = parseDate(m.schedule_date);
+    return d && d < today && m.status !== "Stopped" && !m.status.toLowerCase().includes("complete");
+  });
 
   if (mrs.length === 0 && pos.length === 0) {
     return (
@@ -371,137 +858,187 @@ function PurchaseView({ mrs, pos }: { mrs: MR[]; pos: PO[] }) {
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div className="p-4 space-y-5">
+      {/* Financial Summary Cards */}
+      {pos.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
+            <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide">Total PO Value</p>
+            <p className="text-xl font-bold text-gray-900 mt-1">{fmtMoney(totalPOValue)}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">{pos.length} purchase orders</p>
+          </div>
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 shadow-sm">
+            <p className="text-[10px] text-emerald-600 font-semibold uppercase tracking-wide">Received</p>
+            <p className="text-xl font-bold text-emerald-700 mt-1">{fmtMoney(receivedValue)}</p>
+            <p className="text-[10px] text-emerald-500 mt-0.5">{totalPOValue > 0 ? ((receivedValue / totalPOValue) * 100).toFixed(0) : 0}% of total</p>
+          </div>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 shadow-sm">
+            <p className="text-[10px] text-amber-600 font-semibold uppercase tracking-wide">Pending Delivery</p>
+            <p className="text-xl font-bold text-amber-700 mt-1">{fmtMoney(pendingValue)}</p>
+            <p className="text-[10px] text-amber-500 mt-0.5">{pos.filter(p => p.per_received < 100 && p.status !== "Cancelled").length} POs outstanding</p>
+          </div>
+          <div className={cn("border rounded-xl p-3 shadow-sm", latePOs.length > 0 ? "bg-red-50 border-red-200" : "bg-white border-gray-200")}>
+            <p className={cn("text-[10px] font-semibold uppercase tracking-wide", latePOs.length > 0 ? "text-red-600" : "text-gray-500")}>Late Deliveries</p>
+            <p className={cn("text-xl font-bold mt-1", latePOs.length > 0 ? "text-red-700" : "text-gray-400")}>{latePOs.length}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">{lateMRs.length} MR{lateMRs.length !== 1 ? "s" : ""} also overdue</p>
+          </div>
+        </div>
+      )}
+
       {/* MR Section */}
       {mrs.length > 0 && (
-        <div className="mb-6">
-          <h3 className="text-sm font-bold text-gray-700 px-4 pt-4 pb-2 flex items-center gap-2">
-            <ShoppingCart className="w-4 h-4 text-amber-500" />
-            Material Requests ({mrs.length})
-          </h3>
-          <table className="w-full text-xs border-collapse">
-            <thead>
-              <tr className="bg-amber-50 border-b border-amber-200">
-                <th className="text-left px-3 py-2 font-semibold text-amber-700">MR No.</th>
-                <th className="text-left px-3 py-2 font-semibold text-amber-700">Title</th>
-                <th className="text-left px-3 py-2 font-semibold text-amber-700">Type</th>
-                <th className="text-left px-3 py-2 font-semibold text-amber-700">Raised On</th>
-                <th className="text-left px-3 py-2 font-semibold text-amber-700">Required By</th>
-                <th className="text-left px-3 py-2 font-semibold text-amber-700">Requested By</th>
-                <th className="text-left px-3 py-2 font-semibold text-amber-700">Status</th>
-                <th className="text-left px-3 py-2 font-semibold text-amber-700">Delay</th>
-              </tr>
-            </thead>
-            <tbody>
-              {mrs.map((mr, i) => {
-                const reqDate = parseDate(mr.schedule_date);
-                const isLate = reqDate && reqDate < today && mr.status !== "Stopped" && !mr.status.toLowerCase().includes("complete");
-                const daysLate = isLate && reqDate ? daysBetween(reqDate, today) : 0;
-                return (
-                  <tr key={mr.name} className={cn("border-b border-gray-100", i % 2 === 0 ? "bg-white" : "bg-gray-50", isLate && "bg-red-50")}>
-                    <td className="px-3 py-2 font-mono text-blue-600 font-medium">{mr.name}</td>
-                    <td className="px-3 py-2 text-gray-700 max-w-[180px] truncate">{mr.title || "—"}</td>
-                    <td className="px-3 py-2 text-gray-600">{mr.material_request_type}</td>
-                    <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{fmtDate(mr.transaction_date)}</td>
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      <span className={cn(isLate ? "text-red-600 font-semibold" : "text-gray-600")}>
-                        {fmtDate(mr.schedule_date)}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-gray-600 truncate max-w-[120px]">
-                      <div className="flex items-center gap-1">
-                        <User className="w-3 h-3 text-gray-400 shrink-0" />
-                        {mr.requested_by ? mr.requested_by.split("@")[0] : "—"}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2"><StatusBadge status={mr.status} /></td>
-                    <td className="px-3 py-2">
-                      {isLate ? (
-                        <span className="text-red-600 font-bold flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3" />+{daysLate}d
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 border-b border-amber-200">
+            <ShoppingCart className="w-4 h-4 text-amber-600" />
+            <h3 className="text-sm font-bold text-amber-800">Material Requests ({mrs.length})</h3>
+            {lateMRs.length > 0 && (
+              <span className="ml-auto text-xs font-bold text-red-600 bg-red-100 border border-red-200 px-2 py-0.5 rounded-full">
+                {lateMRs.length} overdue
+              </span>
+            )}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">MR No.</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Title</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Type</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Raised On</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Required By</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Requested By</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Status</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Delay</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mrs.map((mr, i) => {
+                  const reqDate = parseDate(mr.schedule_date);
+                  const isLate = reqDate && reqDate < today && mr.status !== "Stopped" && !mr.status.toLowerCase().includes("complete");
+                  const daysLate = isLate && reqDate ? daysBetween(reqDate, today) : 0;
+                  return (
+                    <tr key={mr.name} className={cn("border-b border-gray-100 hover:bg-gray-50", isLate && "bg-red-50 hover:bg-red-100")}>
+                      <td className="px-3 py-2 font-mono text-blue-600 font-medium whitespace-nowrap">{mr.name}</td>
+                      <td className="px-3 py-2 text-gray-700 max-w-[180px] truncate" title={mr.title || ""}>{mr.title || "—"}</td>
+                      <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{mr.material_request_type}</td>
+                      <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{fmtDate(mr.transaction_date)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <span className={cn(isLate ? "text-red-600 font-bold" : "text-gray-600")}>
+                          {fmtDate(mr.schedule_date)}
                         </span>
-                      ) : (
-                        <span className="text-emerald-600 text-[10px]">On time</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      </td>
+                      <td className="px-3 py-2 text-gray-600 max-w-[120px] truncate">
+                        <div className="flex items-center gap-1">
+                          <User className="w-3 h-3 text-gray-400 shrink-0" />
+                          {mr.requested_by ? mr.requested_by.split("@")[0] : "—"}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2"><StatusBadge status={mr.status} /></td>
+                      <td className="px-3 py-2">
+                        {isLate ? (
+                          <span className="text-red-600 font-bold flex items-center gap-1 whitespace-nowrap">
+                            <AlertTriangle className="w-3 h-3" />+{daysLate}d
+                          </span>
+                        ) : (
+                          <span className="text-emerald-600 text-[10px] whitespace-nowrap">✓ On time</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {/* PO Section */}
       {pos.length > 0 && (
-        <div>
-          <h3 className="text-sm font-bold text-gray-700 px-4 pt-2 pb-2 flex items-center gap-2">
-            <Truck className="w-4 h-4 text-blue-500" />
-            Purchase Orders ({pos.length})
-          </h3>
-          <table className="w-full text-xs border-collapse">
-            <thead>
-              <tr className="bg-blue-50 border-b border-blue-200">
-                <th className="text-left px-3 py-2 font-semibold text-blue-700">PO No.</th>
-                <th className="text-left px-3 py-2 font-semibold text-blue-700">Supplier</th>
-                <th className="text-left px-3 py-2 font-semibold text-blue-700">PO Date</th>
-                <th className="text-left px-3 py-2 font-semibold text-blue-700">Expected Delivery</th>
-                <th className="text-left px-3 py-2 font-semibold text-blue-700">Value</th>
-                <th className="text-left px-3 py-2 font-semibold text-blue-700">Received %</th>
-                <th className="text-left px-3 py-2 font-semibold text-blue-700">Billed %</th>
-                <th className="text-left px-3 py-2 font-semibold text-blue-700">Status</th>
-                <th className="text-left px-3 py-2 font-semibold text-blue-700">Delay</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pos.map((po, i) => {
-                const delivDate = parseDate(po.schedule_date);
-                const isLate = delivDate && delivDate < today && po.per_received < 100 && po.status !== "Cancelled";
-                const daysLate = isLate && delivDate ? daysBetween(delivDate, today) : 0;
-                return (
-                  <tr key={po.name} className={cn("border-b border-gray-100", i % 2 === 0 ? "bg-white" : "bg-gray-50", isLate && "bg-red-50")}>
-                    <td className="px-3 py-2 font-mono text-blue-600 font-medium">{po.name}</td>
-                    <td className="px-3 py-2 text-gray-700 max-w-[160px] truncate" title={po.supplier_name}>
-                      {po.supplier_name || po.supplier}
-                    </td>
-                    <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{fmtDate(po.transaction_date)}</td>
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      <span className={cn(isLate ? "text-red-600 font-semibold" : "text-gray-600")}>
-                        {fmtDate(po.schedule_date)}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-gray-700 whitespace-nowrap font-medium">{fmtMoney(po.grand_total, po.currency)}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                          <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${po.per_received}%` }} />
-                        </div>
-                        <span className="text-gray-600">{po.per_received.toFixed(0)}%</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                          <div className="h-full bg-blue-500 rounded-full" style={{ width: `${po.per_billed}%` }} />
-                        </div>
-                        <span className="text-gray-600">{po.per_billed.toFixed(0)}%</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-2"><StatusBadge status={po.status} /></td>
-                    <td className="px-3 py-2">
-                      {isLate ? (
-                        <span className="text-red-600 font-bold flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3" />+{daysLate}d
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="flex items-center gap-2 px-4 py-3 bg-blue-50 border-b border-blue-200">
+            <Truck className="w-4 h-4 text-blue-600" />
+            <h3 className="text-sm font-bold text-blue-800">Purchase Orders ({pos.length})</h3>
+            {latePOs.length > 0 && (
+              <span className="ml-auto text-xs font-bold text-red-600 bg-red-100 border border-red-200 px-2 py-0.5 rounded-full">
+                {latePOs.length} late delivery
+              </span>
+            )}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">PO No.</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Supplier</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">PO Date</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Expected Delivery</th>
+                  <th className="text-right px-3 py-2 font-semibold text-gray-600">Value</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Received</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Billed</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Status</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Delay</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pos.map((po, i) => {
+                  const delivDate = parseDate(po.schedule_date);
+                  const isLate = delivDate && delivDate < today && po.per_received < 100 && po.status !== "Cancelled";
+                  const daysLate = isLate && delivDate ? daysBetween(delivDate, today) : 0;
+                  return (
+                    <tr key={po.name} className={cn("border-b border-gray-100 hover:bg-gray-50", isLate && "bg-red-50 hover:bg-red-100")}>
+                      <td className="px-3 py-2 font-mono text-blue-600 font-medium whitespace-nowrap">{po.name}</td>
+                      <td className="px-3 py-2 text-gray-700 max-w-[150px] truncate" title={po.supplier_name}>
+                        {po.supplier_name || po.supplier}
+                      </td>
+                      <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{fmtDate(po.transaction_date)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <span className={cn(isLate ? "text-red-600 font-bold" : "text-gray-600")}>
+                          {fmtDate(po.schedule_date)}
                         </span>
-                      ) : (
-                        <span className="text-emerald-600 text-[10px]">On time</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      </td>
+                      <td className="px-3 py-2 text-right text-gray-700 font-semibold whitespace-nowrap">{fmtMoney(po.grand_total, po.currency)}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1.5 min-w-[90px]">
+                          <div className="w-12 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                            <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${po.per_received}%` }} />
+                          </div>
+                          <span className="text-gray-700 font-medium">{po.per_received.toFixed(0)}%</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1.5 min-w-[90px]">
+                          <div className="w-12 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                            <div className="h-full bg-blue-500 rounded-full" style={{ width: `${po.per_billed}%` }} />
+                          </div>
+                          <span className="text-gray-700 font-medium">{po.per_billed.toFixed(0)}%</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2"><StatusBadge status={po.status} /></td>
+                      <td className="px-3 py-2">
+                        {isLate ? (
+                          <span className="text-red-600 font-bold flex items-center gap-1 whitespace-nowrap">
+                            <AlertTriangle className="w-3 h-3" />+{daysLate}d
+                          </span>
+                        ) : (
+                          <span className="text-emerald-600 text-[10px] whitespace-nowrap">✓ On time</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="bg-gray-50 border-t-2 border-gray-300 font-semibold">
+                  <td colSpan={4} className="px-3 py-2 text-xs text-gray-600">Total ({pos.length} POs)</td>
+                  <td className="px-3 py-2 text-right text-xs text-gray-900 font-bold">{fmtMoney(totalPOValue)}</td>
+                  <td className="px-3 py-2 text-xs text-emerald-700 font-bold">
+                    {totalPOValue > 0 ? ((receivedValue / totalPOValue) * 100).toFixed(0) : 0}% avg
+                  </td>
+                  <td colSpan={3} />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
       )}
     </div>
@@ -523,6 +1060,7 @@ function DelayView({ tasks, mrs, pos }: { tasks: Task[]; mrs: MR[]; pos: PO[] })
     responsible: string;
     status: string;
     phase: string;
+    value?: number;
   };
 
   const delays: DelayItem[] = [];
@@ -571,18 +1109,20 @@ function DelayView({ tasks, mrs, pos }: { tasks: Task[]; mrs: MR[]; pos: PO[] })
         responsible: po.supplier_name || po.supplier,
         status: po.status,
         phase: "Procurement",
+        value: po.grand_total * (1 - po.per_received / 100),
       });
     }
   }
 
   delays.sort((a, b) => b.daysLate - a.daysLate);
 
-  const responsibleSummary = new Map<string, { count: number; maxDelay: number; types: Set<string> }>();
+  const responsibleSummary = new Map<string, { count: number; maxDelay: number; types: Set<string>; totalValue: number }>();
   for (const d of delays) {
-    const e = responsibleSummary.get(d.responsible) || { count: 0, maxDelay: 0, types: new Set() };
+    const e = responsibleSummary.get(d.responsible) || { count: 0, maxDelay: 0, types: new Set(), totalValue: 0 };
     e.count++;
     e.maxDelay = Math.max(e.maxDelay, d.daysLate);
     e.types.add(d.type);
+    e.totalValue += d.value || 0;
     responsibleSummary.set(d.responsible, e);
   }
 
@@ -601,48 +1141,87 @@ function DelayView({ tasks, mrs, pos }: { tasks: Task[]; mrs: MR[]; pos: PO[] })
     type === "MR" ? "bg-amber-100 text-amber-700 border-amber-200" :
     "bg-blue-100 text-blue-700 border-blue-200";
 
+  const severityColor = (days: number) =>
+    days > 30 ? "text-red-700 bg-red-100" : days > 14 ? "text-red-500 bg-red-50" : "text-orange-500 bg-orange-50";
+
+  const totalPendingValue = delays.filter(d => d.type === "PO").reduce((s, d) => s + (d.value || 0), 0);
+
   return (
-    <div className="p-4 space-y-6">
+    <div className="p-4 space-y-5">
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 shadow-sm">
           <p className="text-2xl font-bold text-red-600">{delays.length}</p>
           <p className="text-xs text-red-500 font-medium mt-0.5">Total Delays</p>
+          <p className="text-[10px] text-red-400 mt-1">
+            {delays.filter(d => d.daysLate > 30).length} critical (&gt;30d)
+          </p>
         </div>
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-          <p className="text-2xl font-bold text-amber-600">{delays.filter(d => d.type === "Task").length}</p>
-          <p className="text-xs text-amber-500 font-medium mt-0.5">Task Delays</p>
+        <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 shadow-sm">
+          <p className="text-2xl font-bold text-violet-600">{delays.filter(d => d.type === "Task").length}</p>
+          <p className="text-xs text-violet-500 font-medium mt-0.5">Task Delays</p>
+          <p className="text-[10px] text-violet-400 mt-1">
+            max +{delays.filter(d => d.type === "Task").reduce((m, d) => Math.max(m, d.daysLate), 0)}d
+          </p>
         </div>
-        <div className="bg-orange-50 border border-orange-200 rounded-xl p-3">
-          <p className="text-2xl font-bold text-orange-600">{delays.filter(d => d.type === "MR").length}</p>
-          <p className="text-xs text-orange-500 font-medium mt-0.5">MR Delays</p>
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 shadow-sm">
+          <p className="text-2xl font-bold text-amber-600">{delays.filter(d => d.type === "MR").length}</p>
+          <p className="text-xs text-amber-500 font-medium mt-0.5">MR Delays</p>
+          <p className="text-[10px] text-amber-400 mt-1">Procurement pending</p>
         </div>
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 shadow-sm">
           <p className="text-2xl font-bold text-blue-600">{delays.filter(d => d.type === "PO").length}</p>
           <p className="text-xs text-blue-500 font-medium mt-0.5">PO Delays</p>
+          {totalPendingValue > 0 && (
+            <p className="text-[10px] text-blue-400 mt-1">{fmtMoney(totalPendingValue)} at risk</p>
+          )}
         </div>
       </div>
 
+      {/* Critical Alerts */}
+      {delays.filter(d => d.daysLate > 30).length > 0 && (
+        <div className="bg-red-50 border border-red-300 rounded-xl p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle className="w-4 h-4 text-red-600" />
+            <span className="text-sm font-bold text-red-700">Critical Delays (&gt;30 days)</span>
+          </div>
+          <div className="space-y-1">
+            {delays.filter(d => d.daysLate > 30).slice(0, 5).map(d => (
+              <div key={d.id} className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded-full border shrink-0", typeColor(d.type))}>{d.type}</span>
+                  <span className="text-red-800 font-medium truncate">{d.name}</span>
+                </div>
+                <span className="text-red-700 font-bold shrink-0 ml-2">+{d.daysLate}d</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Responsibility Summary */}
       {responsibleSummary.size > 0 && (
-        <div>
-          <h3 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+          <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
             <User className="w-4 h-4 text-gray-500" />
-            Who Is Causing Delays?
+            Accountability Summary
           </h3>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {Array.from(responsibleSummary.entries())
               .sort((a, b) => b[1].count - a[1].count)
               .map(([person, info]) => (
-                <div key={person} className="bg-white border border-red-200 rounded-xl p-3 flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-xs font-bold text-red-600 shrink-0">
-                    {person.slice(0, 2).toUpperCase()}
+                <div key={person} className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-xs font-bold text-red-600 shrink-0 uppercase">
+                    {person.slice(0, 2)}
                   </div>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-gray-800 truncate">{person}</p>
-                    <p className="text-xs text-red-500">
-                      {info.count} delayed item{info.count > 1 ? "s" : ""} · max +{info.maxDelay}d
+                    <p className="text-xs text-red-500 mt-0.5">
+                      {info.count} delayed · max +{info.maxDelay}d
                     </p>
+                    {info.totalValue > 0 && (
+                      <p className="text-[10px] text-orange-600 font-medium">{fmtMoney(info.totalValue)} at risk</p>
+                    )}
                     <div className="flex gap-1 mt-1 flex-wrap">
                       {Array.from(info.types).map(t => (
                         <span key={t} className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full border", typeColor(t))}>{t}</span>
@@ -655,13 +1234,15 @@ function DelayView({ tasks, mrs, pos }: { tasks: Task[]; mrs: MR[]; pos: PO[] })
         </div>
       )}
 
-      {/* Delay list */}
-      <div>
-        <h3 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 text-red-500" />
-          All Delayed Items (sorted by severity)
-        </h3>
-        <div className="border border-gray-200 rounded-xl overflow-hidden">
+      {/* Full delay table */}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+          <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-500" />
+            All Delayed Items — sorted by severity
+          </h3>
+        </div>
+        <div className="overflow-x-auto">
           <table className="w-full text-xs border-collapse">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
@@ -672,11 +1253,12 @@ function DelayView({ tasks, mrs, pos }: { tasks: Task[]; mrs: MR[]; pos: PO[] })
                 <th className="text-left px-3 py-2 font-semibold text-gray-600">Days Late</th>
                 <th className="text-left px-3 py-2 font-semibold text-gray-600">Responsible</th>
                 <th className="text-left px-3 py-2 font-semibold text-gray-600">Status</th>
+                <th className="text-right px-3 py-2 font-semibold text-gray-600">Value at Risk</th>
               </tr>
             </thead>
             <tbody>
               {delays.map((d, i) => (
-                <tr key={d.id} className={cn("border-b border-gray-100", i % 2 === 0 ? "bg-white" : "bg-gray-50")}>
+                <tr key={d.id} className={cn("border-b border-gray-100 hover:bg-gray-50", i % 2 === 0 ? "bg-white" : "bg-gray-50/50")}>
                   <td className="px-3 py-2">
                     <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded-full border", typeColor(d.type))}>
                       {d.type}
@@ -686,20 +1268,20 @@ function DelayView({ tasks, mrs, pos }: { tasks: Task[]; mrs: MR[]; pos: PO[] })
                   <td className="px-3 py-2 text-gray-600">{d.phase}</td>
                   <td className="px-3 py-2 text-red-600 font-medium whitespace-nowrap">{fmtDate(d.dueDate.toISOString().split("T")[0])}</td>
                   <td className="px-3 py-2">
-                    <span className={cn(
-                      "font-bold",
-                      d.daysLate > 30 ? "text-red-700" : d.daysLate > 14 ? "text-red-500" : "text-orange-500"
-                    )}>
+                    <span className={cn("font-bold text-[11px] px-1.5 py-0.5 rounded", severityColor(d.daysLate))}>
                       +{d.daysLate}d
                     </span>
                   </td>
                   <td className="px-3 py-2 text-gray-600">
                     <div className="flex items-center gap-1">
                       <User className="w-3 h-3 text-gray-400 shrink-0" />
-                      {d.responsible}
+                      <span className="truncate max-w-[100px]">{d.responsible}</span>
                     </div>
                   </td>
                   <td className="px-3 py-2"><StatusBadge status={d.status} /></td>
+                  <td className="px-3 py-2 text-right text-gray-700 font-medium whitespace-nowrap">
+                    {d.value ? fmtMoney(d.value) : "—"}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -795,6 +1377,7 @@ function ProjectDropdown({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 const TABS = [
+  { id: "overview", label: "Overview", icon: BarChart3 },
   { id: "gantt", label: "Gantt Chart", icon: GanttChartSquare },
   { id: "purchase", label: "Purchase Tracker", icon: ShoppingCart },
   { id: "delays", label: "Delay Analysis", icon: AlertTriangle },
@@ -806,8 +1389,9 @@ export default function ProjectTimeline() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState("");
   const [data, setData] = useState<TimelineData>({ tasks: [], materialRequests: [], purchaseOrders: [] });
+  const [projectDetail, setProjectDetail] = useState<ProjectDetail | null>(null);
   const [loading, setLoading] = useState(false);
-  const [tab, setTab] = useState<TabId>("gantt");
+  const [tab, setTab] = useState<TabId>("overview");
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   useEffect(() => {
@@ -819,13 +1403,25 @@ export default function ProjectTimeline() {
 
   const load = useCallback(async (proj: string, force = false) => {
     setLoading(true);
+    setProjectDetail(null);
     try {
       const qs = new URLSearchParams();
       if (proj) qs.set("project", proj);
       if (force) qs.set("refresh", "1");
-      const r = await fetch(`${API}/timeline?${qs}`);
+
+      const [r, detailRes] = await Promise.all([
+        fetch(`${API}/timeline?${qs}`),
+        proj ? fetch(`${API}/timeline/project-detail?project=${encodeURIComponent(proj)}`) : Promise.resolve(null),
+      ]);
+
       const d = await r.json();
       setData(d);
+
+      if (detailRes) {
+        const detail = await detailRes.json();
+        setProjectDetail(detail);
+      }
+
       setLastRefresh(new Date());
     } catch (e) {
       console.error(e);
@@ -836,9 +1432,6 @@ export default function ProjectTimeline() {
 
   useEffect(() => { load(selectedProject); }, [selectedProject, load]);
 
-  const selProject = projects.find(p => p.name === selectedProject);
-
-  // Derived counts
   const today = new Date();
   const lateTaskCount = data.tasks.filter(t => {
     const end = parseDate(t.exp_end_date);
@@ -853,6 +1446,7 @@ export default function ProjectTimeline() {
     return d && d < today && mr.status !== "Stopped" && !mr.status.toLowerCase().includes("complete");
   }).length;
   const totalDelays = lateTaskCount + latePOCount + lateMRCount;
+  const completedTasks = data.tasks.filter(t => t.status === "Completed").length;
 
   return (
     <Layout>
@@ -866,7 +1460,7 @@ export default function ProjectTimeline() {
                 Project Timeline
               </h1>
               <p className="text-xs text-gray-500 mt-0.5">
-                Full project lifecycle — Design → Purchase → Commissioning
+                Full lifecycle — Design → Engineering → Procurement → Commissioning
                 {lastRefresh && (
                   <span className="ml-2 text-gray-400">
                     · Updated {lastRefresh.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
@@ -876,12 +1470,12 @@ export default function ProjectTimeline() {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              <ProjectDropdown projects={projects} selected={selectedProject} onChange={setSelectedProject} />
+              <ProjectDropdown projects={projects} selected={selectedProject} onChange={v => { setSelectedProject(v); setTab("overview"); }} />
               <button
                 onClick={() => load(selectedProject, true)}
                 disabled={loading}
                 className="p-2 rounded-xl border border-gray-200 bg-white text-gray-500 hover:text-blue-600 hover:border-blue-300 transition-colors"
-                title="Refresh"
+                title="Refresh from ERPNext"
               >
                 <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
               </button>
@@ -889,10 +1483,11 @@ export default function ProjectTimeline() {
           </div>
 
           {/* KPI Strip */}
-          <div className="flex gap-4 mb-3 flex-wrap">
+          <div className="flex gap-4 mb-3 flex-wrap items-center">
             <div className="flex items-center gap-1.5 text-xs text-gray-600">
               <div className="w-2 h-2 rounded-full bg-blue-500" />
               <span className="font-semibold">{data.tasks.length}</span> Tasks
+              {completedTasks > 0 && <span className="text-emerald-600">({completedTasks} done)</span>}
             </div>
             <div className="flex items-center gap-1.5 text-xs text-gray-600">
               <div className="w-2 h-2 rounded-full bg-amber-500" />
@@ -902,16 +1497,16 @@ export default function ProjectTimeline() {
               <div className="w-2 h-2 rounded-full bg-emerald-500" />
               <span className="font-semibold">{data.purchaseOrders.length}</span> POs
             </div>
+            {projectDetail && (
+              <div className="flex items-center gap-1.5 text-xs text-blue-600 font-semibold">
+                <Activity className="w-3 h-3" />
+                {projectDetail.percent_complete.toFixed(0)}% complete
+              </div>
+            )}
             {totalDelays > 0 && (
               <div className="flex items-center gap-1.5 text-xs text-red-600 font-semibold">
                 <AlertTriangle className="w-3 h-3" />
                 {totalDelays} Delay{totalDelays > 1 ? "s" : ""}
-              </div>
-            )}
-            {selProject && (
-              <div className="flex items-center gap-1 text-xs text-gray-400 ml-auto">
-                <ChevronRight className="w-3 h-3" />
-                {selProject.project_name}
               </div>
             )}
           </div>
@@ -948,12 +1543,15 @@ export default function ProjectTimeline() {
         {/* Content */}
         <div className="flex-1 overflow-auto">
           {loading ? (
-            <div className="flex items-center justify-center h-64 gap-3 text-gray-400">
-              <RefreshCw className="w-5 h-5 animate-spin" />
-              <span className="text-sm font-medium">Loading timeline data...</span>
+            <div className="flex flex-col items-center justify-center h-64 gap-3 text-gray-400">
+              <RefreshCw className="w-6 h-6 animate-spin text-blue-500" />
+              <span className="text-sm font-medium text-gray-500">Loading timeline from ERPNext...</span>
             </div>
           ) : (
             <>
+              {tab === "overview" && (
+                <OverviewView data={data} projectDetail={projectDetail} selectedProject={selectedProject} />
+              )}
               {tab === "gantt" && <GanttView tasks={data.tasks} />}
               {tab === "purchase" && <PurchaseView mrs={data.materialRequests} pos={data.purchaseOrders} />}
               {tab === "delays" && <DelayView tasks={data.tasks} mrs={data.materialRequests} pos={data.purchaseOrders} />}

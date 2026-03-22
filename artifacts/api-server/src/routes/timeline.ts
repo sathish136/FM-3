@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   fetchErpNextProjectList,
+  fetchErpNextProjectDetail,
   fetchErpNextTasks,
   fetchErpNextMaterialRequests,
   fetchErpNextPurchaseOrders,
@@ -29,6 +30,21 @@ router.get("/timeline/projects", async (_req, res) => {
     const data = await fetchErpNextProjectList();
     setCached("tl:projects", data);
     res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get("/timeline/project-detail", async (req, res) => {
+  try {
+    const { project } = req.query as Record<string, string>;
+    if (!project || !isErpNextConfigured()) return res.json(null);
+    const key = `tl:proj:${project}`;
+    const cached = getCached<unknown>(key);
+    if (cached) return res.json(cached);
+    const detail = await fetchErpNextProjectDetail(project);
+    if (detail) setCached(key, detail);
+    res.json(detail);
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
