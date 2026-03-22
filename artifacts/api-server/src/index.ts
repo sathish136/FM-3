@@ -3,6 +3,14 @@ import app from "./app";
 import { setupTranscribeWS } from "./transcribe-ws";
 import { setupChatWS } from "./chat-ws";
 
+// Prevent unhandled errors (e.g., IMAP socket timeouts) from crashing the server
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception (server kept alive):", err.message);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled rejection (server kept alive):", reason);
+});
+
 const rawPort = process.env["PORT"];
 
 if (!rawPort) {

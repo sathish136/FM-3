@@ -28,6 +28,7 @@ async function initTables() {
     CREATE TABLE IF NOT EXISTS smart_email_inbox (
       id SERIAL PRIMARY KEY,
       uid TEXT NOT NULL UNIQUE,
+      account_id INTEGER,
       subject TEXT,
       from_addr TEXT,
       to_addr TEXT,
@@ -49,6 +50,8 @@ async function initTables() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  // Migration: add account_id column if it doesn't exist
+  await pool.query(`ALTER TABLE smart_email_inbox ADD COLUMN IF NOT EXISTS account_id INTEGER`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS smart_email_projects (
@@ -218,6 +221,7 @@ async function getAccount(userEmail?: string) {
     return { gmailUser: envUser, gmailAppPassword: envPass, emailAddress: envUser };
   }
   return {
+    id: row.id as number,
     gmailUser: row.gmail_user,
     gmailAppPassword: row.gmail_app_password?.replace(/\s/g, ""),
     emailAddress: row.email_address || row.gmail_user,
@@ -321,10 +325,23 @@ async function triggerAutoReply(uid: string) {
 
 // GET /smart-email/messages
 router.get("/smart-email/messages", async (req, res) => {
-  const { filter, value, search } = req.query as Record<string, string>;
+  const { filter, value, search, user_email } = req.query as Record<string, string>;
   try {
+    // Resolve account_id for filtering
+    let accountId: number | null = null;
+    if (user_email) {
+      const acct = await getAccount(user_email).catch(() => null);
+      accountId = acct?.id || null;
+    }
+
     let where = "WHERE 1=1";
     const vals: any[] = [];
+
+    // Filter by the user's assigned email account (if known)
+    if (accountId) {
+      vals.push(accountId);
+      where += ` AND (e.account_id = $${vals.length} OR e.account_id IS NULL)`;
+    }
 
     let fromClause = `FROM smart_email_inbox e
        LEFT JOIN (SELECT email_uid FROM smart_email_drafts WHERE sent=false) d ON d.email_uid = e.uid`;
@@ -375,28 +392,40 @@ router.get("/smart-email/messages", async (req, res) => {
 });
 
 // GET /smart-email/stats
-router.get("/smart-email/stats", async (_req, res) => {
+router.get("/smart-email/stats", async (req, res) => {
+  const { user_email } = req.query as Record<string, string>;
   try {
+    let accountId: number | null = null;
+    if (user_email) {
+      const acct = await getAccount(user_email).catch(() => null);
+      accountId = acct?.id || null;
+    }
+
+    const acctFilter = accountId ? `AND (account_id=$1 OR account_id IS NULL)` : "";
+    const acctVals = accountId ? [accountId] : [];
+
     const r = await pool.query(`
       SELECT
-        COUNT(*) FILTER (WHERE NOT seen) AS unread,
-        COUNT(*) FILTER (WHERE email_type='important') AS important,
-        COUNT(*) FILTER (WHERE email_type='information') AS information,
-        COUNT(*) FILTER (WHERE email_type='promotion') AS promotion,
-        COUNT(*) FILTER (WHERE category='project') AS projects,
-        COUNT(*) FILTER (WHERE category='supplier') AS suppliers,
-        COUNT(*) FILTER (WHERE is_internal=true) AS internal,
-        COUNT(*) FILTER (WHERE priority='high' AND NOT auto_replied) AS needs_reply,
-        COUNT(*) FILTER (WHERE auto_replied=true) AS auto_replied_count,
-        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE NOT seen ${acctFilter}) AS unread,
+        COUNT(*) FILTER (WHERE email_type='important' ${acctFilter}) AS important,
+        COUNT(*) FILTER (WHERE email_type='information' ${acctFilter}) AS information,
+        COUNT(*) FILTER (WHERE email_type='promotion' ${acctFilter}) AS promotion,
+        COUNT(*) FILTER (WHERE category='project' ${acctFilter}) AS projects,
+        COUNT(*) FILTER (WHERE category='supplier' ${acctFilter}) AS suppliers,
+        COUNT(*) FILTER (WHERE is_internal=true ${acctFilter}) AS internal,
+        COUNT(*) FILTER (WHERE priority='high' AND NOT auto_replied ${acctFilter}) AS needs_reply,
+        COUNT(*) FILTER (WHERE auto_replied=true ${acctFilter}) AS auto_replied_count,
+        COUNT(*) FILTER (WHERE 1=1 ${acctFilter}) AS total,
         (SELECT COUNT(*) FROM smart_email_drafts WHERE sent=false) AS drafts_count
       FROM smart_email_inbox
-    `);
+    `, acctVals);
     const projects = await pool.query(
-      `SELECT project_name, COUNT(*) as count FROM smart_email_inbox WHERE category='project' AND project_name IS NOT NULL GROUP BY project_name ORDER BY count DESC`
+      `SELECT project_name, COUNT(*) as count FROM smart_email_inbox WHERE category='project' AND project_name IS NOT NULL ${acctFilter} GROUP BY project_name ORDER BY count DESC`,
+      acctVals
     );
     const suppliers = await pool.query(
-      `SELECT supplier_name, COUNT(*) as count FROM smart_email_inbox WHERE category='supplier' AND supplier_name IS NOT NULL GROUP BY supplier_name ORDER BY count DESC LIMIT 20`
+      `SELECT supplier_name, COUNT(*) as count FROM smart_email_inbox WHERE category='supplier' AND supplier_name IS NOT NULL ${acctFilter} GROUP BY supplier_name ORDER BY count DESC LIMIT 20`,
+      acctVals
     );
     res.json({
       stats: r.rows[0],
@@ -442,23 +471,27 @@ router.post("/smart-email/ingest", async (req, res) => {
       LIMIT 200
     `);
 
+    const accountId = account?.id || null;
+
     let ingested = 0;
     for (const row of cached.rows) {
       await pool.query(
         `INSERT INTO smart_email_inbox
-          (uid, subject, from_addr, to_addr, cc_addr, email_date, body_text, body_html, seen, has_attachment)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+          (uid, account_id, subject, from_addr, to_addr, cc_addr, email_date, body_text, body_html, seen, has_attachment)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
          ON CONFLICT (uid) DO UPDATE SET
-           seen=$9, body_text=COALESCE(EXCLUDED.body_text, smart_email_inbox.body_text),
+           account_id=COALESCE(EXCLUDED.account_id, smart_email_inbox.account_id),
+           seen=$10, body_text=COALESCE(EXCLUDED.body_text, smart_email_inbox.body_text),
            body_html=COALESCE(EXCLUDED.body_html, smart_email_inbox.body_html)`,
-        [row.uid, row.subject, row.from_addr, row.to_addr, row.cc_addr,
+        [row.uid, accountId, row.subject, row.from_addr, row.to_addr, row.cc_addr,
          row.email_date, row.body_text, row.body_html, row.seen, row.has_attachment]
       );
       ingested++;
     }
 
     const unclassified = await pool.query(
-      "SELECT uid FROM smart_email_inbox WHERE NOT classified ORDER BY email_date DESC LIMIT 30"
+      `SELECT uid FROM smart_email_inbox WHERE NOT classified${accountId ? ` AND (account_id=$1 OR account_id IS NULL)` : ""} ORDER BY email_date DESC LIMIT 30`,
+      accountId ? [accountId] : []
     );
     for (const r of unclassified.rows) {
       classifyEmailRecord(r.uid, autoReply).catch(() => {});

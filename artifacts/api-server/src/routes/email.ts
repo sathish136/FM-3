@@ -109,9 +109,24 @@ function makeImapClient(user: string, pass: string) {
 
 async function withImap<T>(user: string, pass: string, fn: (client: ImapFlow) => Promise<T>): Promise<T> {
   const client = makeImapClient(user, pass);
-  await client.connect();
+  // Attach error listener immediately to prevent unhandled 'error' event crashing the process
+  let connectionError: Error | null = null;
+  client.on("error", (err: Error) => {
+    connectionError = err;
+  });
   try {
+    await client.connect();
+    if (connectionError) throw connectionError;
     return await fn(client);
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    if (msg.includes("ETIMEOUT") || msg.includes("timeout") || msg.includes("ECONNREFUSED") || msg.includes("ENOTFOUND")) {
+      throw new Error("Cannot connect to Gmail IMAP — check your internet connection and that IMAP is enabled in Gmail settings.");
+    }
+    if (msg.includes("Command failed") || msg.includes("Invalid credentials") || msg.includes("AUTHENTICATIONFAILED") || msg.includes("Authentication") || msg.includes("[AUTH]")) {
+      throw new Error("Gmail authentication failed — please check your Gmail App Password in Email Settings.");
+    }
+    throw err;
   } finally {
     await client.logout().catch(() => {});
   }

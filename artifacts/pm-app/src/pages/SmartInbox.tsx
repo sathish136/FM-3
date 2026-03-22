@@ -686,6 +686,7 @@ export default function SmartInbox() {
       if (filter !== "all") url += `filter=${filter}&`;
       if (value) url += `value=${encodeURIComponent(value)}&`;
       if (q) url += `search=${encodeURIComponent(q)}&`;
+      if (userEmail) url += `user_email=${encodeURIComponent(userEmail)}&`;
       const data = await api(url);
       setEmails(data);
       setError("");
@@ -693,21 +694,22 @@ export default function SmartInbox() {
       setError(e.message);
     }
     setLoading(false);
-  }, [activeFilter]);
+  }, [activeFilter, userEmail]);
 
   const loadStats = useCallback(async () => {
     try {
-      const data = await api("/smart-email/stats");
+      const url = userEmail ? `/smart-email/stats?user_email=${encodeURIComponent(userEmail)}` : "/smart-email/stats";
+      const data = await api(url);
       setStats(data.stats);
       setProjects(data.projects || []);
       setSuppliers(data.suppliers || []);
     } catch {}
-  }, []);
+  }, [userEmail]);
 
   useEffect(() => {
     loadEmails("all");
     loadStats();
-  }, []);
+  }, [userEmail]);
 
   const handleFilter = (key: FilterKey, value?: string) => {
     setActiveFilter(key);
