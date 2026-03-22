@@ -140,6 +140,7 @@ function AccountForm({
   const [form, setForm] = useState<FormState>(initial);
   const [showPass, setShowPass] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState("");
 
   const set = (k: keyof FormState, v: any) => setForm(f => ({ ...f, [k]: v }));
@@ -159,7 +160,32 @@ function AccountForm({
       setError("Please enter a valid Gmail username (e.g. you@gmail.com).");
       return;
     }
-    setSaving(true); setError("");
+
+    const passwordChanged = form.gmailAppPassword !== "••••••••";
+    if (passwordChanged) {
+      setVerifying(true);
+      setError("");
+      try {
+        const testRes = await fetch(`${BASE}/email-settings/test-credentials`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ gmailUser: form.gmailUser, gmailAppPassword: form.gmailAppPassword }),
+        });
+        if (!testRes.ok) {
+          const data = await testRes.json();
+          setError(data.error || "Gmail credentials are invalid. Please check your username and App Password.");
+          setVerifying(false);
+          return;
+        }
+      } catch {
+        setError("Could not verify credentials. Please check your connection and try again.");
+        setVerifying(false);
+        return;
+      }
+      setVerifying(false);
+    }
+    setSaving(true);
+    setError("");
     try {
       await onSave(form);
     } catch (e: any) {
@@ -254,10 +280,10 @@ function AccountForm({
       <div className="flex items-center gap-2 pt-1">
         <button
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || verifying}
           className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl text-sm font-semibold shadow transition-colors">
-          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-          {saving ? "Saving…" : "Save Account"}
+          {(saving || verifying) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+          {verifying ? "Verifying…" : saving ? "Saving…" : "Save Account"}
         </button>
         <button
           onClick={onCancel}

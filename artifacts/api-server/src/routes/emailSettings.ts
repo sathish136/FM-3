@@ -77,6 +77,20 @@ router.get("/email-settings", async (_req, res) => {
   }
 });
 
+// POST /api/email-settings/test-credentials — verify IMAP login
+router.post("/email-settings/test-credentials", async (req, res) => {
+  const { gmailUser, gmailAppPassword } = req.body;
+  if (!gmailUser || !gmailAppPassword) {
+    return res.status(400).json({ error: "gmailUser and gmailAppPassword are required" });
+  }
+  try {
+    await testImapConnection(gmailUser, gmailAppPassword);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(401).json({ error: err.message });
+  }
+});
+
 // POST /api/email-settings — create account
 router.post("/email-settings", async (req, res) => {
   const { displayName, emailAddress, gmailUser, gmailAppPassword, assignedTo, isDefault } = req.body;
