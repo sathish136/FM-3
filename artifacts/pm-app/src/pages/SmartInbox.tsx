@@ -1106,12 +1106,14 @@ export default function SmartInbox() {
       const queued = res.queued ?? 0;
       setDraftAllResult(queued > 0 ? `Drafting ${queued} email${queued > 1 ? "s" : ""}…` : "No new emails to draft");
       if (queued > 0) {
-        setTimeout(async () => {
+        // Poll a few times to catch async AI generation completing
+        const poll = async (attempts: number) => {
           await loadEmails(activeFilter, filterValue, search || undefined);
           await loadStats();
-          setDraftAllResult("");
-          setDraftingAll(false);
-        }, 6000);
+          if (attempts > 1) setTimeout(() => poll(attempts - 1), 5000);
+          else { setDraftAllResult(""); setDraftingAll(false); }
+        };
+        setTimeout(() => poll(3), 5000);
       } else {
         setDraftingAll(false);
       }
