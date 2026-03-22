@@ -803,29 +803,39 @@ router.post("/smart-email/classify/:uid", async (req, res) => {
   }
 });
 
-// POST /smart-email/draft-batch — generate AI draft replies for all eligible emails without a draft
+// POST /smart-email/draft-batch — generate AI draft replies for all eligible emails
 router.post("/smart-email/draft-batch", async (req, res) => {
+  const force = req.body?.force === true;
   try {
-    // Target: non-internal, non-promotional emails that don't yet have a draft and haven't been auto-replied
+    // In force mode: regenerate all unsent drafts (non-internal, non-promotional, not yet sent)
+    // In normal mode: only pick emails without any draft
     const rows = await pool.query(
-      `SELECT uid FROM smart_email_inbox
-       WHERE is_deleted = false
-         AND is_internal = false
-         AND COALESCE(email_type, '') != 'promotion'
-         AND has_draft = false
-         AND auto_replied = false
-       ORDER BY email_date DESC
-       LIMIT 50`
+      force
+        ? `SELECT uid FROM smart_email_inbox
+           WHERE is_deleted = false
+             AND is_internal = false
+             AND COALESCE(email_type, '') != 'promotion'
+             AND auto_replied = false
+           ORDER BY email_date DESC
+           LIMIT 50`
+        : `SELECT uid FROM smart_email_inbox
+           WHERE is_deleted = false
+             AND is_internal = false
+             AND COALESCE(email_type, '') != 'promotion'
+             AND has_draft = false
+             AND auto_replied = false
+           ORDER BY email_date DESC
+           LIMIT 50`
     );
     let queued = 0;
     for (const r of rows.rows) {
       // Pass undefined for userEmail so the to_addr restriction is skipped in batch mode
-      triggerAutoReply(r.uid, undefined, false).catch(e => {
+      triggerAutoReply(r.uid, undefined, force).catch(e => {
         console.error(`[draft-batch] failed for uid=${r.uid}:`, e.message);
       });
       queued++;
     }
-    console.log(`[draft-batch] queued ${queued} drafts`);
+    console.log(`[draft-batch] queued ${queued} drafts (force=${force})`);
     res.json({ ok: true, queued });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

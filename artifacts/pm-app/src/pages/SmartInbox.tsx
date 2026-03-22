@@ -1094,19 +1094,18 @@ export default function SmartInbox() {
     } catch { setClassifying(false); }
   };
 
-  const handleDraftAll = async () => {
+  const handleDraftAll = async (force = false) => {
     setDraftingAll(true);
     setDraftAllResult("");
     try {
       const res = await api("/smart-email/draft-batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_email: userEmail }),
+        body: JSON.stringify({ user_email: userEmail, force }),
       });
       const queued = res.queued ?? 0;
-      setDraftAllResult(queued > 0 ? `Drafting ${queued} email${queued > 1 ? "s" : ""}…` : "No new emails to draft");
       if (queued > 0) {
-        // Poll a few times to catch async AI generation completing
+        setDraftAllResult(`Drafting ${queued} email${queued > 1 ? "s" : ""}…`);
         const poll = async (attempts: number) => {
           await loadEmails(activeFilter, filterValue, search || undefined);
           await loadStats();
@@ -1115,6 +1114,7 @@ export default function SmartInbox() {
         };
         setTimeout(() => poll(3), 5000);
       } else {
+        setDraftAllResult("all_done");
         setDraftingAll(false);
       }
     } catch { setDraftingAll(false); }
@@ -1199,13 +1199,27 @@ export default function SmartInbox() {
                 : <BrainCircuit className="w-3.5 h-3.5 shrink-0" />}
               <span>{classifying ? "Classifying…" : "AI Classify All"}</span>
             </button>
-            <button onClick={handleDraftAll} disabled={draftingAll || classifying}
-              className="w-full flex items-center gap-2.5 px-3 py-2.5 bg-amber-500 text-white text-[11px] font-semibold rounded-lg hover:bg-amber-600 active:scale-[0.98] transition-all disabled:opacity-50">
-              {draftingAll
-                ? <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-                : <Bot className="w-3.5 h-3.5 shrink-0" />}
-              <span>{draftingAll ? (draftAllResult || "Drafting…") : "AI Draft All Replies"}</span>
-            </button>
+            {draftAllResult === "all_done" ? (
+              <div className="flex flex-col gap-1.5">
+                <div className="w-full flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 text-green-700 text-[10px] font-medium rounded-lg">
+                  <Bot className="w-3.5 h-3.5 shrink-0" />
+                  <span>All drafts up to date</span>
+                </div>
+                <button onClick={() => { setDraftAllResult(""); handleDraftAll(true); }} disabled={classifying}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 bg-amber-500 text-white text-[10px] font-semibold rounded-lg hover:bg-amber-600 active:scale-[0.98] transition-all disabled:opacity-50">
+                  <RefreshCw className="w-3 h-3 shrink-0" />
+                  <span>Regenerate All Drafts</span>
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => handleDraftAll(false)} disabled={draftingAll || classifying}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 bg-amber-500 text-white text-[11px] font-semibold rounded-lg hover:bg-amber-600 active:scale-[0.98] transition-all disabled:opacity-50">
+                {draftingAll
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  : <Bot className="w-3.5 h-3.5 shrink-0" />}
+                <span>{draftingAll ? (draftAllResult || "Drafting…") : "AI Draft All Replies"}</span>
+              </button>
+            )}
           </div>
 
           {/* Auto-reply toggle */}
