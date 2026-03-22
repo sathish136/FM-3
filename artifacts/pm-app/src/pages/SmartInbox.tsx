@@ -756,6 +756,32 @@ export default function SmartInbox() {
     loadStats();
   }, [userEmail]);
 
+  // Auto-sync every 5 minutes while Smart Inbox is open
+  const autoSyncRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    const runSync = async () => {
+      if (syncing) return;
+      setSyncing(true);
+      try {
+        const syncUrl = `/email/sync?mailbox=INBOX${userEmail ? `&user=${encodeURIComponent(userEmail)}` : ""}`;
+        await api(syncUrl);
+        await api("/smart-email/ingest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ auto_reply: autoReplyEnabled, user_email: userEmail }),
+        });
+        await loadEmails(activeFilter, filterValue, search || undefined);
+        await loadStats();
+      } catch {}
+      setSyncing(false);
+    };
+
+    autoSyncRef.current = setInterval(runSync, 5 * 60 * 1000);
+    return () => {
+      if (autoSyncRef.current) clearInterval(autoSyncRef.current);
+    };
+  }, [userEmail, autoReplyEnabled]);
+
   const handleFilter = (key: FilterKey, value?: string) => {
     setActiveFilter(key);
     setFilterValue(value);
