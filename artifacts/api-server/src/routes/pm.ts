@@ -1,4 +1,150 @@
-  if (!row) return res.status(404).json({ error: "Not found" });
+import { Router } from "express";
+import { db } from "@workspace/db";
+import {
+  projectsTable, tasksTable, campaignsTable, leadsTable, teamMembersTable, userPermissionsTable,
+} from "@workspace/db/schema";
+import { eq, sql } from "drizzle-orm";
+import {
+  isErpNextConfigured,
+  fetchErpNextProjects,
+  fetchErpNextDrawings,
+  fetchErpNextPresentations,
+  fetchErpNextPID,
+  fetchErpNextDesign2D,
+  fetchErpNextDesign3D,
+  fetchErpNextMaterialRequests,
+  fetchErpNextMaterialRequest,
+  createErpNextMaterialRequest,
+  fetchErpNextMaterialRequestItems,
+  fetchErpNextWarehouses,
+  fetchErpNextCompanies,
+  fetchErpNextUsers,
+} from "../lib/erpnext";
+
+const router = Router();
+
+// Projects
+
+router.get("/projects", async (_req, res) => {
+  try {
+    // Try ERPNext first (primary source of truth for projects)
+    if (isErpNextConfigured()) {
+      try {
+        const erpProjects = await fetchErpNextProjects();
+        if (erpProjects.length > 0) {
+          return res.json(erpProjects);
+        }
+      } catch (erpErr) {
+        console.warn("ERPNext projects fetch failed, falling back to local DB:", erpErr);
+      }
+    }
+    // Fallback: local database
+    const rows = await db.select().from(projectsTable).orderBy(projectsTable.createdAt);
+    res.json(rows.map(r => ({ ...r, createdAt: r.createdAt.toISOString() })));
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.post("/projects", async (req, res) => {
+  try {
+    const [row] = await db.insert(projectsTable).values(req.body).returning();
+    res.status(201).json({ ...row, createdAt: row.createdAt.toISOString() });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.get("/projects/:id", async (req, res) => {
+  try {
+    const [row] = await db.select().from(projectsTable).where(eq(projectsTable.id, Number(req.params.id)));
+    if (!row) return res.status(404).json({ error: "Not found" });
+    res.json({ ...row, createdAt: row.createdAt.toISOString() });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.patch("/projects/:id", async (req, res) => {
+  try {
+    const [row] = await db.update(projectsTable).set(req.body).where(eq(projectsTable.id, Number(req.params.id))).returning();
+    if (!row) return res.status(404).json({ error: "Not found" });
+    res.json({ ...row, createdAt: row.createdAt.toISOString() });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.delete("/projects/:id", async (req, res) => {
+  try {
+    await db.delete(projectsTable).where(eq(projectsTable.id, Number(req.params.id)));
+    res.status(204).send();
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// Tasks
+
+router.get("/tasks", async (req, res) => {
+  try {
+    const { projectId } = req.query;
+    if (projectId) {
+      const rows = await db.select().from(tasksTable).where(eq(tasksTable.projectId, Number(projectId))).orderBy(tasksTable.createdAt);
+      return res.json(rows.map(r => ({ ...r, createdAt: r.createdAt.toISOString() })));
+    }
+    const rows = await db.select().from(tasksTable).orderBy(tasksTable.createdAt);
+    res.json(rows.map(r => ({ ...r, createdAt: r.createdAt.toISOString() })));
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.post("/tasks", async (req, res) => {
+  try {
+    const [row] = await db.insert(tasksTable).values(req.body).returning();
+    res.status(201).json({ ...row, createdAt: row.createdAt.toISOString() });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.patch("/tasks/:id", async (req, res) => {
+  try {
+    const [row] = await db.update(tasksTable).set(req.body).where(eq(tasksTable.id, Number(req.params.id))).returning();
+    if (!row) return res.status(404).json({ error: "Not found" });
+    res.json({ ...row, createdAt: row.createdAt.toISOString() });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.delete("/tasks/:id", async (req, res) => {
+  try {
+    await db.delete(tasksTable).where(eq(tasksTable.id, Number(req.params.id)));
+    res.status(204).send();
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// Campaigns
+
+router.get("/campaigns", async (_req, res) => {
+  try {
+    const rows = await db.select().from(campaignsTable).orderBy(campaignsTable.createdAt);
+    res.json(rows.map(r => ({ ...r, budget: Number(r.budget), spent: r.spent ? Number(r.spent) : 0, createdAt: r.createdAt.toISOString() })));
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.post("/campaigns", async (req, res) => {
+  try {
+    const [row] = await db.insert(campaignsTable).values({
+      ...req.body,
+      budget: req.body.budget !== undefined ? String(req.body.budget) : "0",
+    }).returning();
+    res.status(201).json({ ...row, budget: Number(row.budget), spent: row.spent ? Number(row.spent) : 0, createdAt: row.createdAt.toISOString() });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.get("/campaigns/:id", async (req, res) => {
+  try {
+    const [row] = await db.select().from(campaignsTable).where(eq(campaignsTable.id, Number(req.params.id)));
+    if (!row) return res.status(404).json({ error: "Not found" });
+    res.json({ ...row, budget: Number(row.budget), spent: row.spent ? Number(row.spent) : 0, createdAt: row.createdAt.toISOString() });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.patch("/campaigns/:id", async (req, res) => {
+  try {
+    const [row] = await db.update(campaignsTable).set({
+      ...req.body,
+      budget: req.body.budget !== undefined ? String(req.body.budget) : undefined,
+      spent: req.body.spent !== undefined ? String(req.body.spent) : undefined,
+    }).where(eq(campaignsTable.id, Number(req.params.id))).returning();
+    if (!row) return res.status(404).json({ error: "Not found" });
     res.json({ ...row, budget: Number(row.budget), spent: row.spent ? Number(row.spent) : 0, createdAt: row.createdAt.toISOString() });
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
@@ -10,7 +156,7 @@ router.delete("/campaigns/:id", async (req, res) => {
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
-// ─── Leads ───────────────────────────────────────────────────────────────────
+// Leads
 
 router.get("/leads", async (req, res) => {
   try {
@@ -46,7 +192,7 @@ router.delete("/leads/:id", async (req, res) => {
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
-// ─── Team Members ─────────────────────────────────────────────────────────────
+// Team Members
 
 router.get("/team", async (_req, res) => {
   try {
@@ -62,13 +208,13 @@ router.post("/team", async (req, res) => {
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
-// ─── ERPNext Status ───────────────────────────────────────────────────────────
+// ERPNext Status
 
 router.get("/erpnext/status", (_req, res) => {
   res.json({ configured: isErpNextConfigured(), url: process.env.ERPNEXT_URL || null });
 });
 
-// ─── Analytics Summary ────────────────────────────────────────────────────────
+// Analytics Summary
 
 router.get("/analytics/summary", async (_req, res) => {
   const safeQuery = async <T>(fn: () => Promise<T>, fallback: T): Promise<T> => {
@@ -112,7 +258,7 @@ router.get("/analytics/summary", async (_req, res) => {
   });
 });
 
-// ─── Drawings ────────────────────────────────────────────────────────────────
+// Drawings
 
 router.get("/drawings", async (req, res) => {
   try {
@@ -125,9 +271,9 @@ router.get("/drawings", async (req, res) => {
   }
 });
 
-// ─── Marketing Presentations ─────────────────────────────────────────────────
+// Presentations
 
-router.get("/presentations", async (req, res) => {
+router.get("/presentations", async (_req, res) => {
   try {
     const records = await fetchErpNextPresentations();
     res.json(records);
@@ -137,7 +283,7 @@ router.get("/presentations", async (req, res) => {
   }
 });
 
-// ─── P&ID ─────────────────────────────────────────────────────────────────────
+// P&ID
 
 router.get("/pid", async (_req, res) => {
   try {
@@ -149,7 +295,7 @@ router.get("/pid", async (_req, res) => {
   }
 });
 
-// ─── Design 2D ───────────────────────────────────────────────────────────────
+// Design 2D
 
 router.get("/design-2d", async (req, res) => {
   try {
@@ -162,7 +308,7 @@ router.get("/design-2d", async (req, res) => {
   }
 });
 
-// ─── Design 3D ───────────────────────────────────────────────────────────────
+// Design 3D
 
 router.get("/design-3d", async (req, res) => {
   try {
@@ -175,7 +321,7 @@ router.get("/design-3d", async (req, res) => {
   }
 });
 
-// ─── Material Requests ────────────────────────────────────────────────────────
+// Material Requests
 
 router.get("/material-requests", async (req, res) => {
   try {
@@ -235,7 +381,7 @@ router.get("/companies", async (_req, res) => {
   }
 });
 
-// ─── User Management ─────────────────────────────────────────────────────────
+// User Management
 
 router.get("/erpnext-users", async (_req, res) => {
   try {
