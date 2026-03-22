@@ -145,12 +145,78 @@ function checkInternal(fromAddr: string): boolean {
   return INTERNAL_DOMAINS.some(d => domain === d || domain.endsWith("." + d));
 }
 
+async function tryKeywordClassify(
+  subject: string, fromAddr: string, bodySnippet: string,
+  projects: any[], suppliers: any[]
+): Promise<{ category: string; project_name: string | null; supplier_name: string | null } | null> {
+  const senderDomain = extractDomain(fromAddr);
+  const haystack = `${subject} ${bodySnippet}`.toLowerCase();
+
+  // 1. Supplier: domain-based match (fastest)
+  for (const s of suppliers) {
+    if (s.domain && senderDomain && senderDomain === s.domain.toLowerCase()) {
+      return { category: "supplier", project_name: null, supplier_name: s.name };
+    }
+  }
+
+  // 2. Project: keyword scan — project code pattern (WTT-XXXX) or known keywords
+  const PROJECT_STOPWORDS = new Set(["sales","other","intern","office","factory","project","inventory","home"]);
+  for (const p of projects) {
+    let kws: string[] = [];
+    try { kws = JSON.parse(p.keywords || "[]"); } catch { kws = []; }
+    for (const kw of kws) {
+      const k = kw.toLowerCase().trim();
+      if (k.length < 5) continue;
+      if (PROJECT_STOPWORDS.has(k)) continue;
+      // Exact substring match — require word boundary
+      const re = new RegExp(`\\b${k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+      if (re.test(haystack)) {
+        return { category: "project", project_name: p.name, supplier_name: null };
+      }
+    }
+  }
+
+  // 3. Supplier: keyword match in subject/body (require long, specific keywords)
+  for (const s of suppliers) {
+    // Skip suppliers with very generic names (< 6 chars)
+    if ((s.name || "").length < 6) continue;
+    let kws: string[] = [];
+    try { kws = JSON.parse(s.keywords || "[]"); } catch { kws = []; }
+    for (const kw of kws) {
+      const k = kw.toLowerCase().trim();
+      // Require at least 8 chars to avoid generic word matches
+      if (k.length < 8) continue;
+      const re = new RegExp(`\\b${k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+      if (re.test(haystack)) {
+        return { category: "supplier", project_name: null, supplier_name: s.name };
+      }
+    }
+  }
+
+  return null;
+}
+
 async function classifyWithAI(subject: string, fromAddr: string, bodySnippet: string) {
   const isInternal = checkInternal(fromAddr);
   const domain = extractDomain(fromAddr);
 
   const projects = await pool.query("SELECT name, keywords FROM smart_email_projects");
   const suppliers = await pool.query("SELECT name, domain, keywords FROM smart_email_suppliers");
+
+  // Fast keyword/domain-based classification (skip AI if matched)
+  if (!isInternal) {
+    const kwMatch = await tryKeywordClassify(subject, fromAddr, bodySnippet, projects.rows, suppliers.rows);
+    if (kwMatch && (kwMatch.category === "project" || kwMatch.category === "supplier")) {
+      return {
+        email_type: "information",
+        category: kwMatch.category,
+        project_name: kwMatch.project_name,
+        supplier_name: kwMatch.supplier_name,
+        priority: "medium",
+        is_internal: false,
+      };
+    }
+  }
 
   const projectList = projects.rows.map(p => `${p.name}: ${p.keywords}`).join("\n");
   const supplierList = suppliers.rows.map(s => `${s.name} (domain: ${s.domain || "unknown"}): ${s.keywords}`).join("\n") || "none yet";
@@ -867,6 +933,176 @@ router.post("/smart-email/purge-batch", async (req, res) => {
     );
     res.json({ ok: true, count: r.rowCount });
   } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /smart-email/sync-erp — sync suppliers, projects, departments from ERPNext
+router.post("/smart-email/sync-erp", async (req, res) => {
+  try {
+    const ERP_URL = process.env.ERPNEXT_URL || "https://erp.wttint.com";
+    const ERP_KEY = process.env.ERPNEXT_API_KEY || "";
+    const ERP_SECRET = process.env.ERPNEXT_API_SECRET || "";
+    const auth = `token ${ERP_KEY}:${ERP_SECRET}`;
+
+    let projectsSynced = 0;
+    let suppliersSynced = 0;
+    let deptUpdated = 0;
+
+    // ── 1. Sync ERPNext Projects ─────────────────────────────────────────────
+    let projOffset = 0;
+    while (true) {
+      const r = await fetch(
+        `${ERP_URL}/api/resource/Project?fields=["name","project_name","status"]&limit=500&limit_start=${projOffset}`,
+        { headers: { Authorization: auth } }
+      );
+      const data: any = await r.json();
+      const rows: any[] = data?.data || [];
+      if (rows.length === 0) break;
+
+      for (const p of rows) {
+        const code = (p.name || "").trim();
+        const fullName = (p.project_name || p.name || "").trim();
+        if (!fullName) continue;
+
+        // Build keywords: project code (e.g., WTT-0001) + significant words from project name
+        const keywords: string[] = [];
+        if (code && code !== fullName) keywords.push(code.toLowerCase());
+        keywords.push(fullName.toLowerCase());
+        // Add short abbreviations from multi-word names
+        const words = fullName.split(/[\s\-\/]+/).filter(w => w.length > 3);
+        if (words.length >= 2) keywords.push(words.join(" ").toLowerCase());
+
+        await pool.query(
+          `INSERT INTO smart_email_projects (name, keywords)
+           VALUES ($1, $2)
+           ON CONFLICT (name) DO UPDATE SET keywords=$2`,
+          [fullName, JSON.stringify([...new Set(keywords)])]
+        );
+        projectsSynced++;
+      }
+
+      if (rows.length < 500) break;
+      projOffset += 500;
+    }
+
+    // ── 2. Sync ERPNext Suppliers ────────────────────────────────────────────
+    let suppOffset = 0;
+    while (true) {
+      const r = await fetch(
+        `${ERP_URL}/api/resource/Supplier?fields=["name","supplier_name","email_id"]&limit=500&limit_start=${suppOffset}`,
+        { headers: { Authorization: auth } }
+      );
+      const data: any = await r.json();
+      const rows: any[] = data?.data || [];
+      if (rows.length === 0) break;
+
+      for (const s of rows) {
+        const name = (s.supplier_name || s.name || "").trim();
+        if (!name || name.length < 2) continue;
+
+        // Extract domain from email_id if present
+        let domain: string | null = null;
+        if (s.email_id && s.email_id.includes("@")) {
+          domain = s.email_id.split("@")[1].toLowerCase().trim();
+        }
+
+        const keywords: string[] = [name.toLowerCase()];
+        // Add shortened keyword (first significant words)
+        const words = name.split(/[\s\-\/&]+/).filter((w: string) => w.length > 2);
+        if (words.length >= 2) keywords.push(words.slice(0, 3).join(" ").toLowerCase());
+
+        await pool.query(
+          `INSERT INTO smart_email_suppliers (name, domain, keywords)
+           VALUES ($1, $2, $3)
+           ON CONFLICT DO NOTHING`,
+          [name, domain, JSON.stringify([...new Set(keywords)])]
+        );
+        suppliersSynced++;
+      }
+
+      if (rows.length < 500) break;
+      suppOffset += 500;
+    }
+
+    // Add unique constraint if not exists (best-effort)
+    await pool.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'smart_email_suppliers_name_key'
+        ) THEN
+          ALTER TABLE smart_email_suppliers ADD CONSTRAINT smart_email_suppliers_name_key UNIQUE (name);
+        END IF;
+      END $$;
+    `).catch(() => {});
+
+    // ── 3. Sync Employee Departments ─────────────────────────────────────────
+    const empResp = await fetch(
+      `${ERP_URL}/api/resource/Employee?fields=["name","company_email","user_id","department"]&limit=500`,
+      { headers: { Authorization: auth } }
+    );
+    const empData: any = await empResp.json();
+    const employees: any[] = empData?.data || [];
+
+    // Build email → department map
+    const emailDeptMap = new Map<string, string>();
+    for (const emp of employees) {
+      const dept = (emp.department || "").trim();
+      if (!dept) continue;
+      if (emp.user_id) emailDeptMap.set(emp.user_id.toLowerCase().trim(), dept);
+      if (emp.company_email) emailDeptMap.set(emp.company_email.toLowerCase().trim(), dept);
+    }
+
+    // Update internal emails that don't have a department
+    if (emailDeptMap.size > 0) {
+      const internals = await pool.query(
+        "SELECT uid, from_addr FROM smart_email_inbox WHERE is_internal=true AND (department IS NULL OR department='')"
+      );
+      for (const row of internals.rows) {
+        // Extract email from "Name <email>" format
+        const match = row.from_addr?.match(/<(.+?)>/) || row.from_addr?.match(/^([^\s]+)$/);
+        const email = (match ? match[1] : row.from_addr || "").toLowerCase().trim();
+        const dept = emailDeptMap.get(email) || null;
+        if (dept) {
+          await pool.query("UPDATE smart_email_inbox SET department=$1 WHERE uid=$2", [dept, row.uid]);
+          deptUpdated++;
+        }
+      }
+    }
+
+    // ── 4. Keyword re-classify existing non-internal emails ──────────────────
+    // First reset keyword-based project/supplier classifications so stale matches are cleared
+    await pool.query(
+      `UPDATE smart_email_inbox SET category='other', project_name=NULL, supplier_name=NULL
+       WHERE is_internal=false AND category IN ('project','supplier')`
+    );
+
+    const allProjects = await pool.query("SELECT name, keywords FROM smart_email_projects");
+    const allSuppliers = await pool.query("SELECT name, domain, keywords FROM smart_email_suppliers");
+
+    const emailRows = await pool.query(
+      "SELECT uid, from_addr, subject, body_text, body_html FROM smart_email_inbox WHERE is_internal=false"
+    );
+
+    let reclassified = 0;
+    for (const em of emailRows.rows) {
+      const bodySnippet = em.body_text || (em.body_html ? em.body_html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ") : "");
+      const kwMatch = await tryKeywordClassify(
+        em.subject || "", em.from_addr || "", bodySnippet,
+        allProjects.rows, allSuppliers.rows
+      );
+      if (kwMatch) {
+        await pool.query(
+          `UPDATE smart_email_inbox SET category=$1, project_name=$2, supplier_name=$3, classified=true WHERE uid=$4`,
+          [kwMatch.category, kwMatch.project_name, kwMatch.supplier_name, em.uid]
+        );
+        reclassified++;
+      }
+    }
+
+    res.json({ ok: true, projectsSynced, suppliersSynced, deptUpdated, reclassified });
+  } catch (err: any) {
+    console.error("sync-erp error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
