@@ -23,6 +23,31 @@ const pool = new Pool({
 
 const INTERNAL_DOMAINS = ["wttindia.com", "wttint.com"];
 
+const ERP_URL = process.env.ERPNEXT_URL || "https://erp.wttint.com";
+const ERP_KEY = process.env.ERPNEXT_API_KEY || "";
+const ERP_SECRET = process.env.ERPNEXT_API_SECRET || "";
+const erpHeaders = () => ({ Accept: "application/json", Authorization: `token ${ERP_KEY}:${ERP_SECRET}` });
+
+// Cache: email -> department
+const deptCache = new Map<string, string>();
+
+async function lookupDepartment(emailAddr: string): Promise<string | null> {
+  const raw = emailAddr.match(/<(.+?)>/) ? emailAddr.match(/<(.+?)>/)![1] : emailAddr.trim();
+  if (deptCache.has(raw)) return deptCache.get(raw)!;
+  try {
+    const fields = encodeURIComponent('["department"]');
+    const filters = encodeURIComponent(`[["user_id","=","${raw}"]]`);
+    const r = await fetch(`${ERP_URL}/api/resource/Employee?filters=${filters}&fields=${fields}&limit=1`, { headers: erpHeaders() });
+    if (!r.ok) return null;
+    const data: any = await r.json();
+    const dept = data?.data?.[0]?.department || null;
+    if (dept) deptCache.set(raw, dept);
+    return dept;
+  } catch {
+    return null;
+  }
+}
+
 async function initTables() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS smart_email_inbox (
@@ -50,8 +75,9 @@ async function initTables() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
-  // Migration: add account_id column if it doesn't exist
+  // Migrations
   await pool.query(`ALTER TABLE smart_email_inbox ADD COLUMN IF NOT EXISTS account_id INTEGER`);
+  await pool.query(`ALTER TABLE smart_email_inbox ADD COLUMN IF NOT EXISTS department TEXT`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS smart_email_projects (
@@ -258,15 +284,21 @@ async function classifyEmailRecord(uid: string, autoReply = true) {
 
     const snippetText = bodySnippet.replace(/\s+/g, " ").trim().slice(0, 200);
 
+    let department: string | null = null;
+    if (classification.is_internal && email.from_addr) {
+      department = await lookupDepartment(email.from_addr).catch(() => null);
+    }
+
     await pool.query(
       `UPDATE smart_email_inbox SET
         email_type=$1, category=$2, project_name=$3, supplier_name=$4,
         priority=$5, is_internal=$6, classified=true,
-        body_text=COALESCE(NULLIF(body_text,''), $8)
+        body_text=COALESCE(NULLIF(body_text,''), $8),
+        department=$9
        WHERE uid=$7`,
       [classification.email_type, classification.category, classification.project_name,
        classification.supplier_name, classification.priority, classification.is_internal, uid,
-       snippetText]
+       snippetText, department]
     );
 
     if (autoReply && classification.email_type === "important" && classification.priority === "high") {
@@ -350,6 +382,10 @@ router.get("/smart-email/messages", async (req, res) => {
     else if (filter === "promotion")  { where += " AND email_type='promotion'"; }
     else if (filter === "information") { where += " AND email_type='information'"; }
     else if (filter === "internal")   { where += " AND is_internal=true"; }
+    else if (filter === "dept") {
+      where += " AND is_internal=true";
+      if (value) { vals.push(value); where += ` AND department=$${vals.length}`; }
+    }
     else if (filter === "project")    {
       where += " AND category='project'";
       if (value) { vals.push(value); where += ` AND project_name=$${vals.length}`; }
@@ -370,7 +406,7 @@ router.get("/smart-email/messages", async (req, res) => {
     const result = await pool.query(
       `SELECT e.uid, e.subject, e.from_addr, e.to_addr, e.cc_addr, e.email_date, e.seen, e.has_attachment,
               e.email_type, e.category, e.project_name, e.supplier_name, e.is_internal, e.priority,
-              e.auto_replied, e.classified,
+              e.auto_replied, e.classified, e.department,
               LEFT(COALESCE(
                 NULLIF(e.body_text, ''),
                 regexp_replace(e.body_html, '<[^>]+>', ' ', 'g')
@@ -427,10 +463,15 @@ router.get("/smart-email/stats", async (req, res) => {
       `SELECT supplier_name, COUNT(*) as count FROM smart_email_inbox WHERE category='supplier' AND supplier_name IS NOT NULL ${acctFilter} GROUP BY supplier_name ORDER BY count DESC LIMIT 20`,
       acctVals
     );
+    const departments = await pool.query(
+      `SELECT department, COUNT(*) as count FROM smart_email_inbox WHERE is_internal=true AND department IS NOT NULL ${acctFilter} GROUP BY department ORDER BY count DESC`,
+      acctVals
+    );
     res.json({
       stats: r.rows[0],
       projects: projects.rows,
       suppliers: suppliers.rows,
+      departments: departments.rows,
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

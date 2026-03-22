@@ -39,6 +39,7 @@ interface SmartEmail {
   priority: Priority | null;
   auto_replied: boolean;
   classified: boolean;
+  department: string | null;
   snippet: string | null;
   has_draft: boolean;
 }
@@ -52,6 +53,7 @@ interface Stats {
 
 interface ProjectCount { project_name: string; count: string; }
 interface SupplierCount { supplier_name: string; count: string; }
+interface DepartmentCount { department: string; count: string; }
 
 function senderName(from: string) {
   const m = from.match(/^(.+?)\s*</);
@@ -98,7 +100,7 @@ const CAT_CONFIG: Record<string, { icon: any; color: string }> = {
   other:    { icon: Mail,       color: "text-gray-500" },
 };
 
-type FilterKey = "all"|"important"|"information"|"promotion"|"internal"|"project"|"supplier"|"unread"|"high"|"drafts"|string;
+type FilterKey = "all"|"important"|"information"|"promotion"|"internal"|"project"|"supplier"|"unread"|"high"|"drafts"|"dept"|string;
 
 interface NavItem { key: FilterKey; label: string; icon: any; color: string; count?: number; value?: string; indent?: boolean; }
 
@@ -666,6 +668,7 @@ export default function SmartInbox() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [projects, setProjects] = useState<ProjectCount[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierCount[]>([]);
+  const [departments, setDepartments] = useState<DepartmentCount[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [classifying, setClassifying] = useState(false);
@@ -703,6 +706,7 @@ export default function SmartInbox() {
       setStats(data.stats);
       setProjects(data.projects || []);
       setSuppliers(data.suppliers || []);
+      setDepartments(data.departments || []);
     } catch {}
   }, [userEmail]);
 
@@ -944,6 +948,31 @@ export default function SmartInbox() {
                       <Truck className={cn("w-3 h-3 shrink-0", isActive ? "text-white" : "text-orange-500")} />
                       <span className="flex-1 text-left truncate">{s.supplier_name}</span>
                       <span className={cn("text-[10px] font-bold px-1 py-0.5 rounded-full", isActive ? "bg-white/20" : "bg-gray-100 text-gray-500")}>{s.count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Departments sub-list (Internal emails) */}
+            {departments.length > 0 && (
+              <div>
+                <button onClick={() => toggleSection("departments")} className="w-full flex items-center justify-between px-2 py-1.5 mb-0.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Departments</span>
+                  {expandedSections.includes("departments") ? <ChevronDown className="w-3 h-3 text-gray-300" /> : <ChevronRight className="w-3 h-3 text-gray-300" />}
+                </button>
+                {expandedSections.includes("departments") && departments.map(d => {
+                  const isActive = activeFilter === "dept" && filterValue === d.department;
+                  return (
+                    <button key={d.department}
+                      onClick={() => handleFilter("dept", d.department)}
+                      className={cn(
+                        "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all pl-5",
+                        isActive ? "bg-teal-600 text-white" : "text-gray-600 hover:bg-gray-50"
+                      )}>
+                      <Users className={cn("w-3 h-3 shrink-0", isActive ? "text-white" : "text-teal-500")} />
+                      <span className="flex-1 text-left truncate">{d.department}</span>
+                      <span className={cn("text-[10px] font-bold px-1 py-0.5 rounded-full", isActive ? "bg-white/20" : "bg-gray-100 text-gray-500")}>{d.count}</span>
                     </button>
                   );
                 })}
