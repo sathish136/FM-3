@@ -31,21 +31,66 @@ const erpHeaders = () => ({ Accept: "application/json", Authorization: `token ${
 // Cache: email -> department
 const deptCache = new Map<string, string>();
 
+function inferDeptFromEmail(email: string): string | null {
+  const username = email.split("@")[0].toLowerCase().replace(/[-_]\d+$/, "");
+  const map: Record<string, string> = {
+    hr: "HR",
+    career: "HR",
+    accounts: "Accounts",
+    account: "Accounts",
+    finance: "Accounts",
+    purchase: "Purchase",
+    purchases: "Purchase",
+    projects: "Projects",
+    project: "Projects",
+    design: "Design",
+    it: "It - WTT",
+    erp: "It - WTT",
+    erp1: "It - WTT",
+    noreply: "System",
+    "no-reply": "System",
+    admin: "Administration",
+    ps: "PS - WTT",
+    sales: "Sales",
+    marketing: "Marketing",
+    quality: "Quality",
+    qa: "Quality",
+    production: "Production",
+    logistics: "Logistics",
+    legal: "Legal",
+    operations: "Operations",
+    om: "Operations",
+    support: "Support",
+  };
+  return map[username] ?? null;
+}
+
 async function lookupDepartment(emailAddr: string): Promise<string | null> {
   const raw = emailAddr.match(/<(.+?)>/) ? emailAddr.match(/<(.+?)>/)![1] : emailAddr.trim();
   if (deptCache.has(raw)) return deptCache.get(raw)!;
   try {
     const fields = encodeURIComponent('["department"]');
-    const filters = encodeURIComponent(`[["user_id","=","${raw}"]]`);
-    const r = await fetch(`${ERP_URL}/api/resource/Employee?filters=${filters}&fields=${fields}&limit=1`, { headers: erpHeaders() });
-    if (!r.ok) return null;
-    const data: any = await r.json();
-    const dept = data?.data?.[0]?.department || null;
-    if (dept) deptCache.set(raw, dept);
-    return dept;
-  } catch {
-    return null;
-  }
+    // try user_id first
+    const f1 = encodeURIComponent(`[["user_id","=","${raw}"]]`);
+    const r1 = await fetch(`${ERP_URL}/api/resource/Employee?filters=${f1}&fields=${fields}&limit=1`, { headers: erpHeaders() });
+    if (r1.ok) {
+      const d1: any = await r1.json();
+      const dept = d1?.data?.[0]?.department || null;
+      if (dept) { deptCache.set(raw, dept); return dept; }
+    }
+    // try company_email
+    const f2 = encodeURIComponent(`[["company_email","=","${raw}"]]`);
+    const r2 = await fetch(`${ERP_URL}/api/resource/Employee?filters=${f2}&fields=${fields}&limit=1`, { headers: erpHeaders() });
+    if (r2.ok) {
+      const d2: any = await r2.json();
+      const dept = d2?.data?.[0]?.department || null;
+      if (dept) { deptCache.set(raw, dept); return dept; }
+    }
+  } catch { /* ignore */ }
+  // fallback: infer from email prefix
+  const inferred = inferDeptFromEmail(raw);
+  if (inferred) deptCache.set(raw, inferred);
+  return inferred;
 }
 
 async function initTables() {
@@ -1026,17 +1071,29 @@ async function syncErpData(): Promise<void> {
       if (emp.user_id) emailDeptMap.set(emp.user_id.toLowerCase().trim(), dept);
       if (emp.company_email) emailDeptMap.set(emp.company_email.toLowerCase().trim(), dept);
     }
-    if (emailDeptMap.size > 0) {
-      const internals = await pool.query(
-        "SELECT uid, from_addr FROM smart_email_inbox WHERE is_internal=true AND (department IS NULL OR department='')"
-      );
-      for (const row of internals.rows) {
-        const match = row.from_addr?.match(/<(.+?)>/) || row.from_addr?.match(/^([^\s]+)$/);
-        const email = (match ? match[1] : row.from_addr || "").toLowerCase().trim();
-        const dept = emailDeptMap.get(email) || null;
-        if (dept) {
-          await pool.query("UPDATE smart_email_inbox SET department=$1 WHERE uid=$2", [dept, row.uid]);
-        }
+    // Pass 1: assign departments from ERPNext employee map
+    const internals = await pool.query(
+      "SELECT uid, from_addr FROM smart_email_inbox WHERE is_internal=true AND (department IS NULL OR department='')"
+    );
+    for (const row of internals.rows) {
+      const match = row.from_addr?.match(/<(.+?)>/) || row.from_addr?.match(/^([^\s]+)$/);
+      const email = (match ? match[1] : row.from_addr || "").toLowerCase().trim();
+      const dept = emailDeptMap.get(email) || null;
+      if (dept) {
+        await pool.query("UPDATE smart_email_inbox SET department=$1 WHERE uid=$2", [dept, row.uid]);
+      }
+    }
+
+    // Pass 2: infer department from email prefix for any still-unassigned internal emails
+    const stillUnassigned = await pool.query(
+      "SELECT uid, from_addr FROM smart_email_inbox WHERE is_internal=true AND (department IS NULL OR department='')"
+    );
+    for (const row of stillUnassigned.rows) {
+      const match = row.from_addr?.match(/<(.+?)>/) || row.from_addr?.match(/^([^\s]+)$/);
+      const email = (match ? match[1] : row.from_addr || "").toLowerCase().trim();
+      const inferred = inferDeptFromEmail(email);
+      if (inferred) {
+        await pool.query("UPDATE smart_email_inbox SET department=$1 WHERE uid=$2", [inferred, row.uid]);
       }
     }
 
