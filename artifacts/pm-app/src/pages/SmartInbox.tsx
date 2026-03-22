@@ -483,15 +483,15 @@ function EmailDetail({ email, onClose, onDeleted, userEmail, isTrash }: {
                 <div className="flex items-center justify-center py-16">
                   <Loader2 className="w-6 h-6 text-gray-300 animate-spin" />
                 </div>
-              ) : body?.html ? (
+              ) : (body?.html || body?.body_html) ? (
                 <div
                   className="prose prose-sm max-w-none text-gray-700 text-[13px] leading-relaxed"
-                  dangerouslySetInnerHTML={{ __html: body.html }}
+                  dangerouslySetInnerHTML={{ __html: body.html || body.body_html }}
                   style={{ fontFamily: "inherit" }}
                 />
               ) : (
                 <pre className="text-[13px] text-gray-700 whitespace-pre-wrap leading-relaxed font-sans">
-                  {body?.text || email.snippet || "(no content)"}
+                  {body?.text || body?.body_text || email.snippet || "(no content)"}
                 </pre>
               )}
             </div>
