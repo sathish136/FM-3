@@ -9,6 +9,7 @@ import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth, type AuthUser } from "@/hooks/useAuth";
 import { AISearch } from "@/components/AISearch";
+import { GlobalSearch } from "@/components/GlobalSearch";
 import { WaterDropAnimation } from "@/components/WaterAnimation";
 import { useTheme, THEME_PRESETS } from "@/hooks/useTheme";
 
@@ -462,10 +463,11 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
             <span className="md:hidden text-sm font-semibold text-gray-800 fm-text-main">{pageTitle}</span>
           </div>
 
-          {/* AI Search — always rendered so the modal works on mobile too.
-              The trigger button inside AISearch is hidden on mobile;
-              the Sparkles icon button below triggers it instead. */}
-          <div className="flex flex-1 justify-center px-4">
+          {/* Center: global nav search + AI assistant */}
+          <div className="flex flex-1 items-center justify-center gap-2 px-4">
+            <div className="hidden md:flex flex-1 max-w-xs">
+              <GlobalSearch />
+            </div>
             <AISearch currentPath={location} forceOpen={aiTrigger} hideTriggerOnMobile />
           </div>
 
