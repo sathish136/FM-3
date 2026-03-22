@@ -67,9 +67,11 @@ function ValueBox({ tagId, decimals = 2, values }: { tagId: string; decimals?: n
 // ─── Single tag row ─────────────────────────────────────────────────────────
 function TagRow({ tag, values }: { tag: TagDef; values: Record<string, TagValueResult> | null }) {
   return (
-    <div className="flex items-center justify-between gap-2 py-[3px]">
-      <span className="text-[11px] text-[#c0cce0] leading-tight truncate">{tag.label}{tag.unit ? ` (${tag.unit})` : ""}</span>
-      <ValueBox tagId={tag.id} decimals={tag.decimals} values={values} />
+    <div className="flex items-center gap-1.5 py-[2px]">
+      <span className="text-[11px] text-[#c0cce0] leading-tight flex-1 min-w-0 truncate">{tag.label}{tag.unit ? ` (${tag.unit})` : ""}</span>
+      <div className="shrink-0 flex justify-end w-[72px]">
+        <ValueBox tagId={tag.id} decimals={tag.decimals} values={values} />
+      </div>
     </div>
   );
 }
@@ -77,14 +79,14 @@ function TagRow({ tag, values }: { tag: TagDef; values: Record<string, TagValueR
 // ─── Section within a site ──────────────────────────────────────────────────
 function SiteSection({ section, values }: { section: SectionDef; values: Record<string, TagValueResult> | null }) {
   return (
-    <div className="mb-2">
+    <div className="mb-1">
       {section.title && (
-        <div className="text-[10px] font-bold text-[#4a9eda] uppercase tracking-widest mb-1 border-b border-[#1a2a40] pb-0.5">
+        <div className="text-[10px] font-bold text-[#4a9eda] uppercase tracking-widest mb-0.5 border-b border-[#1a2a40] pb-0.5">
           {section.title}
         </div>
       )}
       {section.columns && section.columns > 1 ? (
-        <div className={cn("grid gap-x-3", section.columns === 2 ? "grid-cols-2" : "grid-cols-3")}>
+        <div className={cn("grid gap-x-2", section.columns === 2 ? "grid-cols-2" : "grid-cols-3")}>
           {section.tags.map(tag => (
             <TagRow key={tag.id} tag={tag} values={values} />
           ))}
@@ -126,7 +128,7 @@ function SitePanel({ site, values, isActive, onClick }: {
         <span>{site.name}</span>
         {hasAlarm && <span className="text-[9px] font-bold bg-red-600 px-1 rounded animate-pulse">ALARM</span>}
       </div>
-      <div className="p-2 bg-[#0a1628]">
+      <div className="px-2 pt-1.5 pb-1 bg-[#0a1628]">
         {site.sections.map((sec, i) => (
           <SiteSection key={i} section={sec} values={values} />
         ))}
@@ -251,13 +253,13 @@ export default function SiteData() {
         )}
 
         {/* ── All sites grid ── */}
-        <div className="flex-1 overflow-auto p-3">
+        <div className="flex-1 overflow-auto p-2">
           {sites.length === 0 ? (
             <div className="flex items-center justify-center h-64">
               <div className="text-[#2a4a6a] text-sm animate-pulse">Loading site configuration…</div>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">
               {sites.map(site => (
                 <SitePanel
                   key={site.id}
