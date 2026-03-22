@@ -144,9 +144,19 @@ function AccountForm({
 
   const set = (k: keyof FormState, v: any) => setForm(f => ({ ...f, [k]: v }));
 
+  const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
   const handleSave = async () => {
     if (!form.displayName || !form.emailAddress || !form.gmailUser || !form.gmailAppPassword) {
       setError("All fields except Assigned User and Default are required.");
+      return;
+    }
+    if (!isValidEmail(form.emailAddress)) {
+      setError("Please enter a valid email address (e.g. you@gmail.com).");
+      return;
+    }
+    if (!isValidEmail(form.gmailUser)) {
+      setError("Please enter a valid Gmail username (e.g. you@gmail.com).");
       return;
     }
     setSaving(true); setError("");

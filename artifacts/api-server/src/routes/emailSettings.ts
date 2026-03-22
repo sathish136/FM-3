@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { emailAccountsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { ImapFlow } from "imapflow";
 
 const ERP_URL = process.env.ERPNEXT_URL || "https://erp.wttint.com";
 const API_KEY = process.env.ERPNEXT_API_KEY || "";
@@ -18,6 +19,31 @@ const emailPool = new Pool({
 const db = drizzle(emailPool, { schema: { emailAccountsTable } });
 
 const router = Router();
+
+// ─── IMAP connection test ─────────────────────────────────────────────────────
+async function testImapConnection(gmailUser: string, gmailAppPassword: string): Promise<void> {
+  const client = new ImapFlow({
+    host: "imap.gmail.com",
+    port: 993,
+    secure: true,
+    auth: { user: gmailUser, pass: gmailAppPassword.replace(/\s/g, "") },
+    logger: false,
+  });
+  let connectionError: Error | null = null;
+  client.on("error", (err: Error) => { connectionError = err; });
+  try {
+    await client.connect();
+    if (connectionError) throw connectionError;
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    if (msg.includes("ETIMEOUT") || msg.includes("timeout") || msg.includes("ECONNREFUSED") || msg.includes("ENOTFOUND")) {
+      throw new Error("Cannot reach Gmail IMAP server. Check that IMAP is enabled in Gmail settings (Settings → See All Settings → Forwarding and POP/IMAP → Enable IMAP).");
+    }
+    throw new Error("Gmail authentication failed. Please check your Gmail username and App Password. Generate an App Password at: Google Account → Security → 2-Step Verification → App Passwords.");
+  } finally {
+    await client.logout().catch(() => {});
+  }
+}
 
 // Ensure table exists
 emailPool.query(`
