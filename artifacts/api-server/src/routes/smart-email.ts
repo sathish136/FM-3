@@ -441,7 +441,7 @@ async function classifyEmailRecord(uid: string, autoReply = true, userEmail?: st
   }
 }
 
-async function triggerAutoReply(uid: string, userEmail?: string) {
+async function triggerAutoReply(uid: string, userEmail?: string, force = false) {
   const res = await pool.query("SELECT * FROM smart_email_inbox WHERE uid=$1", [uid]);
   const email = res.rows[0];
   if (!email) return;
@@ -455,8 +455,13 @@ async function triggerAutoReply(uid: string, userEmail?: string) {
     if (!toAddr.includes(userEmail.toLowerCase())) return;
   }
 
-  const existingDraft = await pool.query("SELECT id FROM smart_email_drafts WHERE email_uid=$1 AND sent=false", [uid]);
-  if (existingDraft.rows.length > 0) return;
+  if (!force) {
+    const existingDraft = await pool.query("SELECT id FROM smart_email_drafts WHERE email_uid=$1 AND sent=false", [uid]);
+    if (existingDraft.rows.length > 0) return;
+  } else {
+    // Delete any existing unsent draft before regenerating
+    await pool.query("DELETE FROM smart_email_drafts WHERE email_uid=$1 AND sent=false", [uid]);
+  }
 
   const bodyText = email.body_text || (email.body_html ? email.body_html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ") : "");
 
@@ -873,8 +878,9 @@ router.post("/smart-email/send", smartUpload.array("attachments"), async (req, r
 
 // POST /smart-email/auto-reply/:uid — generate draft (does NOT send)
 router.post("/smart-email/auto-reply/:uid", async (req, res) => {
+  const force = req.body?.force === true;
   try {
-    await triggerAutoReply(req.params.uid);
+    await triggerAutoReply(req.params.uid, req.body?.user_email, force);
     const draft = await pool.query("SELECT * FROM smart_email_drafts WHERE email_uid=$1 AND sent=false", [req.params.uid]);
     res.json({ ok: true, draft: draft.rows[0] || null });
   } catch (err: any) {

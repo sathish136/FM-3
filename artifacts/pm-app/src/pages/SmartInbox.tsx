@@ -355,14 +355,20 @@ function EmailDetail({ email, onClose, onDeleted, userEmail, isTrash }: {
   };
 
   const handleAutoReply = async () => {
+    const isRegenerate = hasDraft || autoReplied;
     setAutoReplying(true);
+    setTab("draft");
     try {
-      const res = await api(`/smart-email/auto-reply/${email.uid}`, { method: "POST" });
+      const res = await api(`/smart-email/auto-reply/${email.uid}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force: isRegenerate, user_email: userEmail }),
+      });
       const text = res.draft?.draft_text || "";
       setDraftText(text);
       setDraftEdited(text);
-      setHasDraft(true);
-      setTab("draft");
+      setHasDraft(!!text);
+      setAutoReplied(false);
     } catch {}
     setAutoReplying(false);
   };
@@ -469,18 +475,17 @@ function EmailDetail({ email, onClose, onDeleted, userEmail, isTrash }: {
               className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1B2A5E] text-white text-xs font-semibold rounded-lg hover:opacity-90">
               <Reply className="w-3.5 h-3.5" />Reply
             </button>
-            {!autoReplied && !hasDraft && (
+            {!hasDraft ? (
               <button onClick={handleAutoReply} disabled={autoReplying}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:opacity-90 disabled:opacity-60">
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 disabled:opacity-60 shadow-sm">
                 {autoReplying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
-                {autoReplying ? "Drafting…" : "Generate Draft"}
+                {autoReplying ? "Generating…" : "Generate Reply"}
               </button>
-            )}
-            {!autoReplied && hasDraft && (
+            ) : (
               <button onClick={() => setTab("draft")}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 text-white text-xs font-semibold rounded-lg hover:opacity-90 ring-2 ring-orange-300">
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 text-white text-xs font-semibold rounded-lg hover:bg-orange-700 ring-2 ring-orange-300 shadow-sm">
                 <Bot className="w-3.5 h-3.5" />
-                View Draft
+                {autoReplied ? "View Sent Draft" : "Review Draft"}
               </button>
             )}
             {autoReplied && (
@@ -520,7 +525,7 @@ function EmailDetail({ email, onClose, onDeleted, userEmail, isTrash }: {
         <div className="flex border-b border-gray-100 px-5 gap-1">
           {([
             { key: "mail",  label: "Email",         icon: Mail },
-            { key: "draft", label: hasDraft ? "Draft ●" : "Draft", icon: Bot, hidden: autoReplied },
+            { key: "draft", label: hasDraft && !autoReplied ? "Draft ●" : "Draft", icon: Bot, hidden: false },
             { key: "reply", label: "Smart Replies", icon: Wand2 },
           ] as { key: string; label: string; icon: any; hidden?: boolean }[]).filter(t => !t.hidden).map(t => (
             <button key={t.key} onClick={() => handleTabChange(t.key as any)}
@@ -603,20 +608,44 @@ function EmailDetail({ email, onClose, onDeleted, userEmail, isTrash }: {
 
           {tab === "draft" && (
             <div className="p-5 flex flex-col gap-4">
+              {/* Header */}
               <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center">
+                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center shrink-0">
                   <Bot className="w-3.5 h-3.5 text-white" />
                 </div>
-                <span className="text-sm font-bold text-gray-800">AI Draft Reply</span>
-                <span className="text-[10px] text-gray-400 ml-1">Review and edit before sending</span>
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-bold text-gray-800">AI Generated Reply</span>
+                  <span className="text-[10px] text-gray-400 ml-2">Review and edit, then send manually</span>
+                </div>
+                {(hasDraft || autoReplied) && (
+                  <button onClick={handleAutoReply} disabled={autoReplying}
+                    className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 disabled:opacity-60 transition-colors shrink-0">
+                    {autoReplying ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                    Regenerate
+                  </button>
+                )}
               </div>
 
-              {hasDraft ? (
+              {/* Recipient info */}
+              <div className="flex flex-col gap-1 bg-gray-50 rounded-xl px-4 py-3 border border-gray-100 text-xs text-gray-600">
+                <div className="flex gap-2">
+                  <span className="font-semibold text-gray-400 w-14 shrink-0">To:</span>
+                  <span className="font-medium text-gray-700">{email.from_addr}</span>
+                </div>
+                <div className="flex gap-2">
+                  <span className="font-semibold text-gray-400 w-14 shrink-0">Subject:</span>
+                  <span className="text-gray-600">Re: {email.subject}</span>
+                </div>
+              </div>
+
+              {autoReplying ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-3 text-amber-600">
+                  <Loader2 className="w-7 h-7 animate-spin" />
+                  <p className="text-sm font-semibold">Generating reply based on email content…</p>
+                  <p className="text-[11px] text-gray-400">This takes a few seconds</p>
+                </div>
+              ) : hasDraft ? (
                 <>
-                  <div className="text-[11px] text-gray-500 mb-1">
-                    <span className="font-semibold text-gray-600">To:</span> {email.from_addr}
-                    <span className="ml-4 font-semibold text-gray-600">Subject:</span> Re: {email.subject}
-                  </div>
                   <textarea
                     value={draftEdited}
                     onChange={e => setDraftEdited(e.target.value)}
@@ -624,39 +653,52 @@ function EmailDetail({ email, onClose, onDeleted, userEmail, isTrash }: {
                     className="w-full border border-orange-200 rounded-xl p-4 text-[13px] text-gray-700 leading-relaxed font-sans bg-orange-50/30 focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 resize-none"
                     placeholder="Draft content…"
                   />
+                  {autoReplied && (
+                    <div className="flex items-center gap-2 text-[11px] text-green-600 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                      This draft was already sent. You can regenerate a new one above.
+                    </div>
+                  )}
                   <div className="flex items-center gap-3 flex-wrap">
-                    <button
-                      onClick={handleSendDraft}
-                      disabled={draftSending || discardingDraft || !draftEdited.trim()}
-                      className="flex items-center gap-2 px-5 py-2.5 bg-orange-600 text-white text-sm font-bold rounded-xl hover:bg-orange-700 disabled:opacity-50 transition-colors shadow-sm">
-                      {draftSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                      {draftSending ? "Sending…" : "Confirm & Send"}
-                    </button>
+                    {!autoReplied && (
+                      <button
+                        onClick={handleSendDraft}
+                        disabled={draftSending || discardingDraft || !draftEdited.trim()}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-orange-600 text-white text-sm font-bold rounded-xl hover:bg-orange-700 disabled:opacity-50 transition-colors shadow-sm">
+                        {draftSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                        {draftSending ? "Sending…" : "Confirm & Send"}
+                      </button>
+                    )}
                     <button
                       onClick={() => setDraftEdited(draftText)}
                       disabled={draftSending || discardingDraft}
                       className="text-xs text-gray-400 hover:text-gray-600 disabled:opacity-50 transition-colors">
                       Reset to original
                     </button>
-                    <button
-                      onClick={handleDiscardDraft}
-                      disabled={draftSending || discardingDraft}
-                      className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-600 disabled:opacity-50 transition-colors ml-auto">
-                      {discardingDraft ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                      {discardingDraft ? "Discarding…" : "Discard Draft"}
-                    </button>
+                    {!autoReplied && (
+                      <button
+                        onClick={handleDiscardDraft}
+                        disabled={draftSending || discardingDraft}
+                        className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-600 disabled:opacity-50 transition-colors ml-auto">
+                        {discardingDraft ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                        {discardingDraft ? "Discarding…" : "Discard Draft"}
+                      </button>
+                    )}
                   </div>
                 </>
               ) : (
-                <div className="flex flex-col items-center justify-center py-10 gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-orange-50 border border-orange-100 flex items-center justify-center">
-                    <Bot className="w-6 h-6 text-orange-400" />
+                <div className="flex flex-col items-center justify-center py-12 gap-4 bg-gradient-to-b from-amber-50/50 to-white rounded-2xl border border-amber-100">
+                  <div className="w-14 h-14 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center shadow-sm">
+                    <Bot className="w-7 h-7 text-amber-400" />
                   </div>
-                  <p className="text-sm text-gray-500">No draft yet. Generate one below.</p>
+                  <div className="text-center">
+                    <p className="text-sm font-semibold text-gray-700 mb-1">Generate an AI Reply</p>
+                    <p className="text-[12px] text-gray-400 max-w-[260px]">AI will read this email and draft a professional reply. You review it before sending.</p>
+                  </div>
                   <button onClick={handleAutoReply} disabled={autoReplying}
-                    className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white text-sm font-semibold rounded-xl hover:bg-amber-600 disabled:opacity-60 transition-colors">
+                    className="flex items-center gap-2 px-5 py-2.5 bg-amber-500 text-white text-sm font-bold rounded-xl hover:bg-amber-600 disabled:opacity-60 transition-colors shadow-sm">
                     {autoReplying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
-                    {autoReplying ? "Generating draft…" : "Generate AI Draft"}
+                    Generate Reply
                   </button>
                 </div>
               )}
