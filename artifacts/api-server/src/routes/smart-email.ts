@@ -866,6 +866,17 @@ router.post("/smart-email/auto-reply/:uid", async (req, res) => {
   }
 });
 
+// DELETE /smart-email/draft/:uid — discard (delete) the unsent draft
+router.delete("/smart-email/draft/:uid", async (req, res) => {
+  try {
+    await pool.query("DELETE FROM smart_email_drafts WHERE email_uid=$1 AND sent=false", [req.params.uid]);
+    await pool.query("UPDATE smart_email_inbox SET has_draft=false WHERE uid=$1", [req.params.uid]);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /smart-email/draft/:uid — get unsent draft for an email
 router.get("/smart-email/draft/:uid", async (req, res) => {
   try {
