@@ -515,7 +515,7 @@ function OverviewView({
 
       {/* ── Who Is Causing Delays? + Action Plan (side by side, equal height) ── */}
       {(personDelays.size > 0 || supplierDelays.size > 0 || actions.length > 0) && (
-        <div className="grid sm:grid-cols-2 gap-3 items-start">
+        <div className="grid sm:grid-cols-2 gap-3 items-stretch">
 
           {/* Left: Who Is Causing Delays */}
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
