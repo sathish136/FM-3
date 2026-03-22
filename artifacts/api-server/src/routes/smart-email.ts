@@ -413,25 +413,24 @@ async function fetchProfileByEmail(email: string): Promise<UserProfile | null> {
 }
 
 function buildSignatureHtml(profile: UserProfile | null): string {
+  // Matches the Email compose signature exactly (Email.tsx buildSignatureHtml)
   const lines: string[] = [];
-  lines.push(`<p style="margin:0 0 4px;font-size:12px;color:#6b7280;font-style:italic;">Best Regards,</p>`);
+  lines.push(`<p style="margin:0;font-size:12px;color:#6b7280;font-style:italic;">Best Regards,</p>`);
   if (profile?.full_name) {
-    lines.push(`<p style="margin:0;font-size:14px;font-weight:700;color:#111827;letter-spacing:-0.01em;">${profile.full_name}</p>`);
-  } else {
-    lines.push(`<p style="margin:0;font-size:14px;font-weight:700;color:#111827;">WTT Team</p>`);
+    lines.push(`<p style="margin:0;font-size:14px;font-weight:700;color:#111827;">${profile.full_name}</p>`);
   }
   if (profile?.designation) {
-    lines.push(`<p style="margin:2px 0 0;font-size:11px;font-weight:700;color:#e05a00;text-transform:uppercase;letter-spacing:0.06em;">${profile.designation}</p>`);
+    lines.push(`<p style="margin:0;font-size:12px;font-weight:600;color:#e05a00;">${profile.designation}</p>`);
   }
   if (profile?.mobile_no || profile?.phone) {
-    lines.push(`<p style="margin:2px 0 0;font-size:12px;color:#374151;">${profile.mobile_no || profile.phone}</p>`);
+    lines.push(`<p style="margin:0;font-size:12px;color:#4b5563;">${profile.mobile_no || profile.phone}</p>`);
   }
   const company = profile?.company || "WTT INTERNATIONAL PVT LTD";
   lines.push(`<p style="margin:4px 0 0;font-size:12px;font-weight:700;color:#111827;text-transform:uppercase;letter-spacing:0.05em;">${company}</p>`);
   if (profile?.branch) {
     lines.push(`<p style="margin:0;font-size:11px;color:#6b7280;">${profile.branch}</p>`);
   }
-  return `<br/><hr style="border:none;border-top:1px dashed #e5e7eb;margin:10px 0;"/><div style="font-family:'Inter','Segoe UI',sans-serif;line-height:1.5;">${lines.join("")}</div>`;
+  return `<br/><hr style="border:none;border-top:1px dashed #e5e7eb;margin:12px 0;"/><div style="font-family:'Inter','Segoe UI',sans-serif;">${lines.join("")}</div>`;
 }
 
 async function sendEmail(
