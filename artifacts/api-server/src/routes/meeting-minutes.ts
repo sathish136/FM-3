@@ -1,8 +1,32 @@
 import { Router } from "express";
 import multer from "multer";
-import { db } from "@workspace/db";
+import { db, pool } from "@workspace/db";
 import { meetingMinutesTable, projectsTable } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
+
+// Ensure meeting_minutes and spreadsheets tables exist on startup
+pool.query(`
+  CREATE TABLE IF NOT EXISTS projects (
+    id SERIAL PRIMARY KEY, name TEXT NOT NULL, description TEXT,
+    status TEXT NOT NULL DEFAULT 'planning', priority TEXT DEFAULT 'medium',
+    progress INTEGER NOT NULL DEFAULT 0, due_date TEXT, created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+  CREATE TABLE IF NOT EXISTS meeting_minutes (
+    id SERIAL PRIMARY KEY, title TEXT NOT NULL,
+    project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+    attendees TEXT, venue TEXT, date TEXT NOT NULL,
+    raw_notes TEXT, ai_summary TEXT, action_items TEXT,
+    status TEXT NOT NULL DEFAULT 'draft', mode TEXT NOT NULL DEFAULT 'manual',
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+  CREATE TABLE IF NOT EXISTS spreadsheets (
+    id SERIAL PRIMARY KEY, name TEXT NOT NULL,
+    project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+    data TEXT NOT NULL DEFAULT '{}',
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(), updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+`).then(() => console.log("Meeting minutes & spreadsheets tables ready"))
+  .catch((e: any) => console.error("Meeting minutes tables migration error:", e.message));
 import OpenAI from "openai";
 import { toFile } from "openai";
 import { Readable } from "stream";
@@ -37,9 +61,16 @@ router.post("/meeting-minutes", async (req, res) => {
   try {
     const { projectId, ...rest } = req.body;
     const safeProjectId = await resolveProjectId(projectId);
-    const [row] = await db.insert(meetingMinutesTable).values({ ...rest, projectId: safeProjectId }).returning();
+    // Strip unknown keys; only pass known schema fields
+    const allowed = ["title","date","venue","attendees","status","mode","rawNotes","aiSummary","actionItems"];
+    const clean: Record<string, any> = {};
+    for (const k of allowed) if (rest[k] !== undefined) clean[k] = rest[k] ?? null;
+    const [row] = await db.insert(meetingMinutesTable).values({ ...clean, projectId: safeProjectId }).returning();
     res.status(201).json(row);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e: any) {
+    console.error("POST /meeting-minutes error:", e?.cause ?? e);
+    res.status(500).json({ error: String(e?.cause ?? e) });
+  }
 });
 
 router.get("/meeting-minutes/:id", async (req, res) => {

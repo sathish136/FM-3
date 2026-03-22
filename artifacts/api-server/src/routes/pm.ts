@@ -1,10 +1,47 @@
 import { Router } from "express";
-import { db } from "@workspace/db";
+import { db, pool } from "@workspace/db";
 import {
   projectsTable, tasksTable, campaignsTable, leadsTable, teamMembersTable,
   userPermissionsTable,
 } from "@workspace/db/schema";
 import { eq, sql } from "drizzle-orm";
+
+// Ensure all PM tables exist on startup
+pool.query(`
+  CREATE TABLE IF NOT EXISTS projects (
+    id SERIAL PRIMARY KEY, name TEXT NOT NULL, description TEXT,
+    status TEXT NOT NULL DEFAULT 'planning', priority TEXT DEFAULT 'medium',
+    progress INTEGER NOT NULL DEFAULT 0, due_date TEXT, created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+  CREATE TABLE IF NOT EXISTS tasks (
+    id SERIAL PRIMARY KEY, title TEXT NOT NULL, description TEXT,
+    project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+    status TEXT NOT NULL DEFAULT 'todo', priority TEXT NOT NULL DEFAULT 'medium',
+    assignee TEXT, due_date TEXT, created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+  CREATE TABLE IF NOT EXISTS campaigns (
+    id SERIAL PRIMARY KEY, name TEXT NOT NULL, description TEXT,
+    status TEXT NOT NULL DEFAULT 'draft', type TEXT NOT NULL,
+    budget NUMERIC(12,2) NOT NULL DEFAULT 0, spent NUMERIC(12,2) DEFAULT 0,
+    leads INTEGER DEFAULT 0, conversions INTEGER DEFAULT 0,
+    start_date TEXT, end_date TEXT, created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+  CREATE TABLE IF NOT EXISTS leads (
+    id SERIAL PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL,
+    phone TEXT, company TEXT, status TEXT NOT NULL DEFAULT 'new',
+    campaign_id INTEGER REFERENCES campaigns(id) ON DELETE SET NULL,
+    notes TEXT, created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+  CREATE TABLE IF NOT EXISTS team_members (
+    id SERIAL PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL,
+    role TEXT NOT NULL, department TEXT, avatar TEXT, created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+  CREATE TABLE IF NOT EXISTS user_permissions (
+    email TEXT PRIMARY KEY, full_name TEXT, has_access BOOLEAN NOT NULL DEFAULT true,
+    modules TEXT NOT NULL DEFAULT '[]', allowed_projects TEXT NOT NULL DEFAULT '[]',
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+`).then(() => console.log("PM tables ready")).catch((e: any) => console.error("PM tables migration error:", e.message));
 import {
   isErpNextConfigured,
   fetchErpNextProjects,
