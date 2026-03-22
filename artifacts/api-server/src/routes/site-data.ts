@@ -428,12 +428,12 @@ setInterval(runSimulation, 2000);
 // ─── Routes ────────────────────────────────────────────────────────────────
 
 // GET /api/site-data/config - returns site definitions
-router.get("/api/site-data/config", (_req, res) => {
+router.get("/site-data/config", (_req, res) => {
   res.json({ sites: SITE_CONFIG });
 });
 
 // GET /api/site-data/values - returns current tag values for all sites
-router.get("/api/site-data/values", (_req, res) => {
+router.get("/site-data/values", (_req, res) => {
   const values: Record<string, { value: number | null; timestamp: number; source: string; status: "normal" | "good" | "alarm" | "offline" }> = {};
 
   for (const tag of allTags) {
@@ -466,7 +466,7 @@ router.get("/api/site-data/values", (_req, res) => {
 
 // POST /api/site-data/push - local ADS bridge can POST updates here
 // Body: { tags: { [tagId]: number } }
-router.post("/api/site-data/push", (req, res) => {
+router.post("/site-data/push", (req, res) => {
   const { tags } = req.body as { tags: Record<string, number> };
   if (!tags || typeof tags !== "object") {
     return res.status(400).json({ error: "Expected { tags: { [tagId]: number } }" });
@@ -486,7 +486,7 @@ router.post("/api/site-data/push", (req, res) => {
 });
 
 // GET /api/site-data/ads-tags - returns all ADS tag paths for reference
-router.get("/api/site-data/ads-tags", (_req, res) => {
+router.get("/site-data/ads-tags", (_req, res) => {
   const tags = allTags.map(t => ({ id: t.id, label: t.label, adsTag: t.adsTag }));
   res.json({ tags });
 });

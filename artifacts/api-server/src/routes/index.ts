@@ -14,6 +14,7 @@ import chatRouter from "./chat";
 import incidentsRouter from "./incidents";
 import drawingsRouter from "./drawings";
 import timelineRouter from "./timeline";
+import siteDataRouter from "./site-data";
 
 const router: IRouter = Router();
 
@@ -32,5 +33,6 @@ router.use(chatRouter);
 router.use(incidentsRouter);
 router.use(drawingsRouter);
 router.use(timelineRouter);
+router.use(siteDataRouter);
 
 export default router;
