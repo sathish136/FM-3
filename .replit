@@ -34,3 +34,19 @@ ERPNEXT_API_SECRET = "b15c3b49acdfef5"
 
 [nix]
 channel = "stable-25_05"
+
+[[ports]]
+localPort = 8080
+externalPort = 80
+
+[[ports]]
+localPort = 8081
+externalPort = 8081
+
+[[ports]]
+localPort = 23117
+externalPort = 3002
+
+[[ports]]
+localPort = 23704
+externalPort = 3001

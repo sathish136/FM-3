@@ -70,11 +70,16 @@ async function initTables() {
   `);
 
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS smart_email_auto_replies (
+    CREATE TABLE IF NOT EXISTS smart_email_drafts (
       id SERIAL PRIMARY KEY,
-      email_uid TEXT NOT NULL,
-      reply_text TEXT NOT NULL,
-      sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      email_uid TEXT NOT NULL UNIQUE,
+      draft_text TEXT NOT NULL,
+      draft_html TEXT,
+      to_addr TEXT,
+      subject TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      sent BOOLEAN NOT NULL DEFAULT false,
+      sent_at TIMESTAMPTZ
     )
   `);
 
@@ -267,7 +272,10 @@ async function classifyEmailRecord(uid: string) {
 async function triggerAutoReply(uid: string) {
   const res = await pool.query("SELECT * FROM smart_email_inbox WHERE uid=$1", [uid]);
   const email = res.rows[0];
-  if (!email || email.auto_replied) return;
+  if (!email) return;
+
+  const existingDraft = await pool.query("SELECT id FROM smart_email_drafts WHERE email_uid=$1 AND sent=false", [uid]);
+  if (existingDraft.rows.length > 0) return;
 
   const bodyText = email.body_text || (email.body_html ? email.body_html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ") : "");
 
@@ -277,7 +285,7 @@ async function triggerAutoReply(uid: string) {
     messages: [
       {
         role: "system",
-        content: `You are the assistant to the Managing Director of WTT International, a water treatment technology company. Write a brief, professional auto-acknowledgment reply. Keep it under 4 sentences. Do not make specific commitments. Just acknowledge receipt and say the MD will respond shortly.`,
+        content: `You are the assistant to the Managing Director of WTT International, a water treatment technology company. Write a brief, professional acknowledgment reply. Keep it under 4 sentences. Do not make specific commitments. Just acknowledge receipt and say the MD will respond shortly.`,
       },
       {
         role: "user",
@@ -294,24 +302,15 @@ async function triggerAutoReply(uid: string) {
     <p style="color:#666;font-size:12px;">---<br/>
     <strong>WTT International</strong><br/>
     Water Loving Technology<br/>
-    <em>This is an automated acknowledgment. The MD will respond personally shortly.</em>
     </p>
   `;
 
-  try {
-    const account = await getAccount();
-    await sendEmail(account, email.from_addr, `Re: ${email.subject}`, htmlReply);
-    await pool.query(
-      "UPDATE smart_email_inbox SET auto_replied=true, auto_reply_sent_at=NOW() WHERE uid=$1",
-      [uid]
-    );
-    await pool.query(
-      "INSERT INTO smart_email_auto_replies (email_uid, reply_text) VALUES ($1, $2)",
-      [uid, replyText]
-    );
-  } catch (err: any) {
-    console.error("auto-reply send error:", err.message);
-  }
+  await pool.query(
+    `INSERT INTO smart_email_drafts (email_uid, draft_text, draft_html, to_addr, subject)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (email_uid) DO UPDATE SET draft_text=$2, draft_html=$3, sent=false`,
+    [uid, replyText, htmlReply, email.from_addr, `Re: ${email.subject}`]
+  );
 }
 
 // ── Routes ──────────────────────────────────────────────────────────────────
@@ -608,11 +607,52 @@ router.post("/smart-email/send", async (req, res) => {
   }
 });
 
-// POST /smart-email/auto-reply/:uid — trigger auto reply manually
+// POST /smart-email/auto-reply/:uid — generate draft (does NOT send)
 router.post("/smart-email/auto-reply/:uid", async (req, res) => {
   try {
     await triggerAutoReply(req.params.uid);
-    res.json({ ok: true });
+    const draft = await pool.query("SELECT * FROM smart_email_drafts WHERE email_uid=$1 AND sent=false", [req.params.uid]);
+    res.json({ ok: true, draft: draft.rows[0] || null });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /smart-email/draft/:uid — get unsent draft for an email
+router.get("/smart-email/draft/:uid", async (req, res) => {
+  try {
+    const r = await pool.query("SELECT * FROM smart_email_drafts WHERE email_uid=$1 AND sent=false ORDER BY created_at DESC LIMIT 1", [req.params.uid]);
+    res.json(r.rows[0] || null);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /smart-email/send-draft/:uid — MD approves and sends the draft
+router.post("/smart-email/send-draft/:uid", async (req, res) => {
+  const { edited_text } = req.body;
+  try {
+    const draftRes = await pool.query("SELECT * FROM smart_email_drafts WHERE email_uid=$1 AND sent=false ORDER BY created_at DESC LIMIT 1", [req.params.uid]);
+    const draft = draftRes.rows[0];
+    if (!draft) return res.status(404).json({ error: "No pending draft found" });
+
+    const finalText = edited_text || draft.draft_text;
+    const htmlBody = `
+      <p>${finalText.replace(/\n/g, "<br/>")}</p>
+      <br/>
+      <p style="color:#666;font-size:12px;">---<br/>
+      <strong>WTT International</strong><br/>
+      Water Loving Technology<br/>
+      </p>
+    `;
+
+    const account = await getAccount();
+    await sendEmail(account, draft.to_addr, draft.subject, htmlBody);
+
+    await pool.query("UPDATE smart_email_drafts SET sent=true, sent_at=NOW() WHERE email_uid=$1 AND sent=false", [req.params.uid]);
+    await pool.query("UPDATE smart_email_inbox SET auto_replied=true, auto_reply_sent_at=NOW() WHERE uid=$1", [req.params.uid]);
+
+    res.json({ ok: true, sent_to: draft.to_addr });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

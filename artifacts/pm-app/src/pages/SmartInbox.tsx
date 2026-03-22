@@ -116,9 +116,9 @@ function PriorityDot({ priority }: { priority: Priority | null }) {
 }
 
 // ─── Compose / Reply Modal ────────────────────────────────────────────────────
-function ReplyModal({ to, subject, defaultBody, onClose, onSent, userEmail }: {
+function ReplyModal({ to, subject, defaultBody, onClose, onSent, userEmail, draftUid, isDraft }: {
   to: string; subject: string; defaultBody: string; onClose: () => void;
-  onSent: () => void; userEmail?: string;
+  onSent: () => void; userEmail?: string; draftUid?: string; isDraft?: boolean;
 }) {
   const [body, setBody] = useState(defaultBody);
   const [sending, setSending] = useState(false);
@@ -128,11 +128,19 @@ function ReplyModal({ to, subject, defaultBody, onClose, onSent, userEmail }: {
   const handleSend = async () => {
     setSending(true); setError("");
     try {
-      await api("/smart-email/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to, subject: `Re: ${subject}`, html: body.replace(/\n/g, "<br/>"), userEmail }),
-      });
+      if (isDraft && draftUid) {
+        await api(`/smart-email/send-draft/${draftUid}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ edited_text: body }),
+        });
+      } else {
+        await api("/smart-email/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ to, subject: `Re: ${subject}`, html: body.replace(/\n/g, "<br/>"), userEmail }),
+        });
+      }
       onSent(); onClose();
     } catch (e: any) { setError(e.message); }
     setSending(false);
@@ -154,9 +162,12 @@ function ReplyModal({ to, subject, defaultBody, onClose, onSent, userEmail }: {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-end p-4 pointer-events-none">
       <div className="pointer-events-auto w-[600px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col max-h-[70vh]">
-        <div className="flex items-center gap-2 px-4 py-3 bg-[#1B2A5E] text-white rounded-t-2xl">
-          <Reply className="w-4 h-4 opacity-70" />
-          <span className="font-semibold text-sm flex-1 truncate">Reply: {subject}</span>
+        <div className={cn("flex items-center gap-2 px-4 py-3 rounded-t-2xl", isDraft ? "bg-orange-600" : "bg-[#1B2A5E]", "text-white")}>
+          {isDraft ? <Eye className="w-4 h-4 opacity-70" /> : <Reply className="w-4 h-4 opacity-70" />}
+          <span className="font-semibold text-sm flex-1 truncate">
+            {isDraft ? "Review Draft Reply" : `Reply: ${subject}`}
+          </span>
+          {isDraft && <span className="text-[10px] bg-white/20 rounded px-2 py-0.5 font-medium">AI Draft — Edit before sending</span>}
           <button onClick={onClose} className="p-1 rounded hover:bg-white/20"><X className="w-4 h-4" /></button>
         </div>
         <div className="px-4 py-2 border-b border-gray-100 text-xs text-gray-500">
@@ -171,9 +182,9 @@ function ReplyModal({ to, subject, defaultBody, onClose, onSent, userEmail }: {
         {error && <p className="px-4 text-xs text-red-600">{error}</p>}
         <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-100">
           <button onClick={handleSend} disabled={sending}
-            className="flex items-center gap-2 px-5 py-2 bg-[#1B2A5E] text-white text-sm font-semibold rounded-lg hover:opacity-90 disabled:opacity-60">
+            className={cn("flex items-center gap-2 px-5 py-2 text-white text-sm font-semibold rounded-lg hover:opacity-90 disabled:opacity-60", isDraft ? "bg-orange-600" : "bg-[#1B2A5E]")}>
             {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-            Send Reply
+            {isDraft ? "Confirm & Send" : "Send Reply"}
           </button>
           <button onClick={handleImprove} disabled={improving}
             className="flex items-center gap-1.5 px-3 py-2 border border-purple-200 text-purple-700 text-sm rounded-lg hover:bg-purple-50 transition-colors">
@@ -200,8 +211,11 @@ function EmailDetail({ email, onClose, onDeleted, userEmail }: {
   const [tab, setTab] = useState<"mail"|"summary"|"reply">("mail");
   const [replyOpen, setReplyOpen] = useState(false);
   const [replyDraft, setReplyDraft] = useState("");
+  const [replyIsDraft, setReplyIsDraft] = useState(false);
   const [autoReplying, setAutoReplying] = useState(false);
   const [autoReplied, setAutoReplied] = useState(email.auto_replied);
+  const [hasDraft, setHasDraft] = useState(false);
+  const [draftText, setDraftText] = useState("");
   const [classifying, setClassifying] = useState(false);
   const [currentClassification, setCurrentClassification] = useState({ type: email.email_type, cat: email.category, priority: email.priority });
   const [deleting, setDeleting] = useState(false);
@@ -213,6 +227,9 @@ function EmailDetail({ email, onClose, onDeleted, userEmail }: {
       .catch(() => setBody({ html: null, text: email.snippet || "" }))
       .finally(() => setBodyLoading(false));
     api(`/smart-email/seen/${email.uid}`, { method: "POST" }).catch(() => {});
+    api(`/smart-email/draft/${email.uid}`)
+      .then(d => { if (d) { setHasDraft(true); setDraftText(d.draft_text); } })
+      .catch(() => {});
   }, [email.uid]);
 
   const loadSummary = async () => {
@@ -246,8 +263,13 @@ function EmailDetail({ email, onClose, onDeleted, userEmail }: {
   const handleAutoReply = async () => {
     setAutoReplying(true);
     try {
-      await api(`/smart-email/auto-reply/${email.uid}`, { method: "POST" });
-      setAutoReplied(true);
+      const res = await api(`/smart-email/auto-reply/${email.uid}`, { method: "POST" });
+      const text = res.draft?.draft_text || "";
+      setDraftText(text);
+      setHasDraft(true);
+      setReplyDraft(text);
+      setReplyIsDraft(true);
+      setReplyOpen(true);
     } catch {}
     setAutoReplying(false);
   };
@@ -330,12 +352,24 @@ function EmailDetail({ email, onClose, onDeleted, userEmail }: {
               className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1B2A5E] text-white text-xs font-semibold rounded-lg hover:opacity-90">
               <Reply className="w-3.5 h-3.5" />Reply
             </button>
-            {!autoReplied && (
+            {!autoReplied && !hasDraft && (
               <button onClick={handleAutoReply} disabled={autoReplying}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:opacity-90 disabled:opacity-60">
                 {autoReplying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
-                AI Auto-Reply
+                {autoReplying ? "Drafting…" : "Generate Draft Reply"}
               </button>
+            )}
+            {!autoReplied && hasDraft && (
+              <button onClick={() => { setReplyDraft(draftText); setReplyIsDraft(true); setReplyOpen(true); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 text-white text-xs font-semibold rounded-lg hover:opacity-90 ring-2 ring-orange-300 animate-pulse">
+                <Eye className="w-3.5 h-3.5" />
+                Review &amp; Send Draft
+              </button>
+            )}
+            {autoReplied && (
+              <span className="flex items-center gap-1.5 px-3 py-1.5 bg-green-100 text-green-700 text-xs font-semibold rounded-lg border border-green-200">
+                <CheckCircle2 className="w-3.5 h-3.5" />Sent
+              </span>
             )}
             <button onClick={handleReclassify} disabled={classifying}
               className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-50">
@@ -485,8 +519,10 @@ function EmailDetail({ email, onClose, onDeleted, userEmail }: {
           subject={email.subject}
           defaultBody={replyDraft}
           userEmail={userEmail}
-          onClose={() => setReplyOpen(false)}
-          onSent={() => setReplyOpen(false)}
+          draftUid={replyIsDraft ? email.uid : undefined}
+          isDraft={replyIsDraft}
+          onClose={() => { setReplyOpen(false); setReplyIsDraft(false); }}
+          onSent={() => { setReplyOpen(false); setReplyIsDraft(false); if (replyIsDraft) { setAutoReplied(true); setHasDraft(false); } }}
         />
       )}
     </>
@@ -890,7 +926,7 @@ export default function SmartInbox() {
                       )}
                       {email.auto_replied && (
                         <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-green-50 border border-green-200 text-green-700 flex items-center gap-0.5">
-                          <Bot className="w-2 h-2" />Auto
+                          <CheckCircle2 className="w-2 h-2" />Replied
                         </span>
                       )}
                       {!email.classified && (
