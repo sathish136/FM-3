@@ -518,24 +518,25 @@ function OverviewView({
         <div className="grid sm:grid-cols-2 gap-3 items-stretch">
 
           {/* Left: Who Is Causing Delays */}
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
-            <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm flex flex-col min-h-0">
+            <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center gap-2 shrink-0">
               <Users className="w-4 h-4 text-gray-500" />
               <span className="text-sm font-bold text-gray-700">Who Is Causing Delays?</span>
               <span className="ml-auto text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">
                 {personDelays.size + supplierDelays.size}
               </span>
             </div>
-            <div className="flex-1 overflow-hidden">
+            {/* Single unified scroll area fills remaining panel height */}
+            <div className="flex-1 overflow-y-auto min-h-0">
               {/* People sub-section */}
               {personDelays.size > 0 && (
                 <>
-                  <div className="px-4 py-1.5 bg-red-50 border-b border-red-100 flex items-center gap-1.5">
+                  <div className="px-4 py-1.5 bg-red-50 border-b border-red-100 flex items-center gap-1.5 sticky top-0 z-10">
                     <Users className="w-3 h-3 text-red-500" />
                     <span className="text-[10px] font-bold text-red-700 uppercase tracking-wide">People</span>
                     <span className="ml-auto text-[10px] font-bold text-red-600">{personDelays.size}</span>
                   </div>
-                  <div className="divide-y divide-gray-50 max-h-44 overflow-y-auto">
+                  <div className="divide-y divide-gray-50">
                     {Array.from(personDelays.values()).sort((a, b) => b.tasks.length - a.tasks.length).map(p => {
                       const maxDelay = Math.max(...p.tasks.map(t => { const e = parseDate(t.exp_end_date); return e ? daysBetween(e, today) : 0; }));
                       return (
@@ -559,12 +560,12 @@ function OverviewView({
               {/* Suppliers sub-section */}
               {supplierDelays.size > 0 && (
                 <>
-                  <div className="px-4 py-1.5 bg-orange-50 border-y border-orange-100 flex items-center gap-1.5">
+                  <div className="px-4 py-1.5 bg-orange-50 border-y border-orange-100 flex items-center gap-1.5 sticky top-0 z-10">
                     <Truck className="w-3 h-3 text-orange-500" />
                     <span className="text-[10px] font-bold text-orange-700 uppercase tracking-wide">Suppliers</span>
                     <span className="ml-auto text-[10px] font-bold text-orange-600">{supplierDelays.size}</span>
                   </div>
-                  <div className="divide-y divide-gray-50 max-h-52 overflow-y-auto">
+                  <div className="divide-y divide-gray-50">
                     {Array.from(supplierDelays.values()).sort((a, b) => b.maxDays - a.maxDays).map(s => (
                       <div key={s.name} className="flex items-center gap-3 px-4 py-2">
                         <div className="w-7 h-7 rounded-full bg-orange-100 border border-orange-200 flex items-center justify-center text-[10px] font-bold text-orange-700 shrink-0 uppercase">
@@ -592,14 +593,14 @@ function OverviewView({
           </div>
 
           {/* Right: Action Plan */}
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
-            <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm flex flex-col min-h-0">
+            <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center gap-2 shrink-0">
               <Star className="w-4 h-4 text-amber-500" />
               <span className="text-sm font-bold text-gray-700">Action Plan</span>
               <span className="text-xs text-gray-400 ml-1">— priority items</span>
               <span className="ml-auto text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">{actions.length}</span>
             </div>
-            <div className="divide-y divide-gray-100 flex-1 overflow-y-auto max-h-[28rem]">
+            <div className="divide-y divide-gray-100 flex-1 overflow-y-auto min-h-0">
               {actions.length === 0 ? (
                 <div className="flex flex-col items-center py-8 text-gray-400">
                   <CheckCircle2 className="w-8 h-8 mb-2 text-emerald-400" />
