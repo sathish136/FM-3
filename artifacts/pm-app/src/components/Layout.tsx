@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Box, PenTool, GitBranch,
   Briefcase, ChevronDown, FileText,
   ChevronRight, LogOut, ChevronLeft, ChevronRight as ChevronRightIcon, Menu,
-  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, UserCircle, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Palette, Sun, Moon, Layers, FolderOpen, Sparkles, X, MoreHorizontal, Activity, Bot,
+  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, UserCircle, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Palette, Sun, Moon, Layers, FolderOpen, Sparkles, X, MoreHorizontal, Activity, Bot, PanelLeftClose,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
@@ -169,10 +169,10 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
         </div>
         <button
           onClick={() => { setCollapsed(true); setMobileSidebarOpen(false); }}
-          className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/10 transition-all"
-          title="Close"
+          className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-400 hover:bg-indigo-500/10 transition-all group"
+          title="Collapse sidebar"
         >
-          <X className="w-4 h-4" />
+          <PanelLeftClose className="w-4 h-4 transition-transform group-hover:scale-110" />
         </button>
       </div>
 
