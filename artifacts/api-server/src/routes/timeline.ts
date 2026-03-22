@@ -5,6 +5,7 @@ import {
   fetchErpNextTasks,
   fetchErpNextMaterialRequests,
   fetchErpNextPurchaseOrders,
+  fetchErpNextTaskAllocations,
   isErpNextConfigured,
 } from "../lib/erpnext";
 
@@ -61,16 +62,28 @@ router.get("/timeline", async (req, res) => {
     }
 
     if (!isErpNextConfigured()) {
-      return res.json({ tasks: [], materialRequests: [], purchaseOrders: [] });
+      return res.json({ tasks: [], materialRequests: [], purchaseOrders: [], taskAllocations: [] });
     }
 
-    const [tasks, materialRequests, purchaseOrders] = await Promise.all([
+    // 6-month window for task allocations
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const fromDate = sixMonthsAgo.toISOString().split("T")[0];
+
+    const [tasks, materialRequests, purchaseOrders, allAllocations] = await Promise.all([
       fetchErpNextTasks(project || undefined),
       fetchErpNextMaterialRequests(project ? { project } : undefined),
       fetchErpNextPurchaseOrders(project || undefined),
+      fetchErpNextTaskAllocations({ fromDate }),
     ]);
 
-    const data = { tasks, materialRequests, purchaseOrders };
+    // Filter task allocations to those related to this project's tasks
+    const projectTaskNames = new Set(tasks.map(t => t.name));
+    const taskAllocations = project
+      ? allAllocations.filter(a => a.tasks.some(t => projectTaskNames.has(t.task_name)))
+      : allAllocations;
+
+    const data = { tasks, materialRequests, purchaseOrders, taskAllocations };
     setCached(key, data);
     res.json(data);
   } catch (e) {

@@ -2,11 +2,12 @@ import { Layout } from "@/components/Layout";
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   GanttChartSquare, ShoppingCart, AlertTriangle, ChevronDown,
-  RefreshCw, CalendarDays, Clock, CheckCircle2,
+  RefreshCw, CalendarDays, CheckCircle2,
   AlertCircle, Circle, TrendingUp, Package, Truck,
   User, ChevronRight, BarChart3, Target, IndianRupee,
-  Activity, Layers, ArrowUp, ArrowDown, Minus,
-  Info, Building2, Star,
+  Activity, Layers, ArrowUp, ArrowDown,
+  Info, Building2, Star, Users, CreditCard, Clock, Hourglass,
+  BadgeCheck, XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -72,7 +73,29 @@ type PO = {
   per_billed: number;
 };
 
-type TimelineData = { tasks: Task[]; materialRequests: MR[]; purchaseOrders: PO[] };
+type TaskAllocationEntry = {
+  task_name: string;
+  description: string | null;
+  expected_hours: number;
+  hours_completed: number;
+  expected_end_date: string | null;
+  status: string;
+};
+
+type TaskAllocation = {
+  name: string;
+  employee: string;
+  employee_name: string;
+  date: string;
+  tasks: TaskAllocationEntry[];
+};
+
+type TimelineData = {
+  tasks: Task[];
+  materialRequests: MR[];
+  purchaseOrders: PO[];
+  taskAllocations: TaskAllocation[];
+};
 
 const PHASE_KEYWORDS: { label: string; color: string; bg: string; border: string; bar: string; keywords: string[] }[] = [
   {
@@ -533,6 +556,321 @@ function OverviewView({
   );
 }
 
+// ─── People & Workers Tab ─────────────────────────────────────────────────────
+
+function PeopleView({ tasks, taskAllocations }: { tasks: Task[]; taskAllocations: TaskAllocation[] }) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Build per-person task map from allocations
+  type PersonStats = {
+    employee: string;
+    employee_name: string;
+    allocatedTasks: { task_name: string; expected_hours: number; hours_completed: number; status: string; expected_end_date: string | null }[];
+    totalHoursExpected: number;
+    totalHoursCompleted: number;
+    lastWorked: string;
+    overdueTaskCount: number;
+    completedCount: number;
+  };
+
+  const personMap = new Map<string, PersonStats>();
+
+  for (const alloc of taskAllocations) {
+    if (!alloc.employee) continue;
+    if (!personMap.has(alloc.employee)) {
+      personMap.set(alloc.employee, {
+        employee: alloc.employee,
+        employee_name: alloc.employee_name || alloc.employee,
+        allocatedTasks: [],
+        totalHoursExpected: 0,
+        totalHoursCompleted: 0,
+        lastWorked: alloc.date,
+        overdueTaskCount: 0,
+        completedCount: 0,
+      });
+    }
+    const p = personMap.get(alloc.employee)!;
+    if (alloc.date > p.lastWorked) p.lastWorked = alloc.date;
+    for (const t of alloc.tasks) {
+      p.allocatedTasks.push(t);
+      p.totalHoursExpected += t.expected_hours || 0;
+      p.totalHoursCompleted += t.hours_completed || 0;
+      if (t.status === "Completed") p.completedCount++;
+      const end = parseDate(t.expected_end_date);
+      if (end && end < today && t.status !== "Completed") p.overdueTaskCount++;
+    }
+  }
+
+  // Also build from task _assign field for people not in allocations
+  for (const t of tasks) {
+    if (!t.assigned_to) continue;
+    const key = t.assigned_to;
+    if (!personMap.has(key)) {
+      personMap.set(key, {
+        employee: key,
+        employee_name: key.split("@")[0],
+        allocatedTasks: [],
+        totalHoursExpected: 0,
+        totalHoursCompleted: 0,
+        lastWorked: "",
+        overdueTaskCount: 0,
+        completedCount: 0,
+      });
+    }
+    const end = parseDate(t.exp_end_date);
+    const p = personMap.get(key)!;
+    if (end && end < today && t.status !== "Completed" && t.status !== "Cancelled") {
+      p.overdueTaskCount++;
+    }
+  }
+
+  const people = Array.from(personMap.values()).sort((a, b) => b.totalHoursCompleted - a.totalHoursCompleted);
+
+  // Task assignments from task data (for tasks assigned view)
+  const assignedTasks = tasks.filter(t => t.assigned_to);
+  const assigneeGroups = new Map<string, Task[]>();
+  for (const t of assignedTasks) {
+    const k = t.assigned_to!;
+    if (!assigneeGroups.has(k)) assigneeGroups.set(k, []);
+    assigneeGroups.get(k)!.push(t);
+  }
+
+  const delayedByPerson = new Map<string, { name: string; tasks: Task[]; mrs: number }>();
+  for (const t of tasks) {
+    const end = parseDate(t.exp_end_date);
+    if (end && end < today && t.status !== "Completed" && t.status !== "Cancelled") {
+      const who = t.assigned_to ? t.assigned_to.split("@")[0] : "Unassigned";
+      if (!delayedByPerson.has(who)) delayedByPerson.set(who, { name: who, tasks: [], mrs: 0 });
+      delayedByPerson.get(who)!.tasks.push(t);
+    }
+  }
+
+  if (people.length === 0 && assigneeGroups.size === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+        <Users className="w-12 h-12 mb-3 opacity-40" />
+        <p className="font-medium text-gray-600">No task allocation data found</p>
+        <p className="text-sm mt-1">Create Task Allocations in ERPNext to see worker details here.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 space-y-6">
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
+          <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide">Workers Tracked</p>
+          <p className="text-2xl font-bold text-gray-900 mt-1">{people.length || assigneeGroups.size}</p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
+          <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide">Hours Logged</p>
+          <p className="text-2xl font-bold text-blue-600 mt-1">
+            {people.reduce((s, p) => s + p.totalHoursCompleted, 0).toFixed(0)}h
+          </p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
+          <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide">Tasks Assigned</p>
+          <p className="text-2xl font-bold text-gray-900 mt-1">{assignedTasks.length}</p>
+        </div>
+        <div className={cn("border rounded-xl p-3 shadow-sm", delayedByPerson.size > 0 ? "bg-red-50 border-red-200" : "bg-white border-gray-200")}>
+          <p className={cn("text-[10px] font-semibold uppercase tracking-wide", delayedByPerson.size > 0 ? "text-red-600" : "text-gray-500")}>
+            People with Delays
+          </p>
+          <p className={cn("text-2xl font-bold mt-1", delayedByPerson.size > 0 ? "text-red-700" : "text-gray-400")}>
+            {delayedByPerson.size}
+          </p>
+        </div>
+      </div>
+
+      {/* Delay Responsibility — Who is Causing Delays */}
+      {delayedByPerson.size > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="px-4 py-3 bg-red-100 border-b border-red-200 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-600" />
+            <h3 className="text-sm font-bold text-red-800">Who Is Causing Delays?</h3>
+          </div>
+          <div className="p-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {Array.from(delayedByPerson.entries())
+              .sort((a, b) => b[1].tasks.length - a[1].tasks.length)
+              .map(([person, info]) => {
+                const maxDelay = Math.max(...info.tasks.map(t => {
+                  const end = parseDate(t.exp_end_date);
+                  return end ? daysBetween(end, today) : 0;
+                }));
+                return (
+                  <div key={person} className="bg-white border border-red-200 rounded-xl p-3 flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-full bg-red-100 border-2 border-red-300 flex items-center justify-center text-sm font-bold text-red-700 shrink-0 uppercase">
+                      {person.slice(0, 2)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-gray-800 truncate">{person}</p>
+                      <p className="text-xs text-red-600 font-semibold mt-0.5">
+                        {info.tasks.length} overdue task{info.tasks.length > 1 ? "s" : ""} · max +{maxDelay}d late
+                      </p>
+                      <div className="mt-2 space-y-1">
+                        {info.tasks.slice(0, 3).map(t => {
+                          const end = parseDate(t.exp_end_date)!;
+                          const d = daysBetween(end, today);
+                          return (
+                            <div key={t.name} className="flex items-center justify-between text-[10px]">
+                              <span className="text-gray-600 truncate mr-2">{t.subject}</span>
+                              <span className={cn("font-bold shrink-0", d > 30 ? "text-red-700" : d > 14 ? "text-red-500" : "text-orange-500")}>
+                                +{d}d
+                              </span>
+                            </div>
+                          );
+                        })}
+                        {info.tasks.length > 3 && (
+                          <p className="text-[10px] text-red-400">+{info.tasks.length - 3} more overdue tasks</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
+
+      {/* Task Allocation Worker Cards (from Task Allocation doctype) */}
+      {people.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+            <Users className="w-4 h-4 text-blue-500" />
+            <h3 className="text-sm font-bold text-gray-700">Task Allocation — Worker Details</h3>
+            <span className="ml-auto text-xs text-gray-400">From ERPNext Task Allocation</span>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {people.map(p => {
+              const efficiencyPct = p.totalHoursExpected > 0
+                ? Math.min(200, Math.round((p.totalHoursCompleted / p.totalHoursExpected) * 100))
+                : 0;
+              const totalAlloc = p.allocatedTasks.length;
+              return (
+                <div key={p.employee} className="p-4 flex flex-wrap gap-4 items-start">
+                  <div className="flex items-center gap-3 min-w-[180px]">
+                    <div className="w-10 h-10 rounded-full bg-blue-100 border-2 border-blue-200 flex items-center justify-center text-sm font-bold text-blue-700 shrink-0 uppercase">
+                      {p.employee_name.slice(0, 2)}
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-gray-800">{p.employee_name}</p>
+                      <p className="text-[10px] text-gray-400">{p.employee.includes("@") ? p.employee : `ID: ${p.employee}`}</p>
+                      {p.lastWorked && (
+                        <p className="text-[10px] text-gray-400">Last: {fmtDate(p.lastWorked)}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-4 flex-wrap flex-1">
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-blue-600">{totalAlloc}</p>
+                      <p className="text-[10px] text-gray-500">Tasks</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-emerald-600">{p.completedCount}</p>
+                      <p className="text-[10px] text-gray-500">Done</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-gray-700">{p.totalHoursCompleted.toFixed(0)}h</p>
+                      <p className="text-[10px] text-gray-500">Hours Logged</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-gray-700">{p.totalHoursExpected.toFixed(0)}h</p>
+                      <p className="text-[10px] text-gray-500">Hours Planned</p>
+                    </div>
+                    {p.overdueTaskCount > 0 && (
+                      <div className="text-center">
+                        <p className="text-lg font-bold text-red-600">{p.overdueTaskCount}</p>
+                        <p className="text-[10px] text-red-400">Overdue</p>
+                      </div>
+                    )}
+                  </div>
+                  {p.totalHoursExpected > 0 && (
+                    <div className="w-full mt-1">
+                      <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                        <span>Progress ({efficiencyPct}%)</span>
+                        <span>{p.totalHoursCompleted.toFixed(1)}h / {p.totalHoursExpected.toFixed(1)}h</span>
+                      </div>
+                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className={cn("h-full rounded-full", efficiencyPct >= 100 ? "bg-emerald-500" : efficiencyPct >= 50 ? "bg-blue-500" : "bg-amber-500")}
+                          style={{ width: `${Math.min(100, efficiencyPct)}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Task Assignments from ERPNext Tasks (fallback when no task allocations) */}
+      {people.length === 0 && assigneeGroups.size > 0 && (
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+            <Users className="w-4 h-4 text-blue-500" />
+            <h3 className="text-sm font-bold text-gray-700">Task Assignments (from ERPNext Tasks)</h3>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {Array.from(assigneeGroups.entries())
+              .sort((a, b) => b[1].length - a[1].length)
+              .map(([assignee, userTasks]) => {
+                const completed = userTasks.filter(t => t.status === "Completed").length;
+                const overdue = userTasks.filter(t => {
+                  const end = parseDate(t.exp_end_date);
+                  return end && end < today && t.status !== "Completed" && t.status !== "Cancelled";
+                }).length;
+                const avgProg = userTasks.length > 0 ? Math.round(userTasks.reduce((s, t) => s + t.progress, 0) / userTasks.length) : 0;
+                const displayName = assignee.includes("@") ? assignee.split("@")[0] : assignee;
+                return (
+                  <div key={assignee} className="p-4 flex flex-wrap gap-4 items-center">
+                    <div className="flex items-center gap-3 min-w-[160px]">
+                      <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-sm font-bold text-blue-700 shrink-0 uppercase">
+                        {displayName.slice(0, 2)}
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-gray-800">{displayName}</p>
+                        {assignee.includes("@") && <p className="text-[10px] text-gray-400">{assignee}</p>}
+                      </div>
+                    </div>
+                    <div className="flex gap-4 flex-wrap">
+                      <div className="text-center">
+                        <p className="text-lg font-bold text-gray-900">{userTasks.length}</p>
+                        <p className="text-[10px] text-gray-500">Tasks</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-lg font-bold text-emerald-600">{completed}</p>
+                        <p className="text-[10px] text-gray-500">Done</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-lg font-bold text-blue-600">{avgProg}%</p>
+                        <p className="text-[10px] text-gray-500">Avg Progress</p>
+                      </div>
+                      {overdue > 0 && (
+                        <div className="text-center">
+                          <p className="text-lg font-bold text-red-600">{overdue}</p>
+                          <p className="text-[10px] text-red-500">Overdue</p>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-[120px]">
+                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-blue-500 rounded-full" style={{ width: `${avgProg}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Gantt Chart ──────────────────────────────────────────────────────────────
 
 function GanttView({ tasks }: { tasks: Task[] }) {
@@ -835,6 +1173,7 @@ function GanttView({ tasks }: { tasks: Task[] }) {
 
 function PurchaseView({ mrs, pos }: { mrs: MR[]; pos: PO[] }) {
   const today = new Date();
+  const [activeSection, setActiveSection] = useState<"all" | "suppliers" | "unattended" | "unpaid">("all");
 
   const totalPOValue = pos.reduce((s, p) => s + (p.grand_total || 0), 0);
   const receivedValue = pos.reduce((s, p) => s + (p.grand_total || 0) * (p.per_received / 100), 0);
@@ -857,6 +1196,66 @@ function PurchaseView({ mrs, pos }: { mrs: MR[]; pos: PO[] }) {
     );
   }
 
+  // Supplier analysis
+  type SupplierStats = {
+    supplier: string;
+    supplier_name: string;
+    pos: PO[];
+    latePOs: PO[];
+    totalValue: number;
+    receivedValue: number;
+    pendingValue: number;
+    unpaidValue: number;
+    maxDaysLate: number;
+    allOnTime: boolean;
+  };
+  const supplierMap = new Map<string, SupplierStats>();
+  for (const po of pos) {
+    const key = po.supplier;
+    if (!supplierMap.has(key)) {
+      supplierMap.set(key, { supplier: key, supplier_name: po.supplier_name || key, pos: [], latePOs: [], totalValue: 0, receivedValue: 0, pendingValue: 0, unpaidValue: 0, maxDaysLate: 0, allOnTime: true });
+    }
+    const s = supplierMap.get(key)!;
+    s.pos.push(po);
+    s.totalValue += po.grand_total || 0;
+    s.receivedValue += (po.grand_total || 0) * (po.per_received / 100);
+    s.pendingValue += (po.grand_total || 0) * (1 - po.per_received / 100);
+    s.unpaidValue += (po.grand_total || 0) * (1 - po.per_billed / 100);
+    const del = parseDate(po.schedule_date);
+    if (del && del < today && po.per_received < 100 && po.status !== "Cancelled") {
+      const d = daysBetween(del, today);
+      s.latePOs.push(po);
+      s.maxDaysLate = Math.max(s.maxDaysLate, d);
+      s.allOnTime = false;
+    }
+  }
+  const lateSuppliers = Array.from(supplierMap.values()).filter(s => s.latePOs.length > 0).sort((a, b) => b.maxDaysLate - a.maxDaysLate);
+  const onTimeSuppliers = Array.from(supplierMap.values()).filter(s => s.allOnTime && s.pos.some(p => p.per_received >= 100));
+
+  // Unattended MRs: Open status and schedule_date is overdue or no PO raised
+  const unattendedMRs = mrs.filter(m =>
+    (m.status === "Open" || m.status === "Pending" || m.status === "Draft") &&
+    m.status !== "Stopped"
+  ).sort((a, b) => {
+    const da = parseDate(a.schedule_date);
+    const db = parseDate(b.schedule_date);
+    if (da && db) return da.getTime() - db.getTime();
+    return 0;
+  });
+
+  // Unpaid POs: per_billed < 100 and not cancelled
+  const unpaidPOs = pos.filter(p => p.per_billed < 100 && p.status !== "Cancelled").sort((a, b) => {
+    return (b.grand_total * (1 - b.per_billed / 100)) - (a.grand_total * (1 - a.per_billed / 100));
+  });
+  const totalUnpaidValue = unpaidPOs.reduce((s, p) => s + (p.grand_total * (1 - p.per_billed / 100)), 0);
+
+  const SECTIONS = [
+    { id: "all", label: "All POs & MRs", icon: Package },
+    { id: "suppliers", label: `Suppliers (${supplierMap.size})`, icon: Truck, badge: lateSuppliers.length > 0 ? lateSuppliers.length : null, badgeColor: "bg-red-500" },
+    { id: "unattended", label: `Unattended MRs (${unattendedMRs.length})`, icon: Hourglass, badge: unattendedMRs.length > 0 ? unattendedMRs.length : null, badgeColor: "bg-amber-500" },
+    { id: "unpaid", label: `Unpaid POs (${unpaidPOs.length})`, icon: CreditCard, badge: unpaidPOs.length > 0 ? unpaidPOs.length : null, badgeColor: "bg-orange-500" },
+  ] as const;
+
   return (
     <div className="p-4 space-y-5">
       {/* Financial Summary Cards */}
@@ -865,25 +1264,329 @@ function PurchaseView({ mrs, pos }: { mrs: MR[]; pos: PO[] }) {
           <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
             <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide">Total PO Value</p>
             <p className="text-xl font-bold text-gray-900 mt-1">{fmtMoney(totalPOValue)}</p>
-            <p className="text-[10px] text-gray-400 mt-0.5">{pos.length} purchase orders</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">{pos.length} orders · {supplierMap.size} suppliers</p>
           </div>
           <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 shadow-sm">
             <p className="text-[10px] text-emerald-600 font-semibold uppercase tracking-wide">Received</p>
             <p className="text-xl font-bold text-emerald-700 mt-1">{fmtMoney(receivedValue)}</p>
             <p className="text-[10px] text-emerald-500 mt-0.5">{totalPOValue > 0 ? ((receivedValue / totalPOValue) * 100).toFixed(0) : 0}% of total</p>
           </div>
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 shadow-sm">
-            <p className="text-[10px] text-amber-600 font-semibold uppercase tracking-wide">Pending Delivery</p>
-            <p className="text-xl font-bold text-amber-700 mt-1">{fmtMoney(pendingValue)}</p>
-            <p className="text-[10px] text-amber-500 mt-0.5">{pos.filter(p => p.per_received < 100 && p.status !== "Cancelled").length} POs outstanding</p>
+          <div className={cn("border rounded-xl p-3 shadow-sm", latePOs.length > 0 ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200")}>
+            <p className={cn("text-[10px] font-semibold uppercase tracking-wide", latePOs.length > 0 ? "text-red-600" : "text-amber-600")}>Late Deliveries</p>
+            <p className={cn("text-xl font-bold mt-1", latePOs.length > 0 ? "text-red-700" : "text-amber-700")}>{latePOs.length}</p>
+            <p className="text-[10px] text-gray-500 mt-0.5">{lateSuppliers.length} supplier{lateSuppliers.length !== 1 ? "s" : ""} delaying</p>
           </div>
-          <div className={cn("border rounded-xl p-3 shadow-sm", latePOs.length > 0 ? "bg-red-50 border-red-200" : "bg-white border-gray-200")}>
-            <p className={cn("text-[10px] font-semibold uppercase tracking-wide", latePOs.length > 0 ? "text-red-600" : "text-gray-500")}>Late Deliveries</p>
-            <p className={cn("text-xl font-bold mt-1", latePOs.length > 0 ? "text-red-700" : "text-gray-400")}>{latePOs.length}</p>
-            <p className="text-[10px] text-gray-400 mt-0.5">{lateMRs.length} MR{lateMRs.length !== 1 ? "s" : ""} also overdue</p>
+          <div className={cn("border rounded-xl p-3 shadow-sm", unpaidPOs.length > 0 ? "bg-orange-50 border-orange-200" : "bg-white border-gray-200")}>
+            <p className={cn("text-[10px] font-semibold uppercase tracking-wide", unpaidPOs.length > 0 ? "text-orange-600" : "text-gray-500")}>Payment Pending</p>
+            <p className={cn("text-xl font-bold mt-1", unpaidPOs.length > 0 ? "text-orange-700" : "text-gray-400")}>{fmtMoney(totalUnpaidValue)}</p>
+            <p className="text-[10px] text-gray-500 mt-0.5">{unpaidPOs.length} PO{unpaidPOs.length !== 1 ? "s" : ""} unbilled</p>
           </div>
         </div>
       )}
+
+      {/* Section tabs */}
+      <div className="flex gap-1.5 flex-wrap">
+        {SECTIONS.map(s => (
+          <button key={s.id} onClick={() => setActiveSection(s.id as any)}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
+              activeSection === s.id
+                ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                : "bg-white text-gray-600 border-gray-200 hover:border-blue-300 hover:text-blue-600"
+            )}>
+            <s.icon className="w-3.5 h-3.5" />
+            {s.label}
+            {s.badge && (
+              <span className={cn("text-white text-[9px] font-bold px-1 py-0.5 rounded-full ml-0.5", s.badgeColor)}>
+                {s.badge}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Supplier Report ── */}
+      {activeSection === "suppliers" && (
+        <div className="space-y-4">
+          {/* Late Suppliers */}
+          {lateSuppliers.length > 0 && (
+            <div className="bg-white border border-red-200 rounded-xl overflow-hidden shadow-sm">
+              <div className="px-4 py-3 bg-red-50 border-b border-red-200 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-600" />
+                <h3 className="text-sm font-bold text-red-800">Suppliers Causing Delay ({lateSuppliers.length})</h3>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {lateSuppliers.map(s => (
+                  <div key={s.supplier} className="p-4 flex flex-wrap gap-4 items-start">
+                    <div className="flex items-center gap-3 min-w-[200px]">
+                      <div className="w-9 h-9 rounded-full bg-red-100 border-2 border-red-200 flex items-center justify-center text-xs font-bold text-red-700 shrink-0 uppercase">
+                        {s.supplier_name.slice(0, 2)}
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-gray-800">{s.supplier_name}</p>
+                        <p className="text-[10px] text-gray-400">{s.supplier}</p>
+                        <p className="text-xs text-red-600 font-semibold mt-0.5">
+                          {s.latePOs.length} PO{s.latePOs.length > 1 ? "s" : ""} late · max +{s.maxDaysLate}d
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-4 flex-wrap text-center">
+                      <div>
+                        <p className="text-base font-bold text-gray-900">{fmtMoney(s.totalValue)}</p>
+                        <p className="text-[10px] text-gray-500">Total Value</p>
+                      </div>
+                      <div>
+                        <p className="text-base font-bold text-amber-600">{fmtMoney(s.pendingValue)}</p>
+                        <p className="text-[10px] text-gray-500">Pending Delivery</p>
+                      </div>
+                      <div>
+                        <p className="text-base font-bold text-orange-600">{fmtMoney(s.unpaidValue)}</p>
+                        <p className="text-[10px] text-gray-500">Payment Pending</p>
+                      </div>
+                    </div>
+                    <div className="w-full mt-1 space-y-1">
+                      {s.latePOs.map(po => {
+                        const del = parseDate(po.schedule_date);
+                        const d = del ? daysBetween(del, today) : 0;
+                        return (
+                          <div key={po.name} className="flex items-center justify-between text-xs bg-red-50 rounded-lg px-2 py-1">
+                            <span className="font-mono text-blue-600">{po.name}</span>
+                            <span className="text-gray-600">{fmtDate(po.schedule_date)}</span>
+                            <span className="font-medium">{fmtMoney(po.grand_total)}</span>
+                            <span className="font-bold text-red-600">+{d}d late</span>
+                            <span className="text-gray-500">{po.per_received.toFixed(0)}% received</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* On-Time Suppliers */}
+          {onTimeSuppliers.length > 0 && (
+            <div className="bg-white border border-emerald-200 rounded-xl overflow-hidden shadow-sm">
+              <div className="px-4 py-3 bg-emerald-50 border-b border-emerald-200 flex items-center gap-2">
+                <BadgeCheck className="w-4 h-4 text-emerald-600" />
+                <h3 className="text-sm font-bold text-emerald-800">On-Time Suppliers ({onTimeSuppliers.length})</h3>
+              </div>
+              <div className="p-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {onTimeSuppliers.map(s => (
+                  <div key={s.supplier} className="flex items-center gap-3 bg-emerald-50 border border-emerald-100 rounded-xl p-3">
+                    <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-xs font-bold text-emerald-700 shrink-0 uppercase">
+                      {s.supplier_name.slice(0, 2)}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-800 truncate">{s.supplier_name}</p>
+                      <p className="text-[10px] text-emerald-600">{s.pos.length} PO{s.pos.length > 1 ? "s" : ""} · {fmtMoney(s.totalValue)}</p>
+                      <p className="text-[10px] text-emerald-500">{s.pos.filter(p => p.per_received >= 100).length} fully delivered ✓</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* All suppliers table */}
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+              <h3 className="text-sm font-bold text-gray-700">All Suppliers — Full Report</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left px-3 py-2 font-semibold text-gray-600">Supplier</th>
+                    <th className="text-center px-3 py-2 font-semibold text-gray-600">POs</th>
+                    <th className="text-right px-3 py-2 font-semibold text-gray-600">Total Value</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-600">Received</th>
+                    <th className="text-right px-3 py-2 font-semibold text-gray-600">Pending Delivery</th>
+                    <th className="text-right px-3 py-2 font-semibold text-gray-600">Payment Pending</th>
+                    <th className="text-center px-3 py-2 font-semibold text-gray-600">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from(supplierMap.values()).sort((a, b) => b.maxDaysLate - a.maxDaysLate).map((s, i) => (
+                    <tr key={s.supplier} className={cn("border-b border-gray-100 hover:bg-gray-50", i % 2 === 0 ? "" : "bg-gray-50/40", s.latePOs.length > 0 && "bg-red-50/60")}>
+                      <td className="px-3 py-2 font-medium text-gray-800">{s.supplier_name}</td>
+                      <td className="px-3 py-2 text-center text-gray-600">{s.pos.length}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-gray-900">{fmtMoney(s.totalValue)}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-14 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                            <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${s.totalValue > 0 ? (s.receivedValue / s.totalValue * 100) : 0}%` }} />
+                          </div>
+                          <span className="text-gray-600">{s.totalValue > 0 ? (s.receivedValue / s.totalValue * 100).toFixed(0) : 0}%</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-right text-amber-700">{fmtMoney(s.pendingValue)}</td>
+                      <td className="px-3 py-2 text-right text-orange-700">{fmtMoney(s.unpaidValue)}</td>
+                      <td className="px-3 py-2 text-center">
+                        {s.latePOs.length > 0 ? (
+                          <span className="text-[10px] font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full border border-red-200">
+                            {s.latePOs.length} LATE
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-200">
+                            ✓ ON TIME
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Unattended MRs ── */}
+      {activeSection === "unattended" && (
+        <div className="bg-white border border-amber-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="px-4 py-3 bg-amber-50 border-b border-amber-200 flex items-center gap-2">
+            <Hourglass className="w-4 h-4 text-amber-600" />
+            <h3 className="text-sm font-bold text-amber-800">Unattended Material Requests ({unattendedMRs.length})</h3>
+            <span className="ml-auto text-[10px] text-amber-600">Open / Pending — no PO raised yet</span>
+          </div>
+          {unattendedMRs.length === 0 ? (
+            <div className="flex flex-col items-center py-10 text-gray-400">
+              <CheckCircle2 className="w-10 h-10 text-emerald-400 mb-2" />
+              <p className="text-sm font-medium text-gray-600">All material requests have been attended to!</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left px-3 py-2 font-semibold text-gray-600">MR No.</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-600">Title</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-600">Type</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-600">Raised On</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-600">Required By</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-600">Raised By</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-600">Status</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-600">Overdue</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {unattendedMRs.map((mr, i) => {
+                    const reqDate = parseDate(mr.schedule_date);
+                    const isOverdue = reqDate && reqDate < today;
+                    const daysOverdue = isOverdue && reqDate ? daysBetween(reqDate, today) : 0;
+                    return (
+                      <tr key={mr.name} className={cn("border-b border-gray-100 hover:bg-gray-50", isOverdue ? "bg-amber-50" : "", i % 2 === 0 ? "" : "bg-gray-50/40")}>
+                        <td className="px-3 py-2 font-mono text-blue-600 font-medium whitespace-nowrap">{mr.name}</td>
+                        <td className="px-3 py-2 text-gray-700 max-w-[180px] truncate">{mr.title || "—"}</td>
+                        <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{mr.material_request_type}</td>
+                        <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{fmtDate(mr.transaction_date)}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <span className={cn(isOverdue ? "text-red-600 font-bold" : "text-gray-600")}>
+                            {fmtDate(mr.schedule_date)}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-gray-600">
+                          <div className="flex items-center gap-1">
+                            <User className="w-3 h-3 text-gray-400 shrink-0" />
+                            {mr.requested_by ? mr.requested_by.split("@")[0] : (mr as any).owner ? (mr as any).owner.split("@")[0] : "—"}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2"><StatusBadge status={mr.status} /></td>
+                        <td className="px-3 py-2">
+                          {isOverdue ? (
+                            <span className="text-amber-700 font-bold flex items-center gap-1 whitespace-nowrap">
+                              <AlertTriangle className="w-3 h-3" />+{daysOverdue}d
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 text-[10px]">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Payment Pending POs ── */}
+      {activeSection === "unpaid" && (
+        <div className="bg-white border border-orange-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="px-4 py-3 bg-orange-50 border-b border-orange-200 flex items-center gap-2">
+            <CreditCard className="w-4 h-4 text-orange-600" />
+            <h3 className="text-sm font-bold text-orange-800">Payment Pending POs ({unpaidPOs.length})</h3>
+            <span className="ml-auto text-xs font-bold text-orange-700">{fmtMoney(totalUnpaidValue)} total unpaid</span>
+          </div>
+          {unpaidPOs.length === 0 ? (
+            <div className="flex flex-col items-center py-10 text-gray-400">
+              <CheckCircle2 className="w-10 h-10 text-emerald-400 mb-2" />
+              <p className="text-sm font-medium text-gray-600">All purchase orders are fully billed!</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left px-3 py-2 font-semibold text-gray-600">PO No.</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-600">Supplier</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-600">PO Date</th>
+                    <th className="text-right px-3 py-2 font-semibold text-gray-600">PO Value</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-600">Received</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-600">Billed</th>
+                    <th className="text-right px-3 py-2 font-semibold text-gray-600">Amount Due</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-600">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {unpaidPOs.map((po, i) => {
+                    const amountDue = po.grand_total * (1 - po.per_billed / 100);
+                    return (
+                      <tr key={po.name} className={cn("border-b border-gray-100 hover:bg-gray-50", i % 2 === 0 ? "" : "bg-gray-50/40")}>
+                        <td className="px-3 py-2 font-mono text-blue-600 font-medium whitespace-nowrap">{po.name}</td>
+                        <td className="px-3 py-2 text-gray-700 max-w-[150px] truncate" title={po.supplier_name}>{po.supplier_name || po.supplier}</td>
+                        <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{fmtDate(po.transaction_date)}</td>
+                        <td className="px-3 py-2 text-right font-semibold text-gray-900 whitespace-nowrap">{fmtMoney(po.grand_total)}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-10 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                              <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${po.per_received}%` }} />
+                            </div>
+                            <span className="text-gray-600">{po.per_received.toFixed(0)}%</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-10 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                              <div className="h-full bg-blue-500 rounded-full" style={{ width: `${po.per_billed}%` }} />
+                            </div>
+                            <span className="text-gray-600">{po.per_billed.toFixed(0)}%</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-right font-bold text-orange-700 whitespace-nowrap">{fmtMoney(amountDue)}</td>
+                        <td className="px-3 py-2"><StatusBadge status={po.status} /></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-orange-50 border-t-2 border-orange-200 font-semibold">
+                    <td colSpan={6} className="px-3 py-2 text-xs text-gray-600">Total Payment Due ({unpaidPOs.length} POs)</td>
+                    <td className="px-3 py-2 text-right text-sm font-bold text-orange-800">{fmtMoney(totalUnpaidValue)}</td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── All MRs & POs (default view) ── */}
+      {activeSection === "all" && <>
 
       {/* MR Section */}
       {mrs.length > 0 && (
@@ -1041,6 +1744,7 @@ function PurchaseView({ mrs, pos }: { mrs: MR[]; pos: PO[] }) {
           </div>
         </div>
       )}
+      </>}
     </div>
   );
 }
@@ -1381,6 +2085,7 @@ const TABS = [
   { id: "gantt", label: "Gantt Chart", icon: GanttChartSquare },
   { id: "purchase", label: "Purchase Tracker", icon: ShoppingCart },
   { id: "delays", label: "Delay Analysis", icon: AlertTriangle },
+  { id: "people", label: "People", icon: Users },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -1389,6 +2094,7 @@ export default function ProjectTimeline() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState("");
   const [data, setData] = useState<TimelineData>({ tasks: [], materialRequests: [], purchaseOrders: [] });
+  const [taskAllocations, setTaskAllocations] = useState<TaskAllocation[]>([]);
   const [projectDetail, setProjectDetail] = useState<ProjectDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<TabId>("overview");
@@ -1416,6 +2122,7 @@ export default function ProjectTimeline() {
 
       const d = await r.json();
       setData(d);
+      setTaskAllocations(d.taskAllocations || []);
 
       if (detailRes) {
         const detail = await detailRes.json();
@@ -1515,7 +2222,12 @@ export default function ProjectTimeline() {
           <nav className="flex gap-0.5">
             {TABS.map(t => {
               const Icon = t.icon;
-              const badge = t.id === "delays" && totalDelays > 0 ? totalDelays : null;
+              const peopleDelayCount = taskAllocations.length > 0
+                ? new Set(data.tasks.filter(tk => { const e = parseDate(tk.exp_end_date); return e && e < today && tk.status !== "Completed" && tk.status !== "Cancelled" && tk.assigned_to; }).map(tk => tk.assigned_to)).size
+                : 0;
+              const badge = t.id === "delays" && totalDelays > 0 ? totalDelays
+                : t.id === "people" && peopleDelayCount > 0 ? peopleDelayCount
+                : null;
               return (
                 <button
                   key={t.id}
@@ -1555,6 +2267,7 @@ export default function ProjectTimeline() {
               {tab === "gantt" && <GanttView tasks={data.tasks} />}
               {tab === "purchase" && <PurchaseView mrs={data.materialRequests} pos={data.purchaseOrders} />}
               {tab === "delays" && <DelayView tasks={data.tasks} mrs={data.materialRequests} pos={data.purchaseOrders} />}
+              {tab === "people" && <PeopleView tasks={data.tasks} taskAllocations={taskAllocations} />}
             </>
           )}
         </div>

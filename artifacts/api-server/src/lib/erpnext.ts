@@ -759,6 +759,58 @@ export async function fetchErpNextDepartments(): Promise<ErpDepartment[]> {
   return (data.data || []) as ErpDepartment[];
 }
 
+export interface ErpTaskAllocationTask {
+  task_name: string;
+  description: string | null;
+  expected_hours: number;
+  hours_completed: number;
+  expected_end_date: string | null;
+  status: string;
+}
+
+export interface ErpTaskAllocation {
+  name: string;
+  employee: string;
+  employee_name: string;
+  date: string;
+  tasks: ErpTaskAllocationTask[];
+}
+
+export async function fetchErpNextTaskAllocations(options?: {
+  fromDate?: string;
+  toDate?: string;
+}): Promise<ErpTaskAllocation[]> {
+  if (!ERPNEXT_URL) return [];
+  const fields = JSON.stringify([
+    "name", "employee", "employee_name", "date",
+    "tasks.task_name", "tasks.expected_hours", "tasks.hours_completed",
+    "tasks.expected_end_date", "tasks.status", "tasks.description",
+  ]);
+  const fArr: any[] = [];
+  if (options?.fromDate) fArr.push(["Task Allocation", "date", ">=", options.fromDate]);
+  if (options?.toDate)   fArr.push(["Task Allocation", "date", "<=", options.toDate]);
+  const params = new URLSearchParams({ fields, limit_page_length: "1000", order_by: "date desc" });
+  if (fArr.length) params.set("filters", JSON.stringify(fArr));
+  const url = `${ERPNEXT_URL}/api/resource/Task Allocation?${params}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader() } });
+  if (!res.ok) return [];
+  const json = await res.json();
+  return ((json.data || []) as any[]).map((a: any) => ({
+    name: a.name,
+    employee: a.employee || "",
+    employee_name: a.employee_name || a.employee || "",
+    date: a.date || "",
+    tasks: Array.isArray(a.tasks) ? a.tasks.map((t: any) => ({
+      task_name: t.task_name || "",
+      description: t.description || null,
+      expected_hours: t.expected_hours || 0,
+      hours_completed: t.hours_completed || 0,
+      expected_end_date: t.expected_end_date || null,
+      status: t.status || "Open",
+    })) : [],
+  }));
+}
+
 export async function createErpNextTaskAllocation(data: {
   employee: string;
   date: string;
