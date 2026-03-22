@@ -243,9 +243,33 @@ async function tryKeywordClassify(
   return null;
 }
 
+function isOtpEmail(subject: string, bodySnippet: string): boolean {
+  const text = `${subject} ${bodySnippet}`.toLowerCase();
+  const OTP_PATTERNS = [
+    /\botp\b/, /one.?time.?pass(word|code)?/, /verification.?code/, /your.?code.?is/,
+    /\bverify\b.{0,30}\bcode\b/, /\bcode\b.{0,30}\bverify/, /\bsecurity.?code\b/,
+    /\bauthentication.?code\b/, /\bconfirmation.?code\b/, /\b\d{4,8}.?is.?your.?(otp|code|pin)\b/,
+    /\byour.?(otp|pin|passcode)\b/, /\benter.?(the|this|your).{0,10}(otp|code|pin)\b/,
+    /\bdo not share.{0,30}(otp|code|password)\b/, /\bexpires? in \d+ minute/,
+  ];
+  return OTP_PATTERNS.some(p => p.test(text));
+}
+
 async function classifyWithAI(subject: string, fromAddr: string, bodySnippet: string) {
   const isInternal = checkInternal(fromAddr);
   const domain = extractDomain(fromAddr);
+
+  // Fast OTP detection — no AI needed
+  if (isOtpEmail(subject, bodySnippet)) {
+    return {
+      email_type: "otp",
+      category: "other",
+      project_name: null,
+      supplier_name: null,
+      priority: "low",
+      is_internal: isInternal,
+    };
+  }
 
   const projects = await pool.query("SELECT name, keywords FROM smart_email_projects");
   const suppliers = await pool.query("SELECT name, domain, keywords FROM smart_email_suppliers");
@@ -296,7 +320,7 @@ Is sender from internal domain: ${isInternal}
 
 Return this JSON:
 {
-  "email_type": "important" | "information" | "promotion",
+  "email_type": "important" | "information" | "promotion" | "otp",
   "category": "project" | "supplier" | "internal" | "other",
   "project_name": "exact project name or null",
   "supplier_name": "supplier/vendor name or null",
@@ -308,6 +332,7 @@ Rules:
 - email_type "important": needs MD action - quotes, purchase orders, complaints, payments, contracts, urgent requests, RFQ, deadlines
 - email_type "promotion": newsletters, marketing, advertisements, bulk promotions, no-reply senders
 - email_type "information": reports, updates, FYI, notifications, meeting notes
+- email_type "otp": one-time passwords, verification codes, authentication codes, confirmation codes, OTP emails
 - category "project": related to a specific project in the list
 - category "supplier": from a vendor, supplier, or external business partner
 - category "internal": sender domain is wttindia.com or wttint.com
@@ -320,7 +345,7 @@ Rules:
 
     const parsed = JSON.parse(completion.choices[0]?.message?.content || "{}");
     return {
-      email_type: (["important", "information", "promotion"].includes(parsed.email_type) ? parsed.email_type : "information") as string,
+      email_type: (["important", "information", "promotion", "otp"].includes(parsed.email_type) ? parsed.email_type : "information") as string,
       category: (isInternal ? "internal" : (["project", "supplier", "internal", "other"].includes(parsed.category) ? parsed.category : "other")) as string,
       project_name: parsed.project_name || null,
       supplier_name: parsed.supplier_name || null,
@@ -460,8 +485,8 @@ async function classifyEmailRecord(uid: string, autoReply = true, userEmail?: st
     );
 
     // Auto-reply draft: only for emails addressed directly TO the user,
-    // not internal emails, not promotions
-    if (autoReply && !classification.is_internal && classification.email_type !== "promotion") {
+    // not internal emails, not promotions, not OTP
+    if (autoReply && !classification.is_internal && !["promotion", "otp"].includes(classification.email_type)) {
       const toAddr = (email.to_addr || "").toLowerCase();
       const isDirectlyAddressed = userEmail
         ? toAddr.includes(userEmail.toLowerCase())
@@ -597,8 +622,13 @@ router.get("/smart-email/messages", async (req, res) => {
       where += " AND e.is_deleted=false";
       if (filter === "important")    { where += " AND email_type='important'"; }
       else if (filter === "promotion")  { where += " AND email_type='promotion'"; }
+      else if (filter === "otp")        { where += " AND email_type='otp'"; }
       else if (filter === "information") { where += " AND email_type='information'"; }
-      else if (filter === "internal")   { where += " AND is_internal=true"; }
+      else {
+        // All other views (all, unread, high, drafts, internal, project, supplier…) hide OTP emails
+        where += " AND email_type != 'otp'";
+      }
+      if (filter === "internal")   { where += " AND is_internal=true"; }
       else if (filter === "dept") {
         where += " AND is_internal=true";
         if (value) { vals.push(value); where += ` AND department=$${vals.length}`; }
@@ -665,6 +695,7 @@ router.get("/smart-email/stats", async (req, res) => {
         COUNT(*) FILTER (WHERE email_type='important' AND NOT is_deleted ${acctFilter}) AS important,
         COUNT(*) FILTER (WHERE email_type='information' AND NOT is_deleted ${acctFilter}) AS information,
         COUNT(*) FILTER (WHERE email_type='promotion' AND NOT is_deleted ${acctFilter}) AS promotion,
+        COUNT(*) FILTER (WHERE email_type='otp' AND NOT is_deleted ${acctFilter}) AS otp,
         COUNT(*) FILTER (WHERE category='project' AND NOT is_deleted ${acctFilter}) AS projects,
         COUNT(*) FILTER (WHERE category='supplier' AND NOT is_deleted ${acctFilter}) AS suppliers,
         COUNT(*) FILTER (WHERE is_internal=true AND NOT is_deleted ${acctFilter}) AS internal,
@@ -814,14 +845,14 @@ router.post("/smart-email/draft-batch", async (req, res) => {
         ? `SELECT uid FROM smart_email_inbox
            WHERE is_deleted = false
              AND is_internal = false
-             AND COALESCE(email_type, '') != 'promotion'
+             AND COALESCE(email_type, '') NOT IN ('promotion', 'otp')
              AND auto_replied = false
            ORDER BY email_date DESC
            LIMIT 50`
         : `SELECT uid FROM smart_email_inbox
            WHERE is_deleted = false
              AND is_internal = false
-             AND COALESCE(email_type, '') != 'promotion'
+             AND COALESCE(email_type, '') NOT IN ('promotion', 'otp')
              AND has_draft = false
              AND auto_replied = false
            ORDER BY email_date DESC

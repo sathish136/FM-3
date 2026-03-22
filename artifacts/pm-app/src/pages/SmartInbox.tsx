@@ -5,7 +5,7 @@ import {
   FolderOpen, Truck, Users, RefreshCw, X, Send, Loader2, ChevronDown,
   ChevronRight, Bot, Wand2, Reply, Paperclip, Search, Shield,
   CheckCircle2, Clock, Zap, Star, Eye, Trash2, BarChart3, Settings,
-  Plus, Download, Bell, BellOff, BrainCircuit, CloudDownload, MailCheck,
+  Plus, Download, Bell, BellOff, BrainCircuit, CloudDownload, MailCheck, KeyRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -18,7 +18,7 @@ async function api(path: string, opts?: RequestInit) {
   return r.json();
 }
 
-type EmailType = "important" | "information" | "promotion";
+type EmailType = "important" | "information" | "promotion" | "otp";
 type Category = "project" | "supplier" | "internal" | "other";
 type Priority = "high" | "medium" | "low";
 
@@ -45,7 +45,7 @@ interface SmartEmail {
 }
 
 interface Stats {
-  unread: string; important: string; information: string; promotion: string;
+  unread: string; important: string; information: string; promotion: string; otp: string;
   projects: string; suppliers: string; internal: string;
   needs_reply: string; auto_replied_count: string; total: string;
   drafts_count: string; trash_count: string;
@@ -85,6 +85,7 @@ const TYPE_CONFIG: Record<string, { label: string; color: string; bg: string; ic
   important:   { label: "Important",   color: "text-red-700",    bg: "bg-red-50 border-red-200",    icon: AlertTriangle },
   information: { label: "Information", color: "text-blue-700",   bg: "bg-blue-50 border-blue-200",  icon: Info },
   promotion:   { label: "Promotion",   color: "text-purple-700", bg: "bg-purple-50 border-purple-200", icon: Megaphone },
+  otp:         { label: "OTP",         color: "text-teal-700",   bg: "bg-teal-50 border-teal-200",  icon: KeyRound },
 };
 
 const PRIORITY_CONFIG: Record<string, { dot: string; label: string }> = {
@@ -1145,9 +1146,10 @@ export default function SmartInbox() {
       key: "type",
       label: "By Type",
       items: [
-        { key: "all",         label: "All Emails",    icon: Inbox,         color: "text-gray-600",   count: n(stats?.total) },
+        { key: "all",         label: "All Emails",    icon: Inbox,         color: "text-gray-600",   count: n(stats?.total) - n(stats?.otp) },
         { key: "important",   label: "Important",     icon: AlertTriangle, color: "text-red-600",    count: n(stats?.important) },
         { key: "information", label: "Information",   icon: Info,          color: "text-blue-600",   count: n(stats?.information) },
+        { key: "otp",         label: "OTP / Codes",   icon: KeyRound,      color: "text-teal-600",   count: n(stats?.otp) },
         { key: "unread",      label: "Unread",        icon: Eye,           color: "text-amber-600",  count: n(stats?.unread) },
         { key: "high",        label: "Needs Reply",   icon: Zap,           color: "text-rose-600",   count: n(stats?.needs_reply) },
         { key: "drafts",      label: "Pending Drafts",icon: Bot,           color: "text-orange-600", count: n(stats?.drafts_count) },
