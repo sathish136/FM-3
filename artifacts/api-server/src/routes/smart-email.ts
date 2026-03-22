@@ -125,6 +125,7 @@ async function initTables() {
   await pool.query(`ALTER TABLE smart_email_inbox ADD COLUMN IF NOT EXISTS department TEXT`);
   await pool.query(`ALTER TABLE smart_email_inbox ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT false`);
   await pool.query(`ALTER TABLE smart_email_inbox ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE smart_email_inbox ADD COLUMN IF NOT EXISTS has_draft BOOLEAN NOT NULL DEFAULT false`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS smart_email_projects (
@@ -384,7 +385,7 @@ async function sendEmail(account: { gmailUser: string; gmailAppPassword: string;
 
 const classifyQueue = new Set<string>();
 
-async function classifyEmailRecord(uid: string, autoReply = true) {
+async function classifyEmailRecord(uid: string, autoReply = true, userEmail?: string) {
   if (classifyQueue.has(uid)) return;
   classifyQueue.add(uid);
   try {
@@ -414,18 +415,35 @@ async function classifyEmailRecord(uid: string, autoReply = true) {
        snippetText, department]
     );
 
-    if (autoReply && classification.email_type === "important" && classification.priority === "high") {
-      triggerAutoReply(uid).catch(() => {});
+    // Auto-reply draft: only for emails addressed directly TO the user,
+    // not internal emails, not promotions
+    if (autoReply && !classification.is_internal && classification.email_type !== "promotion") {
+      const toAddr = (email.to_addr || "").toLowerCase();
+      const isDirectlyAddressed = userEmail
+        ? toAddr.includes(userEmail.toLowerCase())
+        : true; // fallback: generate if we don't know the user's email
+      if (isDirectlyAddressed) {
+        triggerAutoReply(uid, userEmail).catch(() => {});
+      }
     }
   } finally {
     classifyQueue.delete(uid);
   }
 }
 
-async function triggerAutoReply(uid: string) {
+async function triggerAutoReply(uid: string, userEmail?: string) {
   const res = await pool.query("SELECT * FROM smart_email_inbox WHERE uid=$1", [uid]);
   const email = res.rows[0];
   if (!email) return;
+
+  // Skip internal emails — no need to reply to colleagues automatically
+  if (email.is_internal) return;
+
+  // Only generate draft for emails addressed directly TO the user
+  if (userEmail) {
+    const toAddr = (email.to_addr || "").toLowerCase();
+    if (!toAddr.includes(userEmail.toLowerCase())) return;
+  }
 
   const existingDraft = await pool.query("SELECT id FROM smart_email_drafts WHERE email_uid=$1 AND sent=false", [uid]);
   if (existingDraft.rows.length > 0) return;
@@ -434,15 +452,21 @@ async function triggerAutoReply(uid: string) {
 
   const completion = await getOpenAI().chat.completions.create({
     model: "gpt-4o-mini",
-    max_tokens: 300,
+    max_tokens: 400,
     messages: [
       {
         role: "system",
-        content: `You are the assistant to the Managing Director of WTT International, a water treatment technology company. Write a brief, professional acknowledgment reply. Keep it under 4 sentences. Do not make specific commitments. Just acknowledge receipt and say the MD will respond shortly.`,
+        content: `You are drafting a reply on behalf of the Managing Director of WTT International, a water treatment technology company. 
+Write a concise, professional reply that directly addresses the content and key points of the email. 
+- If it's a request, acknowledge it specifically and indicate it will be reviewed.
+- If it's a quotation or order, confirm receipt and say it will be processed.
+- If it's an inquiry, acknowledge the specific question and say a detailed response will follow.
+- Keep it to 3-5 sentences. Do not make firm commitments or share pricing/confidential details.
+- Sound like a senior executive, not a template.`,
       },
       {
         role: "user",
-        content: `Email from: ${email.from_addr}\nSubject: ${email.subject}\nBody: ${bodyText.slice(0, 800)}`,
+        content: `Email from: ${email.from_addr}\nSubject: ${email.subject}\nBody:\n${bodyText.slice(0, 1200)}`,
       },
     ],
   });
@@ -464,6 +488,9 @@ async function triggerAutoReply(uid: string) {
      ON CONFLICT (email_uid) DO UPDATE SET draft_text=$2, draft_html=$3, sent=false`,
     [uid, replyText, htmlReply, email.from_addr, `Re: ${email.subject}`]
   );
+
+  // Mark email as having a pending draft
+  await pool.query("UPDATE smart_email_inbox SET has_draft=true WHERE uid=$1", [uid]);
 }
 
 // ── Routes ──────────────────────────────────────────────────────────────────
@@ -657,7 +684,7 @@ router.post("/smart-email/ingest", async (req, res) => {
       accountId ? [accountId] : []
     );
     for (const r of unclassified.rows) {
-      classifyEmailRecord(r.uid, autoReply).catch(() => {});
+      classifyEmailRecord(r.uid, autoReply, userEmail).catch(() => {});
     }
 
     res.json({ ok: true, ingested, classifying: unclassified.rows.length });
