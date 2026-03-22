@@ -453,9 +453,11 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
             <span className="md:hidden text-sm font-semibold text-gray-800 fm-text-main">{pageTitle}</span>
           </div>
 
-          {/* AI Search - desktop: centered, mobile: hidden (icon-triggered) */}
-          <div className="hidden md:flex flex-1 justify-center px-4">
-            <AISearch currentPath={location} forceOpen={aiTrigger} />
+          {/* AI Search — always rendered so the modal works on mobile too.
+              The trigger button inside AISearch is hidden on mobile;
+              the Sparkles icon button below triggers it instead. */}
+          <div className="flex flex-1 justify-center px-4">
+            <AISearch currentPath={location} forceOpen={aiTrigger} hideTriggerOnMobile />
           </div>
 
           <div className="flex items-center gap-2">

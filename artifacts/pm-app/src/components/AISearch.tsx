@@ -44,7 +44,7 @@ const MODULE_HINTS: Record<string, string> = {
   "/viewer-options/mechanical":"Mechanical Viewer – 3D STEP file viewer for mechanical systems with mesh panel and view controls",
 };
 
-export function AISearch({ currentPath, forceOpen }: { currentPath?: string; forceOpen?: number }) {
+export function AISearch({ currentPath, forceOpen, hideTriggerOnMobile }: { currentPath?: string; forceOpen?: number; hideTriggerOnMobile?: boolean }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -194,7 +194,8 @@ export function AISearch({ currentPath, forceOpen }: { currentPath?: string; for
         onClick={() => setOpen(true)}
         className={cn(
           "flex items-center gap-2 px-3 h-7 rounded-full border transition-all text-xs font-medium",
-          "bg-gray-50 border-gray-200 text-gray-500 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600"
+          "bg-gray-50 border-gray-200 text-gray-500 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600",
+          hideTriggerOnMobile && "hidden md:flex"
         )}
         title="AI Search"
       >
