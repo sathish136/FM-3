@@ -15,6 +15,7 @@ import incidentsRouter from "./incidents";
 import drawingsRouter from "./drawings";
 import timelineRouter from "./timeline";
 import siteDataRouter from "./site-data";
+import smartEmailRouter from "./smart-email";
 
 const router: IRouter = Router();
 
@@ -34,5 +35,6 @@ router.use(incidentsRouter);
 router.use(drawingsRouter);
 router.use(timelineRouter);
 router.use(siteDataRouter);
+router.use(smartEmailRouter);
 
 export default router;

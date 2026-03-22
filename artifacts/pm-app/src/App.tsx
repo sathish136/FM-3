@@ -38,6 +38,7 @@ import Nesting from "@/pages/Nesting";
 import ProjectDrawings from "@/pages/ProjectDrawings";
 import ProjectTimeline from "@/pages/ProjectTimeline";
 import SiteData from "@/pages/SiteData";
+import SmartInbox from "@/pages/SmartInbox";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -96,6 +97,7 @@ function ProtectedRoutes() {
       <Route path="/project-drawings" component={ProjectDrawings} />
       <Route path="/project-timeline" component={ProjectTimeline} />
       <Route path="/site-data" component={SiteData} />
+      <Route path="/smart-inbox" component={SmartInbox} />
       <Route component={NotFound} />
     </Switch>
   );
