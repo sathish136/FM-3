@@ -882,6 +882,55 @@ export default function SmartInbox() {
                 {expandedSections.includes(group.key) && group.items.map(item => {
                   const isActive = activeFilter === item.key && filterValue === item.value;
                   const Icon = item.icon;
+
+                  if (item.key === "internal") {
+                    const deptOpen = expandedSections.includes("departments");
+                    return (
+                      <div key="internal">
+                        <div className={cn(
+                          "w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all",
+                          isActive ? "bg-[#1B2A5E] text-white shadow-sm" : "text-gray-600 hover:bg-gray-50"
+                        )}>
+                          <button
+                            onClick={() => handleFilter("internal")}
+                            className="flex items-center gap-2.5 flex-1 min-w-0 text-left">
+                            <Icon className={cn("w-3.5 h-3.5 shrink-0", isActive ? "text-white" : item.color)} />
+                            <span className="flex-1 truncate">{item.label}</span>
+                            {(item.count ?? 0) > 0 && (
+                              <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded-full", isActive ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500")}>
+                                {item.count}
+                              </span>
+                            )}
+                          </button>
+                          {departments.length > 0 && (
+                            <button
+                              onClick={e => { e.stopPropagation(); toggleSection("departments"); }}
+                              className={cn("shrink-0 p-0.5 rounded transition-colors", isActive ? "hover:bg-white/20" : "hover:bg-gray-200")}>
+                              {deptOpen
+                                ? <ChevronDown className="w-3 h-3" />
+                                : <ChevronRight className="w-3 h-3" />}
+                            </button>
+                          )}
+                        </div>
+                        {deptOpen && departments.map(d => {
+                          const isDeptActive = activeFilter === "dept" && filterValue === d.department;
+                          return (
+                            <button key={d.department}
+                              onClick={() => handleFilter("dept", d.department)}
+                              className={cn(
+                                "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all pl-7 mt-0.5",
+                                isDeptActive ? "bg-teal-600 text-white" : "text-gray-600 hover:bg-teal-50"
+                              )}>
+                              <Users className={cn("w-3 h-3 shrink-0", isDeptActive ? "text-white" : "text-teal-500")} />
+                              <span className="flex-1 text-left truncate">{d.department}</span>
+                              <span className={cn("text-[10px] font-bold px-1 py-0.5 rounded-full", isDeptActive ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500")}>{d.count}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  }
+
                   return (
                     <button key={item.key + (item.value || "")}
                       onClick={() => handleFilter(item.key, item.value)}
@@ -954,30 +1003,6 @@ export default function SmartInbox() {
               </div>
             )}
 
-            {/* Departments sub-list (Internal emails) */}
-            {departments.length > 0 && (
-              <div>
-                <button onClick={() => toggleSection("departments")} className="w-full flex items-center justify-between px-2 py-1.5 mb-0.5">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Departments</span>
-                  {expandedSections.includes("departments") ? <ChevronDown className="w-3 h-3 text-gray-300" /> : <ChevronRight className="w-3 h-3 text-gray-300" />}
-                </button>
-                {expandedSections.includes("departments") && departments.map(d => {
-                  const isActive = activeFilter === "dept" && filterValue === d.department;
-                  return (
-                    <button key={d.department}
-                      onClick={() => handleFilter("dept", d.department)}
-                      className={cn(
-                        "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all pl-5",
-                        isActive ? "bg-teal-600 text-white" : "text-gray-600 hover:bg-gray-50"
-                      )}>
-                      <Users className={cn("w-3 h-3 shrink-0", isActive ? "text-white" : "text-teal-500")} />
-                      <span className="flex-1 text-left truncate">{d.department}</span>
-                      <span className={cn("text-[10px] font-bold px-1 py-0.5 rounded-full", isActive ? "bg-white/20" : "bg-gray-100 text-gray-500")}>{d.count}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
           </nav>
         </aside>
 
