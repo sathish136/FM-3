@@ -37,6 +37,26 @@ const MONTHS = ["January", "February", "March", "April", "May", "June",
 
 function parseDate(val: string | null | undefined): Date | null {
   if (!val) return null;
+  // Handle DD/MM/YY format (e.g. "11/03/26")
+  const slashShort = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
+  if (slashShort) {
+    const year = parseInt(slashShort[3]) + 2000;
+    const d = new Date(year, parseInt(slashShort[2]) - 1, parseInt(slashShort[1]));
+    return isNaN(d.getTime()) ? null : d;
+  }
+  // Handle DD/MM/YYYY format (e.g. "11/03/2026")
+  const slashLong = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashLong) {
+    const d = new Date(parseInt(slashLong[3]), parseInt(slashLong[2]) - 1, parseInt(slashLong[1]));
+    return isNaN(d.getTime()) ? null : d;
+  }
+  // Handle DD-MM-YYYY format (e.g. "27-03-2026")
+  const dashLong = val.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (dashLong) {
+    const d = new Date(parseInt(dashLong[3]), parseInt(dashLong[2]) - 1, parseInt(dashLong[1]));
+    return isNaN(d.getTime()) ? null : d;
+  }
+  // Fallback: try standard parsing (YYYY-MM-DD etc.)
   const d = new Date(val);
   return isNaN(d.getTime()) ? null : d;
 }
@@ -96,24 +116,46 @@ export function FollowupCalendar() {
   const allItems: (FollowupItem & { _dateKey: string; _type: "followup" | "proposal" })[] = useMemo(() => {
     const result: (FollowupItem & { _dateKey: string; _type: "followup" | "proposal" })[] = [];
 
-    const followups: FollowupItem[] = Array.isArray(followupData?.message)
+    const followups: any[] = Array.isArray(followupData?.message)
       ? followupData.message
       : Array.isArray(followupData) ? followupData : [];
 
     for (const item of followups) {
-      const rawDate = item.contact_date || item.next_contact || item.follow_up_date || item.scheduled_date || item.creation;
+      // ERP returns: next_follow_up_date (DD/MM/YY), organization, contact_person, contact_details, location, followed_by
+      const rawDate = item.next_follow_up_date || item.convo_date || item.contact_date || item.follow_up_date || item.scheduled_date || item.creation;
       const d = parseDate(rawDate);
-      if (d) result.push({ ...item, _dateKey: dateKey(d), _type: "followup" });
+      if (d) result.push({
+        ...item,
+        lead_name: item.contact_person || item.lead || item.lead_name,
+        company_name: item.organization || item.company_name,
+        contact_date: item.convo_date,
+        next_contact: item.next_follow_up_date,
+        follow_up_date: item.next_follow_up_date,
+        source: item.followed_by || item.source,
+        mobile_no: item.contact_details || item.mobile_no,
+        country: item.location || item.country,
+        _dateKey: dateKey(d),
+        _type: "followup" as const,
+      });
     }
 
-    const proposals: FollowupItem[] = Array.isArray(proposalData?.message)
+    const proposals: any[] = Array.isArray(proposalData?.message)
       ? proposalData.message
       : Array.isArray(proposalData) ? proposalData : [];
 
     for (const item of proposals) {
-      const rawDate = item.contact_date || item.next_contact || item.follow_up_date || item.scheduled_date || item.creation;
+      // ERP returns: date (DD-MM-YYYY), raised_date, company_name, proposal_status, type_of_proposal, name
+      const rawDate = item.date || item.raised_date || item.contact_date || item.scheduled_date || item.creation;
       const d = parseDate(rawDate);
-      if (d) result.push({ ...item, _dateKey: dateKey(d), _type: "proposal" });
+      if (d) result.push({
+        ...item,
+        lead_name: item.name || item.lead_name,
+        company_name: item.company_name,
+        status: item.proposal_status || item.status,
+        source: item.type_of_proposal || item.source,
+        _dateKey: dateKey(d),
+        _type: "proposal" as const,
+      });
     }
 
     return result;
