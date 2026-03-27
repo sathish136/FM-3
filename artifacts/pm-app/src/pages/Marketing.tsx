@@ -341,61 +341,67 @@ function WorldMapTab() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       {/* Filter strip */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex gap-1.5">
+        <div className="flex gap-1 bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
           {(["All", "Textile", "Non Textile"] as const).map(f => (
             <button key={f} onClick={() => setIndustryFilter(f)}
               className={cn(
-                "px-4 py-2 rounded-xl text-sm font-semibold transition-all border",
+                "px-4 py-1.5 rounded-lg text-sm font-semibold transition-all",
                 industryFilter === f
-                  ? f === "Textile" ? "bg-indigo-600 text-white border-indigo-600"
-                  : f === "Non Textile" ? "bg-emerald-600 text-white border-emerald-600"
-                  : "bg-gray-800 text-white border-gray-800"
-                  : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                  ? f === "Textile" ? "bg-indigo-600 text-white shadow-sm"
+                  : f === "Non Textile" ? "bg-emerald-600 text-white shadow-sm"
+                  : "bg-gray-800 text-white shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
               )}>
               {f}
             </button>
           ))}
         </div>
-        <button onClick={() => refetch()} className="flex items-center gap-1.5 text-sm text-indigo-600 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-xl hover:bg-indigo-100 transition-colors font-semibold">
+        <button onClick={() => refetch()} className="flex items-center gap-1.5 text-sm text-indigo-600 bg-white border border-gray-200 px-4 py-1.5 rounded-xl hover:bg-indigo-50 transition-colors font-semibold shadow-sm">
           <RefreshCw className={cn("w-3.5 h-3.5", isLoading && "animate-spin")} /> Refresh
         </button>
       </div>
 
       {/* Main layout */}
-      <div className="flex gap-3" style={{ minHeight: 480 }}>
+      <div className="flex gap-3" style={{ minHeight: 520 }}>
         {/* LEFT — Sources + Lead Status */}
-        <div className="w-48 shrink-0 flex flex-col gap-3">
+        <div className="w-44 shrink-0 flex flex-col gap-2.5">
           {/* Lead Sources */}
-          <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden flex-1">
-            <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50/50">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Lead Sources</p>
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex-1 flex flex-col">
+            <div className="px-3 py-2.5 border-b border-gray-100">
+              <p className="text-[11px] font-extrabold text-gray-700 uppercase tracking-widest">Lead Sources</p>
             </div>
-            <div className="overflow-auto" style={{ maxHeight: 190 }}>
+            <div className="overflow-auto flex-1" style={{ maxHeight: 210 }}>
               {Object.entries(sourceStats)
                 .sort((a, b) => b[1] - a[1])
-                .map(([src, cnt]) => (
-                  <div key={src} className="flex items-center justify-between px-3 py-1.5 hover:bg-gray-50 border-b border-gray-50 transition-colors">
-                    <span className="text-xs text-gray-500 truncate">{src === "null" || src === "Unknown" ? "null" : src}</span>
-                    <span className="text-xs font-bold text-gray-800 ml-2 shrink-0">{cnt}</span>
+                .map(([src, cnt], i) => (
+                  <div key={src} className={cn(
+                    "flex items-center justify-between px-3 py-[7px] border-b border-gray-50 transition-colors hover:bg-indigo-50/40 group",
+                    i === 0 && "bg-gray-50/60"
+                  )}>
+                    <span className="text-[11px] text-gray-600 truncate font-medium leading-tight">{src === "null" || !src ? "null" : src}</span>
+                    <span className="text-[12px] font-bold text-gray-800 ml-2 shrink-0 tabular-nums">{cnt}</span>
                   </div>
                 ))}
             </div>
           </div>
           {/* Lead Status */}
-          <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden flex-1">
-            <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50/50">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Lead Status</p>
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex-1 flex flex-col">
+            <div className="px-3 py-2.5 border-b border-gray-100">
+              <p className="text-[11px] font-extrabold text-gray-700 uppercase tracking-widest">Lead Status</p>
             </div>
-            <div className="overflow-auto" style={{ maxHeight: 190 }}>
+            <div className="overflow-auto flex-1" style={{ maxHeight: 210 }}>
               {Object.entries(leadStatusStats)
                 .sort((a, b) => b[1] - a[1])
-                .map(([st, cnt]) => (
-                  <div key={st} className="flex items-center justify-between px-3 py-1.5 hover:bg-gray-50 border-b border-gray-50 transition-colors">
-                    <span className="text-xs text-gray-500 truncate">{st}</span>
-                    <span className="text-xs font-bold text-gray-800 ml-2 shrink-0">{cnt}</span>
+                .map(([st, cnt], i) => (
+                  <div key={st} className={cn(
+                    "flex items-center justify-between px-3 py-[7px] border-b border-gray-50 transition-colors hover:bg-indigo-50/40",
+                    i === 0 && "bg-gray-50/60"
+                  )}>
+                    <span className="text-[11px] text-gray-600 truncate font-medium leading-tight">{st}</span>
+                    <span className="text-[12px] font-bold text-gray-800 ml-2 shrink-0 tabular-nums">{cnt}</span>
                   </div>
                 ))}
             </div>
@@ -403,130 +409,135 @@ function WorldMapTab() {
         </div>
 
         {/* CENTER — Map */}
-        <div className="flex-1 bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden relative">
-          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100 bg-gray-50/50">
+        <div className="flex-1 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden relative flex flex-col">
+          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100 bg-white">
             <Globe className="w-4 h-4 text-indigo-500" />
             <span className="text-sm font-bold text-gray-800">Global Lead Distribution</span>
-            <span className="ml-auto text-xs text-gray-400">Click a country to explore</span>
+            <span className="ml-auto text-[11px] text-gray-400 italic">Click a country to explore</span>
           </div>
-          {/* Legend */}
-          <div className="absolute bottom-2 left-2 z-10 bg-white/90 backdrop-blur-sm border border-gray-100 rounded-xl px-3 py-2 shadow-sm">
-            <div className="flex items-center gap-3 text-[10px] text-gray-500">
-              {[
-                { color: "#16a34a", label: "500+" },
-                { color: "#f97316", label: "100-500" },
-                { color: "#f59e0b", label: "20-100" },
-                { color: "#fde68a", label: "1-20" },
-                { color: "#e5e7eb", label: "None" },
-              ].map(({ color, label }) => (
-                <span key={label} className="flex items-center gap-1">
-                  <span className="inline-block w-3 h-2.5 rounded-sm" style={{ background: color }} />
-                  {label}
-                </span>
-              ))}
+          <div className="flex-1 relative">
+            {/* Legend */}
+            <div className="absolute bottom-3 left-3 z-10 bg-white/95 border border-gray-200 rounded-lg px-3 py-2 shadow-sm">
+              <div className="flex items-center gap-3.5 text-[10px] text-gray-500">
+                {[
+                  { color: "#16a34a", label: "500+" },
+                  { color: "#f97316", label: "100-500" },
+                  { color: "#f59e0b", label: "20-100" },
+                  { color: "#fde68a", label: "1-20" },
+                  { color: "#e5e7eb", label: "None" },
+                ].map(({ color, label }) => (
+                  <span key={label} className="flex items-center gap-1.5">
+                    <span className="inline-block w-3 h-3 rounded-full border border-gray-200" style={{ background: color }} />
+                    <span className="font-medium">{label}</span>
+                  </span>
+                ))}
+              </div>
             </div>
-          </div>
-          {isLoading ? (
-            <div className="flex items-center justify-center h-80 text-gray-300 text-sm gap-2">
-              <RefreshCw className="w-4 h-4 animate-spin text-indigo-400" /> Loading...
-            </div>
-          ) : (
-            <ComposableMap
-              projection="geoMercator"
-              projectionConfig={{ scale: 130, center: [10, 10] }}
-              style={{ width: "100%", height: 400 }}
-            >
-              <ZoomableGroup>
-                <Geographies geography={GEO_URL}>
-                  {({ geographies }) =>
-                    geographies.map((geo) => {
-                      const name = geo.properties.name;
-                      const erpName = name === "United States of America" ? "India" // won't match but safe
-                        : name;
-                      const stats = countryStats[erpName];
-                      const total = stats?.total ?? 0;
-                      const isSelected = selectedCountry === erpName;
-                      return (
-                        <Geography
-                          key={geo.rsmKey}
-                          geography={geo}
-                          fill={isSelected ? "#6366f1" : getMapColor(total)}
-                          stroke="#d1d5db"
-                          strokeWidth={0.3}
-                          style={{
-                            default: { outline: "none", cursor: total > 0 ? "pointer" : "default" },
-                            hover: { fill: total > 0 ? "#6366f1" : "#d1d5db", outline: "none", transition: "all 0.1s" },
-                            pressed: { outline: "none" },
-                          }}
-                          onClick={() => handleGeoClick(erpName)}
-                          onMouseEnter={(e) => total > 0 && setTooltip({ name: `${erpName}: ${total} leads`, x: (e as any).clientX, y: (e as any).clientY })}
+            {isLoading ? (
+              <div className="flex items-center justify-center h-full text-gray-300 text-sm gap-2 min-h-96">
+                <RefreshCw className="w-5 h-5 animate-spin text-indigo-400" /> Loading map...
+              </div>
+            ) : (
+              <ComposableMap
+                projection="geoMercator"
+                projectionConfig={{ scale: 140, center: [10, 8] }}
+                style={{ width: "100%", height: "100%", minHeight: 440 }}
+              >
+                <ZoomableGroup>
+                  <Geographies geography={GEO_URL}>
+                    {({ geographies }) =>
+                      geographies.map((geo) => {
+                        const name = geo.properties.name;
+                        const erpName = name;
+                        const stats = countryStats[erpName];
+                        const total = stats?.total ?? 0;
+                        const isSelected = selectedCountry === erpName;
+                        return (
+                          <Geography
+                            key={geo.rsmKey}
+                            geography={geo}
+                            fill={isSelected ? "#6366f1" : getMapColor(total)}
+                            stroke="#ffffff"
+                            strokeWidth={0.4}
+                            style={{
+                              default: { outline: "none", cursor: total > 0 ? "pointer" : "default" },
+                              hover: { fill: total > 0 ? "#818cf8" : "#d1d5db", outline: "none", transition: "fill 0.15s" },
+                              pressed: { outline: "none" },
+                            }}
+                            onClick={() => handleGeoClick(erpName)}
+                            onMouseEnter={(e) => total > 0 && setTooltip({ name: `${erpName}: ${total} leads`, x: (e as any).clientX, y: (e as any).clientY })}
+                            onMouseLeave={() => setTooltip(null)}
+                          />
+                        );
+                      })
+                    }
+                  </Geographies>
+                  {/* Bubble markers */}
+                  {markers.map(({ name, total, coords }) => {
+                    const r = getBubbleSize(total);
+                    const isSelected = selectedCountry === name;
+                    return (
+                      <Marker key={name} coordinates={coords}>
+                        <circle
+                          r={r}
+                          fill={isSelected ? "#4f46e5" : "rgba(255,255,255,0.92)"}
+                          stroke={isSelected ? "#3730a3" : "#2563eb"}
+                          strokeWidth={1.8}
+                          style={{ cursor: "pointer", filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.18))" }}
+                          onClick={() => setSelectedCountry(selectedCountry === name ? null : name)}
+                          onMouseEnter={(e) => setTooltip({ name: `${name}: ${total} leads`, x: (e as any).clientX, y: (e as any).clientY })}
                           onMouseLeave={() => setTooltip(null)}
                         />
-                      );
-                    })
-                  }
-                </Geographies>
-                {/* Bubble markers */}
-                {markers.map(({ name, total, coords }) => {
-                  const r = getBubbleSize(total);
-                  const isSelected = selectedCountry === name;
-                  return (
-                    <Marker key={name} coordinates={coords}>
-                      <circle
-                        r={r}
-                        fill={isSelected ? "#6366f1" : "white"}
-                        fillOpacity={0.95}
-                        stroke={isSelected ? "#4f46e5" : "#3b82f6"}
-                        strokeWidth={1.5}
-                        style={{ cursor: "pointer" }}
-                        onClick={() => setSelectedCountry(selectedCountry === name ? null : name)}
-                        onMouseEnter={(e) => setTooltip({ name: `${name}: ${total} leads`, x: (e as any).clientX, y: (e as any).clientY })}
-                        onMouseLeave={() => setTooltip(null)}
-                      />
-                      <text
-                        textAnchor="middle"
-                        y={r * 0.4}
-                        style={{
-                          fontFamily: "sans-serif",
-                          fontSize: total >= 1000 ? r * 0.65 : r * 0.78,
-                          fontWeight: "bold",
-                          fill: isSelected ? "white" : "#1d4ed8",
-                          pointerEvents: "none",
-                        }}
-                      >
-                        {total >= 1000 ? `${(total / 1000).toFixed(1)}k` : total}
-                      </text>
-                    </Marker>
-                  );
-                })}
-              </ZoomableGroup>
-            </ComposableMap>
-          )}
+                        <text
+                          textAnchor="middle"
+                          y={r * 0.42}
+                          style={{
+                            fontFamily: "system-ui, sans-serif",
+                            fontSize: total >= 1000 ? r * 0.62 : r * 0.75,
+                            fontWeight: "700",
+                            fill: isSelected ? "white" : "#1e40af",
+                            pointerEvents: "none",
+                            letterSpacing: "-0.02em",
+                          }}
+                        >
+                          {total >= 1000 ? `${(total / 1000).toFixed(1)}k` : total}
+                        </text>
+                      </Marker>
+                    );
+                  })}
+                </ZoomableGroup>
+              </ComposableMap>
+            )}
+          </div>
 
           {tooltip && (
             <div
-              className="fixed z-50 bg-gray-900 text-white text-xs px-3 py-1.5 rounded-lg pointer-events-none shadow-lg"
-              style={{ left: tooltip.x + 12, top: tooltip.y - 24 }}
+              className="fixed z-50 bg-gray-900 text-white text-xs px-3 py-1.5 rounded-lg pointer-events-none shadow-xl font-medium"
+              style={{ left: tooltip.x + 14, top: tooltip.y - 28 }}
             >
               {tooltip.name}
             </div>
           )}
         </div>
 
-        {/* RIGHT — Filter stats */}
-        <div className="w-44 shrink-0 flex flex-col gap-2">
-          <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden flex-1">
-            <div className="px-3 py-2.5 border-b border-gray-100 bg-indigo-600">
-              <p className="text-xs font-bold text-white uppercase tracking-wider">
+        {/* RIGHT — Filter stats + Top Markets */}
+        <div className="w-48 shrink-0 flex flex-col gap-2.5">
+          {/* Stats panel */}
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex-1 flex flex-col">
+            <div className="px-3 py-2.5 bg-indigo-600">
+              <p className="text-[11px] font-extrabold text-white uppercase tracking-widest">
                 {selectedCountry ? selectedCountry : "Filtered"}
               </p>
             </div>
-            <div className="divide-y divide-gray-50">
+            <div className="flex-1 overflow-auto">
               {selectedData
                 ? Object.entries(selectedData).map(([k, v]) => (
-                    <div key={k} className="flex justify-between items-center px-3 py-2">
-                      <span className={cn("text-xs font-medium", k === "total" ? "text-gray-800 font-semibold" : "text-gray-500")}>{k}</span>
-                      <span className={cn("text-xs font-bold", k === "total" ? "text-indigo-700 text-base" : "text-gray-800")}>{v as number}</span>
+                    <div key={k} className={cn(
+                      "flex justify-between items-center px-3 py-[7px] border-b border-gray-50",
+                      k === "total" ? "bg-blue-50/60" : ""
+                    )}>
+                      <span className={cn("text-[11px] font-medium leading-tight", k === "total" ? "text-gray-800 font-bold" : "text-gray-500")}>{k === "total" ? "Total Leads" : k}</span>
+                      <span className={cn("font-bold tabular-nums", k === "total" ? "text-blue-600 text-base" : "text-[12px] text-gray-800")}>{v as number}</span>
                     </div>
                   ))
                 : ([
@@ -541,9 +552,12 @@ function WorldMapTab() {
                     ["Lost Quotation", globalStats["Lost Quotation"]],
                     ["Do Not Contact", globalStats["Do Not Contact"]],
                   ] as [string, number][]).map(([label, val]) => (
-                    <div key={label} className="flex justify-between items-center px-3 py-1.5">
-                      <span className={cn("text-xs", label === "Total Leads" ? "text-gray-800 font-semibold" : "text-gray-500")}>{label}</span>
-                      <span className={cn("text-xs font-bold", label === "Total Leads" ? "text-indigo-700 text-sm" : "text-gray-800")}>{isLoading ? "—" : (val ?? 0)}</span>
+                    <div key={label} className={cn(
+                      "flex justify-between items-center px-3 py-[7px] border-b border-gray-50",
+                      label === "Total Leads" ? "bg-blue-50/60" : ""
+                    )}>
+                      <span className={cn("text-[11px] leading-tight", label === "Total Leads" ? "text-gray-800 font-bold" : "text-gray-500 font-medium")}>{label}</span>
+                      <span className={cn("font-bold tabular-nums", label === "Total Leads" ? "text-blue-600 text-base" : "text-[12px] text-gray-800")}>{isLoading ? "—" : (val ?? 0)}</span>
                     </div>
                   ))
               }
@@ -551,32 +565,35 @@ function WorldMapTab() {
             {selectedCountry && (
               <button
                 onClick={() => setSelectedCountry(null)}
-                className="w-full text-xs text-gray-400 hover:text-gray-600 py-2 flex items-center justify-center gap-1 border-t border-gray-100 hover:bg-gray-50 transition-colors"
+                className="w-full text-xs text-gray-400 hover:text-red-500 py-2 flex items-center justify-center gap-1 border-t border-gray-100 hover:bg-red-50 transition-colors font-semibold"
               >
-                <X className="w-3 h-3" /> Clear
+                <X className="w-3 h-3" /> Clear selection
               </button>
             )}
           </div>
-          {/* Top countries mini list */}
-          <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-            <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50/50">
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Top Markets</p>
+          {/* Top Markets */}
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="px-3 py-2.5 border-b border-gray-100">
+              <p className="text-[11px] font-extrabold text-gray-700 uppercase tracking-widest">Top Markets</p>
             </div>
-            <div className="overflow-auto" style={{ maxHeight: 150 }}>
+            <div className="overflow-auto" style={{ maxHeight: 170 }}>
               {Object.entries(countryStats)
                 .sort((a, b) => (b[1].total ?? 0) - (a[1].total ?? 0))
                 .slice(0, 10)
                 .map(([c, s], i) => (
                   <button key={c} onClick={() => setSelectedCountry(selectedCountry === c ? null : c)}
                     className={cn(
-                      "w-full flex items-center justify-between px-2.5 py-1.5 text-xs transition-all border-b border-gray-50",
-                      selectedCountry === c ? "bg-indigo-600 text-white" : "hover:bg-gray-50 text-gray-600"
+                      "w-full flex items-center justify-between px-3 py-[7px] text-xs transition-all border-b border-gray-50",
+                      selectedCountry === c ? "bg-indigo-600 text-white" : "hover:bg-indigo-50/40 text-gray-700"
                     )}>
-                    <div className="flex items-center gap-1.5">
-                      <span className={cn("text-[9px] font-bold w-3", selectedCountry === c ? "text-indigo-200" : "text-gray-300")}>{i + 1}</span>
-                      <span className="truncate font-medium">{c}</span>
+                    <div className="flex items-center gap-2">
+                      <span className={cn(
+                        "text-[10px] font-bold w-3.5 shrink-0 tabular-nums",
+                        selectedCountry === c ? "text-indigo-200" : "text-gray-300"
+                      )}>{i + 1}</span>
+                      <span className="truncate font-semibold text-[11px]">{c}</span>
                     </div>
-                    <span className="font-bold ml-1">{s.total}</span>
+                    <span className={cn("font-bold tabular-nums text-[11px] ml-1 shrink-0", selectedCountry === c ? "text-white" : "text-gray-800")}>{s.total}</span>
                   </button>
                 ))}
             </div>
