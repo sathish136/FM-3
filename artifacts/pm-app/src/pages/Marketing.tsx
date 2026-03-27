@@ -1266,6 +1266,18 @@ const PROPOSAL_STATUS_STYLES: Record<string, { bg: string; text: string; border:
   "Clarifications required from Marketing team": { bg: "bg-violet-50", text: "text-violet-700", border: "border-violet-200", dot: "bg-violet-500" },
 };
 
+const PROPOSAL_STATUS_ORDER = [
+  "Clarifications required from Marketing team",
+  "Proposal sent to Marketing team",
+  "Elevated to Process team",
+  "Elevated to Proposal team",
+  "Proposal Sent to Customer",
+  "Unknown",
+  "Awaiting for Chemin offer",
+  "Proposal sent",
+  "Cost Working Completed",
+];
+
 function ProposalRequestTab() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
@@ -1283,8 +1295,19 @@ function ProposalRequestTab() {
 
   const proposals: any[] = Array.isArray(data?.message) ? data.message : Array.isArray(data) ? data : [];
 
-  const statusOptions = useMemo(() => Array.from(new Set(proposals.map((p: any) => p.proposal_status).filter(Boolean))).sort() as string[], [proposals]);
-  const typeOptions   = useMemo(() => Array.from(new Set(proposals.map((p: any) => p.type_of_proposal).filter(Boolean))).sort() as string[], [proposals]);
+  const typeOptions = useMemo(() => Array.from(new Set(proposals.map((p: any) => p.type_of_proposal).filter(Boolean))).sort() as string[], [proposals]);
+
+  // Build status cards: ordered known statuses first, then any extras from data
+  const statusCards = useMemo(() => {
+    const counts: Record<string, number> = {};
+    proposals.forEach((p: any) => {
+      const s = p.proposal_status || "Unknown";
+      counts[s] = (counts[s] || 0) + 1;
+    });
+    const ordered = PROPOSAL_STATUS_ORDER.filter(s => counts[s] !== undefined).map(s => ({ label: s, count: counts[s] }));
+    const extra = Object.keys(counts).filter(s => !PROPOSAL_STATUS_ORDER.includes(s)).map(s => ({ label: s, count: counts[s] }));
+    return [...ordered, ...extra];
+  }, [proposals]);
 
   const filtered = useMemo(() => proposals
     .filter((p: any) => {
@@ -1292,17 +1315,15 @@ function ProposalRequestTab() {
       const matchSearch = !q || [p.company_name, p.name, p.customer_requirement, p.type_of_proposal, p.proposal_status].some(v =>
         String(v ?? "").toLowerCase().includes(q)
       );
-      const matchStatus = !filterStatus || p.proposal_status === filterStatus;
+      const matchStatus = !filterStatus || (p.proposal_status || "Unknown") === filterStatus;
       const matchType   = !filterType   || p.type_of_proposal === filterType;
       return matchSearch && matchStatus && matchType;
     })
     .sort((a: any, b: any) => {
-      const da = a.date || a.raised_date || "";
-      const db = b.date || b.raised_date || "";
+      const da = a.raised_date || a.date || "";
+      const db = b.raised_date || b.date || "";
       return sortDir === "desc" ? db.localeCompare(da) : da.localeCompare(db);
     }), [proposals, search, filterStatus, filterType, sortDir]);
-
-  const activeFilters = [filterStatus, filterType].filter(Boolean).length;
 
   function exportData() {
     const rows = filtered.map((p: any) => ({
@@ -1320,19 +1341,15 @@ function ProposalRequestTab() {
     XLSX.writeFile(wb, "Proposal_Requests.xlsx");
   }
 
-  // KPI counts
-  const totalCount    = proposals.length;
-  const approvedCount = proposals.filter((p: any) => p.proposal_status === "Approved").length;
-  const pendingCount  = proposals.filter((p: any) => (p.proposal_status || "").toLowerCase().includes("pending") || (p.proposal_status || "").toLowerCase().includes("clarification")).length;
-  const rejectedCount = proposals.filter((p: any) => p.proposal_status === "Rejected").length;
-
   return (
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-base font-bold text-gray-900 tracking-tight">Proposal Requests</h2>
-          <p className="text-xs text-gray-400 mt-0.5">All proposal requests from ERP</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {proposals.length} total proposals · click a card to filter
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => refetch()}
@@ -1346,22 +1363,46 @@ function ProposalRequestTab() {
         </div>
       </div>
 
-      {/* KPI Strip */}
-      <div className="grid grid-cols-4 gap-3">
-        {[
-          { label: "Total Proposals",  value: totalCount,    accent: "border-l-indigo-500",  num: "text-indigo-700" },
-          { label: "Approved",         value: approvedCount, accent: "border-l-emerald-500", num: "text-emerald-700" },
-          { label: "Pending / Clarify",value: pendingCount,  accent: "border-l-amber-500",   num: "text-amber-700" },
-          { label: "Rejected",         value: rejectedCount, accent: "border-l-red-500",     num: "text-red-600" },
-        ].map(kpi => (
-          <div key={kpi.label} className={cn("bg-white border border-gray-200 border-l-4 rounded-xl px-4 py-3 shadow-sm", kpi.accent)}>
-            <p className="text-[11px] text-gray-400 font-medium uppercase tracking-wider">{kpi.label}</p>
-            <p className={cn("text-2xl font-black mt-0.5 tabular-nums", kpi.num)}>
-              {isLoading ? <span className="inline-block w-8 h-6 bg-gray-100 rounded animate-pulse" /> : kpi.value}
-            </p>
-          </div>
-        ))}
-      </div>
+      {/* Clickable Status Cards */}
+      {isLoading ? (
+        <div className="grid grid-cols-3 gap-3">
+          {Array.from({ length: 9 }).map((_, i) => (
+            <div key={i} className="bg-white border border-gray-100 rounded-xl px-4 py-4 shadow-sm animate-pulse">
+              <div className="h-3 bg-gray-100 rounded w-3/4 mb-3" />
+              <div className="h-7 bg-gray-100 rounded w-12 mb-1" />
+              <div className="h-2.5 bg-gray-100 rounded w-16" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-3">
+          {statusCards.map(card => {
+            const isActive = filterStatus === card.label;
+            return (
+              <button
+                key={card.label}
+                onClick={() => setFilterStatus(isActive ? "" : card.label)}
+                className={cn(
+                  "text-left px-4 py-4 rounded-xl border shadow-sm transition-all",
+                  isActive
+                    ? "bg-indigo-600 border-indigo-700 text-white shadow-indigo-200 shadow-md scale-[1.02]"
+                    : "bg-white border-gray-200 text-gray-800 hover:border-indigo-300 hover:shadow-md hover:scale-[1.01]"
+                )}
+              >
+                <p className={cn("text-[11px] font-semibold leading-tight mb-2", isActive ? "text-indigo-100" : "text-gray-500")}>
+                  {card.label}
+                </p>
+                <p className={cn("text-2xl font-black tabular-nums", isActive ? "text-white" : "text-gray-900")}>
+                  {card.count}
+                </p>
+                <p className={cn("text-[10px] mt-0.5 font-medium", isActive ? "text-indigo-200" : "text-gray-400")}>
+                  Proposals
+                </p>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Table */}
       <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
@@ -1378,27 +1419,23 @@ function ProposalRequestTab() {
           </div>
           <div className="relative">
             <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-300 pointer-events-none" />
-            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-              className={cn("appearance-none bg-white border rounded-lg pl-7 pr-6 py-1.5 text-xs outline-none focus:border-indigo-400 transition-all cursor-pointer max-w-52",
-                filterStatus ? "border-indigo-400 text-indigo-700 font-semibold" : "border-gray-200 text-gray-600")}>
-              <option value="">All Statuses</option>
-              {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className="relative">
-            <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-300 pointer-events-none" />
             <select value={filterType} onChange={e => setFilterType(e.target.value)}
-              className={cn("appearance-none bg-white border rounded-lg pl-7 pr-6 py-1.5 text-xs outline-none focus:border-indigo-400 transition-all cursor-pointer max-w-40",
+              className={cn("appearance-none bg-white border rounded-lg pl-7 pr-6 py-1.5 text-xs outline-none focus:border-indigo-400 transition-all cursor-pointer max-w-44",
                 filterType ? "border-indigo-400 text-indigo-700 font-semibold" : "border-gray-200 text-gray-600")}>
               <option value="">All Types</option>
               {typeOptions.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
-          {activeFilters > 0 && (
+          {(filterStatus || filterType || search) && (
             <button onClick={() => { setFilterStatus(""); setFilterType(""); setSearch(""); }}
               className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-semibold border border-red-200 rounded-lg px-2 py-1.5 hover:bg-red-50 transition-colors">
-              <X className="w-3 h-3" /> Clear ({activeFilters})
+              <X className="w-3 h-3" /> Clear all
             </button>
+          )}
+          {filterStatus && (
+            <span className="text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg px-2 py-1 font-semibold max-w-52 truncate">
+              {filterStatus}
+            </span>
           )}
           <div className="flex-1" />
           <button onClick={() => setSortDir(d => d === "desc" ? "asc" : "desc")}
@@ -1408,7 +1445,7 @@ function ProposalRequestTab() {
           <span className="text-xs font-semibold text-gray-400 whitespace-nowrap">{filtered.length} entries</span>
         </div>
 
-        <div className="overflow-auto" style={{ maxHeight: 560 }}>
+        <div className="overflow-auto" style={{ maxHeight: 520 }}>
           <table className="w-full text-xs">
             <thead className="sticky top-0 bg-gray-50 border-b border-gray-100">
               <tr>
@@ -1426,14 +1463,14 @@ function ProposalRequestTab() {
                   </div>
                 </td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={8} className="text-center py-12 text-gray-300">
-                  <FileText className="w-8 h-8 mx-auto mb-2" />
+                <tr><td colSpan={8} className="text-center py-12">
+                  <FileText className="w-8 h-8 mx-auto mb-2 text-gray-200" />
                   <span className="text-xs text-gray-400">No proposals found</span>
                 </td></tr>
               ) : filtered.map((p: any, i: number) => {
                 const st = PROPOSAL_STATUS_STYLES[p.proposal_status];
                 return (
-                  <tr key={i} className={cn("border-b border-gray-50 transition-colors hover:bg-gray-50/60", i % 2 !== 0 ? "bg-gray-50/20" : "")}>
+                  <tr key={i} className={cn("border-b border-gray-50 transition-colors hover:bg-indigo-50/30", i % 2 !== 0 ? "bg-gray-50/20" : "")}>
                     <td className="px-3 py-2.5 text-gray-300 font-semibold text-[11px]">{i + 1}</td>
                     <td className="px-3 py-2.5 font-semibold text-indigo-600 text-[11px] whitespace-nowrap">{p.name || "—"}</td>
                     <td className="px-3 py-2.5 text-gray-500 text-[11px] whitespace-nowrap tabular-nums">{p.raised_date || p.date || "—"}</td>
