@@ -5,7 +5,7 @@ import {
   Globe, MapPin, Newspaper, Users, TrendingUp, BarChart3,
   Filter, RefreshCw, Search, Building2,
   Megaphone, Target, Wifi, Map, X, Download, Info,
-  ArrowUpRight, ArrowDownRight, ChevronRight, Layers, Calendar
+  ArrowUpRight, ArrowDownRight, ChevronRight, Layers, Calendar, FileText
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -21,7 +21,7 @@ import { FollowupCalendar } from "@/components/FollowupCalendar";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "world-map" | "overview" | "india-map" | "lead-details" | "news" | "competitors" | "followup";
+type Tab = "world-map" | "overview" | "india-map" | "lead-details" | "news" | "competitors" | "followup" | "proposal-request";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -1256,16 +1256,232 @@ function CompetitorTab() {
   );
 }
 
+// ── Proposal Request Tab ──────────────────────────────────────────────────────
+
+const PROPOSAL_STATUS_STYLES: Record<string, { bg: string; text: string; border: string; dot: string }> = {
+  "Approved":                             { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", dot: "bg-emerald-500" },
+  "Pending":                              { bg: "bg-amber-50",   text: "text-amber-700",   border: "border-amber-200",   dot: "bg-amber-400" },
+  "Rejected":                             { bg: "bg-red-50",     text: "text-red-700",     border: "border-red-200",     dot: "bg-red-500" },
+  "Draft":                                { bg: "bg-gray-100",   text: "text-gray-600",    border: "border-gray-200",    dot: "bg-gray-400" },
+  "Clarifications required from Marketing team": { bg: "bg-violet-50", text: "text-violet-700", border: "border-violet-200", dot: "bg-violet-500" },
+};
+
+function ProposalRequestTab() {
+  const [search, setSearch] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [filterType, setFilterType] = useState("");
+  const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["proposal-request-tab"],
+    queryFn: async () => {
+      const r = await fetch("/api/marketing/proposal-request");
+      return r.json();
+    },
+    staleTime: 60_000,
+  });
+
+  const proposals: any[] = Array.isArray(data?.message) ? data.message : Array.isArray(data) ? data : [];
+
+  const statusOptions = useMemo(() => Array.from(new Set(proposals.map((p: any) => p.proposal_status).filter(Boolean))).sort() as string[], [proposals]);
+  const typeOptions   = useMemo(() => Array.from(new Set(proposals.map((p: any) => p.type_of_proposal).filter(Boolean))).sort() as string[], [proposals]);
+
+  const filtered = useMemo(() => proposals
+    .filter((p: any) => {
+      const q = search.toLowerCase();
+      const matchSearch = !q || [p.company_name, p.name, p.customer_requirement, p.type_of_proposal, p.proposal_status].some(v =>
+        String(v ?? "").toLowerCase().includes(q)
+      );
+      const matchStatus = !filterStatus || p.proposal_status === filterStatus;
+      const matchType   = !filterType   || p.type_of_proposal === filterType;
+      return matchSearch && matchStatus && matchType;
+    })
+    .sort((a: any, b: any) => {
+      const da = a.date || a.raised_date || "";
+      const db = b.date || b.raised_date || "";
+      return sortDir === "desc" ? db.localeCompare(da) : da.localeCompare(db);
+    }), [proposals, search, filterStatus, filterType, sortDir]);
+
+  const activeFilters = [filterStatus, filterType].filter(Boolean).length;
+
+  function exportData() {
+    const rows = filtered.map((p: any) => ({
+      Name: p.name || "",
+      "Raised Date": p.raised_date || "",
+      "Company Name": p.company_name || "",
+      "Type of Proposal": p.type_of_proposal || "",
+      "Plant Capacity (m³/day)": p.plant_capacity_m3day || "",
+      "Customer Requirement": p.customer_requirement || "",
+      "Proposal Status": p.proposal_status || "",
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Proposal Requests");
+    XLSX.writeFile(wb, "Proposal_Requests.xlsx");
+  }
+
+  // KPI counts
+  const totalCount    = proposals.length;
+  const approvedCount = proposals.filter((p: any) => p.proposal_status === "Approved").length;
+  const pendingCount  = proposals.filter((p: any) => (p.proposal_status || "").toLowerCase().includes("pending") || (p.proposal_status || "").toLowerCase().includes("clarification")).length;
+  const rejectedCount = proposals.filter((p: any) => p.proposal_status === "Rejected").length;
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-base font-bold text-gray-900 tracking-tight">Proposal Requests</h2>
+          <p className="text-xs text-gray-400 mt-0.5">All proposal requests from ERP</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => refetch()}
+            className="flex items-center gap-1.5 text-xs text-gray-600 bg-white border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors font-semibold shadow-sm">
+            <RefreshCw className={cn("w-3 h-3", isLoading && "animate-spin")} /> Refresh
+          </button>
+          <button onClick={exportData}
+            className="flex items-center gap-1.5 text-xs text-white bg-emerald-600 border border-emerald-700 rounded-lg px-3 py-1.5 hover:bg-emerald-700 transition-colors font-semibold shadow-sm">
+            <Download className="w-3 h-3" /> Export
+          </button>
+        </div>
+      </div>
+
+      {/* KPI Strip */}
+      <div className="grid grid-cols-4 gap-3">
+        {[
+          { label: "Total Proposals",  value: totalCount,    accent: "border-l-indigo-500",  num: "text-indigo-700" },
+          { label: "Approved",         value: approvedCount, accent: "border-l-emerald-500", num: "text-emerald-700" },
+          { label: "Pending / Clarify",value: pendingCount,  accent: "border-l-amber-500",   num: "text-amber-700" },
+          { label: "Rejected",         value: rejectedCount, accent: "border-l-red-500",     num: "text-red-600" },
+        ].map(kpi => (
+          <div key={kpi.label} className={cn("bg-white border border-gray-200 border-l-4 rounded-xl px-4 py-3 shadow-sm", kpi.accent)}>
+            <p className="text-[11px] text-gray-400 font-medium uppercase tracking-wider">{kpi.label}</p>
+            <p className={cn("text-2xl font-black mt-0.5 tabular-nums", kpi.num)}>
+              {isLoading ? <span className="inline-block w-8 h-6 bg-gray-100 rounded animate-pulse" /> : kpi.value}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {/* Table */}
+      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+        {/* Filter bar */}
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-gray-100 bg-gray-50/60">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-300" />
+            <input
+              className="bg-white border border-gray-200 rounded-lg pl-7 pr-3 py-1.5 text-xs text-gray-700 placeholder-gray-300 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 transition-all w-52"
+              placeholder="Search company, requirement..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+          <div className="relative">
+            <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-300 pointer-events-none" />
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+              className={cn("appearance-none bg-white border rounded-lg pl-7 pr-6 py-1.5 text-xs outline-none focus:border-indigo-400 transition-all cursor-pointer max-w-52",
+                filterStatus ? "border-indigo-400 text-indigo-700 font-semibold" : "border-gray-200 text-gray-600")}>
+              <option value="">All Statuses</option>
+              {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="relative">
+            <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-300 pointer-events-none" />
+            <select value={filterType} onChange={e => setFilterType(e.target.value)}
+              className={cn("appearance-none bg-white border rounded-lg pl-7 pr-6 py-1.5 text-xs outline-none focus:border-indigo-400 transition-all cursor-pointer max-w-40",
+                filterType ? "border-indigo-400 text-indigo-700 font-semibold" : "border-gray-200 text-gray-600")}>
+              <option value="">All Types</option>
+              {typeOptions.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          {activeFilters > 0 && (
+            <button onClick={() => { setFilterStatus(""); setFilterType(""); setSearch(""); }}
+              className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-semibold border border-red-200 rounded-lg px-2 py-1.5 hover:bg-red-50 transition-colors">
+              <X className="w-3 h-3" /> Clear ({activeFilters})
+            </button>
+          )}
+          <div className="flex-1" />
+          <button onClick={() => setSortDir(d => d === "desc" ? "asc" : "desc")}
+            className="flex items-center gap-1.5 text-xs text-gray-500 border border-gray-200 rounded-lg px-2.5 py-1.5 hover:bg-gray-100 transition-colors font-semibold">
+            {sortDir === "desc" ? "Newest first" : "Oldest first"}
+          </button>
+          <span className="text-xs font-semibold text-gray-400 whitespace-nowrap">{filtered.length} entries</span>
+        </div>
+
+        <div className="overflow-auto" style={{ maxHeight: 560 }}>
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-gray-50 border-b border-gray-100">
+              <tr>
+                {["#", "Name", "Raised Date", "Company", "Type", "Capacity (m³/d)", "Requirement", "Status"].map(h => (
+                  <th key={h} className="px-3 py-2.5 text-left text-[10px] text-gray-400 font-bold uppercase tracking-wider whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr><td colSpan={8} className="text-center py-12">
+                  <div className="flex flex-col items-center gap-2 text-gray-300">
+                    <RefreshCw className="w-4 h-4 animate-spin text-indigo-300" />
+                    <span className="text-xs">Loading proposals...</span>
+                  </div>
+                </td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={8} className="text-center py-12 text-gray-300">
+                  <FileText className="w-8 h-8 mx-auto mb-2" />
+                  <span className="text-xs text-gray-400">No proposals found</span>
+                </td></tr>
+              ) : filtered.map((p: any, i: number) => {
+                const st = PROPOSAL_STATUS_STYLES[p.proposal_status];
+                return (
+                  <tr key={i} className={cn("border-b border-gray-50 transition-colors hover:bg-gray-50/60", i % 2 !== 0 ? "bg-gray-50/20" : "")}>
+                    <td className="px-3 py-2.5 text-gray-300 font-semibold text-[11px]">{i + 1}</td>
+                    <td className="px-3 py-2.5 font-semibold text-indigo-600 text-[11px] whitespace-nowrap">{p.name || "—"}</td>
+                    <td className="px-3 py-2.5 text-gray-500 text-[11px] whitespace-nowrap tabular-nums">{p.raised_date || p.date || "—"}</td>
+                    <td className="px-3 py-2.5 font-semibold text-gray-800 text-[11px] max-w-44 truncate">{p.company_name || "—"}</td>
+                    <td className="px-3 py-2.5 text-[11px] whitespace-nowrap">
+                      {p.type_of_proposal ? (
+                        <span className="bg-sky-50 text-sky-700 border border-sky-200 px-2 py-0.5 rounded text-[10px] font-semibold">{p.type_of_proposal}</span>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-gray-600 text-[11px] whitespace-nowrap font-medium tabular-nums">{p.plant_capacity_m3day || "—"}</td>
+                    <td className="px-3 py-2.5 text-gray-500 text-[11px] max-w-48 truncate">{p.customer_requirement || "—"}</td>
+                    <td className="px-3 py-2.5">
+                      {p.proposal_status ? (
+                        st ? (
+                          <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-semibold whitespace-nowrap", st.bg, st.text, st.border)}>
+                            <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", st.dot)} />
+                            {p.proposal_status}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-semibold bg-gray-50 text-gray-600 border-gray-200 whitespace-nowrap">
+                            <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-gray-400" />
+                            {p.proposal_status}
+                          </span>
+                        )
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 const TABS: { id: Tab; label: string; icon: React.ElementType; activeColor: string }[] = [
-  { id: "world-map",   label: "World Map",          icon: Globe,      activeColor: "bg-sky-600" },
-  { id: "overview",    label: "Lead Overview",       icon: Users,      activeColor: "bg-indigo-600" },
-  { id: "india-map",   label: "India States",        icon: Map,        activeColor: "bg-orange-500" },
-  { id: "lead-details",label: "Lead Details",        icon: Filter,     activeColor: "bg-violet-600" },
-  { id: "news",        label: "Industry News",       icon: Newspaper,  activeColor: "bg-teal-600" },
-  { id: "competitors", label: "Competitors",         icon: Building2,  activeColor: "bg-rose-600" },
-  { id: "followup",    label: "Followup Calendar",   icon: Calendar,   activeColor: "bg-purple-600" },
+  { id: "world-map",        label: "World Map",          icon: Globe,      activeColor: "bg-sky-600" },
+  { id: "overview",         label: "Lead Overview",       icon: Users,      activeColor: "bg-indigo-600" },
+  { id: "india-map",        label: "India States",        icon: Map,        activeColor: "bg-orange-500" },
+  { id: "lead-details",     label: "Lead Details",        icon: Filter,     activeColor: "bg-violet-600" },
+  { id: "news",             label: "Industry News",       icon: Newspaper,  activeColor: "bg-teal-600" },
+  { id: "competitors",      label: "Competitors",         icon: Building2,  activeColor: "bg-rose-600" },
+  { id: "followup",         label: "Followup Calendar",   icon: Calendar,   activeColor: "bg-purple-600" },
+  { id: "proposal-request", label: "Proposal Requests",  icon: FileText,   activeColor: "bg-emerald-600" },
 ];
 
 export default function Marketing() {
@@ -1306,13 +1522,14 @@ export default function Marketing() {
 
         {/* Tab Content */}
         <div>
-          {activeTab === "world-map"    && <WorldMapTab />}
-          {activeTab === "overview"     && <OverviewTab />}
-          {activeTab === "india-map"    && <IndiaMapTab />}
-          {activeTab === "lead-details" && <LeadDetailsTab />}
-          {activeTab === "news"         && <NewsTab />}
-          {activeTab === "competitors"  && <CompetitorTab />}
-          {activeTab === "followup"     && <FollowupCalendar />}
+          {activeTab === "world-map"        && <WorldMapTab />}
+          {activeTab === "overview"         && <OverviewTab />}
+          {activeTab === "india-map"        && <IndiaMapTab />}
+          {activeTab === "lead-details"     && <LeadDetailsTab />}
+          {activeTab === "news"             && <NewsTab />}
+          {activeTab === "competitors"      && <CompetitorTab />}
+          {activeTab === "followup"         && <FollowupCalendar />}
+          {activeTab === "proposal-request" && <ProposalRequestTab />}
         </div>
       </div>
     </Layout>
