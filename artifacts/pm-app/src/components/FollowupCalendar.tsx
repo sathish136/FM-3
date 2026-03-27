@@ -536,14 +536,14 @@ export function FollowupCalendar() {
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-gray-50 border-b border-gray-100">
                 <tr>
-                  {["Type", "Date", "Company", "Lead", "Status", "Followed By", "Source", "Country", "Mobile"].map(h => (
+                  {["Type", "Date", "Company", "Lead", "Status", "Followed By", "Source", "Location", "Mobile", "Next Follow Up"].map(h => (
                     <th key={h} className="px-3 py-2.5 text-left text-[10px] text-gray-400 font-bold uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
-                  <tr><td colSpan={9} className="text-center py-12">
+                  <tr><td colSpan={10} className="text-center py-12">
                     <div className="flex flex-col items-center gap-2 text-gray-300">
                       <RefreshCw className="w-4 h-4 animate-spin text-indigo-300" />
                       <span className="text-xs">Loading...</span>
@@ -592,8 +592,13 @@ export function FollowupCalendar() {
                       </td>
                       <td className="px-3 py-2 text-gray-500 text-[11px] whitespace-nowrap font-medium">{item.followed_by || "—"}</td>
                       <td className="px-3 py-2 text-gray-400 text-[11px] whitespace-nowrap">{item.source || "—"}</td>
-                      <td className="px-3 py-2 text-gray-400 text-[11px] whitespace-nowrap">{item.country || "—"}</td>
+                      <td className="px-3 py-2 text-gray-400 text-[11px] whitespace-nowrap">{item.location || item.country || "—"}</td>
                       <td className="px-3 py-2 text-gray-400 text-[11px] whitespace-nowrap">{item.mobile_no || "—"}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {item.next_follow_up_date
+                          ? <span className="text-[11px] font-semibold text-indigo-600">{item.next_follow_up_date}</span>
+                          : <span className="text-gray-300">—</span>}
+                      </td>
                     </tr>
                   );
                 })}
