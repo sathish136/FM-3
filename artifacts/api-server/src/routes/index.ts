@@ -18,6 +18,8 @@ import siteDataRouter from "./site-data";
 import smartEmailRouter from "./smart-email";
 import emailSyncRouter from "./email-sync";
 import marketingRouter from "./marketing";
+import purchaseDashboardRouter from "./purchase-dashboard";
+import storesDashboardRouter from "./stores-dashboard";
 
 const router: IRouter = Router();
 
@@ -40,5 +42,7 @@ router.use(siteDataRouter);
 router.use(smartEmailRouter);
 router.use(emailSyncRouter);
 router.use(marketingRouter);
+router.use(purchaseDashboardRouter);
+router.use(storesDashboardRouter);
 
 export default router;
