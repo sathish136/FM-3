@@ -16,6 +16,7 @@ import drawingsRouter from "./drawings";
 import timelineRouter from "./timeline";
 import siteDataRouter from "./site-data";
 import smartEmailRouter from "./smart-email";
+import emailSyncRouter from "./email-sync";
 
 const router: IRouter = Router();
 
@@ -36,5 +37,6 @@ router.use(drawingsRouter);
 router.use(timelineRouter);
 router.use(siteDataRouter);
 router.use(smartEmailRouter);
+router.use(emailSyncRouter);
 
 export default router;

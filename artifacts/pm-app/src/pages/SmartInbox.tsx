@@ -5,7 +5,7 @@ import {
   FolderOpen, Truck, Users, RefreshCw, X, Send, Loader2, ChevronDown,
   ChevronRight, Bot, Wand2, Reply, Paperclip, Search, Shield,
   CheckCircle2, Clock, Zap, Star, Eye, Trash2, BarChart3, Settings,
-  Plus, Download, Bell, BellOff, BrainCircuit, CloudDownload, MailCheck, KeyRound,
+  Plus, Download, Bell, BellOff, BrainCircuit, CloudDownload, MailCheck, KeyRound, Plane,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -18,8 +18,19 @@ async function api(path: string, opts?: RequestInit) {
   return r.json();
 }
 
+// Auto-analysis function
+async function triggerAutoAnalysis() {
+  try {
+    await api("/smart-email/auto-analyze", { method: "POST" });
+    return true;
+  } catch (error) {
+    console.error("Auto-analysis failed:", error);
+    return false;
+  }
+}
+
 type EmailType = "important" | "information" | "promotion" | "otp";
-type Category = "project" | "supplier" | "internal" | "other";
+type Category = "project" | "supplier" | "travel" | "internal" | "other";
 type Priority = "high" | "medium" | "low";
 
 interface SmartEmail {
@@ -46,7 +57,7 @@ interface SmartEmail {
 
 interface Stats {
   unread: string; important: string; information: string; promotion: string; otp: string;
-  projects: string; suppliers: string; internal: string;
+  projects: string; suppliers: string; travel: string; internal: string;
   needs_reply: string; auto_replied_count: string; total: string;
   drafts_count: string; trash_count: string;
 }
@@ -97,11 +108,12 @@ const PRIORITY_CONFIG: Record<string, { dot: string; label: string }> = {
 const CAT_CONFIG: Record<string, { icon: any; color: string }> = {
   project:  { icon: FolderOpen, color: "text-indigo-600" },
   supplier: { icon: Truck,      color: "text-orange-600" },
+  travel:   { icon: Plane,      color: "text-cyan-600" },
   internal: { icon: Building2,  color: "text-teal-600" },
   other:    { icon: Mail,       color: "text-gray-500" },
 };
 
-type FilterKey = "all"|"important"|"information"|"promotion"|"internal"|"project"|"supplier"|"unread"|"high"|"drafts"|"dept"|"trash"|string;
+type FilterKey = "all"|"important"|"information"|"promotion"|"internal"|"project"|"supplier"|"travel"|"unread"|"high"|"drafts"|"dept"|"trash"|string;
 
 interface NavItem { key: FilterKey; label: string; icon: any; color: string; count?: number; value?: string; indent?: boolean; }
 
@@ -972,6 +984,8 @@ export default function SmartInbox() {
   const [departments, setDepartments] = useState<DepartmentCount[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<{ message: string; progress: number; total: number } | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
   const [classifying, setClassifying] = useState(false);
   const [draftingAll, setDraftingAll] = useState(false);
   const [draftAllResult, setDraftAllResult] = useState<string>("");
@@ -1022,6 +1036,68 @@ export default function SmartInbox() {
 
   // Auto-sync every 5 minutes while Smart Inbox is open
   const autoSyncRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const syncAllEmails = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    setSyncProgress({ message: "Starting email synchronization...", progress: 0, total: 0 });
+    
+    try {
+      // Start the comprehensive sync
+      const syncResponse = await api("/email-sync/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_email: userEmail }),
+      });
+      
+      const syncId = syncResponse.sync_id;
+      
+      // Poll for progress
+      const pollSync = async () => {
+        try {
+          const status = await api(`/email-sync/status/${syncId}`);
+          setSyncProgress({ 
+            message: status.message, 
+            progress: status.progress, 
+            total: status.total 
+          });
+          
+          if (status.status === 'completed') {
+            // Refresh data
+            await api("/smart-email/ingest", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ user_email: userEmail }),
+            });
+            await loadEmails(activeFilter, filterValue, search || undefined);
+            await loadStats();
+            setSyncing(false);
+            setSyncProgress(null);
+          } else if (status.status === 'error') {
+            setError(status.message);
+            setSyncing(false);
+            setSyncProgress(null);
+          } else {
+            // Still running, continue polling
+            setTimeout(pollSync, 2000);
+          }
+        } catch (error) {
+          console.error('Sync polling error:', error);
+          setSyncing(false);
+          setSyncProgress(null);
+        }
+      };
+      
+      // Start polling
+      setTimeout(pollSync, 1000);
+      
+    } catch (error: any) {
+      setError(error.message);
+      setSyncing(false);
+      setSyncProgress(null);
+    }
+  };
+
   useEffect(() => {
     const runSync = async () => {
       if (syncing) return;
@@ -1236,6 +1312,7 @@ export default function SmartInbox() {
         { key: "internal", label: "Internal (WTT)", icon: Shield,    color: "text-teal-600",   count: n(stats?.internal) },
         { key: "supplier", label: "All Suppliers",  icon: Truck,     color: "text-orange-600", count: n(stats?.suppliers) },
         { key: "project",  label: "All Projects",   icon: FolderOpen,color: "text-indigo-600", count: n(stats?.projects) },
+        { key: "travel",   label: "Travel",         icon: Plane,     color: "text-cyan-600",   count: n(stats?.travel) },
       ] as NavItem[],
     },
   ];
@@ -1268,6 +1345,49 @@ export default function SmartInbox() {
 
           {/* Action buttons */}
           <div className="px-3 py-3 space-y-2 border-b border-gray-100">
+            <button onClick={syncAllEmails} disabled={syncing}
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 bg-teal-600 text-white text-[11px] font-semibold rounded-lg hover:bg-teal-700 active:scale-[0.98] transition-all disabled:opacity-50">
+              {syncing
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                : <CloudDownload className="w-3.5 h-3.5 shrink-0" />}
+              <span>{syncing ? "Syncing…" : "Sync All Emails"}</span>
+            </button>
+            <button onClick={() => {
+              setAnalyzing(true);
+              triggerAutoAnalysis().then(success => {
+                if (success) {
+                  setSyncProgress({ message: "Auto-analysis completed! Refreshing emails...", progress: 100, total: 100 });
+                  setTimeout(() => {
+                    loadStats();
+                    loadMessages();
+                    setSyncProgress(null);
+                  }, 2000);
+                } else {
+                  setSyncProgress({ message: "Auto-analysis failed. Please try again.", progress: 0, total: 0 });
+                  setTimeout(() => setSyncProgress(null), 3000);
+                }
+                setAnalyzing(false);
+              });
+            }} disabled={analyzing}
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 bg-purple-600 text-white text-[11px] font-semibold rounded-lg hover:bg-purple-700 active:scale-[0.98] transition-all disabled:opacity-50">
+              {analyzing
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                : <BrainCircuit className="w-3.5 h-3.5 shrink-0" />}
+              <span>{analyzing ? "Analyzing…" : "AI Auto-Analysis"}</span>
+            </button>
+            {syncProgress && (
+              <div className="px-2 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-[10px] text-blue-700 font-medium">{syncProgress.message}</p>
+                {syncProgress.total > 0 && (
+                  <div className="mt-1 w-full bg-blue-100 rounded-full h-1">
+                    <div 
+                      className="bg-blue-500 h-1 rounded-full transition-all duration-300"
+                      style={{ width: `${(syncProgress.progress / syncProgress.total) * 100}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
             <button onClick={handleClassifyAll} disabled={classifying}
               className="w-full flex items-center gap-2.5 px-3 py-2.5 bg-indigo-600 text-white text-[11px] font-semibold rounded-lg hover:bg-indigo-700 active:scale-[0.98] transition-all disabled:opacity-50">
               {classifying

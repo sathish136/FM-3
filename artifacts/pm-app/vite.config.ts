@@ -57,6 +57,7 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    sourcemap: false, // Disable source maps to avoid ESBuild issues
   },
   server: {
     port,
@@ -64,11 +65,11 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       "/api": {
-        target: "http://localhost:8080",
+        target: "http://localhost:3000",
         changeOrigin: true,
       },
       "/pm-app/api": {
-        target: "http://localhost:8080",
+        target: "http://localhost:3000",
         changeOrigin: true,
         rewrite: (path: string) => path.replace(/^\/pm-app/, ""),
       },

@@ -256,11 +256,11 @@ export default function ProjectBoard() {
     return data;
   }, [rows, search, pendingOnly, poNotCreated, prPendingOnly, buyReqOnly, due, minPo, agingFilter, deliveryFrom, deliveryTo, sortKey, sortDir]);
 
-  const pending   = rows.filter(r => r.po_pending > 0).length;
-  const completed = rows.filter(r => r.po_pending === 0).length;
-  const noPo      = rows.filter(r => !r.po_no).length;
-  const dueCount  = rows.filter(r => r.aging?.toLowerCase().includes("pending")).length;
-  const prCount   = rows.filter(r => r.pr_pending > 0).length;
+  const pending   = filtered.filter(r => r.po_pending > 0).length;
+  const completed = filtered.filter(r => r.po_pending === 0).length;
+  const noPo      = filtered.filter(r => !r.po_no).length;
+  const dueCount  = filtered.filter(r => r.aging?.toLowerCase().includes("pending")).length;
+  const prCount   = filtered.filter(r => r.pr_pending > 0).length;
 
   const activeFilters = [pendingOnly, poNotCreated, prPendingOnly, buyReqOnly, due, !!search, !!minPoPending, agingFilter !== "all", !!deliveryFrom, !!deliveryTo].filter(Boolean).length;
   const selectedProjectName = projects.find(p => p.name === project)?.project_name || project;
@@ -344,7 +344,7 @@ export default function ProjectBoard() {
               const p = new URLSearchParams({ report: "1" });
               if (project) p.set("project", project);
               if (remarks) p.set("mr_remarks", remarks);
-              window.open(`${window.location.origin}/pm-app/project-board?${p}`, "_blank");
+              window.open(`${window.location.pathname}?${p}`, "_blank");
             }}
               title="Open full report view"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 border border-gray-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-colors">

@@ -765,6 +765,7 @@ export default function Email() {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [lastSynced, setLastSynced] = useState<Date|null>(null);
+  const [syncProgress, setSyncProgress] = useState<{ message: string; progress: number; total: number } | null>(null);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<EmailItem|null>(null);
   const [composing, setComposing] = useState(false);
@@ -800,12 +801,58 @@ export default function Email() {
   const handleSync = async () => {
     if (!userEmail || syncing) return;
     setSyncing(true);
+    setSyncProgress({ message: "Starting email synchronization...", progress: 0, total: 0 });
+    
     try {
-      const data = await apiFetch(`/email/sync?mailbox=${encodeURIComponent(activeFolderPath)}${userParam}`);
-      setEmails(Array.isArray(data) ? data : []);
-      setLastSynced(new Date()); setError("");
-    } catch(e: any) { setError(e.message || "Sync failed"); }
-    setSyncing(false);
+      // Start the comprehensive sync
+      const syncResponse = await apiFetch("/email-sync/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_email: userEmail }),
+      });
+      
+      const syncId = syncResponse.sync_id;
+      
+      // Poll for progress
+      const pollSync = async () => {
+        try {
+          const status = await apiFetch(`/email-sync/status/${syncId}`);
+          setSyncProgress({ 
+            message: status.message, 
+            progress: status.progress, 
+            total: status.total 
+          });
+          
+          if (status.status === 'completed') {
+            // Refresh current folder
+            await load(activeFolderPath, true);
+            setLastSynced(new Date()); 
+            setError("");
+            setSyncing(false);
+            setSyncProgress(null);
+          } else if (status.status === 'error') {
+            setError(status.message);
+            setSyncing(false);
+            setSyncProgress(null);
+          } else {
+            // Still running, continue polling
+            setTimeout(pollSync, 2000);
+          }
+        } catch (error) {
+          console.error('Sync polling error:', error);
+          setSyncing(false);
+          setSyncProgress(null);
+        }
+      };
+      
+      // Start polling
+      setTimeout(pollSync, 1000);
+      
+    } catch (e: any) {
+      setError(e.message || "Sync failed");
+      setSyncing(false);
+      setSyncProgress(null);
+    }
   };
 
   useEffect(() => {
@@ -1009,9 +1056,23 @@ export default function Email() {
 
           {/* Sync status at bottom */}
           <div className="px-3 py-2 border-t border-gray-100 bg-[#f8fafc]">
-            <p className="text-[10px] text-gray-400 text-center">
-              {syncing ? "Syncing…" : lastSynced ? `Synced ${lastSynced.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}` : ""}
-            </p>
+            {syncProgress ? (
+              <div className="space-y-1">
+                <p className="text-[10px] text-blue-700 font-medium text-center">{syncProgress.message}</p>
+                {syncProgress.total > 0 && (
+                  <div className="w-full bg-blue-100 rounded-full h-1">
+                    <div 
+                      className="bg-blue-500 h-1 rounded-full transition-all duration-300"
+                      style={{ width: `${(syncProgress.progress / syncProgress.total) * 100}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-[10px] text-gray-400 text-center">
+                {syncing ? "Syncing…" : lastSynced ? `Synced ${lastSynced.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}` : ""}
+              </p>
+            )}
           </div>
         </div>
 

@@ -180,7 +180,264 @@ async function initTables() {
 
   console.log("smart email tables ready");
 }
-initTables().catch(e => console.error("smart email init:", e.message));
+// Automatic AI-based email analysis and reclassification
+async function runAutoEmailAnalysis() {
+  try {
+    console.log("🤖 Starting automatic email analysis...");
+    
+    // 1. Analyze unclassified emails with enhanced AI
+    const unclassified = await pool.query(
+      `SELECT uid, subject, from_addr, body_text, body_html 
+       FROM smart_email_inbox 
+       WHERE NOT classified OR category = 'other'
+       ORDER BY email_date DESC 
+       LIMIT 50`
+    );
+
+    let reclassified = 0;
+    for (const email of unclassified.rows) {
+      try {
+        const bodySnippet = email.body_text || (email.body_html ? email.body_html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ") : "");
+        const classification = await classifyWithAI(email.subject || "", email.from_addr || "", bodySnippet);
+        
+        await pool.query(
+          `UPDATE smart_email_inbox SET
+            email_type=$1, category=$2, project_name=$3, supplier_name=$4,
+            priority=$5, classified=true
+           WHERE uid=$6`,
+          [classification.email_type, classification.category, classification.project_name,
+           classification.supplier_name, classification.priority, email.uid]
+        );
+        
+        reclassified++;
+        console.log(`📧 Reclassified email: ${email.subject} -> ${classification.category}`);
+        
+        // Small delay to avoid overwhelming the API
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+      } catch (error) {
+        console.error(`Error classifying email ${email.uid}:`, error);
+      }
+    }
+
+    // 2. Scan for missed travel emails using keyword patterns (more precise)
+    const missedTravel = await pool.query(
+      `SELECT uid, subject, from_addr, body_text, body_html 
+       FROM smart_email_inbox 
+       WHERE category != 'travel' AND category != 'internal'
+       AND (
+         (subject ILIKE '% flight %' OR subject ILIKE '%flight %' OR subject ILIKE '% flight%')
+         OR (subject ILIKE '% airline %' OR subject ILIKE '%airline %' OR subject ILIKE '% airline%')
+         OR (subject ILIKE '% booking %' OR subject ILIKE '%booking %' OR subject ILIKE '% booking%')
+         OR (subject ILIKE '% ticket %' OR subject ILIKE '%ticket %' OR subject ILIKE '% ticket%')
+         OR (subject ILIKE '% hotel %' OR subject ILIKE '%hotel %' OR subject ILIKE '% hotel%')
+         OR (subject ILIKE '% uber %' OR subject ILIKE '%uber %' OR subject ILIKE '% uber%')
+         OR (subject ILIKE '% taxi %' OR subject ILIKE '%taxi %' OR subject ILIKE '% taxi%')
+         OR (subject ILIKE '% airport %' OR subject ILIKE '%airport %' OR subject ILIKE '% airport%')
+         OR (subject ILIKE '% e-ticket %' OR subject ILIKE '%e-ticket %' OR subject ILIKE '% e-ticket%')
+         OR (subject ILIKE '% boarding %' OR subject ILIKE '%boarding %' OR subject ILIKE '% boarding%')
+         OR (body_text ILIKE '% flight %' OR body_text ILIKE '%flight %' OR body_text ILIKE '% flight%')
+         OR (body_text ILIKE '% airline %' OR body_text ILIKE '%airline %' OR body_text ILIKE '% airline%')
+         OR (body_text ILIKE '% booking %' OR body_text ILIKE '%booking %' OR body_text ILIKE '% booking%')
+         OR (body_text ILIKE '% ticket %' OR body_text ILIKE '%ticket %' OR body_text ILIKE '% ticket%')
+         OR (body_text ILIKE '% hotel %' OR body_text ILIKE '%hotel %' OR body_text ILIKE '% hotel%')
+         OR (body_text ILIKE '% uber %' OR body_text ILIKE '%uber %' OR body_text ILIKE '% uber%')
+         OR (body_text ILIKE '% taxi %' OR body_text ILIKE '%taxi %' OR body_text ILIKE '% taxi%')
+         OR (body_text ILIKE '% airport %' OR body_text ILIKE '%airport %' OR body_text ILIKE '% airport%')
+         OR (body_text ILIKE '% e-ticket %' OR body_text ILIKE '%e-ticket %' OR body_text ILIKE '% e-ticket%')
+         OR (body_text ILIKE '% boarding %' OR body_text ILIKE '%boarding %' OR body_text ILIKE '% boarding%')
+       )
+       AND NOT (
+         subject ILIKE '%tender%' OR subject ILIKE '%gst%' OR subject ILIKE '%quotation%'
+         OR subject ILIKE '%bid%' OR subject ILIKE '%procurement%' OR subject ILIKE '%contract%'
+         OR subject ILIKE '%vendor%' OR subject ILIKE '%supplier%' OR subject ILIKE '%purchase%'
+         OR body_text ILIKE '%tender%' OR body_text ILIKE '%gst%' OR body_text ILIKE '%quotation%'
+         OR body_text ILIKE '%bid%' OR body_text ILIKE '%procurement%' OR body_text ILIKE '%contract%'
+         OR body_text ILIKE '%vendor%' OR body_text ILIKE '%supplier%' OR body_text ILIKE '%purchase%'
+       )
+       LIMIT 20`
+    );
+
+    for (const email of missedTravel.rows) {
+      await pool.query(
+        `UPDATE smart_email_inbox SET category='travel', classified=true WHERE uid=$1`,
+        [email.uid]
+      );
+      console.log(`✈️  Found missed travel email: ${email.subject}`);
+      reclassified++;
+    }
+
+    console.log(`✅ Auto-analysis complete: ${reclassified} emails reclassified`);
+    
+  } catch (error) {
+    console.error("❌ Auto-analysis error:", error);
+  }
+}
+
+// Clean up incorrectly classified travel emails
+async function cleanupIncorrectTravelClassifications() {
+  try {
+    console.log("🧹 Cleaning up incorrect travel classifications...");
+    
+    const incorrectTravel = await pool.query(
+      `SELECT uid, subject, from_addr, body_text, body_html 
+       FROM smart_email_inbox 
+       WHERE category = 'travel'
+       AND (
+         subject ILIKE '%tender%' OR subject ILIKE '%gst%' OR subject ILIKE '%quotation%'
+         OR subject ILIKE '%bid%' OR subject ILIKE '%procurement%' OR subject ILIKE '%contract%'
+         OR subject ILIKE '%vendor%' OR subject ILIKE '%supplier%' OR subject ILIKE '%purchase%'
+         OR body_text ILIKE '%tender%' OR body_text ILIKE '%gst%' OR body_text ILIKE '%quotation%'
+         OR body_text ILIKE '%bid%' OR body_text ILIKE '%procurement%' OR body_text ILIKE '%contract%'
+         OR body_text ILIKE '%vendor%' OR body_text ILIKE '%supplier%' OR body_text ILIKE '%purchase%'
+       )
+       LIMIT 50`
+    );
+
+    let cleaned = 0;
+    for (const email of incorrectTravel.rows) {
+      // Re-classify these emails properly
+      const bodySnippet = email.body_text || (email.body_html ? email.body_html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ") : "");
+      const classification = await classifyWithAI(email.subject || "", email.from_addr || "", bodySnippet);
+      
+      await pool.query(
+        `UPDATE smart_email_inbox SET
+          category=$1, classified=true
+         WHERE uid=$2`,
+        [classification.category, email.uid]
+      );
+      
+      console.log(`🔄 Cleaned up incorrect travel: ${email.subject} -> ${classification.category}`);
+      cleaned++;
+    }
+
+    console.log(`✅ Cleanup complete: ${cleaned} emails reclassified`);
+    
+  } catch (error) {
+    console.error("❌ Cleanup error:", error);
+  }
+}
+
+// Clean up drafts from promotional emails
+async function cleanupPromotionalDrafts() {
+  try {
+    console.log("🧹 Cleaning up drafts from promotional emails...");
+    
+    // Find emails with drafts that should not have drafts
+    const problematicDrafts = await pool.query(
+      `SELECT e.uid, e.subject, e.from_addr, e.email_type, e.category, e.to_addr, e.cc_addr
+       FROM smart_email_inbox e
+       WHERE e.has_draft = true AND e.auto_replied = false
+       AND (
+         -- Explicit promotional emails
+         e.email_type = 'promotion'
+         
+         -- Travel related emails (invoices, surveys, etc.)
+         OR e.category = 'travel'
+         OR e.subject ILIKE '%survey%' OR e.subject ILIKE '%tax invoice%' OR e.subject ILIKE '%gst%'
+         OR e.subject ILIKE '%booking%' OR e.subject ILIKE '%ticket%' OR e.subject ILIKE '%e-ticket%'
+         OR e.subject ILIKE '%flight%' OR e.subject ILIKE '%airline%' OR e.subject ILIKE '%airport%'
+         
+         -- Promotional domains
+         OR e.from_addr ILIKE '%noreply%' OR e.from_addr ILIKE '%no-reply%'
+         OR e.from_addr ILIKE '%marketing%' OR e.from_addr ILIKE '%promo%'
+         OR e.from_addr ILIKE '%newsletter%' OR e.from_addr ILIKE '%updates%'
+         OR e.from_addr ILIKE '%notifications%' OR e.from_addr ILIKE '%alerts%'
+         OR e.from_addr ILIKE '%info%' OR e.from_addr ILIKE '%support%'
+         OR e.from_addr ILIKE '%service%' OR e.from_addr ILIKE '%team%'
+         OR e.from_addr ILIKE '%order%' OR e.from_addr ILIKE '%amazon%'
+         OR e.from_addr ILIKE '%flipkart%' OR e.from_addr ILIKE '%booking%'
+         OR e.from_addr ILIKE '%indigo%' OR e.from_addr ILIKE '%airindia%'
+         OR e.from_addr ILIKE '%goindigo%'
+         
+         -- Promotional keywords in subject
+         OR e.subject ILIKE '%newsletter%' OR e.subject ILIKE '%promotion%'
+         OR e.subject ILIKE '%sale%' OR e.subject ILIKE '%discount%'
+         OR e.subject ILIKE '%offer%' OR e.subject ILIKE '%deal%'
+         OR e.subject ILIKE '%unsubscribe%' OR e.subject ILIKE '%marketing%'
+         OR e.subject ILIKE '%advertisement%' OR e.subject ILIKE '%sponsored%'
+         OR e.subject ILIKE '%promo code%' OR e.subject ILIKE '%limited time%'
+         OR e.subject ILIKE '%exclusive offer%' OR e.subject ILIKE '%special offer%'
+         OR e.subject ILIKE '%buy now%' OR e.subject ILIKE '%shop now%'
+         OR e.subject ILIKE '%order%' OR e.subject ILIKE '%cancelled%'
+         OR e.subject ILIKE '%amazon%' OR e.subject ILIKE '%invoice%'
+         
+         -- Mass emails (many recipients)
+         OR LENGTH(COALESCE(e.to_addr, '')) > 100
+         OR LENGTH(COALESCE(e.cc_addr, '')) > 100
+         OR e.to_addr ILIKE '%,%' OR e.cc_addr ILIKE '%,%'
+         
+         -- Conference/Invitation/Seminar emails
+         OR e.subject ILIKE '%registration%' OR e.subject ILIKE '%conference%'
+         OR e.subject ILIKE '%seminar%' OR e.subject ILIKE '%workshop%'
+         OR e.subject ILIKE '%invitation%' OR e.subject ILIKE '%express interest%'
+         OR e.subject ILIKE '%delegation%' OR e.subject ILIKE '%mission%'
+         OR e.subject ILIKE '%learning%' OR e.subject ILIKE '%knowledge%'
+         OR e.subject ILIKE '%exchange%' OR e.subject ILIKE '%companies%'
+         OR e.subject ILIKE '%gurugram%' OR e.subject ILIKE '%europe%'
+         
+         -- Promotional patterns
+         OR e.subject ILIKE '%🔴%' OR e.subject ILIKE '%open%' OR e.subject ILIKE '%registrations open%'
+         OR e.subject ILIKE '%cii%' OR e.subject ILIKE '%government%'
+         
+         -- Bills, statements, transaction alerts
+         OR e.subject ILIKE '%bill%' OR e.subject ILIKE '%transaction alert%'
+         OR e.subject ILIKE '%statement%' OR e.subject ILIKE '%due by%'
+         OR e.subject ILIKE '%subscription%' OR e.subject ILIKE '%renewal%'
+         OR e.subject ILIKE '%icloud%' OR e.subject ILIKE '%charged%'
+         
+         -- Promotional offers and discounts
+         OR e.subject ILIKE '%save%' OR e.subject ILIKE '%discount%' OR e.subject ILIKE '%offer%'
+         OR e.subject ILIKE '%marriott%' OR e.subject ILIKE '%bonvoy%'
+         
+         -- Webinars and events
+         OR e.subject ILIKE '%webinar%' OR e.subject ILIKE '%launch%'
+         OR e.subject ILIKE '%outreach%' OR e.subject ILIKE '%challenge%'
+         OR e.subject ILIKE '%psg-step%' OR e.subject ILIKE '%codissia%'
+         
+         -- Promotional domains
+         OR e.from_addr ILIKE '%ebill@%' OR e.from_addr ILIKE '%credit_cards@%'
+         OR e.from_addr ILIKE '%no_reply@%' OR e.from_addr ILIKE '%do_not_reply@%'
+         OR e.from_addr ILIKE '%marriottbonvoy@%' OR e.from_addr ILIKE '%apple%'
+         OR e.from_addr ILIKE '%icicibank%' OR e.from_addr ILIKE '%airtel%'
+         OR e.from_addr ILIKE '%techdata%' OR e.from_addr ILIKE '%brevosend%'
+         
+         -- Tender/bid emails
+         OR e.subject ILIKE '%tender%' OR e.subject ILIKE '%bid%'
+         OR e.subject ILIKE '%procurement%' OR e.subject ILIKE '%quotation%'
+       )
+       LIMIT 100`
+    );
+
+    let cleaned = 0;
+    for (const email of problematicDrafts.rows) {
+      // Remove drafts for these emails
+      await pool.query("DELETE FROM smart_email_drafts WHERE email_uid=$1 AND sent=false", [email.uid]);
+      await pool.query("UPDATE smart_email_inbox SET has_draft=false WHERE uid=$1", [email.uid]);
+      console.log(`🗑️  Removed draft: ${email.subject} (${email.from_addr})`);
+      cleaned++;
+    }
+
+    console.log(`✅ Promotional drafts cleanup complete: ${cleaned} drafts removed`);
+    
+  } catch (error) {
+    console.error("❌ Promotional drafts cleanup error:", error);
+  }
+}
+
+// Run auto-analysis every 5 minutes
+setInterval(runAutoEmailAnalysis, 5 * 60 * 1000);
+
+// Run cleanup every 10 minutes
+setInterval(cleanupIncorrectTravelClassifications, 10 * 60 * 1000);
+
+// Run promotional drafts cleanup every 15 minutes
+setInterval(cleanupPromotionalDrafts, 15 * 60 * 1000);
+
+// Run once on startup
+setTimeout(runAutoEmailAnalysis, 10000);
+setTimeout(cleanupIncorrectTravelClassifications, 30000);
+setTimeout(cleanupPromotionalDrafts, 60000);
 
 function extractDomain(email: string): string {
   const match = email.match(/@([^>\s,]+)/);
@@ -240,6 +497,44 @@ async function tryKeywordClassify(
     }
   }
 
+  // 3. Travel: detect travel-related emails (tickets, hotels, bookings) - more precise patterns
+  const TRAVEL_KEYWORDS = [
+    "flight", "airline", "booking", "reservation", "ticket", "e-ticket", "boarding pass",
+    "hotel", "accommodation", "check-in", "checkout", "booking confirmation",
+    "travel", "trip", "vacation", "holiday", "itinerary", "departure", "arrival",
+    "airport", "airways", "flight confirmation", "hotel reservation",
+    "booking reference", "confirmation number", "travel itinerary", "car rental",
+    "taxi", "uber", "ola", "train", "railway", "bus", "transport", "transfer"
+  ];
+  
+  // Exclude false positives by checking for non-travel contexts
+  const FALSE_POSITIVE_PATTERNS = [
+    /\btender\b/i,
+    /\bgst\b/i,
+    /\bquotation\b/i,
+    /\bbid\b/i,
+    /\bprocurement\b/i,
+    /\bcontract\b/i,
+    /\bvendor\b/i,
+    /\bsupplier\b/i,
+    /\bpurchase\b/i
+  ];
+  
+  // Skip if false positive patterns are found
+  for (const pattern of FALSE_POSITIVE_PATTERNS) {
+    if (pattern.test(haystack)) {
+      return null; // Don't classify as travel
+    }
+  }
+  
+  for (const kw of TRAVEL_KEYWORDS) {
+    // Use word boundaries to avoid matching substrings
+    const re = new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+    if (re.test(haystack)) {
+      return { category: "travel", project_name: null, supplier_name: null };
+    }
+  }
+
   return null;
 }
 
@@ -277,7 +572,7 @@ async function classifyWithAI(subject: string, fromAddr: string, bodySnippet: st
   // Fast keyword/domain-based classification (skip AI if matched)
   if (!isInternal) {
     const kwMatch = await tryKeywordClassify(subject, fromAddr, bodySnippet, projects.rows, suppliers.rows);
-    if (kwMatch && (kwMatch.category === "project" || kwMatch.category === "supplier")) {
+    if (kwMatch && (kwMatch.category === "project" || kwMatch.category === "supplier" || kwMatch.category === "travel")) {
       return {
         email_type: "information",
         category: kwMatch.category,
@@ -300,14 +595,15 @@ async function classifyWithAI(subject: string, fromAddr: string, bodySnippet: st
       messages: [
         {
           role: "system",
-          content: `You are an email classifier for WTT International, a water treatment technology company. Classify emails accurately. Return JSON only.`,
+          content: `You are an expert email classification AI. Analyze the email and categorize it accurately.`,
         },
         {
           role: "user",
           content: `Classify this email:
-From: ${fromAddr} (domain: ${domain})
+
 Subject: ${subject}
-Body snippet: ${bodySnippet.slice(0, 1200)}
+From: ${fromAddr}
+Body: ${bodySnippet}
 
 Known projects:
 ${projectList}
@@ -318,27 +614,23 @@ ${supplierList}
 Internal company domains: ${INTERNAL_DOMAINS.join(", ")}
 Is sender from internal domain: ${isInternal}
 
-Return this JSON:
-{
-  "email_type": "important" | "information" | "promotion" | "otp",
-  "category": "project" | "supplier" | "internal" | "other",
-  "project_name": "exact project name or null",
-  "supplier_name": "supplier/vendor name or null",
-  "priority": "high" | "medium" | "low",
-  "confidence": 0-100
-}
-
 Rules:
 - email_type "important": needs MD action - quotes, purchase orders, complaints, payments, contracts, urgent requests, RFQ, deadlines
 - email_type "promotion": newsletters, marketing, advertisements, bulk promotions, no-reply senders
 - email_type "information": reports, updates, FYI, notifications, meeting notes
-- email_type "otp": one-time passwords, verification codes, authentication codes, confirmation codes, OTP emails
-- category "project": related to a specific project in the list
-- category "supplier": from a vendor, supplier, or external business partner
-- category "internal": sender domain is wttindia.com or wttint.com
+- email_type "otp": one-time passwords, verification codes
+- category "travel": FLIGHTS, HOTELS, BOOKINGS, TICKETS, AIRLINE, TRAVEL, TRIP, VACATION, TAXI, UBER, TRANSPORT
+- category "project": project-related emails with specific project names or codes
+- category "supplier": vendor/supplier communications, purchase orders, quotations
+- category "internal": company internal communications
+- category "other": general emails not fitting other categories
 - priority "high": requires response within 24h, financial, contracts, urgent
 - priority "medium": normal business emails
-- priority "low": newsletters, FYI, CC'd emails`,
+- priority "low": newsletters, FYI, CC'd emails
+
+TRAVEL KEYWORDS: flight, airline, booking, reservation, ticket, e-ticket, boarding pass, hotel, accommodation, check-in, checkout, travel, trip, vacation, holiday, itinerary, departure, arrival, airport, airways, taxi, uber, ola, train, railway, bus, transport, transfer
+
+Be confident in your classification. Look for specific travel-related terms and automatically categorize as travel when detected.`,
         },
       ],
     });
@@ -346,7 +638,7 @@ Rules:
     const parsed = JSON.parse(completion.choices[0]?.message?.content || "{}");
     return {
       email_type: (["important", "information", "promotion", "otp"].includes(parsed.email_type) ? parsed.email_type : "information") as string,
-      category: (isInternal ? "internal" : (["project", "supplier", "internal", "other"].includes(parsed.category) ? parsed.category : "other")) as string,
+      category: (isInternal ? "internal" : (["project", "supplier", "travel", "internal", "other"].includes(parsed.category) ? parsed.category : "other")) as string,
       project_name: parsed.project_name || null,
       supplier_name: parsed.supplier_name || null,
       priority: (["high", "medium", "low"].includes(parsed.priority) ? parsed.priority : "medium") as string,
@@ -490,13 +782,49 @@ async function classifyEmailRecord(uid: string, autoReply = true, userEmail?: st
     );
 
     // Auto-reply draft: only for emails addressed directly TO the user,
-    // not internal emails, not promotions, not OTP
-    if (autoReply && !classification.is_internal && !["promotion", "otp"].includes(classification.email_type)) {
+    // not internal emails, not promotions, not OTP, not travel, not mass emails
+    if (autoReply && !classification.is_internal && !["promotion", "otp"].includes(classification.email_type) && classification.category !== "travel") {
       const toAddr = (email.to_addr || "").toLowerCase();
+      const ccAddr = (email.cc_addr || "").toLowerCase();
       const isDirectlyAddressed = userEmail
         ? toAddr.includes(userEmail.toLowerCase())
         : true; // fallback: generate if we don't know the user's email
-      if (isDirectlyAddressed) {
+      
+      // Additional checks for mass emails and promotional content
+      const fromDomain = (email.from_addr || "").split("@")[1]?.toLowerCase() || "";
+      const PROMOTIONAL_DOMAINS = [
+        "noreply", "no-reply", "marketing", "promo", "newsletter", "updates",
+        "notifications", "alerts", "info", "support", "service", "team",
+        "mailchimp", "sendgrid", "campaign", "bounce", "mailer", "order",
+        "amazon", "flipkart", "booking", "indigo", "airindia", "goindigo"
+      ];
+      
+      const isPromotionalDomain = PROMOTIONAL_DOMAINS.some(domain => fromDomain.includes(domain));
+      const subjectLower = (email.subject || "").toLowerCase();
+      const promotionalKeywords = [
+        "newsletter", "promotion", "sale", "discount", "offer", "deal",
+        "unsubscribe", "marketing", "advertisement", "sponsored", "promo code",
+        "limited time", "exclusive offer", "special offer", "buy now", "shop now",
+        "survey", "tax invoice", "gst", "booking", "ticket", "e-ticket",
+        "flight", "airline", "airport", "order", "cancelled", "invoice",
+        "registration", "conference", "seminar", "workshop", "invitation",
+        "express interest", "delegation", "mission", "learning", "knowledge",
+        "exchange", "companies", "gurugram", "europe", "cii", "government",
+        "bill", "transaction alert", "statement", "due by", "subscription", 
+        "renewal", "icloud", "charged", "save", "marriott", "bonvoy",
+        "webinar", "launch", "outreach", "challenge", "psg-step", "codissia"
+      ];
+      const hasPromotionalKeywords = promotionalKeywords.some(keyword => subjectLower.includes(keyword));
+      
+      // Skip mass emails - be very strict
+      const toCount = toAddr.split(",").filter((addr: string) => addr.trim()).length;
+      const ccCount = ccAddr.split(",").filter((addr: string) => addr.trim()).length;
+      const isMassEmail = toCount > 1 || ccCount > 1;
+      
+      // Skip if TO address is very long (likely distribution list)
+      const isLongToAddress = toAddr.length > 50;
+      
+      if (isDirectlyAddressed && !isPromotionalDomain && !hasPromotionalKeywords && !isMassEmail && !isLongToAddress) {
         triggerAutoReply(uid, userEmail).catch(() => {});
       }
     }
@@ -513,10 +841,78 @@ async function triggerAutoReply(uid: string, userEmail?: string, force = false) 
   // Skip internal emails — no need to reply to colleagues automatically
   if (email.is_internal) return;
 
+  // Skip promotional emails explicitly
+  if (email.email_type === "promotion") return;
+
+  // Skip travel emails - these are usually automated and don't need replies
+  if (email.category === "travel") return;
+
+  // Additional promotional email detection using sender patterns
+  const fromDomain = email.from_addr?.split("@")[1]?.toLowerCase() || "";
+  const PROMOTIONAL_DOMAINS = [
+    "noreply", "no-reply", "marketing", "promo", "newsletter", "updates",
+    "notifications", "alerts", "info", "support", "service", "team",
+    "mailchimp", "sendgrid", "campaign", "bounce", "mailer", "order",
+    "amazon", "flipkart", "booking", "indigo", "airindia", "goindigo"
+  ];
+  
+  for (const promoDomain of PROMOTIONAL_DOMAINS) {
+    if (fromDomain.includes(promoDomain)) {
+      console.log(`[triggerAutoReply] skipping promotional email from ${fromDomain}`);
+      return;
+    }
+  }
+
+  // Check for promotional keywords in subject
+  const promotionalKeywords = [
+    "newsletter", "promotion", "sale", "discount", "offer", "deal",
+    "unsubscribe", "marketing", "advertisement", "sponsored", "promo code",
+    "limited time", "exclusive offer", "special offer", "buy now", "shop now",
+    "survey", "tax invoice", "gst", "booking", "ticket", "e-ticket",
+    "flight", "airline", "airport", "order", "cancelled", "invoice",
+    "registration", "conference", "seminar", "workshop", "invitation",
+    "express interest", "delegation", "mission", "learning", "knowledge",
+    "exchange", "companies", "gurugram", "europe", "cii", "government",
+    "bill", "transaction alert", "statement", "due by", "subscription", 
+    "renewal", "icloud", "charged", "save", "marriott", "bonvoy",
+    "webinar", "launch", "outreach", "challenge", "psg-step", "codissia"
+  ];
+  
+  const subjectLower = (email.subject || "").toLowerCase();
+  for (const keyword of promotionalKeywords) {
+    if (subjectLower.includes(keyword)) {
+      console.log(`[triggerAutoReply] skipping promotional email with keyword: ${keyword}`);
+      return;
+    }
+  }
+
   // Only generate draft for emails addressed directly TO the user
   if (userEmail) {
     const toAddr = (email.to_addr || "").toLowerCase();
-    if (!toAddr.includes(userEmail.toLowerCase())) return;
+    const ccAddr = (email.cc_addr || "").toLowerCase();
+    const userEmailLower = userEmail.toLowerCase();
+    
+    // Must be directly addressed in TO field, not just CC'd
+    if (!toAddr.includes(userEmailLower)) {
+      console.log(`[triggerAutoReply] skipping - not directly addressed to user`);
+      return;
+    }
+    
+    // Skip if user is only CC'd and many others are in TO/CC
+    const toCount = toAddr.split(",").filter((addr: string) => addr.trim()).length;
+    const ccCount = ccAddr.split(",").filter((addr: string) => addr.trim()).length;
+    
+    // Be very strict - only single recipient in TO, max 1 in CC
+    if (toCount > 1 || ccCount > 1) {
+      console.log(`[triggerAutoReply] skipping - mass email (to:${toCount}, cc:${ccCount})`);
+      return;
+    }
+    
+    // Skip if TO address is very long (likely a distribution list)
+    if (toAddr.length > 50) {
+      console.log(`[triggerAutoReply] skipping - long TO address (likely distribution list)`);
+      return;
+    }
   }
 
   if (!force) {
@@ -642,6 +1038,9 @@ router.get("/smart-email/messages", async (req, res) => {
         where += " AND category='project'";
         if (value) { vals.push(value); where += ` AND project_name=$${vals.length}`; }
       }
+      else if (filter === "travel") {
+        where += " AND category='travel'";
+      }
       else if (filter === "supplier") {
         where += " AND category='supplier'";
         if (value) { vals.push(value); where += ` AND supplier_name=$${vals.length}`; }
@@ -703,6 +1102,7 @@ router.get("/smart-email/stats", async (req, res) => {
         COUNT(*) FILTER (WHERE email_type='otp' AND NOT is_deleted ${acctFilter}) AS otp,
         COUNT(*) FILTER (WHERE category='project' AND NOT is_deleted ${acctFilter}) AS projects,
         COUNT(*) FILTER (WHERE category='supplier' AND NOT is_deleted ${acctFilter}) AS suppliers,
+        COUNT(*) FILTER (WHERE category='travel' AND NOT is_deleted ${acctFilter}) AS travel,
         COUNT(*) FILTER (WHERE is_internal=true AND NOT is_deleted ${acctFilter}) AS internal,
         COUNT(*) FILTER (WHERE priority='high' AND NOT auto_replied AND NOT is_deleted ${acctFilter}) AS needs_reply,
         COUNT(*) FILTER (WHERE auto_replied=true AND NOT is_deleted ${acctFilter}) AS auto_replied_count,
@@ -874,6 +1274,42 @@ router.post("/smart-email/draft-batch", async (req, res) => {
     console.log(`[draft-batch] queued ${queued} drafts (force=${force})`);
     res.json({ ok: true, queued });
   } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /smart-email/cleanup-promotional-drafts — clean up drafts from promotional emails
+router.post("/smart-email/cleanup-promotional-drafts", async (req, res) => {
+  try {
+    console.log("🧹 Manual promotional drafts cleanup triggered via API");
+    await cleanupPromotionalDrafts();
+    res.json({ ok: true, message: "Promotional drafts cleanup completed" });
+  } catch (err: any) {
+    console.error("Manual promotional drafts cleanup error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /smart-email/cleanup-travel — clean up incorrect travel classifications
+router.post("/smart-email/cleanup-travel", async (req, res) => {
+  try {
+    console.log("🧹 Manual travel cleanup triggered via API");
+    await cleanupIncorrectTravelClassifications();
+    res.json({ ok: true, message: "Travel cleanup completed" });
+  } catch (err: any) {
+    console.error("Manual travel cleanup error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /smart-email/auto-analyze — trigger automatic email analysis
+router.post("/smart-email/auto-analyze", async (req, res) => {
+  try {
+    console.log("🔄 Manual auto-analysis triggered via API");
+    await runAutoEmailAnalysis();
+    res.json({ ok: true, message: "Auto-analysis completed" });
+  } catch (err: any) {
+    console.error("Manual auto-analysis error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
