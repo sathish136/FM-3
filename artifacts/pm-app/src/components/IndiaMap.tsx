@@ -66,7 +66,13 @@ function getStateColor(total: number): string {
 
 function getStateColorHover(total: number): string {
   if (!total || total === 0) return "#cbd5e1";
-  return "#f59e0b";
+  if (total >= 500) return "#1d4ed8";
+  if (total >= 200) return "#2563eb";
+  if (total >= 100) return "#3b82f6";
+  if (total >= 50)  return "#60a5fa";
+  if (total >= 20)  return "#93c5fd";
+  if (total >= 5)   return "#bfdbfe";
+  return "#dbeafe";
 }
 
 type StateStats = Record<string, { total: number; Open: number; Converted: number; Opportunity: number; Quotation: number; Lead?: number; Closed?: number; Replied?: number }>;
@@ -95,79 +101,122 @@ function InlineStateAnalysis({ stateName }: { stateName: string }) {
   const articles: any[] = newsQ.data?.news ?? newsQ.data?.articles ?? [];
   const competitors: any[] = compQ.data?.competitors ?? [];
 
+  function getDomain(url: string): string {
+    try { return new URL(url.startsWith("http") ? url : `https://${url}`).hostname.replace("www.", ""); }
+    catch { return ""; }
+  }
+
   return (
-    <div className="grid md:grid-cols-2 gap-4">
+    <div className="grid md:grid-cols-2 gap-3">
       {/* News */}
-      <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 bg-teal-50/60">
           <div className="flex items-center gap-2">
-            <Newspaper className="w-4 h-4 text-teal-500" />
-            <span className="font-bold text-gray-800 text-sm">{stateName} — Industry News</span>
+            <Newspaper className="w-3.5 h-3.5 text-teal-600" />
+            <span className="font-bold text-teal-800 text-xs uppercase tracking-wide">{stateName} — Industry News</span>
           </div>
-          {newsQ.isLoading && <RefreshCw className="w-3.5 h-3.5 text-teal-400 animate-spin" />}
+          {newsQ.isLoading && <RefreshCw className="w-3 h-3 text-teal-400 animate-spin" />}
         </div>
-        <div className="overflow-auto max-h-64 divide-y divide-gray-50">
+        <div className="overflow-auto divide-y divide-gray-50" style={{ maxHeight: 260 }}>
           {newsQ.isLoading ? (
-            <div className="flex items-center justify-center py-10 gap-2 text-gray-300 text-xs">
+            <div className="flex items-center justify-center py-8 gap-2 text-gray-300 text-xs">
               <Wifi className="w-4 h-4 animate-pulse text-teal-300" /> Fetching news...
             </div>
           ) : articles.length === 0 ? (
-            <div className="flex items-center justify-center py-10 text-gray-300 text-xs gap-2">
+            <div className="flex items-center justify-center py-8 text-gray-300 text-xs gap-2">
               <Newspaper className="w-4 h-4" /> No articles available
             </div>
-          ) : articles.map((a: any, i: number) => (
-            <div key={i} className="px-4 py-3 hover:bg-gray-50 transition-colors">
-              <p className="font-semibold text-gray-800 text-xs leading-snug mb-1">{a.title}</p>
-              <div className="flex justify-between text-[10px] text-gray-400">
-                <span>{a.source}</span><span>{a.date}</span>
+          ) : articles.map((a: any, i: number) => {
+            const imgSrc = a.image || a.imageUrl || a.thumbnail || a.urlToImage || null;
+            const sourceDomain = getDomain(a.url || a.sourceUrl || "");
+            return (
+              <div key={i} className="flex gap-3 px-3 py-2.5 hover:bg-teal-50/30 transition-colors group">
+                {imgSrc ? (
+                  <img src={imgSrc} alt="" className="w-14 h-14 rounded-lg object-cover shrink-0 border border-gray-100" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                ) : (
+                  <div className="w-14 h-14 rounded-lg shrink-0 bg-gradient-to-br from-teal-100 to-teal-200 border border-teal-100 flex items-center justify-center overflow-hidden">
+                    {sourceDomain ? (
+                      <img src={`https://logo.clearbit.com/${sourceDomain}`} alt="" className="w-8 h-8 object-contain" onError={e => { (e.target as HTMLImageElement).replaceWith(Object.assign(document.createElement("span"), { className: "text-teal-500 text-lg font-bold", textContent: (a.source || "N")[0].toUpperCase() })); }} />
+                    ) : (
+                      <Newspaper className="w-5 h-5 text-teal-400" />
+                    )}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-gray-800 text-[11px] leading-snug mb-1.5 group-hover:text-teal-700 transition-colors line-clamp-2">{a.title}</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center bg-teal-50 text-teal-600 border border-teal-100 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide truncate max-w-[65%]">{a.source}</span>
+                    <span className="text-[10px] text-gray-400 shrink-0">{a.date}</span>
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
       {/* Competitors */}
-      <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 bg-rose-50/60">
           <div className="flex items-center gap-2">
-            <Target className="w-4 h-4 text-rose-500" />
-            <span className="font-bold text-gray-800 text-sm">{stateName} — Competitor Analysis</span>
+            <Target className="w-3.5 h-3.5 text-rose-600" />
+            <span className="font-bold text-rose-800 text-xs uppercase tracking-wide">{stateName} — Competitor Analysis</span>
           </div>
-          {compQ.isLoading && <RefreshCw className="w-3.5 h-3.5 text-rose-400 animate-spin" />}
+          {compQ.isLoading && <RefreshCw className="w-3 h-3 text-rose-400 animate-spin" />}
         </div>
-        <div className="overflow-auto max-h-64">
+        <div className="overflow-auto" style={{ maxHeight: 260 }}>
           {compQ.isLoading ? (
-            <div className="flex items-center justify-center py-10 gap-2 text-gray-300 text-xs">
+            <div className="flex items-center justify-center py-8 gap-2 text-gray-300 text-xs">
               <Target className="w-4 h-4 animate-pulse text-rose-300" /> Analyzing...
             </div>
           ) : competitors.length === 0 ? (
-            <div className="flex items-center justify-center py-10 text-gray-300 text-xs gap-2">
+            <div className="flex items-center justify-center py-8 text-gray-300 text-xs gap-2">
               <Building2 className="w-4 h-4" /> No competitor data
             </div>
           ) : (
             <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-gray-800 text-white">
+              <thead className="sticky top-0 bg-rose-50/40 border-b border-rose-100">
                 <tr>
-                  {["Competitor", "Activities", "Technology", "Website"].map(h => (
-                    <th key={h} className="px-3 py-2 text-left text-[9px] font-bold uppercase tracking-wider">{h}</th>
+                  {["", "Competitor", "Activities", "Technology", "Website"].map(h => (
+                    <th key={h} className="px-2 py-2 text-left text-rose-400 font-bold uppercase text-[9px] tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {competitors.map((c: any, i: number) => (
-                  <tr key={i} className={cn("border-b border-gray-50 hover:bg-gray-50", i % 2 !== 0 ? "bg-gray-50/30" : "")}>
-                    <td className="px-3 py-2 font-bold text-gray-800 whitespace-nowrap">{c.name}</td>
-                    <td className="px-3 py-2 text-gray-500 max-w-40 line-clamp-2">{c.activities}</td>
-                    <td className="px-3 py-2 text-gray-500 max-w-40 line-clamp-2">{c.technology}</td>
-                    <td className="px-3 py-2">
-                      {c.website && c.website !== "#" ? (
-                        <a href={c.website} target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:text-indigo-700 flex items-center gap-0.5 font-semibold text-[10px]">
-                          Visit <ArrowUpRight className="w-2.5 h-2.5" />
-                        </a>
-                      ) : <span className="text-gray-300">—</span>}
-                    </td>
-                  </tr>
-                ))}
+                {competitors.map((c: any, i: number) => {
+                  const domain = getDomain(c.website || "");
+                  const techItems = (c.technology || "").split(/[,;•\n]+/).map((t: string) => t.trim()).filter(Boolean);
+                  return (
+                    <tr key={i} className={cn("border-b border-gray-50 hover:bg-rose-50/20 transition-colors align-top", i % 2 !== 0 ? "bg-gray-50/30" : "")}>
+                      <td className="px-2 py-2 shrink-0">
+                        {domain ? (
+                          <img src={`https://logo.clearbit.com/${domain}`} alt="" className="w-6 h-6 rounded object-contain border border-gray-100" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                        ) : <span className="w-6 h-6 rounded bg-rose-100 flex items-center justify-center text-rose-500 font-bold text-[9px]">{(c.name || "?")[0]}</span>}
+                      </td>
+                      <td className="px-2 py-2 font-bold text-gray-800 whitespace-nowrap text-[11px]">{c.name}</td>
+                      <td className="px-2 py-2 text-gray-500 max-w-32 text-[10px] leading-relaxed">{c.activities}</td>
+                      <td className="px-2 py-2 max-w-36">
+                        {techItems.length > 0 ? (
+                          <ul className="space-y-0.5">
+                            {techItems.slice(0, 4).map((t: string, j: number) => (
+                              <li key={j} className="flex items-start gap-1 text-[10px] text-blue-700">
+                                <span className="mt-[3px] w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                                <span>{t}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : <span className="text-gray-300 text-[10px]">—</span>}
+                      </td>
+                      <td className="px-2 py-2">
+                        {c.website && c.website !== "#" ? (
+                          <a href={c.website} target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:text-indigo-700 font-semibold flex items-center gap-0.5 text-[10px]">
+                            Visit <ArrowUpRight className="w-2.5 h-2.5" />
+                          </a>
+                        ) : <span className="text-gray-300">—</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
