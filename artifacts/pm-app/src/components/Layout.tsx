@@ -112,6 +112,7 @@ const navGroups: { label?: string; items: NavItem[] }[] = [
 
 const allNavItems: NavItem[] = navGroups.flatMap(g => g.items);
 
+// Bottom nav items for mobile (most used)
 const mobileBottomNav: NavItem[] = [
   { path: "/", label: "Home", icon: LayoutDashboard, color: "text-sky-400" },
   { path: "/project-board", label: "Board", icon: LayoutGrid, color: "text-indigo-400" },
@@ -119,28 +120,39 @@ const mobileBottomNav: NavItem[] = [
   { path: "/hrms", label: "HRMS", icon: UserCircle, color: "text-emerald-400" },
 ];
 
-interface FullSidebarProps {
-  location: string;
-  expandedItems: string[];
-  toggleExpand: (path: string) => void;
-  setCollapsed: (v: boolean) => void;
-  setMobileSidebarOpen: (v: boolean) => void;
-  theme: { accent: string };
-  user: AuthUser | null;
-  logout: () => void;
-  setAiTrigger: React.Dispatch<React.SetStateAction<number>>;
-  setShowThemePicker: (v: boolean) => void;
-  darkMode: boolean;
-  toggleDarkMode: () => void;
-}
+export function Layout({ children, hideChrome }: { children: React.ReactNode; hideChrome?: boolean }) {
+  const [location] = useLocation();
+  const [expandedItems, setExpandedItems] = useState<string[]>(["/drawings"]);
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [aiTrigger, setAiTrigger] = useState(0);
+  const [mobileAiOpen, setMobileAiOpen] = useState(false);
+  const { user, logout } = useAuth();
+  const { theme, darkMode, toggleDarkMode } = useTheme();
+  const [showThemePicker, setShowThemePicker] = useState(false);
 
-function FullSidebar({
-  location, expandedItems, toggleExpand, setCollapsed, setMobileSidebarOpen,
-  theme, user, logout, setAiTrigger, setShowThemePicker, darkMode, toggleDarkMode,
-}: FullSidebarProps) {
-  const navRef = useRef<HTMLElement>(null);
+  // Close mobile sidebar on route change
+  useEffect(() => {
+    setMobileSidebarOpen(false);
+  }, [location]);
 
-  return (
+  // Auto-collapse sidebar when on email pages — gives full reading width
+  useEffect(() => {
+    if (location === "/email" || location === "/smart-inbox") {
+      setCollapsed(true);
+    }
+  }, [location]);
+
+  const toggleExpand = (path: string) => {
+    setExpandedItems(prev =>
+      prev.includes(path) ? prev.filter(p => p !== path) : [...prev, path]
+    );
+  };
+
+  const currentPage = allNavItems.find(i => i.path === location || i.children?.some(c => c.path === location));
+  const pageTitle = currentPage?.label ?? "Dashboard";
+
+  const FullSidebar = () => (
     <div className="flex flex-col h-full relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-b from-slate-900 via-[#0f172a] to-slate-950 pointer-events-none" />
       <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-indigo-950/30 to-transparent pointer-events-none" />
@@ -166,7 +178,7 @@ function FullSidebar({
       </div>
 
       {/* Nav */}
-      <nav ref={navRef} className="relative flex-1 overflow-y-auto py-3 px-2 space-y-4 custom-scrollbar">
+      <nav className="relative flex-1 overflow-y-auto py-3 px-2 space-y-4 custom-scrollbar">
         {navGroups.map((group, gi) => (
           <div key={gi}>
             {group.label && (
@@ -299,26 +311,8 @@ function FullSidebar({
       </div>
     </div>
   );
-}
 
-interface MiniSidebarProps {
-  location: string;
-  expandedItems: string[];
-  toggleExpand: (path: string) => void;
-  setCollapsed: (v: boolean) => void;
-  theme: { accent: string };
-  user: AuthUser | null;
-  setAiTrigger: React.Dispatch<React.SetStateAction<number>>;
-  setShowThemePicker: (v: boolean) => void;
-  darkMode: boolean;
-  toggleDarkMode: () => void;
-}
-
-function MiniSidebar({
-  location, expandedItems, toggleExpand, setCollapsed, theme, user,
-  setAiTrigger, setShowThemePicker, darkMode, toggleDarkMode,
-}: MiniSidebarProps) {
-  return (
+  const MiniSidebar = () => (
     <div className="flex flex-col h-full items-center relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-b from-slate-900 via-[#0f172a] to-slate-950 pointer-events-none" />
 
@@ -422,54 +416,6 @@ function MiniSidebar({
       </div>
     </div>
   );
-}
-
-export function Layout({ children, hideChrome }: { children: React.ReactNode; hideChrome?: boolean }) {
-  const [location] = useLocation();
-  const [expandedItems, setExpandedItems] = useState<string[]>(["/drawings"]);
-  const [collapsed, setCollapsed] = useState(false);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [aiTrigger, setAiTrigger] = useState(0);
-  const [mobileAiOpen, setMobileAiOpen] = useState(false);
-  const { user, logout } = useAuth();
-  const { theme, darkMode, toggleDarkMode } = useTheme();
-  const [showThemePicker, setShowThemePicker] = useState(false);
-
-  // Close mobile sidebar on route change
-  useEffect(() => {
-    setMobileSidebarOpen(false);
-  }, [location]);
-
-  // Auto-collapse sidebar when on email pages — gives full reading width
-  useEffect(() => {
-    if (location === "/email" || location === "/smart-inbox") {
-      setCollapsed(true);
-    }
-  }, [location]);
-
-  const toggleExpand = (path: string) => {
-    setExpandedItems(prev =>
-      prev.includes(path) ? prev.filter(p => p !== path) : [...prev, path]
-    );
-  };
-
-  const currentPage = allNavItems.find(i => i.path === location || i.children?.some(c => c.path === location));
-  const pageTitle = currentPage?.label ?? "Dashboard";
-
-  const sidebarProps = {
-    location,
-    expandedItems,
-    toggleExpand,
-    setCollapsed,
-    setMobileSidebarOpen,
-    theme,
-    user,
-    logout,
-    setAiTrigger,
-    setShowThemePicker,
-    darkMode,
-    toggleDarkMode,
-  };
 
   if (hideChrome) {
     return <div className="min-h-screen bg-slate-100">{children}</div>;
@@ -487,13 +433,13 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
         "hidden md:flex flex-col flex-shrink-0 transition-all duration-300 h-screen sticky top-0 overflow-hidden",
         collapsed ? "w-[60px]" : "w-[220px]"
       )}>
-        {collapsed ? <MiniSidebar {...sidebarProps} /> : <FullSidebar {...sidebarProps} />}
+        {collapsed ? <MiniSidebar /> : <FullSidebar />}
       </aside>
 
       {/* Mobile slide-out sidebar */}
       {mobileSidebarOpen && (
         <aside className="fixed inset-y-0 left-0 z-30 w-[260px] flex flex-col md:hidden shadow-2xl">
-          <FullSidebar {...sidebarProps} />
+          <FullSidebar />
         </aside>
       )}
 
