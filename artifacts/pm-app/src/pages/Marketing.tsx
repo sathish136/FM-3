@@ -142,12 +142,12 @@ const COUNTRY_COORDS: Record<string, [number, number]> = {
 // ── Color functions ───────────────────────────────────────────────────────────
 
 function getMapColor(total: number): string {
-  if (!total || total === 0) return "#e5e7eb";
-  if (total >= 500) return "#16a34a";
-  if (total >= 100) return "#f97316";
-  if (total >= 20)  return "#f59e0b";
-  if (total >= 5)   return "#fbbf24";
-  return "#fde68a";
+  if (!total || total === 0) return "#e2e8f0";
+  if (total >= 500) return "#1e40af";
+  if (total >= 100) return "#2563eb";
+  if (total >= 20)  return "#60a5fa";
+  if (total >= 5)   return "#93c5fd";
+  return "#bfdbfe";
 }
 
 function getBubbleSize(total: number): number {
@@ -342,28 +342,6 @@ function WorldMapTab() {
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Filter strip */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex gap-1 bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
-          {(["All", "Textile", "Non Textile"] as const).map(f => (
-            <button key={f} onClick={() => setIndustryFilter(f)}
-              className={cn(
-                "px-4 py-1.5 rounded-lg text-sm font-semibold transition-all",
-                industryFilter === f
-                  ? f === "Textile" ? "bg-indigo-600 text-white shadow-sm"
-                  : f === "Non Textile" ? "bg-emerald-600 text-white shadow-sm"
-                  : "bg-gray-800 text-white shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"
-              )}>
-              {f}
-            </button>
-          ))}
-        </div>
-        <button onClick={() => refetch()} className="flex items-center gap-1.5 text-sm text-indigo-600 bg-white border border-gray-200 px-4 py-1.5 rounded-xl hover:bg-indigo-50 transition-colors font-semibold shadow-sm">
-          <RefreshCw className={cn("w-3.5 h-3.5", isLoading && "animate-spin")} /> Refresh
-        </button>
-      </div>
-
       {/* Main layout */}
       <div className="flex gap-3 items-start">
         {/* LEFT — Sources + Lead Status */}
@@ -410,24 +388,39 @@ function WorldMapTab() {
 
         {/* CENTER — Map */}
         <div className="flex-1 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden relative">
-          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100 bg-white">
-            <Globe className="w-4 h-4 text-indigo-500" />
-            <span className="text-sm font-bold text-gray-800">Global Lead Distribution</span>
-            <span className="ml-auto text-[11px] text-gray-400 italic">Click a country to explore</span>
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 bg-white flex-wrap">
+            <Globe className="w-4 h-4 text-blue-600 shrink-0" />
+            <span className="text-sm font-bold text-gray-800 shrink-0">Global Lead Distribution</span>
+            <div className="flex gap-0.5 bg-gray-100 rounded-lg p-0.5 ml-1">
+              {(["All", "Textile", "Non Textile"] as const).map(f => (
+                <button key={f} onClick={() => setIndustryFilter(f)}
+                  className={cn(
+                    "px-3 py-1 rounded-md text-[11px] font-semibold transition-all whitespace-nowrap",
+                    industryFilter === f
+                      ? "bg-blue-600 text-white shadow-sm"
+                      : "text-gray-500 hover:text-gray-700 hover:bg-white/60"
+                  )}>
+                  {f}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => refetch()} className="ml-auto flex items-center gap-1 text-[11px] text-blue-600 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-lg hover:bg-blue-100 transition-colors font-semibold shrink-0">
+              <RefreshCw className={cn("w-3 h-3", isLoading && "animate-spin")} /> Refresh
+            </button>
           </div>
           <div className="relative" style={{ height: 420 }}>
             {/* Legend */}
             <div className="absolute bottom-3 left-3 z-10 bg-white/95 border border-gray-200 rounded-lg px-3 py-2 shadow-sm">
               <div className="flex items-center gap-3.5 text-[10px] text-gray-500">
                 {[
-                  { color: "#16a34a", label: "500+" },
-                  { color: "#f97316", label: "100-500" },
-                  { color: "#f59e0b", label: "20-100" },
-                  { color: "#fde68a", label: "1-20" },
-                  { color: "#e5e7eb", label: "None" },
+                  { color: "#1e40af", label: "500+" },
+                  { color: "#2563eb", label: "100-500" },
+                  { color: "#60a5fa", label: "20-100" },
+                  { color: "#bfdbfe", label: "1-20" },
+                  { color: "#e2e8f0", label: "None" },
                 ].map(({ color, label }) => (
                   <span key={label} className="flex items-center gap-1.5">
-                    <span className="inline-block w-3 h-3 rounded-full border border-gray-200" style={{ background: color }} />
+                    <span className="inline-block w-3 h-3 rounded-full border border-gray-300" style={{ background: color }} />
                     <span className="font-medium">{label}</span>
                   </span>
                 ))}
@@ -472,18 +465,48 @@ function WorldMapTab() {
                       })
                     }
                   </Geographies>
-                  {/* Bubble markers */}
+                  {/* Bubble markers with country labels */}
                   {markers.map(({ name, total, coords }) => {
                     const r = getBubbleSize(total);
                     const isSelected = selectedCountry === name;
+                    const labelY = -(r + 14);
+                    const lineY1 = -(r + 3);
+                    const lineY2 = -(r + 10);
+                    // Shorten long names
+                    const shortName = name.length > 12 ? name.split(" ")[0] : name;
                     return (
                       <Marker key={name} coordinates={coords}>
+                        {/* Connector line */}
+                        <line
+                          x1={0} y1={lineY1}
+                          x2={0} y2={lineY2}
+                          stroke={isSelected ? "#4f46e5" : "#3b82f6"}
+                          strokeWidth={1}
+                          strokeDasharray="2,1.5"
+                          style={{ pointerEvents: "none" }}
+                        />
+                        {/* Country name label */}
+                        <text
+                          textAnchor="middle"
+                          y={labelY}
+                          style={{
+                            fontFamily: "system-ui, sans-serif",
+                            fontSize: 6.5,
+                            fontWeight: "700",
+                            fill: isSelected ? "#4f46e5" : "#1e3a8a",
+                            pointerEvents: "none",
+                            letterSpacing: "0.01em",
+                          }}
+                        >
+                          {shortName}
+                        </text>
+                        {/* Count bubble */}
                         <circle
                           r={r}
-                          fill={isSelected ? "#4f46e5" : "rgba(255,255,255,0.92)"}
+                          fill={isSelected ? "#4f46e5" : "rgba(255,255,255,0.94)"}
                           stroke={isSelected ? "#3730a3" : "#2563eb"}
                           strokeWidth={1.8}
-                          style={{ cursor: "pointer", filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.18))" }}
+                          style={{ cursor: "pointer", filter: "drop-shadow(0 1px 3px rgba(37,99,235,0.25))" }}
                           onClick={() => setSelectedCountry(selectedCountry === name ? null : name)}
                           onMouseEnter={(e) => setTooltip({ name: `${name}: ${total} leads`, x: (e as any).clientX, y: (e as any).clientY })}
                           onMouseLeave={() => setTooltip(null)}
