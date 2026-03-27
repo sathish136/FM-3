@@ -15,6 +15,7 @@ import {
   ZoomableGroup,
 } from "react-simple-maps";
 import * as XLSX from "xlsx";
+import { IndiaMap } from "@/components/IndiaMap";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -394,8 +395,6 @@ function OverviewTab() {
 // ── India Map Tab ─────────────────────────────────────────────────────────────
 
 function IndiaMapTab() {
-  const [search, setSearch] = useState("");
-
   const { data, isLoading } = useQuery({
     queryKey: ["india-leads"],
     queryFn: async () => {
@@ -422,97 +421,31 @@ function IndiaMapTab() {
     return stats;
   }, [leads]);
 
-  const filteredStates = Object.entries(stateStats)
-    .filter(([s]) => s.toLowerCase().includes(search.toLowerCase()))
-    .sort((a, b) => b[1].total - a[1].total);
-
-  const maxTotal = filteredStates[0]?.[1]?.total ?? 1;
-
-  function exportData() {
-    const rows = filteredStates.map(([state, s]) => ({
-      State: state, Total: s.total, Open: s.Open,
-      Converted: s.Converted, Opportunity: s.Opportunity, Quotation: s.Quotation,
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "India Leads");
-    XLSX.writeFile(wb, "India_State_Leads.xlsx");
-  }
+  const globalStats: Record<string, number> = useMemo(() => {
+    const s: Record<string, number> = { total: leads.length };
+    for (const lead of leads) {
+      const st = lead.status || "Unknown";
+      s[st] = (s[st] || 0) + 1;
+    }
+    return s;
+  }, [leads]);
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div>
+      <div className="flex items-center justify-between mb-5">
         <div>
           <h2 className="text-lg font-bold text-gray-900">India State-wise Lead Distribution</h2>
           <p className="text-sm text-gray-400 mt-0.5">
-            {leads.length.toLocaleString()} total leads from India across {Object.keys(stateStats).length} states/cities
+            Interactive map · click any state to explore leads
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-300" />
-            <input
-              className="bg-white border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-sm text-gray-700 placeholder-gray-300 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all w-48"
-              placeholder="Search state..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </div>
-          <button
-            onClick={exportData}
-            className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl px-4 py-2 text-sm hover:bg-emerald-100 transition-colors font-medium"
-          >
-            <Download className="w-3.5 h-3.5" /> Export Excel
-          </button>
-        </div>
       </div>
-
-      <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-        <div className="overflow-auto max-h-[600px]">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-gray-50 border-b border-gray-100">
-              <tr>
-                {["#", "State / City", "Leads", "Distribution", "Open", "Converted", "Opportunity", "Quotation"].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-gray-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                <tr><td colSpan={8} className="text-center py-16 text-gray-300">
-                  <div className="flex flex-col items-center gap-2">
-                    <RefreshCw className="w-5 h-5 animate-spin text-indigo-300" />
-                    <span>Loading India lead data...</span>
-                  </div>
-                </td></tr>
-              ) : filteredStates.map(([state, s], i) => (
-                <tr key={state} className={cn("border-b border-gray-50 hover:bg-indigo-50/40 transition-colors", i % 2 !== 0 ? "bg-gray-50/30" : "")}>
-                  <td className="px-4 py-3 text-gray-300 text-xs font-semibold w-10">{i + 1}</td>
-                  <td className="px-4 py-3 font-semibold text-gray-800">{state}</td>
-                  <td className="px-4 py-3 font-bold text-gray-900 text-base">{s.total}</td>
-                  <td className="px-4 py-3 w-48">
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
-                        <div
-                          className="h-2 rounded-full bg-gradient-to-r from-orange-400 to-amber-500"
-                          style={{ width: `${Math.max(3, (s.total / maxTotal) * 100)}%` }}
-                        />
-                      </div>
-                      <span className="text-gray-400 text-xs w-12 text-right shrink-0">
-                        {((s.total / Math.max(leads.length, 1)) * 100).toFixed(1)}%
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-blue-600 font-semibold">{s.Open}</td>
-                  <td className="px-4 py-3 text-emerald-600 font-semibold">{s.Converted}</td>
-                  <td className="px-4 py-3 text-violet-600 font-semibold">{s.Opportunity}</td>
-                  <td className="px-4 py-3 text-amber-600 font-semibold">{s.Quotation}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <IndiaMap
+        stateStats={stateStats}
+        leads={leads}
+        isLoading={isLoading}
+        globalStats={globalStats}
+      />
     </div>
   );
 }

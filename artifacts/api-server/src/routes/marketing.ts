@@ -39,6 +39,7 @@ function erpFetch(url: string): Promise<any> {
 }
 
 async function openaiChat(prompt: string, maxTokens = 2000): Promise<string> {
+  if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY not configured");
   const resp = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -54,6 +55,9 @@ async function openaiChat(prompt: string, maxTokens = 2000): Promise<string> {
     signal: AbortSignal.timeout(60000),
   });
   const data = await resp.json() as any;
+  if (!data?.choices?.[0]?.message?.content) {
+    throw new Error(`OpenAI error: ${JSON.stringify(data?.error || data)}`);
+  }
   return data.choices[0].message.content;
 }
 
