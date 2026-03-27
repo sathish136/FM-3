@@ -1,25 +1,27 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Layout } from "@/components/Layout";
 import { useQuery } from "@tanstack/react-query";
 import {
   Globe, MapPin, Newspaper, Users, TrendingUp, BarChart3,
   Filter, RefreshCw, Search, Building2,
   Megaphone, Target, Wifi, Map, X, Download, Info,
-  ArrowUpRight, ArrowDownRight, ChevronRight, Layers
+  ArrowUpRight, ArrowDownRight, ChevronRight, Layers, Calendar
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   ComposableMap,
   Geographies,
   Geography,
+  Marker,
   ZoomableGroup,
 } from "react-simple-maps";
 import * as XLSX from "xlsx";
 import { IndiaMap } from "@/components/IndiaMap";
+import { FollowupCalendar } from "@/components/FollowupCalendar";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "world-map" | "overview" | "india-map" | "lead-details" | "news" | "competitors";
+type Tab = "world-map" | "overview" | "india-map" | "lead-details" | "news" | "competitors" | "followup";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -51,43 +53,223 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; 
 };
 
 const KPI_CONFIG = [
-  { label: "Total",    key: "total",            color: "from-indigo-500 to-violet-600",  icon: "📊" },
-  { label: "Open",     key: "Open",             color: "from-blue-400 to-blue-600",      icon: "🔵" },
-  { label: "Converted",key: "Converted",        color: "from-emerald-400 to-emerald-600",icon: "✅" },
-  { label: "Opportunity",key: "Opportunity",    color: "from-violet-400 to-violet-600",  icon: "💡" },
-  { label: "Quotation",key: "Quotation",        color: "from-amber-400 to-amber-600",    icon: "📋" },
-  { label: "Lead",     key: "Lead",             color: "from-sky-400 to-sky-600",        icon: "🎯" },
-  { label: "Replied",  key: "Replied",          color: "from-teal-400 to-teal-600",      icon: "↩️" },
-  { label: "Closed",   key: "Closed",           color: "from-slate-400 to-slate-600",    icon: "🔒" },
-  { label: "Lost",     key: "Lost Quotation",   color: "from-red-400 to-red-600",        icon: "❌" },
+  { label: "Total",    key: "total",            color: "from-indigo-500 to-violet-600" },
+  { label: "Open",     key: "Open",             color: "from-blue-400 to-blue-600" },
+  { label: "Converted",key: "Converted",        color: "from-emerald-400 to-emerald-600" },
+  { label: "Opportunity",key: "Opportunity",    color: "from-violet-400 to-violet-600" },
+  { label: "Quotation",key: "Quotation",        color: "from-amber-400 to-amber-600" },
+  { label: "Lead",     key: "Lead",             color: "from-sky-400 to-sky-600" },
+  { label: "Replied",  key: "Replied",          color: "from-teal-400 to-teal-600" },
+  { label: "Closed",   key: "Closed",           color: "from-slate-400 to-slate-600" },
+  { label: "Lost",     key: "Lost Quotation",   color: "from-red-400 to-red-600" },
 ];
 
-// ── Lead count color scale (for world map) ──────────────────────────────────
+// ── Country centroids [longitude, latitude] ──────────────────────────────────
+
+const COUNTRY_COORDS: Record<string, [number, number]> = {
+  "India":           [78.96, 20.59],
+  "Saudi Arabia":    [45.08, 23.89],
+  "United Arab Emirates": [53.85, 23.42],
+  "UAE":             [53.85, 23.42],
+  "Qatar":           [51.18, 25.35],
+  "Kuwait":          [47.48, 29.31],
+  "Bahrain":         [50.55, 26.07],
+  "Oman":            [57.55, 21.51],
+  "Jordan":          [36.24, 31.25],
+  "Iran":            [53.69, 32.43],
+  "Israel":          [34.85, 31.05],
+  "Egypt":           [30.80, 26.82],
+  "Libya":           [17.23, 26.34],
+  "Tunisia":         [9.54, 33.89],
+  "Algeria":         [1.66, 28.03],
+  "Morocco":         [-7.09, 31.79],
+  "Sudan":           [30.22, 12.86],
+  "Kenya":           [37.91, 0.02],
+  "Uganda":          [32.29, 1.37],
+  "Ethiopia":        [40.49, 9.15],
+  "Ghana":           [-1.02, 7.95],
+  "Nigeria":         [8.68, 9.08],
+  "South Africa":    [25.08, -29.00],
+  "Zambia":          [27.85, -13.13],
+  "Bangladesh":      [90.36, 23.68],
+  "Sri Lanka":       [80.77, 7.87],
+  "Nepal":           [84.12, 28.39],
+  "Pakistan":        [69.35, 30.38],
+  "Afghanistan":     [67.71, 33.94],
+  "Indonesia":       [113.92, -0.79],
+  "Malaysia":        [109.70, 4.21],
+  "Singapore":       [103.82, 1.35],
+  "Thailand":        [100.99, 15.87],
+  "Vietnam":         [108.28, 14.06],
+  "Philippines":     [121.77, 12.88],
+  "Myanmar":         [95.96, 19.15],
+  "Cambodia":        [104.99, 12.57],
+  "China":           [104.20, 35.86],
+  "Japan":           [138.25, 36.20],
+  "South Korea":     [127.77, 35.91],
+  "Taiwan":          [120.96, 23.70],
+  "Kyrgyzstan":      [74.55, 41.21],
+  "Uzbekistan":      [63.14, 41.38],
+  "Kazakhstan":      [66.92, 48.02],
+  "Turkey":          [35.24, 38.96],
+  "Ukraine":         [31.17, 48.38],
+  "Russia":          [105.32, 61.52],
+  "Estonia":         [25.01, 58.60],
+  "Poland":          [19.15, 51.92],
+  "Slovakia":        [19.70, 48.67],
+  "Bulgaria":        [25.49, 42.73],
+  "Germany":         [10.45, 51.17],
+  "United Kingdom":  [-3.44, 55.38],
+  "UK":              [-3.44, 55.38],
+  "France":          [2.21, 46.23],
+  "Spain":           [-3.75, 40.46],
+  "Portugal":        [-8.22, 39.40],
+  "Italy":           [12.57, 41.87],
+  "Belgium":         [4.47, 50.50],
+  "Australia":       [133.78, -25.27],
+  "United States":   [-95.71, 37.09],
+  "USA":             [-95.71, 37.09],
+  "Canada":          [-96.80, 60.00],
+  "Mexico":          [-102.55, 23.63],
+  "Colombia":        [-74.30, 4.57],
+  "Ecuador":         [-77.00, -1.83],
+  "Brazil":          [-51.92, -14.24],
+  "Honduras":        [-86.62, 15.20],
+  "El Salvador":     [-88.90, 13.79],
+  "Guatemala":       [-90.23, 15.78],
+};
+
+// ── Color functions ───────────────────────────────────────────────────────────
 
 function getMapColor(total: number): string {
-  if (!total || total === 0) return "#e2e8f0";
-  if (total > 100) return "#1d4ed8";
-  if (total > 50)  return "#3b82f6";
-  if (total > 10)  return "#93c5fd";
-  return "#bfdbfe";
+  if (!total || total === 0) return "#e5e7eb";
+  if (total >= 500) return "#16a34a";
+  if (total >= 100) return "#f97316";
+  if (total >= 20)  return "#f59e0b";
+  if (total >= 5)   return "#fbbf24";
+  return "#fde68a";
 }
 
-// ── KPI Cards Row ─────────────────────────────────────────────────────────────
+function getBubbleSize(total: number): number {
+  if (total >= 2000) return 22;
+  if (total >= 500)  return 18;
+  if (total >= 100)  return 15;
+  if (total >= 20)   return 12;
+  return 9;
+}
 
-function KPIRow({ stats, isLoading }: { stats: Record<string, number>; isLoading: boolean }) {
+// ── Inline News + Competitor Panel ────────────────────────────────────────────
+
+function InlineCountryAnalysis({ country, isState = false }: { country: string; isState?: boolean }) {
+  const newsQ = useQuery({
+    queryKey: isState ? ["state-news-inline", country] : ["news-inline", country],
+    queryFn: async () => {
+      const ep = isState
+        ? `/api/marketing/state-news?state=${encodeURIComponent(country)}`
+        : `/api/marketing/news?country=${encodeURIComponent(country)}`;
+      const r = await fetch(ep);
+      return r.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const compQ = useQuery({
+    queryKey: isState ? ["state-comp-inline", country] : ["comp-inline", country],
+    queryFn: async () => {
+      const ep = isState
+        ? `/api/marketing/state-competitor-analysis?state=${encodeURIComponent(country)}`
+        : `/api/marketing/competitor-analysis?country=${encodeURIComponent(country)}`;
+      const r = await fetch(ep);
+      return r.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const articles: any[] = newsQ.data?.news ?? newsQ.data?.articles ?? [];
+  const competitors: any[] = compQ.data?.competitors ?? [];
+  const title = country;
+
   return (
-    <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-3">
-      {KPI_CONFIG.map((kpi) => (
-        <div
-          key={kpi.label}
-          className="bg-white rounded-xl border border-gray-100 shadow-sm p-3 text-center hover:shadow-md transition-shadow"
-        >
-          <p className="text-2xl font-bold text-gray-900">
-            {isLoading ? <span className="inline-block w-8 h-6 bg-gray-100 rounded animate-pulse" /> : (stats[kpi.key] ?? 0)}
-          </p>
-          <p className="text-xs text-gray-400 mt-0.5 font-medium">{kpi.label}</p>
+    <div className="grid md:grid-cols-2 gap-4 mt-4">
+      {/* News panel */}
+      <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+          <div className="flex items-center gap-2">
+            <Newspaper className="w-4 h-4 text-teal-500" />
+            <span className="font-bold text-gray-800 text-sm">{title} — Industry News</span>
+          </div>
+          {newsQ.isLoading && <RefreshCw className="w-3.5 h-3.5 text-teal-400 animate-spin" />}
         </div>
-      ))}
+        <div className="overflow-auto max-h-72 divide-y divide-gray-50">
+          {newsQ.isLoading ? (
+            <div className="flex items-center justify-center py-10 gap-2 text-gray-300 text-xs">
+              <Wifi className="w-4 h-4 animate-pulse text-teal-300" /> Fetching news...
+            </div>
+          ) : articles.length === 0 ? (
+            <div className="flex items-center justify-center py-10 text-gray-300 text-xs gap-2">
+              <Newspaper className="w-4 h-4" /> No articles available
+            </div>
+          ) : articles.map((a: any, i: number) => (
+            <div key={i} className="px-4 py-3 hover:bg-gray-50 transition-colors">
+              <p className="font-semibold text-gray-800 text-xs leading-snug mb-1">{a.title}</p>
+              <div className="flex items-center justify-between text-[10px] text-gray-400">
+                <span>{a.source}</span>
+                <span>{a.date}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Competitor panel */}
+      <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+          <div className="flex items-center gap-2">
+            <Target className="w-4 h-4 text-rose-500" />
+            <span className="font-bold text-gray-800 text-sm">{title} — Competitor Analysis</span>
+          </div>
+          {compQ.isLoading && <RefreshCw className="w-3.5 h-3.5 text-rose-400 animate-spin" />}
+        </div>
+        <div className="overflow-auto max-h-72">
+          {compQ.isLoading ? (
+            <div className="flex items-center justify-center py-10 gap-2 text-gray-300 text-xs">
+              <Target className="w-4 h-4 animate-pulse text-rose-300" /> Analyzing competitors...
+            </div>
+          ) : competitors.length === 0 ? (
+            <div className="flex items-center justify-center py-10 text-gray-300 text-xs gap-2">
+              <Building2 className="w-4 h-4" /> No competitor data
+            </div>
+          ) : (
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-gray-50 border-b border-gray-100">
+                <tr>
+                  {["Competitor", "Activities", "Technology", "Campaign", "Website"].map(h => (
+                    <th key={h} className="px-3 py-2 text-left text-gray-400 font-bold uppercase text-[9px] tracking-wider whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {competitors.map((c: any, i: number) => (
+                  <tr key={i} className={cn("border-b border-gray-50 hover:bg-gray-50 transition-colors", i % 2 !== 0 ? "bg-gray-50/30" : "")}>
+                    <td className="px-3 py-2 font-bold text-gray-800 whitespace-nowrap">{c.name}</td>
+                    <td className="px-3 py-2 text-gray-500 max-w-36 line-clamp-2">{c.activities}</td>
+                    <td className="px-3 py-2 text-gray-500 max-w-36 line-clamp-2">{c.technology}</td>
+                    <td className="px-3 py-2 text-gray-500 max-w-36 line-clamp-2">{c.campaign}</td>
+                    <td className="px-3 py-2">
+                      {c.website && c.website !== "#" ? (
+                        <a href={c.website} target="_blank" rel="noopener noreferrer"
+                          className="text-indigo-500 hover:text-indigo-700 font-semibold flex items-center gap-0.5">
+                          Visit <ArrowUpRight className="w-2.5 h-2.5" />
+                        </a>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -96,9 +278,18 @@ function KPIRow({ stats, isLoading }: { stats: Record<string, number>; isLoading
 
 const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
+// Country name normalization (world-atlas names → our ERP names)
+const GEO_NAME_MAP: Record<string, string> = {
+  "United States of America": "India", // won't match
+  "United Kingdom": "United Kingdom",
+  "United Arab Emirates": "UAE",
+};
+
 function WorldMapTab() {
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
   const [tooltip, setTooltip] = useState<{ name: string; x: number; y: number } | null>(null);
+  const [showTable, setShowTable] = useState(false);
+  const [industryFilter, setIndustryFilter] = useState<"All" | "Textile" | "Non Textile">("All");
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["marketing-leads"],
@@ -108,77 +299,210 @@ function WorldMapTab() {
     },
   });
 
+  const { data: detailsData } = useQuery({
+    queryKey: ["marketing-lead-details", "", "", industryFilter === "All" ? "" : industryFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (industryFilter !== "All") params.set("industry_type", industryFilter);
+      const r = await fetch(`/api/marketing/lead-details?${params}`);
+      return r.json();
+    },
+  });
+
   const countryStats: Record<string, Record<string, number>> = data?.country_stats ?? {};
   const globalStats: Record<string, number> = data?.global_stats ?? {};
   const sourceStats: Record<string, number> = data?.source_stats ?? {};
-  const selectedData = selectedCountry ? countryStats[selectedCountry] : null;
+  const leadStatusStats: Record<string, number> = data?.lead_status_stats ?? {};
 
-  const topCountries = Object.entries(countryStats)
-    .sort((a, b) => (b[1].total ?? 0) - (a[1].total ?? 0))
-    .slice(0, 15);
+  const selectedData = selectedCountry ? (countryStats[selectedCountry] ?? null) : null;
+  const allLeads: any[] = detailsData?.leads ?? [];
+
+  // Find top country for color scale
+  const maxCountryLeads = Math.max(...Object.values(countryStats).map(s => s.total ?? 0), 1);
+
+  // Markers: countries with leads that have known coords
+  const markers = useMemo(() => {
+    return Object.entries(countryStats)
+      .filter(([name, s]) => (s.total ?? 0) > 0 && COUNTRY_COORDS[name])
+      .map(([name, s]) => ({ name, total: s.total ?? 0, coords: COUNTRY_COORDS[name]! }))
+      .sort((a, b) => b.total - a.total);
+  }, [countryStats]);
+
+  function handleGeoClick(name: string) {
+    const total = countryStats[name]?.total ?? 0;
+    if (total > 0) setSelectedCountry(selectedCountry === name ? null : name);
+  }
+
+  function exportLeads() {
+    const ws = XLSX.utils.json_to_sheet(allLeads);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "All Leads");
+    XLSX.writeFile(wb, "All_Leads.xlsx");
+  }
 
   return (
-    <div className="flex flex-col gap-5">
-      <KPIRow stats={globalStats} isLoading={isLoading} />
+    <div className="flex flex-col gap-4">
+      {/* Filter strip */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex gap-1.5">
+          {(["All", "Textile", "Non Textile"] as const).map(f => (
+            <button key={f} onClick={() => setIndustryFilter(f)}
+              className={cn(
+                "px-4 py-2 rounded-xl text-sm font-semibold transition-all border",
+                industryFilter === f
+                  ? f === "Textile" ? "bg-indigo-600 text-white border-indigo-600"
+                  : f === "Non Textile" ? "bg-emerald-600 text-white border-emerald-600"
+                  : "bg-gray-800 text-white border-gray-800"
+                  : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+              )}>
+              {f}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => refetch()} className="flex items-center gap-1.5 text-sm text-indigo-600 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-xl hover:bg-indigo-100 transition-colors font-semibold">
+          <RefreshCw className={cn("w-3.5 h-3.5", isLoading && "animate-spin")} /> Refresh
+        </button>
+      </div>
 
-      <div className="flex gap-4">
-        {/* Map */}
-        <div className="flex-1 bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden relative" style={{ minHeight: 440 }}>
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <div className="flex items-center gap-2">
-              <Globe className="w-4 h-4 text-indigo-500" />
-              <span className="text-sm font-semibold text-gray-800">Global Lead Distribution</span>
+      {/* Main layout */}
+      <div className="flex gap-3" style={{ minHeight: 480 }}>
+        {/* LEFT — Sources + Lead Status */}
+        <div className="w-48 shrink-0 flex flex-col gap-3">
+          {/* Lead Sources */}
+          <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden flex-1">
+            <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50/50">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Lead Sources</p>
             </div>
-            <div className="flex items-center gap-4 text-xs text-gray-400">
-              <span className="flex items-center gap-1"><span className="inline-block w-3 h-2 rounded-sm bg-blue-800" />&gt;100</span>
-              <span className="flex items-center gap-1"><span className="inline-block w-3 h-2 rounded-sm bg-blue-500" />50–100</span>
-              <span className="flex items-center gap-1"><span className="inline-block w-3 h-2 rounded-sm bg-blue-300" />10–50</span>
-              <span className="flex items-center gap-1"><span className="inline-block w-3 h-2 rounded-sm bg-blue-200" />&lt;10</span>
-              <button onClick={() => refetch()} className="flex items-center gap-1 text-indigo-500 hover:text-indigo-700 transition-colors font-medium">
-                <RefreshCw className={cn("w-3 h-3", isLoading && "animate-spin")} /> Refresh
-              </button>
+            <div className="overflow-auto" style={{ maxHeight: 190 }}>
+              {Object.entries(sourceStats)
+                .sort((a, b) => b[1] - a[1])
+                .map(([src, cnt]) => (
+                  <div key={src} className="flex items-center justify-between px-3 py-1.5 hover:bg-gray-50 border-b border-gray-50 transition-colors">
+                    <span className="text-xs text-gray-500 truncate">{src === "null" || src === "Unknown" ? "null" : src}</span>
+                    <span className="text-xs font-bold text-gray-800 ml-2 shrink-0">{cnt}</span>
+                  </div>
+                ))}
+            </div>
+          </div>
+          {/* Lead Status */}
+          <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden flex-1">
+            <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50/50">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Lead Status</p>
+            </div>
+            <div className="overflow-auto" style={{ maxHeight: 190 }}>
+              {Object.entries(leadStatusStats)
+                .sort((a, b) => b[1] - a[1])
+                .map(([st, cnt]) => (
+                  <div key={st} className="flex items-center justify-between px-3 py-1.5 hover:bg-gray-50 border-b border-gray-50 transition-colors">
+                    <span className="text-xs text-gray-500 truncate">{st}</span>
+                    <span className="text-xs font-bold text-gray-800 ml-2 shrink-0">{cnt}</span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
+
+        {/* CENTER — Map */}
+        <div className="flex-1 bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden relative">
+          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100 bg-gray-50/50">
+            <Globe className="w-4 h-4 text-indigo-500" />
+            <span className="text-sm font-bold text-gray-800">Global Lead Distribution</span>
+            <span className="ml-auto text-xs text-gray-400">Click a country to explore</span>
+          </div>
+          {/* Legend */}
+          <div className="absolute bottom-2 left-2 z-10 bg-white/90 backdrop-blur-sm border border-gray-100 rounded-xl px-3 py-2 shadow-sm">
+            <div className="flex items-center gap-3 text-[10px] text-gray-500">
+              {[
+                { color: "#16a34a", label: "500+" },
+                { color: "#f97316", label: "100-500" },
+                { color: "#f59e0b", label: "20-100" },
+                { color: "#fde68a", label: "1-20" },
+                { color: "#e5e7eb", label: "None" },
+              ].map(({ color, label }) => (
+                <span key={label} className="flex items-center gap-1">
+                  <span className="inline-block w-3 h-2.5 rounded-sm" style={{ background: color }} />
+                  {label}
+                </span>
+              ))}
             </div>
           </div>
           {isLoading ? (
             <div className="flex items-center justify-center h-80 text-gray-300 text-sm gap-2">
-              <RefreshCw className="w-4 h-4 animate-spin text-indigo-400" /> Loading lead data...
+              <RefreshCw className="w-4 h-4 animate-spin text-indigo-400" /> Loading...
             </div>
           ) : (
             <ComposableMap
               projection="geoMercator"
-              projectionConfig={{ scale: 130, center: [10, 15] }}
-              style={{ width: "100%", height: 390 }}
+              projectionConfig={{ scale: 130, center: [10, 10] }}
+              style={{ width: "100%", height: 400 }}
             >
               <ZoomableGroup>
                 <Geographies geography={GEO_URL}>
                   {({ geographies }) =>
                     geographies.map((geo) => {
                       const name = geo.properties.name;
-                      const stats = countryStats[name];
+                      const erpName = name === "United States of America" ? "India" // won't match but safe
+                        : name;
+                      const stats = countryStats[erpName];
                       const total = stats?.total ?? 0;
+                      const isSelected = selectedCountry === erpName;
                       return (
                         <Geography
                           key={geo.rsmKey}
                           geography={geo}
-                          fill={getMapColor(total)}
-                          stroke="#cbd5e1"
-                          strokeWidth={0.4}
+                          fill={isSelected ? "#6366f1" : getMapColor(total)}
+                          stroke="#d1d5db"
+                          strokeWidth={0.3}
                           style={{
                             default: { outline: "none", cursor: total > 0 ? "pointer" : "default" },
-                            hover: { fill: total > 0 ? "#6366f1" : "#cbd5e1", outline: "none" },
+                            hover: { fill: total > 0 ? "#6366f1" : "#d1d5db", outline: "none", transition: "all 0.1s" },
                             pressed: { outline: "none" },
                           }}
-                          onClick={() => total > 0 && setSelectedCountry(selectedCountry === name ? null : name)}
-                          onMouseEnter={(e) => total > 0 && setTooltip({ name: `${name}: ${total} leads`, x: (e as any).clientX, y: (e as any).clientY })}
+                          onClick={() => handleGeoClick(erpName)}
+                          onMouseEnter={(e) => total > 0 && setTooltip({ name: `${erpName}: ${total} leads`, x: (e as any).clientX, y: (e as any).clientY })}
                           onMouseLeave={() => setTooltip(null)}
                         />
                       );
                     })
                   }
                 </Geographies>
+                {/* Bubble markers */}
+                {markers.map(({ name, total, coords }) => {
+                  const r = getBubbleSize(total);
+                  const isSelected = selectedCountry === name;
+                  return (
+                    <Marker key={name} coordinates={coords}>
+                      <circle
+                        r={r}
+                        fill={isSelected ? "#6366f1" : "white"}
+                        fillOpacity={0.95}
+                        stroke={isSelected ? "#4f46e5" : "#3b82f6"}
+                        strokeWidth={1.5}
+                        style={{ cursor: "pointer" }}
+                        onClick={() => setSelectedCountry(selectedCountry === name ? null : name)}
+                        onMouseEnter={(e) => setTooltip({ name: `${name}: ${total} leads`, x: (e as any).clientX, y: (e as any).clientY })}
+                        onMouseLeave={() => setTooltip(null)}
+                      />
+                      <text
+                        textAnchor="middle"
+                        y={r * 0.4}
+                        style={{
+                          fontFamily: "sans-serif",
+                          fontSize: total >= 1000 ? r * 0.65 : r * 0.78,
+                          fontWeight: "bold",
+                          fill: isSelected ? "white" : "#1d4ed8",
+                          pointerEvents: "none",
+                        }}
+                      >
+                        {total >= 1000 ? `${(total / 1000).toFixed(1)}k` : total}
+                      </text>
+                    </Marker>
+                  );
+                })}
               </ZoomableGroup>
             </ComposableMap>
           )}
+
           {tooltip && (
             <div
               className="fixed z-50 bg-gray-900 text-white text-xs px-3 py-1.5 rounded-lg pointer-events-none shadow-lg"
@@ -189,82 +513,138 @@ function WorldMapTab() {
           )}
         </div>
 
-        {/* Right side panels */}
-        <div className="flex flex-col gap-3 w-64">
-          {selectedCountry && selectedData ? (
-            <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-4 flex-shrink-0">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-3.5 h-3.5 text-indigo-500" />
-                  <h3 className="text-sm font-semibold text-gray-800">{selectedCountry}</h3>
-                </div>
-                <button onClick={() => setSelectedCountry(null)} className="text-gray-300 hover:text-gray-600 transition-colors">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="space-y-2">
-                {Object.entries(selectedData).map(([k, v]) => {
-                  const style = STATUS_STYLES[k];
-                  return (
-                    <div key={k} className="flex justify-between items-center text-xs">
-                      <div className="flex items-center gap-1.5">
-                        {style && <span className={cn("w-1.5 h-1.5 rounded-full", style.dot)} />}
-                        <span className={k === "total" ? "font-semibold text-gray-700" : "text-gray-500"}>{k}</span>
-                      </div>
-                      <span className={cn("font-bold", k === "total" ? "text-gray-900 text-sm" : "text-gray-700")}>{v}</span>
+        {/* RIGHT — Filter stats */}
+        <div className="w-44 shrink-0 flex flex-col gap-2">
+          <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden flex-1">
+            <div className="px-3 py-2.5 border-b border-gray-100 bg-indigo-600">
+              <p className="text-xs font-bold text-white uppercase tracking-wider">
+                {selectedCountry ? selectedCountry : "Filtered"}
+              </p>
+            </div>
+            <div className="divide-y divide-gray-50">
+              {selectedData
+                ? Object.entries(selectedData).map(([k, v]) => (
+                    <div key={k} className="flex justify-between items-center px-3 py-2">
+                      <span className={cn("text-xs font-medium", k === "total" ? "text-gray-800 font-semibold" : "text-gray-500")}>{k}</span>
+                      <span className={cn("text-xs font-bold", k === "total" ? "text-indigo-700 text-base" : "text-gray-800")}>{v as number}</span>
                     </div>
-                  );
-                })}
-              </div>
+                  ))
+                : ([
+                    ["Total Leads", globalStats.total],
+                    ["Converted", globalStats.Converted],
+                    ["Quotation", globalStats.Quotation],
+                    ["Lead", globalStats.Lead],
+                    ["Open", globalStats.Open],
+                    ["Opportunity", globalStats.Opportunity],
+                    ["Replied", globalStats.Replied],
+                    ["Closed", globalStats.Closed],
+                    ["Lost Quotation", globalStats["Lost Quotation"]],
+                    ["Do Not Contact", globalStats["Do Not Contact"]],
+                  ] as [string, number][]).map(([label, val]) => (
+                    <div key={label} className="flex justify-between items-center px-3 py-1.5">
+                      <span className={cn("text-xs", label === "Total Leads" ? "text-gray-800 font-semibold" : "text-gray-500")}>{label}</span>
+                      <span className={cn("text-xs font-bold", label === "Total Leads" ? "text-indigo-700 text-sm" : "text-gray-800")}>{isLoading ? "—" : (val ?? 0)}</span>
+                    </div>
+                  ))
+              }
             </div>
-          ) : (
-            <div className="bg-gradient-to-br from-indigo-50 to-violet-50 border border-indigo-100 rounded-2xl p-4 flex-shrink-0 flex flex-col items-center justify-center h-36 gap-2">
-              <Globe className="w-6 h-6 text-indigo-300" />
-              <p className="text-indigo-400 text-xs text-center leading-relaxed">Click a colored country<br/>to see lead breakdown</p>
+            {selectedCountry && (
+              <button
+                onClick={() => setSelectedCountry(null)}
+                className="w-full text-xs text-gray-400 hover:text-gray-600 py-2 flex items-center justify-center gap-1 border-t border-gray-100 hover:bg-gray-50 transition-colors"
+              >
+                <X className="w-3 h-3" /> Clear
+              </button>
+            )}
+          </div>
+          {/* Top countries mini list */}
+          <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50/50">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Top Markets</p>
             </div>
-          )}
-
-          <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-3 flex-1 overflow-auto">
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-              <TrendingUp className="w-3 h-3" /> Top Countries
-            </h3>
-            <div className="space-y-1">
-              {topCountries.map(([country, stats], idx) => (
-                <button
-                  key={country}
-                  onClick={() => setSelectedCountry(selectedCountry === country ? null : country)}
-                  className={cn(
-                    "w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs transition-all",
-                    selectedCountry === country
-                      ? "bg-indigo-600 text-white shadow-md"
-                      : "text-gray-600 hover:bg-gray-50"
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className={cn("text-[10px] font-bold w-4", selectedCountry === country ? "text-indigo-200" : "text-gray-300")}>{idx + 1}</span>
-                    <span className="truncate font-medium">{country}</span>
-                  </div>
-                  <span className={cn("font-bold ml-2", selectedCountry === country ? "text-white" : "text-gray-900")}>{stats.total}</span>
-                </button>
-              ))}
+            <div className="overflow-auto" style={{ maxHeight: 150 }}>
+              {Object.entries(countryStats)
+                .sort((a, b) => (b[1].total ?? 0) - (a[1].total ?? 0))
+                .slice(0, 10)
+                .map(([c, s], i) => (
+                  <button key={c} onClick={() => setSelectedCountry(selectedCountry === c ? null : c)}
+                    className={cn(
+                      "w-full flex items-center justify-between px-2.5 py-1.5 text-xs transition-all border-b border-gray-50",
+                      selectedCountry === c ? "bg-indigo-600 text-white" : "hover:bg-gray-50 text-gray-600"
+                    )}>
+                    <div className="flex items-center gap-1.5">
+                      <span className={cn("text-[9px] font-bold w-3", selectedCountry === c ? "text-indigo-200" : "text-gray-300")}>{i + 1}</span>
+                      <span className="truncate font-medium">{c}</span>
+                    </div>
+                    <span className="font-bold ml-1">{s.total}</span>
+                  </button>
+                ))}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Source breakdown */}
-      <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-5">
-        <h3 className="text-sm font-semibold text-gray-800 mb-4 flex items-center gap-2">
-          <BarChart3 className="w-4 h-4 text-indigo-500" /> Lead Sources
-        </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          {Object.entries(sourceStats).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([src, cnt]) => (
-            <div key={src} className="bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-100 rounded-xl p-3 text-center hover:shadow-sm transition-shadow">
-              <p className="text-xl font-bold text-gray-900">{cnt}</p>
-              <p className="text-xs text-gray-400 truncate mt-0.5">{src}</p>
-            </div>
-          ))}
+      {/* Inline news + competitor when country selected */}
+      {selectedCountry && (
+        <InlineCountryAnalysis country={selectedCountry} />
+      )}
+
+      {/* All Leads Data */}
+      <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+        <div
+          className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gray-50/50 cursor-pointer"
+          onClick={() => setShowTable(v => !v)}
+        >
+          <div className="flex items-center gap-2">
+            <Info className="w-4 h-4 text-indigo-500" />
+            <span className="font-bold text-gray-800 text-sm">All Leads Data</span>
+            <span className="bg-indigo-100 text-indigo-700 text-xs px-2 py-0.5 rounded-full font-bold">{allLeads.length} leads</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={(e) => { e.stopPropagation(); exportLeads(); }}
+              className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg px-3 py-1.5 text-xs hover:bg-emerald-100 transition-colors font-semibold">
+              <Download className="w-3 h-3" /> Export CSV
+            </button>
+            <ChevronRight className={cn("w-4 h-4 text-gray-400 transition-transform", showTable && "rotate-90")} />
+          </div>
         </div>
+        {showTable && (
+          <div className="overflow-auto max-h-80">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-gray-50 border-b border-gray-100">
+                <tr>
+                  {["#", "Company", "Contact", "Email", "Mobile", "Status", "Source", "Country", "Date"].map(h => (
+                    <th key={h} className="px-3 py-2.5 text-left text-gray-400 font-bold uppercase tracking-wider whitespace-nowrap text-[10px]">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {allLeads.slice(0, 500).map((l: any, i: number) => {
+                  const st = STATUS_STYLES[l.status];
+                  return (
+                    <tr key={i} className={cn("border-b border-gray-50 hover:bg-indigo-50/20", i % 2 !== 0 ? "bg-gray-50/20" : "")}>
+                      <td className="px-3 py-2 text-gray-300 font-semibold">{i + 1}</td>
+                      <td className="px-3 py-2 font-semibold text-gray-800 max-w-32 truncate">{l.company_name || "—"}</td>
+                      <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{l.lead_name || "—"}</td>
+                      <td className="px-3 py-2 text-gray-500 max-w-36 truncate">{l.email_id || "—"}</td>
+                      <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{l.mobile_no || "—"}</td>
+                      <td className="px-3 py-2">
+                        {st ? (
+                          <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold", st.bg, st.text, st.border)}>
+                            <span className={cn("w-1.5 h-1.5 rounded-full", st.dot)} />{l.status}
+                          </span>
+                        ) : <span className="text-gray-400">{l.status || "—"}</span>}
+                      </td>
+                      <td className="px-3 py-2 text-gray-400 whitespace-nowrap">{l.source || "—"}</td>
+                      <td className="px-3 py-2 text-gray-400 whitespace-nowrap">{l.country || "—"}</td>
+                      <td className="px-3 py-2 text-gray-400 whitespace-nowrap">{l.creation ? String(l.creation).split(" ")[0] : "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -301,12 +681,22 @@ function OverviewTab() {
           <h2 className="text-lg font-bold text-gray-900">Lead Overview</h2>
           <p className="text-sm text-gray-400 mt-0.5">Complete breakdown of leads by country and source</p>
         </div>
-        <button onClick={() => refetch()} className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-800 transition-colors font-medium bg-indigo-50 px-3 py-1.5 rounded-lg">
+        <button onClick={() => refetch()} className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-800 transition-colors font-semibold bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-xl">
           <RefreshCw className={cn("w-3.5 h-3.5", isLoading && "animate-spin")} /> Refresh
         </button>
       </div>
 
-      <KPIRow stats={globalStats} isLoading={isLoading} />
+      {/* KPI Row */}
+      <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-3">
+        {KPI_CONFIG.map((kpi) => (
+          <div key={kpi.label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-3 text-center hover:shadow-md transition-shadow">
+            <p className="text-2xl font-bold text-gray-900">
+              {isLoading ? <span className="inline-block w-8 h-6 bg-gray-100 rounded animate-pulse" /> : (globalStats[kpi.key] ?? 0)}
+            </p>
+            <p className="text-xs text-gray-400 mt-0.5 font-medium">{kpi.label}</p>
+          </div>
+        ))}
+      </div>
 
       {/* Country Table */}
       <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
@@ -337,14 +727,10 @@ function OverviewTab() {
               {isLoading ? (
                 <tr><td colSpan={10} className="text-center py-8 text-gray-300">Loading...</td></tr>
               ) : filteredCountries.map(([country, stats], i) => (
-                <tr
-                  key={country}
-                  className={cn(
-                    "border-b border-gray-50 hover:bg-indigo-50/50 cursor-pointer transition-colors",
-                    selectedCountry === country ? "bg-indigo-50" : i % 2 !== 0 ? "bg-gray-50/30" : "bg-white"
-                  )}
-                  onClick={() => setSelectedCountry(selectedCountry === country ? null : country)}
-                >
+                <tr key={country} className={cn(
+                  "border-b border-gray-50 hover:bg-indigo-50/50 cursor-pointer transition-colors",
+                  selectedCountry === country ? "bg-indigo-50" : i % 2 !== 0 ? "bg-gray-50/30" : "bg-white"
+                )} onClick={() => setSelectedCountry(selectedCountry === country ? null : country)}>
                   <td className="px-3 py-2.5 font-semibold text-gray-700 flex items-center gap-1.5">
                     <ChevronRight className={cn("w-3 h-3 text-indigo-400 transition-transform", selectedCountry === country && "rotate-90")} />
                     {country}
@@ -365,27 +751,24 @@ function OverviewTab() {
         </div>
       </div>
 
+      {/* Inline analysis on country click */}
+      {selectedCountry && <InlineCountryAnalysis country={selectedCountry} />}
+
       {/* Source Chart */}
       <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-5">
         <h3 className="text-sm font-semibold text-gray-800 mb-4 flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-indigo-500" /> Lead Sources
         </h3>
         <div className="space-y-3">
-          {Object.entries(sourceStats).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([src, cnt]) => {
-            const pct = (cnt / maxSrc) * 100;
-            return (
-              <div key={src} className="flex items-center gap-3">
-                <span className="text-gray-500 text-xs w-44 shrink-0 truncate font-medium">{src}</span>
-                <div className="flex-1 bg-gray-100 rounded-full h-2.5 overflow-hidden">
-                  <div
-                    className="h-2.5 rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-500"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                <span className="text-gray-800 text-xs font-bold w-10 text-right">{cnt}</span>
+          {Object.entries(sourceStats).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([src, cnt]) => (
+            <div key={src} className="flex items-center gap-3">
+              <span className="text-gray-500 text-xs w-44 shrink-0 truncate font-medium">{src}</span>
+              <div className="flex-1 bg-gray-100 rounded-full h-2.5 overflow-hidden">
+                <div className="h-2.5 rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-500" style={{ width: `${(cnt / maxSrc) * 100}%` }} />
               </div>
-            );
-          })}
+              <span className="text-gray-800 text-xs font-bold w-10 text-right">{cnt}</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -436,7 +819,7 @@ function IndiaMapTab() {
         <div>
           <h2 className="text-lg font-bold text-gray-900">India State-wise Lead Distribution</h2>
           <p className="text-sm text-gray-400 mt-0.5">
-            Interactive map · click any state to explore leads
+            Interactive map · click any state to explore leads + industry news + competitor analysis
           </p>
         </div>
       </div>
@@ -515,7 +898,7 @@ function LeadDetailsTab() {
           <button onClick={() => refetch()} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-500 hover:text-indigo-600 hover:border-indigo-200 transition-all">
             <RefreshCw className={cn("w-3.5 h-3.5", isLoading && "animate-spin")} />
           </button>
-          <button onClick={exportLeads} className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl px-4 py-2 text-sm hover:bg-emerald-100 transition-colors font-medium">
+          <button onClick={exportLeads} className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl px-4 py-2 text-sm hover:bg-emerald-100 transition-colors font-semibold">
             <Download className="w-3.5 h-3.5" /> Export
           </button>
         </div>
@@ -561,12 +944,9 @@ function LeadDetailsTab() {
                     <td className="px-3 py-2.5">
                       {st ? (
                         <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium", st.bg, st.text, st.border)}>
-                          <span className={cn("w-1.5 h-1.5 rounded-full", st.dot)} />
-                          {lead.status}
+                          <span className={cn("w-1.5 h-1.5 rounded-full", st.dot)} />{lead.status}
                         </span>
-                      ) : (
-                        <span className="text-gray-400">{lead.status || "—"}</span>
-                      )}
+                      ) : <span className="text-gray-400">{lead.status || "—"}</span>}
                     </td>
                     <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{lead.source || "—"}</td>
                     <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{lead.industry || "—"}</td>
@@ -611,7 +991,6 @@ function NewsTab() {
 
   const { data, isLoading, refetch } = mode === "country" ? countryNews : stateNews;
   const articles: any[] = data?.news ?? data?.articles ?? [];
-
   const selectClass = "bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-600 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all";
 
   return (
@@ -621,17 +1000,13 @@ function NewsTab() {
           <Newspaper className="w-5 h-5 text-teal-500" />
           <div>
             <h2 className="text-base font-bold text-gray-900">Industry News</h2>
-            <p className="text-xs text-gray-400">AI-powered industry news and market insights</p>
+            <p className="text-xs text-gray-400">AI-powered water treatment industry news</p>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-            <button onClick={() => setMode("country")} className={cn("px-4 py-1.5 rounded-lg text-sm transition-all font-medium", mode === "country" ? "bg-white text-indigo-700 shadow-sm" : "text-gray-500 hover:text-gray-700")}>
-              Country
-            </button>
-            <button onClick={() => setMode("state")} className={cn("px-4 py-1.5 rounded-lg text-sm transition-all font-medium", mode === "state" ? "bg-white text-indigo-700 shadow-sm" : "text-gray-500 hover:text-gray-700")}>
-              India State
-            </button>
+            <button onClick={() => setMode("country")} className={cn("px-4 py-1.5 rounded-lg text-sm transition-all font-medium", mode === "country" ? "bg-white text-indigo-700 shadow-sm" : "text-gray-500")}>Country</button>
+            <button onClick={() => setMode("state")} className={cn("px-4 py-1.5 rounded-lg text-sm transition-all font-medium", mode === "state" ? "bg-white text-indigo-700 shadow-sm" : "text-gray-500")}>India State</button>
           </div>
           {mode === "country" ? (
             <select value={country} onChange={e => setCountry(e.target.value)} className={selectClass}>
@@ -642,7 +1017,7 @@ function NewsTab() {
               {INDIA_STATES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           )}
-          <button onClick={() => refetch()} className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-600 rounded-xl px-3 py-2 text-sm hover:bg-indigo-100 transition-colors font-medium">
+          <button onClick={() => refetch()} className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-600 rounded-xl px-3 py-2 text-sm hover:bg-indigo-100 transition-colors font-semibold">
             <RefreshCw className={cn("w-4 h-4", isLoading && "animate-spin")} />
             {isLoading ? "Fetching..." : "Refresh"}
           </button>
@@ -650,38 +1025,26 @@ function NewsTab() {
       </div>
 
       {isLoading ? (
-        <div className="flex flex-col items-center justify-center py-24 gap-3 text-gray-400">
-          <div className="w-12 h-12 rounded-2xl bg-teal-50 flex items-center justify-center">
-            <Wifi className="w-6 h-6 text-teal-400 animate-pulse" />
-          </div>
+        <div className="flex flex-col items-center justify-center py-20 gap-3 text-gray-400">
+          <Wifi className="w-8 h-8 text-teal-300 animate-pulse" />
           <p className="font-medium">Fetching industry news with AI...</p>
-          <p className="text-sm text-gray-300">This may take a few seconds</p>
         </div>
       ) : articles.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 gap-3 text-gray-300">
+        <div className="flex flex-col items-center justify-center py-20 gap-3 text-gray-300">
           <Newspaper className="w-10 h-10" />
-          <p className="font-medium text-gray-500">No articles loaded yet</p>
-          <p className="text-sm">Click Refresh to generate AI-powered news</p>
+          <p className="font-medium text-gray-500">Click Refresh to generate AI-powered news</p>
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {articles.map((a: any, i: number) => (
-            <div key={i} className="bg-white border border-gray-100 rounded-2xl p-5 hover:shadow-md hover:border-indigo-100 transition-all group">
+            <div key={i} className="bg-white border border-gray-100 rounded-2xl p-5 hover:shadow-md hover:border-teal-100 transition-all group">
               <div className="flex items-start gap-2 mb-3">
                 <div className="w-2 h-2 rounded-full bg-teal-400 mt-1.5 shrink-0" />
-                <p className="font-semibold text-gray-900 text-sm leading-snug line-clamp-2 group-hover:text-indigo-700 transition-colors">{a.title}</p>
+                <p className="font-semibold text-gray-900 text-sm leading-snug line-clamp-3 group-hover:text-indigo-700 transition-colors">{a.title}</p>
               </div>
-              {a.summary && (
-                <p className="text-gray-500 text-xs mb-4 line-clamp-3 leading-relaxed">{a.summary}</p>
-              )}
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-300 font-medium">{a.source || a.date || "—"}</span>
-                {a.url && (
-                  <a href={a.url} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-indigo-500 hover:text-indigo-700 font-semibold transition-colors">
-                    Read <ArrowUpRight className="w-3 h-3" />
-                  </a>
-                )}
+              <div className="flex items-center justify-between text-xs mt-auto">
+                <span className="text-gray-300 font-medium">{a.source}</span>
+                <span className="text-gray-300">{a.date}</span>
               </div>
             </div>
           ))}
@@ -718,7 +1081,6 @@ function CompetitorTab() {
 
   const { data, isLoading, refetch } = mode === "country" ? countryQ : stateQ;
   const competitors: any[] = data?.competitors ?? [];
-
   const selectClass = "bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-600 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all";
 
   return (
@@ -733,12 +1095,8 @@ function CompetitorTab() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-            <button onClick={() => setMode("country")} className={cn("px-4 py-1.5 rounded-lg text-sm transition-all font-medium", mode === "country" ? "bg-white text-indigo-700 shadow-sm" : "text-gray-500 hover:text-gray-700")}>
-              Country
-            </button>
-            <button onClick={() => setMode("state")} className={cn("px-4 py-1.5 rounded-lg text-sm transition-all font-medium", mode === "state" ? "bg-white text-indigo-700 shadow-sm" : "text-gray-500 hover:text-gray-700")}>
-              India State
-            </button>
+            <button onClick={() => setMode("country")} className={cn("px-4 py-1.5 rounded-lg text-sm transition-all font-medium", mode === "country" ? "bg-white text-indigo-700 shadow-sm" : "text-gray-500")}>Country</button>
+            <button onClick={() => setMode("state")} className={cn("px-4 py-1.5 rounded-lg text-sm transition-all font-medium", mode === "state" ? "bg-white text-indigo-700 shadow-sm" : "text-gray-500")}>India State</button>
           </div>
           {mode === "country" ? (
             <select value={country} onChange={e => setCountry(e.target.value)} className={selectClass}>
@@ -749,7 +1107,7 @@ function CompetitorTab() {
               {INDIA_STATES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           )}
-          <button onClick={() => refetch()} className="flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl px-3 py-2 text-sm hover:bg-rose-100 transition-colors font-medium">
+          <button onClick={() => refetch()} className="flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl px-3 py-2 text-sm hover:bg-rose-100 transition-colors font-semibold">
             <RefreshCw className={cn("w-4 h-4", isLoading && "animate-spin")} />
             {isLoading ? "Analyzing..." : "Refresh"}
           </button>
@@ -757,69 +1115,48 @@ function CompetitorTab() {
       </div>
 
       {isLoading ? (
-        <div className="flex flex-col items-center justify-center py-24 gap-3 text-gray-400">
-          <div className="w-12 h-12 rounded-2xl bg-rose-50 flex items-center justify-center">
-            <Target className="w-6 h-6 text-rose-400 animate-pulse" />
-          </div>
+        <div className="flex flex-col items-center justify-center py-20 gap-3 text-gray-400">
+          <Target className="w-8 h-8 text-rose-300 animate-pulse" />
           <p className="font-medium">Generating competitor analysis with AI...</p>
-          <p className="text-sm text-gray-300">Analyzing market intelligence data</p>
         </div>
       ) : competitors.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 gap-3 text-gray-300">
+        <div className="flex flex-col items-center justify-center py-20 gap-3 text-gray-300">
           <Building2 className="w-10 h-10" />
-          <p className="font-medium text-gray-500">No analysis generated yet</p>
-          <p className="text-sm">Click Refresh to generate AI competitor analysis</p>
+          <p className="font-medium text-gray-500">Click Refresh to generate AI competitor analysis</p>
         </div>
       ) : (
-        <div className="grid sm:grid-cols-2 gap-4">
-          {competitors.map((c: any, i: number) => (
-            <div key={i} className="bg-white border border-gray-100 rounded-2xl p-5 hover:shadow-md hover:border-rose-100 transition-all">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <p className="font-bold text-gray-900 text-base">{c.name}</p>
-                  {c.website && (
-                    <a href={c.website} target="_blank" rel="noopener noreferrer"
-                      className="text-xs text-indigo-500 hover:text-indigo-700 flex items-center gap-1 mt-0.5 font-medium">
-                      {c.website} <ArrowUpRight className="w-3 h-3" />
-                    </a>
-                  )}
-                </div>
-                {c.market_share && (
-                  <span className="bg-violet-50 text-violet-700 border border-violet-200 text-xs px-2.5 py-1 rounded-full font-semibold shrink-0 ml-2">
-                    {c.market_share}
-                  </span>
-                )}
-              </div>
-              <div className="space-y-3">
-                {c.recent_activities && (
-                  <div className="bg-blue-50 rounded-xl p-3">
-                    <p className="text-xs text-blue-600 font-bold uppercase tracking-wider mb-1 flex items-center gap-1">
-                      <TrendingUp className="w-3 h-3" /> Recent Activities
-                    </p>
-                    <p className="text-xs text-blue-800 leading-relaxed">{c.recent_activities}</p>
-                  </div>
-                )}
-                {c.technology_focus && (
-                  <div className="bg-emerald-50 rounded-xl p-3">
-                    <p className="text-xs text-emerald-600 font-bold uppercase tracking-wider mb-1 flex items-center gap-1">
-                      <Layers className="w-3 h-3" /> Technology Focus
-                    </p>
-                    <p className="text-xs text-emerald-800 leading-relaxed">{c.technology_focus}</p>
-                  </div>
-                )}
-                {c.ad_platforms && (
-                  <div>
-                    <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-2">Ad Platforms</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {(Array.isArray(c.ad_platforms) ? c.ad_platforms : [c.ad_platforms]).map((p: string) => (
-                        <span key={p} className="bg-gray-100 text-gray-600 text-xs px-2.5 py-1 rounded-full font-medium border border-gray-200">{p}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
+        /* Table view like reference */
+        <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+          <div className="overflow-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-800 text-white">
+                <tr>
+                  {["Competitor", "Activities", "Technology", "Campaign", "Website", "Platform"].map(h => (
+                    <th key={h} className="px-4 py-3 text-left font-semibold text-xs uppercase tracking-wider">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {competitors.map((c: any, i: number) => (
+                  <tr key={i} className={cn("border-b border-gray-100 hover:bg-gray-50 transition-colors", i % 2 !== 0 ? "bg-gray-50/40" : "")}>
+                    <td className="px-4 py-3 font-bold text-gray-900 whitespace-nowrap min-w-32">{c.name}</td>
+                    <td className="px-4 py-3 text-gray-600 text-xs max-w-52 leading-relaxed">{c.activities}</td>
+                    <td className="px-4 py-3 text-gray-600 text-xs max-w-52 leading-relaxed">{c.technology}</td>
+                    <td className="px-4 py-3 text-gray-600 text-xs max-w-52 leading-relaxed">{c.campaign}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {c.website && c.website !== "#" ? (
+                        <a href={c.website} target="_blank" rel="noopener noreferrer"
+                          className="text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1 text-xs">
+                          Visit <ArrowUpRight className="w-3 h-3" />
+                        </a>
+                      ) : <span className="text-gray-300 text-xs">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{c.ad_platform || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
@@ -828,49 +1165,47 @@ function CompetitorTab() {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-const TABS: { id: Tab; label: string; icon: React.ElementType; activeColor: string; dotColor: string }[] = [
-  { id: "world-map",   label: "World Map",          icon: Globe,      activeColor: "bg-sky-600",    dotColor: "bg-sky-400" },
-  { id: "overview",    label: "Lead Overview",       icon: Users,      activeColor: "bg-indigo-600", dotColor: "bg-indigo-400" },
-  { id: "india-map",   label: "India States",        icon: Map,        activeColor: "bg-orange-500", dotColor: "bg-orange-400" },
-  { id: "lead-details",label: "Lead Details",        icon: Filter,     activeColor: "bg-violet-600", dotColor: "bg-violet-400" },
-  { id: "news",        label: "Industry News",       icon: Newspaper,  activeColor: "bg-teal-600",   dotColor: "bg-teal-400" },
-  { id: "competitors", label: "Competitor Analysis", icon: Building2,  activeColor: "bg-rose-600",   dotColor: "bg-rose-400" },
+const TABS: { id: Tab; label: string; icon: React.ElementType; activeColor: string }[] = [
+  { id: "world-map",   label: "World Map",          icon: Globe,      activeColor: "bg-sky-600" },
+  { id: "overview",    label: "Lead Overview",       icon: Users,      activeColor: "bg-indigo-600" },
+  { id: "india-map",   label: "India States",        icon: Map,        activeColor: "bg-orange-500" },
+  { id: "lead-details",label: "Lead Details",        icon: Filter,     activeColor: "bg-violet-600" },
+  { id: "news",        label: "Industry News",       icon: Newspaper,  activeColor: "bg-teal-600" },
+  { id: "competitors", label: "Competitors",         icon: Building2,  activeColor: "bg-rose-600" },
+  { id: "followup",    label: "Followup Calendar",   icon: Calendar,   activeColor: "bg-purple-600" },
 ];
 
 export default function Marketing() {
   const [activeTab, setActiveTab] = useState<Tab>("world-map");
-  const activeTabConfig = TABS.find(t => t.id === activeTab)!;
 
   return (
     <Layout>
       <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
         {/* Header */}
-        <div className="mb-6">
-          <div className="flex items-center gap-3 mb-1">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-md shadow-indigo-200">
-              <Megaphone className="w-4.5 h-4.5 text-white" style={{ width: 18, height: 18 }} />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">Marketing</h1>
-              <p className="text-xs text-gray-400">Lead intelligence · World map · India states · AI news & competitor analysis</p>
-            </div>
+        <div className="mb-5 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-md shadow-indigo-200">
+            <Megaphone className="text-white" style={{ width: 18, height: 18 }} />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Marketing Department</h1>
+            <p className="text-xs text-gray-400">Lead intelligence · World map · India states · AI news & competitors · Followup calendar</p>
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 mb-6 bg-white border border-gray-100 rounded-2xl p-1.5 w-fit flex-wrap shadow-sm">
+        <div className="flex gap-1 mb-5 bg-white border border-gray-100 rounded-2xl p-1.5 w-fit flex-wrap shadow-sm">
           {TABS.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all",
+                "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all",
                 activeTab === tab.id
                   ? `${tab.activeColor} text-white shadow-md`
                   : "text-gray-500 hover:text-gray-800 hover:bg-gray-50"
               )}
             >
-              <tab.icon className="w-4 h-4" style={{ width: 15, height: 15 }} />
+              <tab.icon style={{ width: 15, height: 15 }} />
               <span className="hidden sm:inline">{tab.label}</span>
             </button>
           ))}
@@ -884,6 +1219,7 @@ export default function Marketing() {
           {activeTab === "lead-details" && <LeadDetailsTab />}
           {activeTab === "news"         && <NewsTab />}
           {activeTab === "competitors"  && <CompetitorTab />}
+          {activeTab === "followup"     && <FollowupCalendar />}
         </div>
       </div>
     </Layout>

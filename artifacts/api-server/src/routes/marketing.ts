@@ -243,4 +243,28 @@ Include 4-5 companies that operate in ${state} — mix of national companies (li
   }
 });
 
+// GET /api/marketing/followup-report
+router.get("/marketing/followup-report", async (_req, res) => {
+  const url = `${ERP_BASE}/api/method/wtt_module.customization.custom.rfq.get_followup_report`;
+  try {
+    const data = await erpFetch(url);
+    return res.json({ message: data?.message ?? [] });
+  } catch (err: any) {
+    console.error("marketing/followup-report error:", err.message);
+    return res.json({ message: [] });
+  }
+});
+
+// GET /api/marketing/proposal-request
+router.get("/marketing/proposal-request", async (_req, res) => {
+  const url = `${ERP_BASE}/api/method/wtt_module.customization.custom.rfq.get_proposal_request`;
+  try {
+    const data = await erpFetch(url);
+    return res.json({ message: data?.message ?? [] });
+  } catch (err: any) {
+    console.error("marketing/proposal-request error:", err.message);
+    return res.json({ message: [] });
+  }
+});
+
 export default router;

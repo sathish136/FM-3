@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useMemo } from "react";
-import { Download, X, MapPin, Users } from "lucide-react";
+import { Download, X, MapPin, Users, Newspaper, Target, RefreshCw, ArrowUpRight, Wifi, Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as XLSX from "xlsx";
+import { useQuery } from "@tanstack/react-query";
 
 // ── State name → SVG path ID ──────────────────────────────────────────────────
 
@@ -69,6 +70,112 @@ function getStateColorHover(total: number): string {
 }
 
 type StateStats = Record<string, { total: number; Open: number; Converted: number; Opportunity: number; Quotation: number; Lead?: number; Closed?: number; Replied?: number }>;
+
+// ── Inline state news + competitor panel ─────────────────────────────────────
+
+function InlineStateAnalysis({ stateName }: { stateName: string }) {
+  const newsQ = useQuery({
+    queryKey: ["state-news-inline", stateName],
+    queryFn: async () => {
+      const r = await fetch(`/api/marketing/state-news?state=${encodeURIComponent(stateName)}`);
+      return r.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const compQ = useQuery({
+    queryKey: ["state-comp-inline", stateName],
+    queryFn: async () => {
+      const r = await fetch(`/api/marketing/state-competitor-analysis?state=${encodeURIComponent(stateName)}`);
+      return r.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const articles: any[] = newsQ.data?.news ?? newsQ.data?.articles ?? [];
+  const competitors: any[] = compQ.data?.competitors ?? [];
+
+  return (
+    <div className="grid md:grid-cols-2 gap-4">
+      {/* News */}
+      <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+          <div className="flex items-center gap-2">
+            <Newspaper className="w-4 h-4 text-teal-500" />
+            <span className="font-bold text-gray-800 text-sm">{stateName} — Industry News</span>
+          </div>
+          {newsQ.isLoading && <RefreshCw className="w-3.5 h-3.5 text-teal-400 animate-spin" />}
+        </div>
+        <div className="overflow-auto max-h-64 divide-y divide-gray-50">
+          {newsQ.isLoading ? (
+            <div className="flex items-center justify-center py-10 gap-2 text-gray-300 text-xs">
+              <Wifi className="w-4 h-4 animate-pulse text-teal-300" /> Fetching news...
+            </div>
+          ) : articles.length === 0 ? (
+            <div className="flex items-center justify-center py-10 text-gray-300 text-xs gap-2">
+              <Newspaper className="w-4 h-4" /> No articles available
+            </div>
+          ) : articles.map((a: any, i: number) => (
+            <div key={i} className="px-4 py-3 hover:bg-gray-50 transition-colors">
+              <p className="font-semibold text-gray-800 text-xs leading-snug mb-1">{a.title}</p>
+              <div className="flex justify-between text-[10px] text-gray-400">
+                <span>{a.source}</span><span>{a.date}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Competitors */}
+      <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+          <div className="flex items-center gap-2">
+            <Target className="w-4 h-4 text-rose-500" />
+            <span className="font-bold text-gray-800 text-sm">{stateName} — Competitor Analysis</span>
+          </div>
+          {compQ.isLoading && <RefreshCw className="w-3.5 h-3.5 text-rose-400 animate-spin" />}
+        </div>
+        <div className="overflow-auto max-h-64">
+          {compQ.isLoading ? (
+            <div className="flex items-center justify-center py-10 gap-2 text-gray-300 text-xs">
+              <Target className="w-4 h-4 animate-pulse text-rose-300" /> Analyzing...
+            </div>
+          ) : competitors.length === 0 ? (
+            <div className="flex items-center justify-center py-10 text-gray-300 text-xs gap-2">
+              <Building2 className="w-4 h-4" /> No competitor data
+            </div>
+          ) : (
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-gray-800 text-white">
+                <tr>
+                  {["Competitor", "Activities", "Technology", "Website"].map(h => (
+                    <th key={h} className="px-3 py-2 text-left text-[9px] font-bold uppercase tracking-wider">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {competitors.map((c: any, i: number) => (
+                  <tr key={i} className={cn("border-b border-gray-50 hover:bg-gray-50", i % 2 !== 0 ? "bg-gray-50/30" : "")}>
+                    <td className="px-3 py-2 font-bold text-gray-800 whitespace-nowrap">{c.name}</td>
+                    <td className="px-3 py-2 text-gray-500 max-w-40 line-clamp-2">{c.activities}</td>
+                    <td className="px-3 py-2 text-gray-500 max-w-40 line-clamp-2">{c.technology}</td>
+                    <td className="px-3 py-2">
+                      {c.website && c.website !== "#" ? (
+                        <a href={c.website} target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:text-indigo-700 flex items-center gap-0.5 font-semibold text-[10px]">
+                          Visit <ArrowUpRight className="w-2.5 h-2.5" />
+                        </a>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface Props {
   stateStats: StateStats;
@@ -402,6 +509,9 @@ export function IndiaMap({ stateStats, leads, isLoading, globalStats }: Props) {
           )}
         </div>
       </div>
+
+      {/* Inline state news + competitor analysis */}
+      {selectedState && <InlineStateAnalysis stateName={selectedState} />}
 
       {/* State Table */}
       <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
