@@ -1365,17 +1365,13 @@ function ProposalRequestTab() {
 
       {/* Clickable Status Cards */}
       {isLoading ? (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="flex flex-wrap gap-2">
           {Array.from({ length: 9 }).map((_, i) => (
-            <div key={i} className="bg-white border border-gray-100 rounded-xl px-4 py-4 shadow-sm animate-pulse">
-              <div className="h-3 bg-gray-100 rounded w-3/4 mb-3" />
-              <div className="h-7 bg-gray-100 rounded w-12 mb-1" />
-              <div className="h-2.5 bg-gray-100 rounded w-16" />
-            </div>
+            <div key={i} className="bg-white border border-gray-100 rounded-lg px-3 py-1.5 shadow-sm animate-pulse w-44 h-8" />
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="flex flex-wrap gap-2">
           {statusCards.map(card => {
             const isActive = filterStatus === card.label;
             return (
@@ -1383,21 +1379,14 @@ function ProposalRequestTab() {
                 key={card.label}
                 onClick={() => setFilterStatus(isActive ? "" : card.label)}
                 className={cn(
-                  "text-left px-4 py-4 rounded-xl border shadow-sm transition-all",
+                  "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold shadow-sm transition-all whitespace-nowrap",
                   isActive
-                    ? "bg-indigo-600 border-indigo-700 text-white shadow-indigo-200 shadow-md scale-[1.02]"
-                    : "bg-white border-gray-200 text-gray-800 hover:border-indigo-300 hover:shadow-md hover:scale-[1.01]"
+                    ? "bg-indigo-600 border-indigo-700 text-white shadow-indigo-100"
+                    : "bg-white border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-700 hover:bg-indigo-50"
                 )}
               >
-                <p className={cn("text-[11px] font-semibold leading-tight mb-2", isActive ? "text-indigo-100" : "text-gray-500")}>
-                  {card.label}
-                </p>
-                <p className={cn("text-2xl font-black tabular-nums", isActive ? "text-white" : "text-gray-900")}>
-                  {card.count}
-                </p>
-                <p className={cn("text-[10px] mt-0.5 font-medium", isActive ? "text-indigo-200" : "text-gray-400")}>
-                  Proposals
-                </p>
+                <span className={cn("text-sm font-black tabular-nums", isActive ? "text-white" : "text-gray-900")}>{card.count}</span>
+                {card.label}
               </button>
             );
           })}
