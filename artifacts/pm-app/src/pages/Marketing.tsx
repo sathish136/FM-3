@@ -190,31 +190,31 @@ function InlineCountryAnalysis({ country, isState = false }: { country: string; 
   const title = country;
 
   return (
-    <div className="grid md:grid-cols-2 gap-4 mt-4">
+    <div className="grid md:grid-cols-2 gap-3 mt-3">
       {/* News panel */}
-      <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 bg-teal-50/60">
           <div className="flex items-center gap-2">
-            <Newspaper className="w-4 h-4 text-teal-500" />
-            <span className="font-bold text-gray-800 text-sm">{title} — Industry News</span>
+            <Newspaper className="w-3.5 h-3.5 text-teal-600" />
+            <span className="font-bold text-teal-800 text-xs uppercase tracking-wide">{title} — Industry News</span>
           </div>
-          {newsQ.isLoading && <RefreshCw className="w-3.5 h-3.5 text-teal-400 animate-spin" />}
+          {newsQ.isLoading && <RefreshCw className="w-3 h-3 text-teal-400 animate-spin" />}
         </div>
-        <div className="overflow-auto max-h-72 divide-y divide-gray-50">
+        <div className="overflow-auto divide-y divide-gray-50" style={{ maxHeight: 260 }}>
           {newsQ.isLoading ? (
-            <div className="flex items-center justify-center py-10 gap-2 text-gray-300 text-xs">
+            <div className="flex items-center justify-center py-8 gap-2 text-gray-300 text-xs">
               <Wifi className="w-4 h-4 animate-pulse text-teal-300" /> Fetching news...
             </div>
           ) : articles.length === 0 ? (
-            <div className="flex items-center justify-center py-10 text-gray-300 text-xs gap-2">
+            <div className="flex items-center justify-center py-8 text-gray-300 text-xs gap-2">
               <Newspaper className="w-4 h-4" /> No articles available
             </div>
           ) : articles.map((a: any, i: number) => (
-            <div key={i} className="px-4 py-3 hover:bg-gray-50 transition-colors">
-              <p className="font-semibold text-gray-800 text-xs leading-snug mb-1">{a.title}</p>
-              <div className="flex items-center justify-between text-[10px] text-gray-400">
-                <span>{a.source}</span>
-                <span>{a.date}</span>
+            <div key={i} className="px-4 py-2.5 hover:bg-teal-50/30 transition-colors group">
+              <p className="font-semibold text-gray-800 text-xs leading-snug mb-1.5 group-hover:text-teal-700 transition-colors">{a.title}</p>
+              <div className="flex items-center justify-between gap-2">
+                <span className="inline-flex items-center bg-teal-50 text-teal-600 border border-teal-100 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide truncate max-w-[60%]">{a.source}</span>
+                <span className="text-[10px] text-gray-400 shrink-0">{a.date}</span>
               </div>
             </div>
           ))}
@@ -222,43 +222,43 @@ function InlineCountryAnalysis({ country, isState = false }: { country: string; 
       </div>
 
       {/* Competitor panel */}
-      <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 bg-rose-50/60">
           <div className="flex items-center gap-2">
-            <Target className="w-4 h-4 text-rose-500" />
-            <span className="font-bold text-gray-800 text-sm">{title} — Competitor Analysis</span>
+            <Target className="w-3.5 h-3.5 text-rose-600" />
+            <span className="font-bold text-rose-800 text-xs uppercase tracking-wide">{title} — Competitor Analysis</span>
           </div>
-          {compQ.isLoading && <RefreshCw className="w-3.5 h-3.5 text-rose-400 animate-spin" />}
+          {compQ.isLoading && <RefreshCw className="w-3 h-3 text-rose-400 animate-spin" />}
         </div>
-        <div className="overflow-auto max-h-72">
+        <div className="overflow-auto" style={{ maxHeight: 260 }}>
           {compQ.isLoading ? (
-            <div className="flex items-center justify-center py-10 gap-2 text-gray-300 text-xs">
+            <div className="flex items-center justify-center py-8 gap-2 text-gray-300 text-xs">
               <Target className="w-4 h-4 animate-pulse text-rose-300" /> Analyzing competitors...
             </div>
           ) : competitors.length === 0 ? (
-            <div className="flex items-center justify-center py-10 text-gray-300 text-xs gap-2">
+            <div className="flex items-center justify-center py-8 text-gray-300 text-xs gap-2">
               <Building2 className="w-4 h-4" /> No competitor data
             </div>
           ) : (
             <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-gray-50 border-b border-gray-100">
+              <thead className="sticky top-0 bg-rose-50/40 border-b border-rose-100">
                 <tr>
                   {["Competitor", "Activities", "Technology", "Campaign", "Website"].map(h => (
-                    <th key={h} className="px-3 py-2 text-left text-gray-400 font-bold uppercase text-[9px] tracking-wider whitespace-nowrap">{h}</th>
+                    <th key={h} className="px-3 py-2 text-left text-rose-400 font-bold uppercase text-[9px] tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {competitors.map((c: any, i: number) => (
-                  <tr key={i} className={cn("border-b border-gray-50 hover:bg-gray-50 transition-colors", i % 2 !== 0 ? "bg-gray-50/30" : "")}>
-                    <td className="px-3 py-2 font-bold text-gray-800 whitespace-nowrap">{c.name}</td>
-                    <td className="px-3 py-2 text-gray-500 max-w-36 line-clamp-2">{c.activities}</td>
-                    <td className="px-3 py-2 text-gray-500 max-w-36 line-clamp-2">{c.technology}</td>
-                    <td className="px-3 py-2 text-gray-500 max-w-36 line-clamp-2">{c.campaign}</td>
+                  <tr key={i} className={cn("border-b border-gray-50 hover:bg-rose-50/20 transition-colors", i % 2 !== 0 ? "bg-gray-50/30" : "")}>
+                    <td className="px-3 py-2 font-bold text-gray-800 whitespace-nowrap text-[11px]">{c.name}</td>
+                    <td className="px-3 py-2 text-gray-500 max-w-32 text-[10px] leading-relaxed">{c.activities}</td>
+                    <td className="px-3 py-2 text-gray-500 max-w-32 text-[10px] leading-relaxed">{c.technology}</td>
+                    <td className="px-3 py-2 text-gray-500 max-w-32 text-[10px] leading-relaxed">{c.campaign}</td>
                     <td className="px-3 py-2">
                       {c.website && c.website !== "#" ? (
                         <a href={c.website} target="_blank" rel="noopener noreferrer"
-                          className="text-indigo-500 hover:text-indigo-700 font-semibold flex items-center gap-0.5">
+                          className="text-indigo-500 hover:text-indigo-700 font-semibold flex items-center gap-0.5 text-[10px]">
                           Visit <ArrowUpRight className="w-2.5 h-2.5" />
                         </a>
                       ) : <span className="text-gray-300">—</span>}
@@ -365,57 +365,57 @@ function WorldMapTab() {
       </div>
 
       {/* Main layout */}
-      <div className="flex gap-3" style={{ minHeight: 520 }}>
+      <div className="flex gap-3 items-start">
         {/* LEFT — Sources + Lead Status */}
         <div className="w-44 shrink-0 flex flex-col gap-2.5">
           {/* Lead Sources */}
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex-1 flex flex-col">
-            <div className="px-3 py-2.5 border-b border-gray-100">
-              <p className="text-[11px] font-extrabold text-gray-700 uppercase tracking-widest">Lead Sources</p>
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/70">
+              <p className="text-[10px] font-extrabold text-gray-600 uppercase tracking-widest">Lead Sources</p>
             </div>
-            <div className="overflow-auto flex-1" style={{ maxHeight: 210 }}>
+            <div className="overflow-auto" style={{ maxHeight: 200 }}>
               {Object.entries(sourceStats)
                 .sort((a, b) => b[1] - a[1])
-                .map(([src, cnt], i) => (
-                  <div key={src} className={cn(
-                    "flex items-center justify-between px-3 py-[7px] border-b border-gray-50 transition-colors hover:bg-indigo-50/40 group",
-                    i === 0 && "bg-gray-50/60"
-                  )}>
+                .map(([src, cnt]) => (
+                  <div key={src} className="flex items-center justify-between px-3 py-[5px] border-b border-gray-50 hover:bg-indigo-50/40 transition-colors">
                     <span className="text-[11px] text-gray-600 truncate font-medium leading-tight">{src === "null" || !src ? "null" : src}</span>
-                    <span className="text-[12px] font-bold text-gray-800 ml-2 shrink-0 tabular-nums">{cnt}</span>
+                    <span className="text-[11px] font-bold text-gray-800 ml-2 shrink-0 tabular-nums">{cnt}</span>
                   </div>
                 ))}
             </div>
           </div>
           {/* Lead Status */}
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex-1 flex flex-col">
-            <div className="px-3 py-2.5 border-b border-gray-100">
-              <p className="text-[11px] font-extrabold text-gray-700 uppercase tracking-widest">Lead Status</p>
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/70">
+              <p className="text-[10px] font-extrabold text-gray-600 uppercase tracking-widest">Lead Status</p>
             </div>
-            <div className="overflow-auto flex-1" style={{ maxHeight: 210 }}>
+            <div className="overflow-auto" style={{ maxHeight: 200 }}>
               {Object.entries(leadStatusStats)
                 .sort((a, b) => b[1] - a[1])
-                .map(([st, cnt], i) => (
-                  <div key={st} className={cn(
-                    "flex items-center justify-between px-3 py-[7px] border-b border-gray-50 transition-colors hover:bg-indigo-50/40",
-                    i === 0 && "bg-gray-50/60"
-                  )}>
-                    <span className="text-[11px] text-gray-600 truncate font-medium leading-tight">{st}</span>
-                    <span className="text-[12px] font-bold text-gray-800 ml-2 shrink-0 tabular-nums">{cnt}</span>
-                  </div>
-                ))}
+                .map(([st, cnt]) => {
+                  const style = STATUS_STYLES[st];
+                  return (
+                    <div key={st} className="flex items-center justify-between px-3 py-[5px] border-b border-gray-50 hover:bg-gray-50/60 transition-colors">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {style && <span className={cn("w-2 h-2 rounded-full shrink-0", style.dot)} />}
+                        <span className={cn("text-[11px] truncate font-semibold leading-tight", style ? style.text : "text-gray-600")}>{st}</span>
+                      </div>
+                      <span className="text-[11px] font-bold text-gray-800 ml-2 shrink-0 tabular-nums">{cnt}</span>
+                    </div>
+                  );
+                })}
             </div>
           </div>
         </div>
 
         {/* CENTER — Map */}
-        <div className="flex-1 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden relative flex flex-col">
+        <div className="flex-1 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden relative">
           <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100 bg-white">
             <Globe className="w-4 h-4 text-indigo-500" />
             <span className="text-sm font-bold text-gray-800">Global Lead Distribution</span>
             <span className="ml-auto text-[11px] text-gray-400 italic">Click a country to explore</span>
           </div>
-          <div className="flex-1 relative">
+          <div className="relative" style={{ height: 420 }}>
             {/* Legend */}
             <div className="absolute bottom-3 left-3 z-10 bg-white/95 border border-gray-200 rounded-lg px-3 py-2 shadow-sm">
               <div className="flex items-center gap-3.5 text-[10px] text-gray-500">
@@ -434,14 +434,14 @@ function WorldMapTab() {
               </div>
             </div>
             {isLoading ? (
-              <div className="flex items-center justify-center h-full text-gray-300 text-sm gap-2 min-h-96">
+              <div className="flex items-center justify-center text-gray-300 text-sm gap-2" style={{ height: 420 }}>
                 <RefreshCw className="w-5 h-5 animate-spin text-indigo-400" /> Loading map...
               </div>
             ) : (
               <ComposableMap
                 projection="geoMercator"
                 projectionConfig={{ scale: 140, center: [10, 8] }}
-                style={{ width: "100%", height: "100%", minHeight: 440 }}
+                style={{ width: "100%", height: 420 }}
               >
                 <ZoomableGroup>
                   <Geographies geography={GEO_URL}>
@@ -523,49 +523,56 @@ function WorldMapTab() {
         {/* RIGHT — Filter stats + Top Markets */}
         <div className="w-48 shrink-0 flex flex-col gap-2.5">
           {/* Stats panel */}
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex-1 flex flex-col">
-            <div className="px-3 py-2.5 bg-indigo-600">
-              <p className="text-[11px] font-extrabold text-white uppercase tracking-widest">
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="px-3 py-2 bg-indigo-600">
+              <p className="text-[10px] font-extrabold text-white uppercase tracking-widest">
                 {selectedCountry ? selectedCountry : "Filtered"}
               </p>
             </div>
-            <div className="flex-1 overflow-auto">
-              {selectedData
-                ? Object.entries(selectedData).map(([k, v]) => (
-                    <div key={k} className={cn(
-                      "flex justify-between items-center px-3 py-[7px] border-b border-gray-50",
-                      k === "total" ? "bg-blue-50/60" : ""
-                    )}>
-                      <span className={cn("text-[11px] font-medium leading-tight", k === "total" ? "text-gray-800 font-bold" : "text-gray-500")}>{k === "total" ? "Total Leads" : k}</span>
-                      <span className={cn("font-bold tabular-nums", k === "total" ? "text-blue-600 text-base" : "text-[12px] text-gray-800")}>{v as number}</span>
-                    </div>
-                  ))
-                : ([
-                    ["Total Leads", globalStats.total],
-                    ["Converted", globalStats.Converted],
-                    ["Quotation", globalStats.Quotation],
-                    ["Lead", globalStats.Lead],
-                    ["Open", globalStats.Open],
-                    ["Opportunity", globalStats.Opportunity],
-                    ["Replied", globalStats.Replied],
-                    ["Closed", globalStats.Closed],
-                    ["Lost Quotation", globalStats["Lost Quotation"]],
-                    ["Do Not Contact", globalStats["Do Not Contact"]],
-                  ] as [string, number][]).map(([label, val]) => (
+            <div className="overflow-auto" style={{ maxHeight: 220 }}>
+              {(() => {
+                const rows: [string, number][] = selectedData
+                  ? Object.entries(selectedData).map(([k, v]) => [k === "total" ? "Total Leads" : k, v as number])
+                  : [
+                      ["Total Leads", globalStats.total],
+                      ["Converted", globalStats.Converted],
+                      ["Quotation", globalStats.Quotation],
+                      ["Lead", globalStats.Lead],
+                      ["Open", globalStats.Open],
+                      ["Opportunity", globalStats.Opportunity],
+                      ["Replied", globalStats.Replied],
+                      ["Closed", globalStats.Closed],
+                      ["Lost Quotation", globalStats["Lost Quotation"]],
+                      ["Do Not Contact", globalStats["Do Not Contact"]],
+                    ];
+                return rows.map(([label, val]) => {
+                  const isTotal = label === "Total Leads";
+                  const st = STATUS_STYLES[label];
+                  return (
                     <div key={label} className={cn(
-                      "flex justify-between items-center px-3 py-[7px] border-b border-gray-50",
-                      label === "Total Leads" ? "bg-blue-50/60" : ""
+                      "flex justify-between items-center px-3 py-[5px] border-b border-gray-50",
+                      isTotal ? "bg-blue-50/50" : "hover:bg-gray-50/60"
                     )}>
-                      <span className={cn("text-[11px] leading-tight", label === "Total Leads" ? "text-gray-800 font-bold" : "text-gray-500 font-medium")}>{label}</span>
-                      <span className={cn("font-bold tabular-nums", label === "Total Leads" ? "text-blue-600 text-base" : "text-[12px] text-gray-800")}>{isLoading ? "—" : (val ?? 0)}</span>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {!isTotal && st && <span className={cn("w-2 h-2 rounded-full shrink-0", st.dot)} />}
+                        <span className={cn(
+                          "text-[11px] leading-tight truncate",
+                          isTotal ? "text-gray-800 font-bold" : st ? cn("font-semibold", st.text) : "text-gray-500 font-medium"
+                        )}>{label}</span>
+                      </div>
+                      <span className={cn(
+                        "font-bold tabular-nums shrink-0 ml-1",
+                        isTotal ? "text-blue-600 text-[15px]" : "text-[11px] text-gray-800"
+                      )}>{isLoading ? "—" : (val ?? 0)}</span>
                     </div>
-                  ))
-              }
+                  );
+                });
+              })()}
             </div>
             {selectedCountry && (
               <button
                 onClick={() => setSelectedCountry(null)}
-                className="w-full text-xs text-gray-400 hover:text-red-500 py-2 flex items-center justify-center gap-1 border-t border-gray-100 hover:bg-red-50 transition-colors font-semibold"
+                className="w-full text-[11px] text-gray-400 hover:text-red-500 py-1.5 flex items-center justify-center gap-1 border-t border-gray-100 hover:bg-red-50 transition-colors font-semibold"
               >
                 <X className="w-3 h-3" /> Clear selection
               </button>
@@ -573,17 +580,17 @@ function WorldMapTab() {
           </div>
           {/* Top Markets */}
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-            <div className="px-3 py-2.5 border-b border-gray-100">
-              <p className="text-[11px] font-extrabold text-gray-700 uppercase tracking-widest">Top Markets</p>
+            <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/70">
+              <p className="text-[10px] font-extrabold text-gray-600 uppercase tracking-widest">Top Markets</p>
             </div>
-            <div className="overflow-auto" style={{ maxHeight: 170 }}>
+            <div className="overflow-auto" style={{ maxHeight: 180 }}>
               {Object.entries(countryStats)
                 .sort((a, b) => (b[1].total ?? 0) - (a[1].total ?? 0))
                 .slice(0, 10)
                 .map(([c, s], i) => (
                   <button key={c} onClick={() => setSelectedCountry(selectedCountry === c ? null : c)}
                     className={cn(
-                      "w-full flex items-center justify-between px-3 py-[7px] text-xs transition-all border-b border-gray-50",
+                      "w-full flex items-center justify-between px-3 py-[5px] transition-all border-b border-gray-50",
                       selectedCountry === c ? "bg-indigo-600 text-white" : "hover:bg-indigo-50/40 text-gray-700"
                     )}>
                     <div className="flex items-center gap-2">
