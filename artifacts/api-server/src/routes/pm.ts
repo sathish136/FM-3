@@ -66,6 +66,9 @@ import {
   fetchErpNextWarehouses,
   fetchErpNextCompanies,
   fetchErpNextUsers,
+  fetchErpNextPurchaseOrders,
+  fetchErpNextPurchaseOrder,
+  fetchErpNextSuppliers,
 } from "../lib/erpnext";
 
 const router = Router();
@@ -601,6 +604,42 @@ router.put("/user-permissions/:email", async (req, res) => {
       })
       .returning();
     res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── Purchase Orders ─────────────────────────────────────────────────────────
+
+router.get("/purchase-orders", async (req, res) => {
+  try {
+    const { status, supplier, project } = req.query as {
+      status?: string;
+      supplier?: string;
+      project?: string;
+    };
+    const records = await fetchErpNextPurchaseOrders({ status, supplier, project });
+    res.json(records);
+  } catch (e) {
+    console.error("Purchase Order fetch error:", e);
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get("/purchase-orders/:name", async (req, res) => {
+  try {
+    const record = await fetchErpNextPurchaseOrder(req.params.name);
+    res.json(record);
+  } catch (e) {
+    console.error("Purchase Order detail fetch error:", e);
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get("/suppliers", async (_req, res) => {
+  try {
+    const suppliers = await fetchErpNextSuppliers();
+    res.json(suppliers);
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
