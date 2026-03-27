@@ -1023,6 +1023,87 @@ export async function fetchErpNextSuppliers(): Promise<{ name: string; supplier_
   return (json.data || []) as { name: string; supplier_name: string }[];
 }
 
+// ── Recruitment Tracker ───────────────────────────────────────────────────────
+
+export interface ErpRecruitmentFollowup {
+  name: string;
+  date: string;
+  time: string;
+  employee: string;
+  employee_name: string;
+  mode_of_communication: string;
+  conversation: string;
+  next_followup: string | null;
+  end_time: string | null;
+}
+
+export interface ErpRecruitmentTracker {
+  name: string;
+  date: string;
+  company: string | null;
+  candidate_name: string;
+  qualification: string | null;
+  applying_for_the_post: string;
+  department: string | null;
+  location: string | null;
+  existing_salary_per_month: number;
+  expected_salary: number;
+  status: string;
+  rt_telephonic_interview: string | null;
+  telephonic_interview_commands: string | null;
+  rt_last_convo: string | null;
+  not_suitable_reason: string | null;
+  experience_status: string | null;
+  candidate_resume: string | null;
+  owner: string;
+  modified: string;
+  followup_table?: ErpRecruitmentFollowup[];
+}
+
+export async function fetchErpNextRecruitmentTrackers(filters?: {
+  status?: string;
+  department?: string;
+  position?: string;
+}): Promise<ErpRecruitmentTracker[]> {
+  if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
+  const fields = JSON.stringify([
+    "name", "date", "company", "candidate_name", "qualification",
+    "applying_for_the_post", "department", "location",
+    "existing_salary_per_month", "expected_salary",
+    "status", "rt_telephonic_interview", "rt_last_convo",
+    "not_suitable_reason", "experience_status", "candidate_resume",
+    "owner", "modified",
+  ]);
+  const fArr: any[] = [];
+  if (filters?.status)     fArr.push(["Recruitment Tracker", "status", "=", filters.status]);
+  if (filters?.department) fArr.push(["Recruitment Tracker", "department", "like", `%${filters.department}%`]);
+  if (filters?.position)   fArr.push(["Recruitment Tracker", "applying_for_the_post", "like", `%${filters.position}%`]);
+
+  const params = new URLSearchParams({ fields, limit_page_length: "500", order_by: "modified desc" });
+  if (fArr.length) params.set("filters", JSON.stringify(fArr));
+
+  const url = `${ERPNEXT_URL}/api/resource/Recruitment Tracker?${params.toString()}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader(), "Content-Type": "application/json" } });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`ERPNext Recruitment Tracker API error ${res.status}: ${body}`);
+  }
+  const json = await res.json();
+  return (json.data || []) as ErpRecruitmentTracker[];
+}
+
+export async function fetchErpNextRecruitmentTracker(name: string): Promise<ErpRecruitmentTracker> {
+  if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
+  const url = `${ERPNEXT_URL}/api/resource/Recruitment Tracker/${encodeURIComponent(name)}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader(), "Content-Type": "application/json" } });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`ERPNext Recruitment Tracker detail error ${res.status}: ${body}`);
+  }
+  const json = await res.json();
+  return json.data as ErpRecruitmentTracker;
+}
+
 export async function fetchErpNextUsers(): Promise<ErpUser[]> {
   if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
   const fields = JSON.stringify(["name", "full_name", "user_image", "enabled"]);
