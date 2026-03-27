@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Purchase Department Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.453.0/dist/umd/lucide.min.js"></script>
+</head>
+<body>
+
+  <!-- FULLSCREEN DETAIL VIEW -->
+  <div id="detailOverlay" class="detail-overlay" style="display:none;">
+    <div class="detail-header">
+      <div class="detail-header-left">
+        <button class="btn-back" onclick="closeDetail()">
+          <i data-lucide="arrow-left" style="width:14px;height:14px;"></i>
+          Back to Dashboard
+        </button>
+        <div class="detail-title-block">
+          <span class="detail-panel-title" id="detailTitle">—</span>
+          <span class="detail-badge" id="detailBadge">0</span>
+        </div>
+      </div>
+      <div class="detail-header-right">
+        <div class="logo">WTT</div>
+        <div>
+          <div class="header-title">Purchase Department Dashboard</div>
+          <div class="header-sub">EXECUTIVE OVERVIEW</div>
+        </div>
+      </div>
+    </div>
+    <div class="detail-body">
+      <div class="detail-table-wrap">
+        <table id="detailTable">
+          <thead id="detailThead"></thead>
+          <tbody id="detailTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- HEADER -->
+  <header id="mainHeader">
+    <div class="header-left">
+      <div class="logo">WTT</div>
+      <div>
+        <div class="header-title">Purchase Department Dashboard</div>
+        <div class="header-sub">EXECUTIVE OVERVIEW</div>
+      </div>
+    </div>
+    <div class="header-center">
+      <div class="project-selector" id="projectSelectorWrap">
+        <span class="project-label">PROJECT</span>
+        <div class="custom-select-wrap" id="customSelectWrap">
+          <div class="custom-select-display" id="customSelectDisplay" onclick="toggleProjectDropdown()">
+            <span id="customSelectText">All Projects</span>
+            <i data-lucide="chevron-down" style="width:12px;height:12px;flex-shrink:0;" id="customSelectChevron"></i>
+          </div>
+          <div class="custom-select-dropdown" id="customSelectDropdown" style="display:none;">
+            <div class="custom-select-search-wrap">
+              <i data-lucide="search" style="width:11px;height:11px;color:#999;flex-shrink:0;"></i>
+              <input type="text" id="projectSearchInput" class="custom-select-search" placeholder="Search project..." oninput="filterProjects()" autocomplete="off"/>
+            </div>
+            <div class="custom-select-options" id="customSelectOptions"></div>
+          </div>
+        </div>
+        <select id="projectSelect" style="display:none;" onchange="onProjectChange()">
+          <option value="">All Projects</option>
+        </select>
+      </div>
+    </div>
+    <div class="header-right">
+      <span id="errorMsg" class="error-msg" style="display:none;">Could not connect to ERP. Check API key.</span>
+      <button class="btn-refresh" onclick="loadDashboard()">
+        <i data-lucide="refresh-cw" style="width:12px;height:12px;"></i>
+        Refresh
+      </button>
+      <div class="clock">
+        <i data-lucide="clock" style="width:13px;height:13px;"></i>
+        <span id="datetime"></span>
+      </div>
+      <button class="btn-logout">
+        <i data-lucide="log-out" style="width:13px;height:13px;"></i>
+        Logout
+      </button>
+    </div>
+  </header>
+
+  <!-- KPI CARDS -->
+  <div class="kpi-row" id="mainKpiRow">
+    <div class="kpi-card" style="background:#27ae60;" onclick="openDetail('po_completed')">
+      <div class="kpi-top">
+        <span class="kpi-label">PO COMPLETED COUNT</span>
+        <i data-lucide="check-circle" style="width:22px;height:22px;opacity:0.7;"></i>
+      </div>
+      <div class="kpi-value" id="kpi_po_completed_count">—</div>
+    </div>
+    <div class="kpi-card" style="background:#2980b9;" onclick="openDetail('mr_completed')">
+      <div class="kpi-top">
+        <span class="kpi-label">MR COMPLETED COUNT</span>
+        <i data-lucide="clipboard-check" style="width:22px;height:22px;opacity:0.7;"></i>
+      </div>
+      <div class="kpi-value" id="kpi_mr_completed_count">—</div>
+    </div>
+    <div class="kpi-card" style="background:#e67e22;" onclick="openDetail('mr_made_po_pending')">
+      <div class="kpi-top">
+        <span class="kpi-label">MR MADE PO PENDING</span>
+        <i data-lucide="file-clock" style="width:22px;height:22px;opacity:0.7;"></i>
+      </div>
+      <div class="kpi-value" id="kpi_mr_made_po_pending">—</div>
+    </div>
+    <div class="kpi-card" style="background:#8e44ad;" onclick="openDetail('mr_pending')">
+      <div class="kpi-top">
+        <span class="kpi-label">MR PENDING</span>
+        <i data-lucide="file-question" style="width:22px;height:22px;opacity:0.7;"></i>
+      </div>
+      <div class="kpi-value" id="kpi_mr_pending">—</div>
+    </div>
+    <div class="kpi-card" style="background:#e74c3c;" onclick="openDetail('po_pending')">
+      <div class="kpi-top">
+        <span class="kpi-label">PO PENDING</span>
+        <i data-lucide="shopping-cart" style="width:22px;height:22px;opacity:0.7;"></i>
+      </div>
+      <div class="kpi-value" id="kpi_po_pending">—</div>
+    </div>
+    <div class="kpi-card" style="background:#c0392b;" onclick="openDetail('payment_pending')">
+      <div class="kpi-top">
+        <span class="kpi-label">PAYMENT PENDING</span>
+        <i data-lucide="credit-card" style="width:22px;height:22px;opacity:0.7;"></i>
+      </div>
+      <div class="kpi-value" id="kpi_payment_pending">—</div>
+    </div>
+    <div class="kpi-card" style="background:#f39c12;" onclick="openDetail('po_delay_transit')">
+      <div class="kpi-top">
+        <span class="kpi-label">PO DELAY TRANSIT</span>
+        <i data-lucide="alert-triangle" style="width:22px;height:22px;opacity:0.7;"></i>
+      </div>
+      <div class="kpi-value" id="kpi_po_delay_transit">—</div>
+    </div>
+    <div class="kpi-card" style="background:#16a085;" onclick="openDetail('po_on_transit')">
+      <div class="kpi-top">
+        <span class="kpi-label">PO ON TRANSIT</span>
+        <i data-lucide="truck" style="width:22px;height:22px;opacity:0.7;"></i>
+      </div>
+      <div class="kpi-value" id="kpi_po_on_transit">—</div>
+    </div>
+  </div>
+
+  <!-- TABLES -->
+  <div class="main" id="mainContent">
+
+    <!-- ROW 1: MR Made PO Not Made | MR Pending | PO Pending -->
+    <div class="grid-3">
+
+      <!-- MR Made PO Not Made -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">MR Made Po Not Made</span>
+          <div class="panel-header-right">
+            <div class="toggle-wrap">
+              <span class="toggle-label">MR Wise</span>
+              <label class="toggle-switch">
+                <input type="checkbox" id="mrWiseToggle" onchange="toggleMrWise()">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <span class="badge" id="badge_mr_made_po">0</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>MATERIAL REQUEST</th><th>DESCRIPTION (ITEMS)</th><th>TOTAL MR QTY</th><th>PENDING</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_mr_made_po"><tr><td colspan="4" class="empty">Loading data...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- MR Pending -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">MR Pending</span>
+          <span class="badge" id="badge_mr_pending">0</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>CREATION DATE</th><th>MR NO</th><th>STATUS</th><th>AGE</th><th>PROJECT REMARKS</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_mr_pending"><tr><td colspan="5" class="empty">Loading data...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- PO Pending -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">PO Pending</span>
+          <span class="badge" id="badge_po_pending">0</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>PO NO</th><th>CREATED DATE</th><th>STATUS</th><th>SUPPLIER</th><th>AGE</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_po_pending"><tr><td colspan="5" class="empty">Loading data...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROW 2: Payment Pending | PO Delay Transit | PO On Transit -->
+    <div class="grid-3">
+
+      <!-- Payment Pending -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Payment Pending</span>
+          <span class="badge" id="badge_payment_pending">0</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>CREATION DATE</th><th>PAYMENT NO</th><th>PAYMENT TYPE</th><th>WORKFLOW STATE</th><th>AGE</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_payment_pending"><tr><td colspan="5" class="empty">Loading data...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- PO Delay Transit -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">PO Delay Transit</span>
+          <span class="badge red" id="badge_po_delay_transit">0</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>PO NO</th><th>DELIVERY FROM</th><th>DELIVERY TO</th><th>PO / PR / PENDING</th><th>DELAY DAYS</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_po_delay_transit"><tr><td colspan="5" class="empty">Loading data...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- PO On Transit -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">PO On Transit</span>
+          <span class="badge blue" id="badge_po_on_transit">0</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>PO NO</th><th>SUPPLIER</th><th>EXP. DELIVERY</th><th>EXP. RECEIVED</th><th>DAYS REM.</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_po_on_transit"><tr><td colspan="5" class="empty">Loading data...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROW 3: Completed Purchase Orders | Completed MR Orders -->
+    <div class="grid-2">
+
+      <!-- Completed Purchase Orders -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Completed Purchase Orders</span>
+          <span class="badge green" id="badge_po_completed">0</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>PO NO</th><th>CREATED DATE</th><th>SUPPLIER</th><th>AMOUNT</th><th>WORKFLOW STATE</th><th>STATUS</th><th>AGE</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_po_completed"><tr><td colspan="7" class="empty">Loading data...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Completed MR Orders -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Completed MR Orders</span>
+          <span class="badge blue" id="badge_mr_completed">0</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>MATERIAL REQUEST</th><th>CREATED DATE</th><th>MR DATE</th><th>WORKFLOW STATE</th><th>STATUS</th><th>AGE</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_mr_completed"><tr><td colspan="6" class="empty">Loading data...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+
+  <script src="app.js"></script>
+</body>
+</html>

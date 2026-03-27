@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Operations Department - WTT International</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <button class="menu-toggle" onclick="toggleMenu()">☰</button>
+            <div class="logo-section">
+                <img src="https://res.cloudinary.com/dd8fsxba6/image/upload/v1755166473/logo-bg_less_yaefzj.png" alt="WTT Logo" class="logo">
+                <div class="company-info">
+                    <h1>WTT International Pvt Ltd</h1>
+                    <p>Data Analytics Platform</p>
+                </div>
+            </div>
+        </div>
+        <div class="header-title">
+            <h2>Operations Department</h2>
+        </div>
+        <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
+    <div class="sidebar">
+        <div class="sidebar-brand">
+            <img src="https://res.cloudinary.com/dd8fsxba6/image/upload/v1755166473/logo-bg_less_yaefzj.png" alt="WTT Logo">
+            <div class="sidebar-brand-info">
+                <h4>WTT International Pvt Ltd</h4>
+                <p>Data Analytics Platform</p>
+            </div>
+        </div>
+        <nav>
+            <a href="index.html">Dashboard</a>
+            <a href="sales.html">Sales</a>
+            <a href="hr.html">Human Resources</a>
+            <a href="finance.html">Finance</a>
+            <a href="operations.html">Operations</a>
+            <a href="marketing.html">Marketing</a>
+            <a href="purchase.html">Purchase</a>
+        </nav>
+    </div>
+    <div class="overlay" onclick="closeMenu()"></div>
+    <div class="container">
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-label">Projects Completed</div>
+                <div class="metric-value">42</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">On-Time Delivery</div>
+                <div class="metric-value">88.5%</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Resource Utilization</div>
+                <div class="metric-value">76.3%</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Client Satisfaction</div>
+                <div class="metric-value">4.5/5</div>
+            </div>
+        </div>
+        <div class="data-table">
+            <h3>Project Status</h3>
+            <table>
+                <thead>
+                    <tr><th>Status</th><th>Count</th><th>Percentage</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Completed</td><td>42</td><td>62%</td></tr>
+                    <tr><td>In Progress</td><td>18</td><td>26%</td></tr>
+                    <tr><td>Planning</td><td>8</td><td>12%</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <script src="js/main.js"></script>
+</body>
+</html>

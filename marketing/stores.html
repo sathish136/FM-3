@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Stores Department Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.453.0/dist/umd/lucide.min.js"></script>
+</head>
+<body>
+
+  <!-- FULLSCREEN DETAIL VIEW -->
+  <div id="detailOverlay" class="detail-overlay" style="display:none;">
+    <div class="detail-header">
+      <div class="detail-header-left">
+        <button class="btn-back" onclick="closeDetail()">
+          <i data-lucide="arrow-left" style="width:14px;height:14px;"></i>
+          Back to Dashboard
+        </button>
+        <div class="detail-title-block">
+          <span class="detail-panel-title" id="detailTitle">—</span>
+          <span class="detail-badge" id="detailBadge">0</span>
+        </div>
+      </div>
+      <div class="detail-header-right">
+      </div>
+    </div>
+    <div class="detail-body">
+      <div class="detail-table-wrap">
+        <table id="detailTable">
+          <thead id="detailThead"></thead>
+          <tbody id="detailTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- HEADER -->
+  <header id="mainHeader">
+    <div class="header-left">
+      <div class="logo">WTT</div>
+      <div>
+        <div class="header-title">Stores Department Dashboard</div>
+        <div class="header-sub">EXECUTIVE OVERVIEW</div>
+      </div>
+    </div>
+    <div class="header-center">
+      <div class="project-selector" id="projectSelectorWrap">
+        <span class="project-label">PROJECT</span>
+        <div class="custom-select-wrap" id="customSelectWrap">
+          <div class="custom-select-display" id="customSelectDisplay" onclick="toggleProjectDropdown()">
+            <span id="customSelectText">All Projects</span>
+            <i data-lucide="chevron-down" style="width:12px;height:12px;flex-shrink:0;" id="customSelectChevron"></i>
+          </div>
+          <div class="custom-select-dropdown" id="customSelectDropdown" style="display:none;">
+            <div class="custom-select-search-wrap">
+              <i data-lucide="search" style="width:11px;height:11px;color:#999;flex-shrink:0;"></i>
+              <input type="text" id="projectSearchInput" class="custom-select-search" placeholder="Search project..." oninput="filterProjects()" autocomplete="off"/>
+            </div>
+            <div class="custom-select-options" id="customSelectOptions"></div>
+          </div>
+        </div>
+        <select id="projectSelect" style="display:none;" onchange="onProjectChange()">
+          <option value="">All Projects</option>
+        </select>
+      </div>
+    </div>
+    <div class="header-right">
+      <span id="errorMsg" class="error-msg" style="display:none;">Could not connect to ERP. Check API key.</span>
+      <button class="btn-refresh" onclick="loadDashboard()">
+        <i data-lucide="refresh-cw" style="width:12px;height:12px;"></i>
+        Refresh
+      </button>
+      <div class="clock">
+        <i data-lucide="clock" style="width:13px;height:13px;"></i>
+        <span id="datetime"></span>
+      </div>
+      <button class="btn-logout">
+        <i data-lucide="log-out" style="width:13px;height:13px;"></i>
+        Logout
+      </button>
+    </div>
+  </header>
+
+  <!-- KPI CARDS -->
+  <div class="kpi-row" id="mainKpiRow">
+    <div class="kpi-card" style="background:#48c9b0;" onclick="openDetail('gate')">
+      <div class="kpi-top">
+        <span class="kpi-label">GATE ENTRY MADE PR PENDING</span>
+        <i data-lucide="door-open" style="width:22px;height:22px;opacity:0.7;"></i>
+      </div>
+      <div class="kpi-value" id="kpi_gate_entry_made_pr_pending">—</div>
+    </div>
+    <div class="kpi-card" style="background:#5dade2;" onclick="openDetail('dc_gate')">
+      <div class="kpi-top">
+        <span class="kpi-label">DC MADE TO BILL PENDING</span>
+        <i data-lucide="file-text" style="width:22px;height:22px;opacity:0.7;"></i>
+      </div>
+      <div class="kpi-value" id="kpi_dc_made_to_bill_pending">—</div>
+    </div>
+    <div class="kpi-card" style="background:#f5b041;" onclick="openDetail('pr_bill')">
+      <div class="kpi-top">
+        <span class="kpi-label">PR MADE TO BILL PENDING</span>
+        <i data-lucide="receipt" style="width:22px;height:22px;opacity:0.7;"></i>
+      </div>
+      <div class="kpi-value" id="kpi_pr_made_to_bill_pending">—</div>
+    </div>
+    <div class="kpi-card" style="background:#af7ac5;" onclick="openDetail('returnable')">
+      <div class="kpi-top">
+        <span class="kpi-label">RETURNABLE DC COUNT</span>
+        <i data-lucide="rotate-ccw" style="width:22px;height:22px;opacity:0.7;"></i>
+      </div>
+      <div class="kpi-value" id="kpi_returnable_dc_count">—</div>
+    </div>
+    <div class="kpi-card" style="background:#48c9b0;" onclick="openDetail('stock')">
+      <div class="kpi-top">
+        <span class="kpi-label">STOCK SUMMARY</span>
+        <i data-lucide="bar-chart-3" style="width:22px;height:22px;opacity:0.7;"></i>
+      </div>
+      <div class="kpi-value" id="kpi_stock_summary">—</div>
+    </div>
+    <div class="kpi-card" style="background:#5dade2;" onclick="openDetail('petty')">
+      <div class="kpi-top">
+        <span class="kpi-label">PETTY CASH ENTRY</span>
+        <i data-lucide="wallet" style="width:22px;height:22px;opacity:0.7;"></i>
+      </div>
+      <div class="kpi-value" id="kpi_petty_cash_entry">—</div>
+    </div>
+    <div class="kpi-card" style="background:#ec7063;" onclick="openDetail('direct')">
+      <div class="kpi-top">
+        <span class="kpi-label">DIRECT SITE DELIVERY</span>
+        <i data-lucide="truck" style="width:22px;height:22px;opacity:0.7;"></i>
+      </div>
+      <div class="kpi-value" id="kpi_direct_site_delivery">—</div>
+    </div>
+    <div class="kpi-card" style="background:#f5b041;" onclick="openDetail('delivery')">
+      <div class="kpi-top">
+        <span class="kpi-label">DIRECT NOTE PENDING</span>
+        <i data-lucide="clipboard-list" style="width:22px;height:22px;opacity:0.7;"></i>
+      </div>
+      <div class="kpi-value" id="kpi_direct_note_pending">—</div>
+    </div>
+    <div class="kpi-card" style="background:#ec7063;" onclick="openDetail('indent')">
+      <div class="kpi-top">
+        <span class="kpi-label">STOCK INDENT REQUEST MODE ISSUE PENDING</span>
+        <i data-lucide="package-check" style="width:22px;height:22px;opacity:0.7;"></i>
+      </div>
+      <div class="kpi-value" id="kpi_stock_indent_request_mode_issue_pending">—</div>
+    </div>
+    <div class="kpi-card" style="background:#48c9b0;" onclick="openDetail('dispute')">
+      <div class="kpi-top">
+        <span class="kpi-label">PROJECT WISE DISPUTE COUNT</span>
+        <i data-lucide="alert-triangle" style="width:22px;height:22px;opacity:0.7;"></i>
+      </div>
+      <div class="kpi-value" id="kpi_project_wise_dispute_count">—</div>
+    </div>
+  </div>
+
+  <!-- TABLES -->
+  <div class="main" id="mainContent">
+
+    <!-- ROW 1 -->
+    <div class="grid-3">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Gate Entry made pr pending</span>
+          <div class="panel-header-right">
+            <button class="btn-export" onclick="exportTableToExcel('tb_gate', 'Gate_Entry_Made_PR_Pending')" title="Export to Excel">
+              <i data-lucide="download" style="width:12px;height:12px;"></i>
+              Export Excel
+            </button>
+            <span class="badge" id="badge_gate">0</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>PARTY</th><th>GATE ENTRY NO</th><th>DATE</th><th>AGE</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_gate"><tr><td colspan="4" class="empty">Loading data...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">DC made gate out pending</span>
+          <div class="panel-header-right">
+            <button class="btn-export" onclick="exportTableToExcel('tb_dc_gate', 'DC_Made_Gate_Out_Pending')" title="Export to Excel">
+              <i data-lucide="download" style="width:12px;height:12px;"></i>
+              Export Excel
+            </button>
+            <span class="badge" id="badge_dc_gate">0</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>PARTY</th><th>DC NO</th><th>DATE</th><th>AGE</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_dc_gate"><tr><td colspan="4" class="empty">Loading data...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">PR made to bill pending</span>
+          <div class="panel-header-right">
+            <button class="btn-export" onclick="exportTableToExcel('tb_pr_bill', 'PR_Made_To_Bill_Pending')" title="Export to Excel">
+              <i data-lucide="download" style="width:12px;height:12px;"></i>
+              Export Excel
+            </button>
+            <span class="badge" id="badge_pr_bill">0</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>PARTY</th><th>PR NO</th><th>DATE</th><th>AGE</th><th>REASON FOR PENDING</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_pr_bill"><tr><td colspan="5" class="empty">Loading data...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROW 2 -->
+    <div class="grid-3">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Returnable DC</span>
+          <div class="panel-header-right">
+            <button class="btn-export" onclick="exportTableToExcel('tb_returnable', 'Returnable_DC')" title="Export to Excel">
+              <i data-lucide="download" style="width:12px;height:12px;"></i>
+              Export Excel
+            </button>
+            <span class="badge blue" id="badge_returnable">0</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>PARTY</th><th>DC NO</th><th>RETURNABLE DATE</th><th>RET. CURRENT</th><th>STATUS</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_returnable"><tr><td colspan="5" class="empty">Loading data...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Stock summary</span>
+          <div class="panel-header-right">
+            <button class="btn-export" onclick="exportTableToExcel('tb_stock', 'Stock_Summary')" title="Export to Excel">
+              <i data-lucide="download" style="width:12px;height:12px;"></i>
+              Export Excel
+            </button>
+            <span class="badge blue" id="badge_stock">0</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>WAREHOUSE NAME</th><th>QTY</th><th>AMOUNT</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_stock"><tr><td colspan="3" class="empty">Loading data...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Petty cash entry</span>
+          <div class="panel-header-right">
+            <button class="btn-export" onclick="exportTableToExcel('tb_petty', 'Petty_Cash_Entry')" title="Export to Excel">
+              <i data-lucide="download" style="width:12px;height:12px;"></i>
+              Export Excel
+            </button>
+            <span class="badge blue" id="badge_petty">0</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>JOURNAL NO</th><th>DATE</th><th>REMARKS</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_petty"><tr><td colspan="3" class="empty">Loading data...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROW 3 -->
+    <div class="grid-3">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Direct site delivery</span>
+          <div class="panel-header-right">
+            <button class="btn-export" onclick="exportTableToExcel('tb_direct', 'Direct_Site_Delivery')" title="Export to Excel">
+              <i data-lucide="download" style="width:12px;height:12px;"></i>
+              Export Excel
+            </button>
+            <span class="badge" id="badge_direct">0</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>PARTY</th><th>PR NO</th><th>DATE</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_direct"><tr><td colspan="3" class="empty">Loading data...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Delivery note pending</span>
+          <div class="panel-header-right">
+            <button class="btn-export" onclick="exportTableToExcel('tb_delivery', 'Delivery_Note_Pending')" title="Export to Excel">
+              <i data-lucide="download" style="width:12px;height:12px;"></i>
+              Export Excel
+            </button>
+            <span class="badge" id="badge_delivery">0</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>PARTY</th><th>DC NO</th><th>DATE</th><th>AGE</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_delivery"><tr><td colspan="4" class="empty">Loading data...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Stock indent no</span>
+          <div class="panel-header-right">
+            <button class="btn-export" onclick="exportTableToExcel('tb_indent', 'Stock_Indent_No')" title="Export to Excel">
+              <i data-lucide="download" style="width:12px;height:12px;"></i>
+              Export Excel
+            </button>
+            <span class="badge" id="badge_indent">0</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>INDENT NO</th><th>DATE</th><th>AGE</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_indent"><tr><td colspan="3" class="empty">Loading data...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROW 4 -->
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Material issue request made issue pending</span>
+          <div class="panel-header-right">
+            <button class="btn-export" onclick="exportTableToExcel('tb_material', 'Material_Issue_Request')" title="Export to Excel">
+              <i data-lucide="download" style="width:12px;height:12px;"></i>
+              Export Excel
+            </button>
+            <span class="badge" id="badge_material">0</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>ISSUE NO</th><th>DATE</th><th>AGE</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_material"><tr><td colspan="3" class="empty">Loading data...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Project wise dispute</span>
+          <div class="panel-header-right">
+            <button class="btn-export" onclick="exportTableToExcel('tb_dispute', 'Project_Wise_Dispute')" title="Export to Excel">
+              <i data-lucide="download" style="width:12px;height:12px;"></i>
+              Export Excel
+            </button>
+            <span class="badge blue" id="badge_dispute">0</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>TICKET NO</th><th>DATE</th><th>ISSUE</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_dispute"><tr><td colspan="3" class="empty">Loading data...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

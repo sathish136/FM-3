@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WTT International - Dashboard</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <button class="menu-toggle" onclick="toggleMenu()">☰</button>
+            <div class="logo-section">
+                <img src="https://res.cloudinary.com/dd8fsxba6/image/upload/v1755166473/logo-bg_less_yaefzj.png" alt="WTT Logo" class="logo">
+                <div class="company-info">
+                    <h1>WTT International Pvt Ltd</h1>
+                    <p>Data Analytics Platform</p>
+                </div>
+            </div>
+        </div>
+        <div class="header-title">
+            <h2>Business Analysis Dashboard</h2>
+        </div>
+        <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
+    <div class="sidebar">
+        <div class="sidebar-brand">
+            <img src="https://res.cloudinary.com/dd8fsxba6/image/upload/v1755166473/logo-bg_less_yaefzj.png" alt="WTT Logo">
+            <div class="sidebar-brand-info">
+                <h4>WTT International Pvt Ltd</h4>
+                <p>Data Analytics Platform</p>
+            </div>
+        </div>
+        <nav>
+            <a href="marketing.html">Marketing</a>
+            <a href="purchase.html">Purchase</a>
+            <a href="stores.html">Stores</a>
+        </nav>
+    </div>
+    <div class="overlay" onclick="closeMenu()"></div>
+    <div class="container">
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-label">Total Revenue</div>
+                <div class="metric-value">$2.5M</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Total Employees</div>
+                <div class="metric-value">250</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Active Projects</div>
+                <div class="metric-value">68</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Client Satisfaction</div>
+                <div class="metric-value">4.5/5</div>
+            </div>
+        </div>
+        <div class="data-table">
+            <h3>Department Overview</h3>
+            <table>
+                <thead>
+                    <tr><th>Department</th><th>Key Metric</th><th>Performance</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Sales</td><td>Revenue Growth</td><td>15.5%</td><td>✓ On Track</td></tr>
+                    <tr><td>Human Resources</td><td>Employee Satisfaction</td><td>4.2/5</td><td>✓ Good</td></tr>
+                    <tr><td>Finance</td><td>Profit Margin</td><td>28.5%</td><td>✓ Excellent</td></tr>
+                    <tr><td>Operations</td><td>On-Time Delivery</td><td>88.5%</td><td>✓ Good</td></tr>
+                    <tr><td>Marketing</td><td>Campaign ROI</td><td>245.5%</td><td>✓ Excellent</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <script>
+        // Redirect to purchase dashboard on load
+        window.location.href = 'purchase.html';
+    </script>
+    <script src="js/main.js"></script>
+</body>
+</html>

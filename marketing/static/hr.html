@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Human Resources - WTT International</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <button class="menu-toggle" onclick="toggleMenu()">☰</button>
+            <div class="logo-section">
+                <img src="https://res.cloudinary.com/dd8fsxba6/image/upload/v1755166473/logo-bg_less_yaefzj.png" alt="WTT Logo" class="logo">
+                <div class="company-info">
+                    <h1>WTT International Pvt Ltd</h1>
+                    <p>Data Analytics Platform</p>
+                </div>
+            </div>
+        </div>
+        <div class="header-title">
+            <h2>Human Resources Department</h2>
+        </div>
+        <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
+    <div class="sidebar">
+        <div class="sidebar-brand">
+            <img src="https://res.cloudinary.com/dd8fsxba6/image/upload/v1755166473/logo-bg_less_yaefzj.png" alt="WTT Logo">
+            <div class="sidebar-brand-info">
+                <h4>WTT International Pvt Ltd</h4>
+                <p>Data Analytics Platform</p>
+            </div>
+        </div>
+        <nav>
+            <a href="index.html">Dashboard</a>
+            <a href="sales.html">Sales</a>
+            <a href="hr.html">Human Resources</a>
+            <a href="finance.html">Finance</a>
+            <a href="operations.html">Operations</a>
+            <a href="marketing.html">Marketing</a>
+            <a href="purchase.html">Purchase</a>
+        </nav>
+    </div>
+    <div class="overlay" onclick="closeMenu()"></div>
+    <div class="container">
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-label">Total Employees</div>
+                <div class="metric-value">250</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">New Hires</div>
+                <div class="metric-value">18</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Attrition Rate</div>
+                <div class="metric-value">8.5%</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Satisfaction Score</div>
+                <div class="metric-value">4.2/5</div>
+            </div>
+        </div>
+        <div class="data-table">
+            <h3>Department Breakdown</h3>
+            <table>
+                <thead>
+                    <tr><th>Department</th><th>Employee Count</th><th>Percentage</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Engineering</td><td>85</td><td>34%</td></tr>
+                    <tr><td>Sales</td><td>60</td><td>24%</td></tr>
+                    <tr><td>Operations</td><td>45</td><td>18%</td></tr>
+                    <tr><td>Marketing</td><td>35</td><td>14%</td></tr>
+                    <tr><td>HR</td><td>25</td><td>10%</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <script src="js/main.js"></script>
+</body>
+</html>

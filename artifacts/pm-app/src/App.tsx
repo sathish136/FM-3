@@ -40,6 +40,7 @@ import ProjectDrawings from "@/pages/ProjectDrawings";
 import ProjectTimeline from "@/pages/ProjectTimeline";
 import SiteData from "@/pages/SiteData";
 import SmartInbox from "@/pages/SmartInbox";
+import Marketing from "@/pages/Marketing";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -100,6 +101,7 @@ function ProtectedRoutes() {
       <Route path="/project-timeline" component={ProjectTimeline} />
       <Route path="/site-data" component={SiteData} />
       <Route path="/smart-inbox" component={SmartInbox} />
+      <Route path="/marketing" component={Marketing} />
       <Route component={NotFound} />
     </Switch>
   );
