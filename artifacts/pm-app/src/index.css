@@ -454,3 +454,60 @@ html.dark .fm-email-content  { background-color: #0f172a !important; }
 html.dark .fm-email-item     { border-color: #334155 !important; }
 html.dark .fm-email-item:hover { background-color: #1e293b !important; }
 html.dark .fm-email-item.selected { background-color: #1e3a5f !important; }
+
+/* ── Arbitrary light-hex background overrides ── */
+/* Any bg-[#fXX], bg-[#eXX], bg-[#dXX] light surface → dark card surface */
+html.dark [class*="bg-[#f"] { background-color: hsl(220 35% 11%) !important; }
+html.dark [class*="bg-[#e"] { background-color: hsl(220 35% 13%) !important; }
+html.dark [class*="bg-[#d"] { background-color: hsl(220 30% 17%) !important; }
+html.dark [class*="bg-[#F"] { background-color: hsl(220 35% 11%) !important; }
+html.dark [class*="bg-[#E"] { background-color: hsl(220 35% 13%) !important; }
+html.dark [class*="bg-[#D"] { background-color: hsl(220 30% 17%) !important; }
+
+/* ── Opacity variants of light backgrounds ── */
+html.dark .bg-white\/5,  html.dark .bg-white\/10, html.dark .bg-white\/15,
+html.dark .bg-white\/20, html.dark .bg-white\/25, html.dark .bg-white\/30 {
+  /* white/low-opacity overlays are fine – used for glassmorphism on dark bg */
+}
+html.dark .bg-white\/60, html.dark .bg-white\/70,
+html.dark .bg-white\/80, html.dark .bg-white\/90, html.dark .bg-white\/95 {
+  background-color: hsl(220 35% 14%) !important;
+}
+html.dark .bg-gray-50\/10  { background-color: hsl(220 35% 10%) !important; }
+html.dark .bg-gray-50\/20  { background-color: hsl(220 35% 10%) !important; }
+html.dark .bg-gray-50\/40  { background-color: hsl(220 35% 10%) !important; }
+html.dark .bg-gray-50\/60  { background-color: hsl(220 30% 12%) !important; }
+html.dark .bg-gray-50\/80  { background-color: hsl(220 30% 12%) !important; }
+html.dark .bg-gray-100\/10 { background-color: hsl(220 30% 13%) !important; }
+html.dark .bg-gray-100\/20 { background-color: hsl(220 30% 13%) !important; }
+html.dark .bg-gray-100\/40 { background-color: hsl(220 30% 13%) !important; }
+html.dark .bg-gray-100\/60 { background-color: hsl(220 30% 14%) !important; }
+html.dark .bg-slate-50\/10 { background-color: hsl(220 35% 10%) !important; }
+html.dark .bg-slate-50\/20 { background-color: hsl(220 35% 10%) !important; }
+html.dark .bg-slate-50\/40 { background-color: hsl(220 35% 10%) !important; }
+html.dark .bg-slate-50\/60 { background-color: hsl(220 30% 12%) !important; }
+html.dark .bg-slate-100\/20 { background-color: hsl(220 30% 13%) !important; }
+html.dark .bg-slate-100\/40 { background-color: hsl(220 30% 13%) !important; }
+html.dark .bg-slate-100\/60 { background-color: hsl(220 30% 14%) !important; }
+
+/* ── Additional surface colors ── */
+html.dark .bg-gray-300  { background-color: hsl(220 25% 22%) !important; }
+html.dark .bg-slate-300 { background-color: hsl(220 25% 22%) !important; }
+html.dark .bg-gray-400  { background-color: hsl(220 20% 28%) !important; }
+html.dark .bg-slate-400 { background-color: hsl(220 20% 28%) !important; }
+
+/* ── Hover state for opacity variants ── */
+html.dark .hover\:bg-gray-50\/60:hover  { background-color: hsl(220 30% 15%) !important; }
+html.dark .hover\:bg-slate-50\/60:hover { background-color: hsl(220 30% 15%) !important; }
+
+/* ── Ring / outline overrides ── */
+html.dark .ring-gray-100  { --tw-ring-color: hsl(220 30% 18%) !important; }
+html.dark .ring-gray-200  { --tw-ring-color: hsl(220 30% 22%) !important; }
+html.dark .ring-slate-100 { --tw-ring-color: hsl(220 30% 18%) !important; }
+html.dark .ring-slate-200 { --tw-ring-color: hsl(220 30% 22%) !important; }
+
+/* ── Sidebar right panel overrides ── */
+html.dark .border-l { border-color: hsl(220 30% 18%) !important; }
+html.dark .border-r { border-color: hsl(220 30% 18%) !important; }
+html.dark .border-t { border-color: hsl(220 30% 18%) !important; }
+html.dark .border-b { border-color: hsl(220 30% 18%) !important; }
