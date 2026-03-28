@@ -979,172 +979,350 @@ export function ResumeAnalyzer() {
 
 // ── ERPNext Detail View ────────────────────────────────────────────────────
 
-function DetailSection({ title, icon: Icon, children }: { title: string; icon: React.ElementType; children: React.ReactNode }) {
+function InfoChip({ icon: Icon, label, color = "gray" }: { icon: React.ElementType; label: string; color?: string }) {
+  const colors: Record<string, string> = {
+    gray: "bg-gray-100 text-gray-600",
+    blue: "bg-blue-50 text-blue-600",
+    indigo: "bg-indigo-50 text-indigo-600",
+    emerald: "bg-emerald-50 text-emerald-600",
+  };
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.06)] overflow-hidden">
-      <div className="flex items-center gap-2 px-5 py-3 border-b border-gray-100 bg-gray-50/60">
-        <Icon className="w-3.5 h-3.5 text-indigo-500" />
-        <span className="text-xs font-bold text-gray-700 uppercase tracking-widest">{title}</span>
-      </div>
-      <div className="px-5 py-4">{children}</div>
-    </div>
-  );
-}
-
-function FieldRow({ label, value, mono = false, highlight }: { label: string; value: React.ReactNode; mono?: boolean; highlight?: string }) {
-  return (
-    <div className="grid grid-cols-2 gap-4 py-2 border-b border-gray-50 last:border-0">
-      <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest self-center">{label}</span>
-      <span className={`text-xs ${mono ? "font-mono" : "font-medium"} text-gray-800 ${highlight || ""}`}>{value || "—"}</span>
-    </div>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold ${colors[color] || colors.gray}`}>
+      <Icon className="w-3 h-3 shrink-0" />{label}
+    </span>
   );
 }
 
 function DetailView({ record, onBack }: { record: RecruitmentTracker; onBack: () => void }) {
+  const [activeTab, setActiveTab] = useState<"info" | "interview" | "calllog">("info");
   const followups = record.followup_table || [];
+  const hikePercent = record.existing_salary_per_month && record.expected_salary
+    ? Math.round(((record.expected_salary - record.existing_salary_per_month) / record.existing_salary_per_month) * 100)
+    : null;
+
+  const initials = record.candidate_name.trim().split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase();
+
+  const tabs = [
+    { id: "info", label: "Profile", icon: User },
+    { id: "interview", label: "Interview", icon: MessageSquare },
+    { id: "calllog", label: `Call Logs`, count: followups.length, icon: Phone },
+  ] as const;
+
   return (
-    <div className="flex-1 overflow-y-auto bg-[#f1f5f9]">
-      <div className="bg-white border-b border-gray-100 px-6 py-3 flex items-center gap-4 shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.04)] sticky top-0 z-10">
-        <button onClick={onBack} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors">
-          <ArrowLeft className="w-3.5 h-3.5" /> Back
-        </button>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-sm font-bold text-gray-900">{record.candidate_name}</h2>
-            <StatusPill status={record.status} />
-            <span className="text-xs text-gray-400 font-mono">{record.name}</span>
-          </div>
-          <p className="text-[10px] text-gray-400 mt-0.5">{record.applying_for_the_post}{record.department ? ` · ${record.department}` : ""}</p>
+    <div className="flex-1 flex overflow-hidden bg-[#f1f5f9]">
+      {/* Left sidebar */}
+      <div className="w-72 shrink-0 flex flex-col bg-white border-r border-gray-100 overflow-y-auto">
+        {/* Back button */}
+        <div className="px-4 pt-4 pb-3 border-b border-gray-100">
+          <button onClick={onBack}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors w-full">
+            <ArrowLeft className="w-3.5 h-3.5" /> Back to Tracker
+          </button>
         </div>
-        <a href={`${ERP_URL}/app/recruitment-tracker/${record.name}`} target="_blank" rel="noopener noreferrer"
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-colors">
-          <ExternalLink className="w-3.5 h-3.5" /> Open in ERPNext
-        </a>
-      </div>
-      <div className="px-6 py-5 space-y-4 max-w-5xl mx-auto">
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.06)] p-5 flex items-center gap-5">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xl shrink-0">
-            {record.candidate_name.slice(0, 2).toUpperCase()}
+
+        {/* Avatar + Name */}
+        <div className="flex flex-col items-center px-5 py-6 border-b border-gray-100 text-center">
+          <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center text-white font-black text-3xl shadow-lg mb-4">
+            {initials}
           </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-lg font-bold text-gray-900">{record.candidate_name}</h3>
-            {record.qualification && <p className="text-sm text-gray-500 mt-0.5">{record.qualification}</p>}
-            <div className="flex items-center gap-3 mt-2 flex-wrap">
-              {record.applying_for_the_post && <span className="flex items-center gap-1 text-xs text-indigo-600 font-semibold"><Briefcase className="w-3.5 h-3.5" />{record.applying_for_the_post}</span>}
-              {record.department && <span className="flex items-center gap-1 text-xs text-gray-500"><Building2 className="w-3.5 h-3.5 text-gray-300" />{record.department}</span>}
-              {record.location && <span className="flex items-center gap-1 text-xs text-gray-500"><MapPin className="w-3.5 h-3.5 text-gray-300" />{record.location}</span>}
+          <h2 className="text-sm font-black text-gray-900 leading-tight">{record.candidate_name}</h2>
+          {record.qualification && (
+            <p className="text-xs text-gray-400 font-medium mt-1">{record.qualification}</p>
+          )}
+          <div className="mt-3">
+            <StatusPill status={record.status} />
+          </div>
+          <p className="text-[10px] text-gray-400 mt-2 font-mono">{record.name}</p>
+        </div>
+
+        {/* Key Details */}
+        <div className="px-5 py-4 space-y-3 border-b border-gray-100">
+          {record.applying_for_the_post && (
+            <div>
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Applied For</p>
+              <p className="text-xs font-bold text-indigo-600">{record.applying_for_the_post}</p>
             </div>
-          </div>
-          <div className="text-right shrink-0">
-            <StatusPill status={record.status} />
-            <p className="text-[10px] text-gray-400 mt-1">Modified {fmtDate(record.modified)}</p>
+          )}
+          {record.department && (
+            <div className="flex items-center gap-2">
+              <Building2 className="w-3.5 h-3.5 text-gray-300 shrink-0" />
+              <span className="text-xs text-gray-600">{record.department}</span>
+            </div>
+          )}
+          {record.location && (
+            <div className="flex items-center gap-2">
+              <MapPin className="w-3.5 h-3.5 text-gray-300 shrink-0" />
+              <span className="text-xs text-gray-600">{record.location}</span>
+            </div>
+          )}
+          {record.company && (
+            <div className="flex items-center gap-2">
+              <Briefcase className="w-3.5 h-3.5 text-gray-300 shrink-0" />
+              <span className="text-xs text-gray-600">{record.company}</span>
+            </div>
+          )}
+          {record.date && (
+            <div className="flex items-center gap-2">
+              <Calendar className="w-3.5 h-3.5 text-gray-300 shrink-0" />
+              <span className="text-xs text-gray-500">Applied {fmtDate(record.date)}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Salary Summary */}
+        <div className="px-5 py-4 border-b border-gray-100">
+          <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-3">Salary</p>
+          <div className="space-y-2">
+            <div className="flex justify-between items-center bg-gray-50 rounded-xl px-3 py-2.5">
+              <span className="text-[10px] font-semibold text-gray-400">Current</span>
+              <span className="text-xs font-bold text-gray-700">{fmtCurrency(record.existing_salary_per_month)}</span>
+            </div>
+            <div className="flex justify-between items-center bg-emerald-50 rounded-xl px-3 py-2.5 border border-emerald-100">
+              <span className="text-[10px] font-semibold text-emerald-500">Expected</span>
+              <span className="text-xs font-bold text-emerald-700">{fmtCurrency(record.expected_salary)}</span>
+            </div>
+            {hikePercent !== null && (
+              <div className={`text-center text-[10px] font-bold px-3 py-1.5 rounded-lg ${hikePercent > 30 ? "bg-red-50 text-red-500" : hikePercent > 15 ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"}`}>
+                {hikePercent > 0 ? `+${hikePercent}%` : `${hikePercent}%`} hike expectation
+              </div>
+            )}
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <DetailSection title="Basic Information" icon={User}>
-            <FieldRow label="Candidate Name" value={record.candidate_name} />
-            <FieldRow label="Applied For" value={record.applying_for_the_post} highlight="text-indigo-600" />
-            <FieldRow label="Qualification" value={record.qualification} />
-            <FieldRow label="Department" value={record.department} />
-            <FieldRow label="Location" value={record.location} />
-            <FieldRow label="Company" value={record.company} />
-            <FieldRow label="Application Date" value={fmtDate(record.date)} />
-            <FieldRow label="Status" value={<StatusPill status={record.status} />} />
-            <FieldRow label="Submitted By" value={record.owner} mono />
-          </DetailSection>
-          <DetailSection title="Salary Details" icon={DollarSign}>
-            <div className="space-y-3">
-              <div className="bg-gray-50 rounded-xl p-4 flex justify-between items-center">
-                <div>
-                  <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-widest">Current Salary / Month</p>
-                  <p className="text-xl font-bold text-gray-800 mt-1">{fmtCurrency(record.existing_salary_per_month)}</p>
-                </div>
-                <DollarSign className="w-8 h-8 text-gray-200" />
+
+        {/* ERPNext Link */}
+        <div className="px-5 py-4 mt-auto">
+          <a href={`${ERP_URL}/app/recruitment-tracker/${record.name}`} target="_blank" rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 w-full px-3 py-2 rounded-xl text-[11px] font-semibold text-gray-500 bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-colors">
+            <ExternalLink className="w-3.5 h-3.5" /> Open in ERPNext
+          </a>
+          {record.candidate_resume && (
+            <a href={`${ERP_URL}${record.candidate_resume}`} target="_blank" rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 w-full mt-2 px-3 py-2 rounded-xl text-[11px] font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm">
+              <FileText className="w-3.5 h-3.5" /> View Resume / CV
+            </a>
+          )}
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Tab bar */}
+        <div className="bg-white border-b border-gray-100 px-6 pt-4 shrink-0">
+          <div className="flex gap-1">
+            {tabs.map(t => {
+              const Icon = t.icon;
+              return (
+                <button key={t.id} onClick={() => setActiveTab(t.id)}
+                  className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all border-b-2 -mb-px
+                    ${activeTab === t.id ? "text-indigo-700 border-indigo-500 bg-indigo-50/50" : "text-gray-400 border-transparent hover:text-gray-700 hover:bg-gray-50"}`}>
+                  <Icon className="w-3.5 h-3.5" />
+                  {t.label}
+                  {"count" in t && t.count !== undefined && (
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === t.id ? "bg-indigo-100 text-indigo-600" : "bg-gray-100 text-gray-500"}`}>{t.count}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Tab content */}
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+
+          {/* ── PROFILE TAB ── */}
+          {activeTab === "info" && (
+            <div className="space-y-4 max-w-3xl">
+              {/* Quick chips */}
+              <div className="flex flex-wrap gap-2">
+                {record.applying_for_the_post && <InfoChip icon={Briefcase} label={record.applying_for_the_post} color="indigo" />}
+                {record.department && <InfoChip icon={Building2} label={record.department} color="blue" />}
+                {record.location && <InfoChip icon={MapPin} label={record.location} />}
+                {record.qualification && <InfoChip icon={BookOpen} label={record.qualification} />}
               </div>
-              <div className="bg-emerald-50 rounded-xl p-4 flex justify-between items-center border border-emerald-100">
-                <div>
-                  <p className="text-[10px] text-emerald-600 font-semibold uppercase tracking-widest">Expected Salary / Month</p>
-                  <p className="text-xl font-bold text-emerald-700 mt-1">{fmtCurrency(record.expected_salary)}</p>
+
+              {/* Details grid */}
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <div className="px-5 py-3 border-b border-gray-50 bg-gray-50/60 flex items-center gap-2">
+                  <User className="w-3.5 h-3.5 text-indigo-400" />
+                  <span className="text-xs font-bold text-gray-600 uppercase tracking-widest">Candidate Information</span>
                 </div>
-                <DollarSign className="w-8 h-8 text-emerald-200" />
+                <div className="divide-y divide-gray-50">
+                  {[
+                    { label: "Full Name", value: record.candidate_name, bold: true },
+                    { label: "Qualification", value: record.qualification },
+                    { label: "Applied For", value: record.applying_for_the_post, color: "text-indigo-600 font-semibold" },
+                    { label: "Department", value: record.department },
+                    { label: "Company", value: record.company },
+                    { label: "Location", value: record.location },
+                    { label: "Application Date", value: fmtDate(record.date) },
+                    { label: "Submitted By", value: record.owner, mono: true },
+                    { label: "Last Modified", value: fmtDate(record.modified) },
+                  ].map(row => (
+                    <div key={row.label} className="flex items-center px-5 py-3 gap-6">
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest w-36 shrink-0">{row.label}</span>
+                      <span className={`text-sm flex-1 ${row.bold ? "font-bold text-gray-900" : row.mono ? "font-mono text-gray-500 text-xs" : row.color || "text-gray-700"}`}>
+                        {row.value || <span className="text-gray-300">—</span>}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
-              {record.existing_salary_per_month && record.expected_salary && (
-                <div className="text-center text-xs text-gray-400">
-                  Hike expectation: <span className="font-bold text-gray-600">{Math.round(((record.expected_salary - record.existing_salary_per_month) / record.existing_salary_per_month) * 100)}%</span>
+
+              {/* Salary breakdown visual */}
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
+                  <span className="text-xs font-bold text-gray-600 uppercase tracking-widest">Salary Breakdown</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-gray-50 rounded-2xl p-4 text-center border border-gray-100">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Current / Month</p>
+                    <p className="text-2xl font-black text-gray-800">{record.existing_salary_per_month ? fmtCurrency(record.existing_salary_per_month) : <span className="text-gray-300 text-lg">Not shared</span>}</p>
+                  </div>
+                  <div className="bg-emerald-50 rounded-2xl p-4 text-center border border-emerald-100">
+                    <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-2">Expected / Month</p>
+                    <p className="text-2xl font-black text-emerald-700">{record.expected_salary ? fmtCurrency(record.expected_salary) : <span className="text-emerald-300 text-lg">Not stated</span>}</p>
+                  </div>
+                </div>
+                {hikePercent !== null && (
+                  <div className={`mt-3 text-center py-2.5 rounded-xl text-sm font-bold
+                    ${hikePercent > 30 ? "bg-red-50 text-red-500 border border-red-100" : hikePercent > 15 ? "bg-amber-50 text-amber-600 border border-amber-100" : "bg-emerald-50 text-emerald-600 border border-emerald-100"}`}>
+                    Candidate expects {hikePercent > 0 ? `a +${hikePercent}%` : `a ${hikePercent}%`} salary change
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── INTERVIEW TAB ── */}
+          {activeTab === "interview" && (
+            <div className="space-y-4 max-w-3xl">
+              {/* Status chips */}
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: "Experience Status", value: record.experience_status, icon: Briefcase },
+                  { label: "Telephonic Interview", value: record.rt_telephonic_interview ? fmtDate(record.rt_telephonic_interview) : null, icon: Phone },
+                  { label: "Last Conversation", value: fmtDate(record.rt_last_convo), icon: Clock },
+                ].map(item => (
+                  <div key={item.label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
+                    <item.icon className="w-5 h-5 text-indigo-300 mx-auto mb-2" />
+                    <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">{item.label}</p>
+                    <p className="text-xs font-bold text-gray-800">{item.value || <span className="text-gray-300 font-normal">—</span>}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Interview Comments */}
+              {record.telephonic_interview_commands ? (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <MessageSquare className="w-3.5 h-3.5 text-amber-500" />
+                    <span className="text-xs font-bold text-gray-600 uppercase tracking-widest">Interview Comments</span>
+                  </div>
+                  <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+                    <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{record.telephonic_interview_commands}</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
+                  <MessageSquare className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+                  <p className="text-sm text-gray-400">No interview comments yet</p>
+                </div>
+              )}
+
+              {/* Not Suitable Reason */}
+              {record.not_suitable_reason && (
+                <div className="bg-white rounded-2xl border border-red-100 shadow-sm p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+                    <span className="text-xs font-bold text-red-500 uppercase tracking-widest">Not Suitable Reason</span>
+                  </div>
+                  <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+                    <p className="text-sm text-red-700 leading-relaxed whitespace-pre-wrap">{record.not_suitable_reason}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Resume link */}
+              {record.candidate_resume && (
+                <a href={`${ERP_URL}${record.candidate_resume}`} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-3 bg-white rounded-2xl border border-indigo-100 shadow-sm px-5 py-4 hover:bg-indigo-50 transition-colors group">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0 group-hover:bg-indigo-200 transition-colors">
+                    <FileText className="w-5 h-5 text-indigo-500" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-bold text-indigo-700">Candidate Resume / CV</p>
+                    <p className="text-xs text-gray-400">Click to open attached file</p>
+                  </div>
+                  <ExternalLink className="w-4 h-4 text-indigo-400" />
+                </a>
+              )}
+            </div>
+          )}
+
+          {/* ── CALL LOG TAB ── */}
+          {activeTab === "calllog" && (
+            <div className="max-w-3xl">
+              {followups.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center">
+                  <Phone className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+                  <p className="text-sm font-semibold text-gray-400">No call logs recorded yet</p>
+                  <p className="text-xs text-gray-300 mt-1">Follow-up calls will appear here</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {followups.map((f, idx) => (
+                    <div key={f.name} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                      <div className="flex items-start gap-4">
+                        {/* Icon + connector */}
+                        <div className="flex flex-col items-center shrink-0">
+                          <div className="w-9 h-9 rounded-xl bg-indigo-50 border-2 border-indigo-100 flex items-center justify-center text-indigo-500 shadow-sm">
+                            <CommIcon mode={f.mode_of_communication} />
+                          </div>
+                          {idx < followups.length - 1 && <div className="w-px h-3 bg-gray-200 mt-2" />}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          {/* Header row */}
+                          <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
+                            <div>
+                              <span className="text-sm font-bold text-gray-900">{f.employee_name || f.employee}</span>
+                              {f.mode_of_communication && (
+                                <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-indigo-50 text-indigo-600 border border-indigo-100">
+                                  <CommIcon mode={f.mode_of_communication} />{f.mode_of_communication}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1 text-[10px] text-gray-400 shrink-0">
+                              <Calendar className="w-3 h-3" />
+                              <span>{fmtDate(f.date)}</span>
+                              {f.time && <><Clock className="w-3 h-3 ml-1" /><span>{fmtTime(f.time)}{f.end_time ? ` – ${fmtTime(f.end_time)}` : ""}</span></>}
+                            </div>
+                          </div>
+
+                          {/* Conversation */}
+                          {f.conversation && (
+                            <div className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
+                              <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">{f.conversation}</p>
+                            </div>
+                          )}
+
+                          {/* Next followup */}
+                          {f.next_followup && (
+                            <div className="mt-2 inline-flex items-center gap-1.5 bg-amber-50 border border-amber-100 rounded-lg px-3 py-1.5">
+                              <AlertCircle className="w-3 h-3 text-amber-500 shrink-0" />
+                              <span className="text-[10px] text-amber-700 font-semibold">Next Follow-up: {fmtDate(f.next_followup)}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
-          </DetailSection>
-        </div>
-        <DetailSection title="Interview & Evaluation" icon={CheckCircle2}>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
-            <FieldRow label="Experience Status" value={record.experience_status} />
-            <FieldRow label="Telephonic Interview" value={record.rt_telephonic_interview} />
-            <FieldRow label="Last Conversation Date" value={fmtDate(record.rt_last_convo)} />
-            {record.telephonic_interview_commands && (
-              <div className="col-span-2 py-2 border-b border-gray-50">
-                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Interview Comments</p>
-                <p className="text-xs text-gray-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 whitespace-pre-wrap">{record.telephonic_interview_commands}</p>
-              </div>
-            )}
-            {record.not_suitable_reason && (
-              <div className="col-span-2 py-2">
-                <p className="text-[11px] font-semibold text-red-500 uppercase tracking-widest mb-1">Not Suitable Reason</p>
-                <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-xl px-3 py-2 whitespace-pre-wrap">{record.not_suitable_reason}</p>
-              </div>
-            )}
-          </div>
-          {record.candidate_resume && (
-            <div className="mt-3 pt-3 border-t border-gray-100">
-              <a href={`${ERP_URL}${record.candidate_resume}`} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition-colors shadow-sm">
-                <ExternalLink className="w-3.5 h-3.5" /> View Resume / CV
-              </a>
-            </div>
           )}
-        </DetailSection>
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.06)] overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gray-50/60">
-            <div className="flex items-center gap-2"><Phone className="w-3.5 h-3.5 text-indigo-500" /><span className="text-xs font-bold text-gray-700 uppercase tracking-widest">Call Logs / Follow-up</span></div>
-            <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{followups.length}</span>
-          </div>
-          {followups.length === 0 ? (
-            <div className="text-center py-10 text-sm text-gray-400">No call logs recorded</div>
-          ) : (
-            <div className="divide-y divide-gray-50">
-              {followups.map((f, idx) => (
-                <div key={f.name} className="px-5 py-4 hover:bg-gray-50/60 transition-colors">
-                  <div className="flex items-start gap-4">
-                    <div className="flex flex-col items-center shrink-0 mt-0.5">
-                      <div className="w-8 h-8 rounded-full bg-indigo-50 border-2 border-indigo-200 flex items-center justify-center text-indigo-500"><CommIcon mode={f.mode_of_communication} /></div>
-                      {idx < followups.length - 1 && <div className="w-px flex-1 bg-gray-200 mt-1 min-h-[16px]" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <span className="text-xs font-bold text-gray-800">{f.employee_name || f.employee}</span>
-                        {f.mode_of_communication && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-600 border border-indigo-100">
-                            <CommIcon mode={f.mode_of_communication} />{f.mode_of_communication}
-                          </span>
-                        )}
-                        <span className="text-[10px] text-gray-400 flex items-center gap-1 ml-auto">
-                          <Calendar className="w-3 h-3" />{fmtDate(f.date)}
-                          {f.time && <><Clock className="w-3 h-3 ml-1" />{fmtTime(f.time)}{f.end_time ? ` – ${fmtTime(f.end_time)}` : ""}</>}
-                        </span>
-                      </div>
-                      {f.conversation && <p className="text-xs text-gray-700 bg-gray-50 rounded-xl px-3 py-2 mt-1 whitespace-pre-wrap leading-relaxed">{f.conversation}</p>}
-                      {f.next_followup && (
-                        <div className="flex items-center gap-1.5 mt-2">
-                          <AlertCircle className="w-3 h-3 text-amber-500 shrink-0" />
-                          <span className="text-[10px] text-amber-600 font-semibold">Next Follow-up: {fmtDate(f.next_followup)}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+
         </div>
       </div>
     </div>
