@@ -97,11 +97,41 @@ function fmtCurrency(n: number) {
 function StatusPill({ status }: { status: string }) {
   const s = (status || "").toLowerCase();
   const map: Record<string, string> = {
-    "open": "bg-blue-500 text-white", "hold": "bg-amber-400 text-white",
-    "selected": "bg-emerald-500 text-white", "not suitable": "bg-red-400 text-white",
-    "joined": "bg-teal-500 text-white", "offer declined": "bg-orange-400 text-white",
+    "open": "bg-blue-100 text-blue-700 ring-1 ring-blue-300",
+    "hold": "bg-amber-100 text-amber-700 ring-1 ring-amber-300",
+    "selected": "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300",
+    "not suitable": "bg-red-100 text-red-700 ring-1 ring-red-300",
+    "joined": "bg-teal-100 text-teal-700 ring-1 ring-teal-300",
+    "offer declined": "bg-orange-100 text-orange-700 ring-1 ring-orange-300",
+    "offer": "bg-violet-100 text-violet-700 ring-1 ring-violet-300",
+    "interview": "bg-indigo-100 text-indigo-700 ring-1 ring-indigo-300",
+    "interview scheduled": "bg-indigo-100 text-indigo-700 ring-1 ring-indigo-300",
+    "shortlisted": "bg-cyan-100 text-cyan-700 ring-1 ring-cyan-300",
+    "assessment": "bg-purple-100 text-purple-700 ring-1 ring-purple-300",
+    "in progress": "bg-sky-100 text-sky-700 ring-1 ring-sky-300",
+    "pending": "bg-yellow-100 text-yellow-700 ring-1 ring-yellow-300",
+    "rejected": "bg-red-100 text-red-700 ring-1 ring-red-300",
+    "withdrawn": "bg-gray-100 text-gray-500 ring-1 ring-gray-300",
+    "closed": "bg-gray-100 text-gray-500 ring-1 ring-gray-300",
+    "on hold": "bg-amber-100 text-amber-700 ring-1 ring-amber-300",
   };
-  return <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${map[s] || "bg-gray-200 text-gray-600"}`}>{status}</span>;
+  const dotColor: Record<string, string> = {
+    "open": "bg-blue-500", "hold": "bg-amber-400", "on hold": "bg-amber-400",
+    "selected": "bg-emerald-500", "not suitable": "bg-red-400", "rejected": "bg-red-400",
+    "joined": "bg-teal-500", "offer declined": "bg-orange-400", "offer": "bg-violet-500",
+    "interview": "bg-indigo-500", "interview scheduled": "bg-indigo-500",
+    "shortlisted": "bg-cyan-500", "assessment": "bg-purple-500",
+    "in progress": "bg-sky-500", "pending": "bg-yellow-500",
+    "withdrawn": "bg-gray-400", "closed": "bg-gray-400",
+  };
+  const cls = map[s] || "bg-gray-100 text-gray-500 ring-1 ring-gray-200";
+  const dot = dotColor[s] || "bg-gray-400";
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${cls}`}>
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />
+      {status || "—"}
+    </span>
+  );
 }
 
 function CommIcon({ mode }: { mode: string }) {
@@ -1987,7 +2017,7 @@ function AnalyticsDashboard({ trackers }: { trackers: RecruitmentTracker[] }) {
             const pct = total > 0 ? Math.round((count / total) * 100) : 0;
             return (
               <div key={status} className="flex items-center gap-3">
-                <span className="text-xs font-semibold text-gray-600 w-28 shrink-0">{status}</span>
+                <span className="w-28 shrink-0"><StatusPill status={status} /></span>
                 <MiniBar value={count} max={total} color={statusColors[status] || "bg-gray-400"} />
                 <span className="text-xs font-bold text-gray-500 w-10 text-right shrink-0">{count}</span>
                 <span className="text-[10px] text-gray-400 w-8 shrink-0">{pct}%</span>
@@ -2425,7 +2455,7 @@ export default function Recruitment() {
                           <td className="px-3 py-2.5">
                             <div className="flex items-center gap-2">
                               <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-[10px] font-bold shrink-0">
-                                {t.candidate_name.slice(0, 2).toUpperCase()}
+                                {(t.candidate_name || "??").slice(0, 2).toUpperCase()}
                               </div>
                               <div>
                                 <p className="text-xs font-semibold text-gray-800 leading-tight">{t.candidate_name}</p>
