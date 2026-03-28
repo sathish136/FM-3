@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Layout } from "@/components/Layout";
 import { cn } from "@/lib/utils";
-import { Wifi, WifiOff, RefreshCw, Settings2, X, Clock, Activity, Home, LayoutGrid, TableProperties, ChevronDown, ChevronRight } from "lucide-react";
+import { Wifi, WifiOff, RefreshCw, Settings2, X, Clock, Activity } from "lucide-react";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "").replace(/\/pm-app$/, "");
 
@@ -35,262 +35,95 @@ interface ValuesResponse {
   updatedAt: number;
 }
 
-// ─── System column definitions ──────────────────────────────────────────────
+// ─── System column definitions ───────────────────────────────────────────────
 const SYSTEMS = [
-  { key: "biological", label: "Biological" },
-  { key: "cts_mbr",   label: "CTS MBR"    },
-  { key: "mbr",       label: "MBR"         },
-  { key: "ro",        label: "RO"          },
-  { key: "reject_ro", label: "Reject RO"   },
+  { key: "biological", label: "Biological"  },
+  { key: "cts_mbr",   label: "CTS MBR"     },
+  { key: "mbr",       label: "MBR"          },
+  { key: "ro",        label: "RO"           },
+  { key: "reject_ro", label: "Reject RO"    },
 ] as const;
 type SystemKey = typeof SYSTEMS[number]["key"];
 
 function classifySection(sec: SectionDef): SystemKey {
   const title = (sec.title ?? "").toUpperCase().trim();
-  if (title.includes("REJECT")) return "reject_ro";
-  if (title.includes("CTS"))    return "cts_mbr";
-  if (title === "MBR" || title.includes("MBR SKID")) return "mbr";
+  if (title.includes("REJECT"))                                       return "reject_ro";
+  if (title.includes("CTS"))                                          return "cts_mbr";
+  if (title === "MBR" || title.includes("MBR SKID"))                 return "mbr";
   if (title.includes("MAIN RO") || (title.includes("RO") && !title.includes("REJECT"))) return "ro";
   const combined = [
     ...sec.tags.map(t => t.label.toLowerCase()),
     ...sec.tags.map(t => t.id),
   ].join(" ");
-  if (combined.includes("bio") || combined.includes("blower") || combined.includes("nt flow") || combined.includes("ntflow") || combined.includes("srs")) return "biological";
+  if (
+    combined.includes("bio") || combined.includes("blower") ||
+    combined.includes("nt flow") || combined.includes("ntflow") ||
+    combined.includes("srs") || combined.includes("do")
+  ) return "biological";
   if (combined.includes("mbr") || combined.includes("tmp")) return "mbr";
   if (combined.includes("feed") || combined.includes("recov") || combined.includes("setph") || combined.includes("liveph")) return "ro";
   return "biological";
 }
 
-function siteSystemTags(site: SiteDef): Record<SystemKey, TagDef[]> {
+function siteSystemMap(site: SiteDef): Record<SystemKey, TagDef[]> {
   const map: Record<SystemKey, TagDef[]> = { biological: [], cts_mbr: [], mbr: [], ro: [], reject_ro: [] };
   for (const sec of site.sections) {
-    const key = classifySection(sec);
-    map[key].push(...sec.tags);
+    map[classifySection(sec)].push(...sec.tags);
   }
   return map;
 }
 
-function systemStatus(tags: TagDef[], values: Record<string, TagValueResult> | null): "alarm" | "good" | "normal" | "offline" | "none" {
-  if (tags.length === 0) return "none";
-  if (!values) return "offline";
-  const statuses = tags.map(t => values[t.id]?.status ?? "offline");
-  if (statuses.some(s => s === "alarm"))   return "alarm";
-  if (statuses.some(s => s === "good"))    return "good";
-  if (statuses.every(s => s === "offline")) return "offline";
-  return "normal";
-}
-
-// ─── Value box ──────────────────────────────────────────────────────────────
-function ValueBox({ tagId, decimals = 2, values }: { tagId: string; decimals?: number; values: Record<string, TagValueResult> | null }) {
+// ─── Inline tag value chip ───────────────────────────────────────────────────
+function ValueChip({ tagId, decimals = 2, values }: {
+  tagId: string;
+  decimals?: number;
+  values: Record<string, TagValueResult> | null;
+}) {
   const tv = values?.[tagId];
   if (!tv || tv.value === null) {
     return (
-      <div className="inline-flex items-center justify-center min-w-[72px] h-5 px-1.5 bg-[#1a1a2e] border border-[#2a2a4a] rounded text-[10px] text-[#4a5a6a] font-mono">
+      <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-gray-100 text-gray-400 border border-gray-200 min-w-[48px]">
         ---
-      </div>
+      </span>
     );
   }
-  const bgClass =
-    tv.status === "alarm"   ? "bg-red-600 border-red-500 text-white" :
-    tv.status === "good"    ? "bg-[#00a651] border-[#00c864] text-white" :
-    tv.status === "offline" ? "bg-[#1a1a2e] border-[#2a2a4a] text-[#4a5a6a]" :
-                              "bg-[#003a7a] border-[#0050a0] text-white";
-  return (
-    <div className={cn("inline-flex items-center justify-center min-w-[72px] h-5 px-1.5 rounded border text-[10px] font-mono font-bold tabular-nums transition-colors", bgClass)}>
-      {tv.value.toFixed(decimals)}
-    </div>
-  );
-}
-
-// ─── Tag row ─────────────────────────────────────────────────────────────────
-function TagRow({ tag, values }: { tag: TagDef; values: Record<string, TagValueResult> | null }) {
-  return (
-    <div className="flex items-center gap-1.5 py-[2px]">
-      <span className="text-[11px] text-[#c0cce0] leading-tight flex-1 min-w-0 truncate">{tag.label}{tag.unit ? ` (${tag.unit})` : ""}</span>
-      <div className="shrink-0 flex justify-end w-[72px]">
-        <ValueBox tagId={tag.id} decimals={tag.decimals} values={values} />
-      </div>
-    </div>
-  );
-}
-
-// ─── Section ─────────────────────────────────────────────────────────────────
-function SiteSection({ section, values }: { section: SectionDef; values: Record<string, TagValueResult> | null }) {
-  return (
-    <div className="mb-1">
-      {section.title && (
-        <div className="text-[10px] font-bold text-[#4a9eda] uppercase tracking-widest mb-0.5 border-b border-[#1a2a40] pb-0.5">
-          {section.title}
-        </div>
-      )}
-      {section.columns && section.columns > 1 ? (
-        <div className={cn("grid gap-x-2", section.columns === 2 ? "grid-cols-2" : "grid-cols-3")}>
-          {section.tags.map(tag => <TagRow key={tag.id} tag={tag} values={values} />)}
-        </div>
-      ) : (
-        <div>{section.tags.map(tag => <TagRow key={tag.id} tag={tag} values={values} />)}</div>
-      )}
-    </div>
-  );
-}
-
-// ─── Site panel card (grid view) ─────────────────────────────────────────────
-function SitePanel({ site, values, isActive, onClick }: {
-  site: SiteDef;
-  values: Record<string, TagValueResult> | null;
-  isActive: boolean;
-  onClick: () => void;
-}) {
-  const allTagIds = site.sections.flatMap(s => s.tags.map(t => t.id));
-  const hasAlarm = allTagIds.some(id => values?.[id]?.status === "alarm");
-  return (
-    <div
-      className={cn(
-        "rounded border transition-all cursor-pointer",
-        isActive ? "border-[#0080ff] shadow-[0_0_8px_#0060cc66]" : "border-[#1a3050] hover:border-[#2a4060]",
-        hasAlarm ? "border-red-500" : ""
-      )}
-      onClick={onClick}
-    >
-      <div className={cn(
-        "px-2 py-1 rounded-t text-[11px] font-extrabold tracking-wider uppercase flex items-center justify-between",
-        hasAlarm ? "bg-red-700 text-white" : "bg-[#003570] text-[#90c8f8]"
-      )}>
-        <span>{site.name}</span>
-        {hasAlarm && <span className="text-[9px] font-bold bg-red-600 px-1 rounded animate-pulse">ALARM</span>}
-      </div>
-      <div className="px-2 pt-1.5 pb-1 bg-[#0a1628]">
-        {site.sections.map((sec, i) => <SiteSection key={i} section={sec} values={values} />)}
-      </div>
-    </div>
-  );
-}
-
-// ─── System status pill (table view cell) ────────────────────────────────────
-function SystemPill({ status }: { status: ReturnType<typeof systemStatus> }) {
-  if (status === "none") return <span className="text-[#2a3a50] text-[11px]">—</span>;
   const cls =
-    status === "alarm"   ? "bg-red-600/20 border-red-500/60 text-red-300" :
-    status === "good"    ? "bg-emerald-700/20 border-emerald-500/50 text-emerald-300" :
-    status === "offline" ? "bg-[#1a2030] border-[#2a3040] text-[#4a5a6a]" :
-                           "bg-[#003a7a]/30 border-[#0050a0]/50 text-[#7abcf8]";
-  const label =
-    status === "alarm"   ? "ALARM" :
-    status === "good"    ? "GOOD"  :
-    status === "offline" ? "OFF"   : "OK";
+    tv.status === "alarm"   ? "bg-red-100 text-red-700 border-red-300" :
+    tv.status === "good"    ? "bg-green-100 text-green-700 border-green-300" :
+    tv.status === "offline" ? "bg-gray-100 text-gray-400 border-gray-200" :
+                              "bg-blue-50 text-blue-700 border-blue-200";
   return (
-    <span className={cn("inline-flex items-center justify-center px-2 py-0.5 rounded border text-[10px] font-bold tracking-wider", cls)}>
-      {label}
+    <span className={cn("inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border min-w-[48px]", cls)}>
+      {tv.value.toFixed(decimals)}
     </span>
   );
 }
 
-// ─── Accordion row (table view) ──────────────────────────────────────────────
-function AccordionRow({ site, values, isOpen, onToggle }: {
-  site: SiteDef;
+// ─── System cell — shows all tags inline, no accordion ───────────────────────
+function SystemCell({ tags, values }: {
+  tags: TagDef[];
   values: Record<string, TagValueResult> | null;
-  isOpen: boolean;
-  onToggle: () => void;
 }) {
-  const sysMap = siteSystemTags(site);
-  const allTagIds = site.sections.flatMap(s => s.tags.map(t => t.id));
-  const hasAlarm = allTagIds.some(id => values?.[id]?.status === "alarm");
+  if (tags.length === 0) {
+    return <span className="text-gray-300 text-[11px]">—</span>;
+  }
+
+  const hasAlarm = tags.some(t => values?.[t.id]?.status === "alarm");
 
   return (
-    <>
-      {/* Row header */}
-      <tr
-        className={cn(
-          "border-b border-[#1a3050] cursor-pointer transition-colors select-none",
-          isOpen ? "bg-[#0d2040]" : "hover:bg-[#0a1a30]",
-          hasAlarm && "bg-red-950/30"
-        )}
-        onClick={onToggle}
-      >
-        {/* Site name */}
-        <td className="px-3 py-2.5">
-          <div className="flex items-center gap-2">
-            <span className="text-[#4a9eda]">
-              {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-            </span>
-            <span className={cn(
-              "text-[12px] font-bold tracking-wide uppercase",
-              hasAlarm ? "text-red-300" : "text-[#90c8f8]"
-            )}>
-              {site.name}
-            </span>
-            {hasAlarm && (
-              <span className="text-[9px] font-bold bg-red-600 text-white px-1.5 py-0.5 rounded animate-pulse">ALARM</span>
-            )}
-          </div>
-        </td>
-        {/* System columns */}
-        {SYSTEMS.map(sys => (
-          <td key={sys.key} className="px-3 py-2.5 text-center">
-            <SystemPill status={systemStatus(sysMap[sys.key], values)} />
-          </td>
-        ))}
-      </tr>
-
-      {/* Expanded accordion detail */}
-      {isOpen && (
-        <tr className="border-b border-[#1a3050] bg-[#070f1e]">
-          <td colSpan={SYSTEMS.length + 1} className="px-4 py-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
-              {SYSTEMS.map(sys => {
-                const tags = sysMap[sys.key];
-                if (tags.length === 0) return null;
-                return (
-                  <div key={sys.key} className="bg-[#0a1628] border border-[#1a3050] rounded-lg p-3">
-                    <div className="text-[10px] font-bold text-[#4a9eda] uppercase tracking-widest mb-2 border-b border-[#1a2a40] pb-1.5">
-                      {sys.label}
-                    </div>
-                    <div className="space-y-0.5">
-                      {tags.map(tag => <TagRow key={tag.id} tag={tag} values={values} />)}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
-  );
-}
-
-// ─── Table view ──────────────────────────────────────────────────────────────
-function TableView({ sites, values }: { sites: SiteDef[]; values: Record<string, TagValueResult> | null }) {
-  const [openRows, setOpenRows] = useState<Record<string, boolean>>({});
-  const toggle = (id: string) => setOpenRows(prev => ({ ...prev, [id]: !prev[id] }));
-
-  return (
-    <div className="overflow-auto rounded-xl border border-[#1a3050]">
-      <table className="w-full border-collapse text-left">
-        <thead>
-          <tr className="bg-[#003570] border-b border-[#1a4070]">
-            <th className="px-3 py-2.5 text-[11px] font-extrabold text-[#90c8f8] uppercase tracking-widest whitespace-nowrap min-w-[160px]">
-              Site Name
-            </th>
-            {SYSTEMS.map(sys => (
-              <th key={sys.key} className="px-3 py-2.5 text-[11px] font-extrabold text-[#90c8f8] uppercase tracking-widest text-center whitespace-nowrap">
-                {sys.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {sites.map(site => (
-            <AccordionRow
-              key={site.id}
-              site={site}
-              values={values}
-              isOpen={!!openRows[site.id]}
-              onToggle={() => toggle(site.id)}
-            />
-          ))}
-        </tbody>
-      </table>
+    <div className={cn(
+      "space-y-1 rounded-lg p-2",
+      hasAlarm ? "bg-red-50 ring-1 ring-red-200" : "bg-slate-50"
+    )}>
+      {tags.map(tag => (
+        <div key={tag.id} className="flex items-center justify-between gap-2 min-w-0">
+          <span className="text-[11px] text-slate-600 leading-tight truncate flex-1">
+            {tag.label}
+            {tag.unit ? <span className="text-slate-400 ml-0.5">({tag.unit})</span> : null}
+          </span>
+          <ValueChip tagId={tag.id} decimals={tag.decimals} values={values} />
+        </div>
+      ))}
     </div>
   );
 }
@@ -302,11 +135,9 @@ export default function SiteData() {
   const [isSimulated, setIsSimulated] = useState(true);
   const [connected, setConnected] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [activeSite, setActiveSite] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState(2);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"grid" | "table">("table");
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchConfig = useCallback(async () => {
@@ -345,70 +176,53 @@ export default function SiteData() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [fetchValues, refreshInterval]);
 
-  const activeSiteData = activeSite ? sites.find(s => s.id === activeSite) ?? null : null;
-
   return (
     <Layout>
-      <div className="min-h-screen bg-[#060e1e] flex flex-col">
+      <div className="min-h-screen bg-gray-50 flex flex-col">
 
         {/* ── Top header ── */}
-        <div className="bg-[#0a1628] border-b border-[#1a3050] px-4 py-2 flex items-center gap-3 flex-wrap">
+        <div className="bg-white border-b border-gray-200 shadow-sm px-4 py-2.5 flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">
-            <Activity className="w-5 h-5 text-[#4a9eda]" />
-            <span className="text-white font-extrabold text-sm tracking-wider uppercase">WTT International — Live Site Data</span>
+            <Activity className="w-5 h-5 text-blue-600" />
+            <span className="text-gray-800 font-extrabold text-sm tracking-wider uppercase">
+              WTT International — Live Site Data
+            </span>
           </div>
 
           <div className="ml-auto flex items-center gap-3">
-            {/* View toggle */}
-            <div className="flex items-center gap-0.5 bg-[#0d1f30] border border-[#1a3050] rounded-lg p-0.5">
-              <button
-                onClick={() => setViewMode("table")}
-                title="Table View"
-                className={cn(
-                  "flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-bold transition-colors",
-                  viewMode === "table" ? "bg-[#0060cc] text-white" : "text-[#4a9eda] hover:text-white"
-                )}
-              >
-                <TableProperties className="w-3.5 h-3.5" />
-                Table
-              </button>
-              <button
-                onClick={() => setViewMode("grid")}
-                title="Grid View"
-                className={cn(
-                  "flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-bold transition-colors",
-                  viewMode === "grid" ? "bg-[#0060cc] text-white" : "text-[#4a9eda] hover:text-white"
-                )}
-              >
-                <LayoutGrid className="w-3.5 h-3.5" />
-                Grid
-              </button>
-            </div>
-
             {/* Status pill */}
             <div className={cn(
               "flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border",
               connected
                 ? isSimulated
-                  ? "bg-amber-900/40 border-amber-600/50 text-amber-300"
-                  : "bg-emerald-900/40 border-emerald-600/50 text-emerald-300"
-                : "bg-red-900/40 border-red-600/50 text-red-300"
+                  ? "bg-amber-50 border-amber-300 text-amber-700"
+                  : "bg-green-50 border-green-300 text-green-700"
+                : "bg-red-50 border-red-300 text-red-700"
             )}>
               {connected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
               {!connected ? "Disconnected" : isSimulated ? "Simulated Data" : "Live ADS Data"}
             </div>
 
             {lastUpdated && (
-              <div className="flex items-center gap-1 text-[10px] text-[#4a6a8a]">
+              <div className="flex items-center gap-1 text-[10px] text-gray-400">
                 <Clock className="w-3 h-3" />
                 {lastUpdated.toLocaleTimeString()}
               </div>
             )}
 
-            <button onClick={fetchValues} className="p-1.5 rounded bg-[#1a2a40] hover:bg-[#2a3a50] text-[#4a9eda] transition-colors" title="Refresh now">
+            <button
+              onClick={fetchValues}
+              className="p-1.5 rounded bg-gray-100 hover:bg-gray-200 text-blue-600 transition-colors"
+              title="Refresh now"
+            >
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
-            <button onClick={() => setShowSettings(true)} className="p-1.5 rounded bg-[#1a2a40] hover:bg-[#2a3a50] text-[#4a9eda] transition-colors" title="Settings">
+
+            <button
+              onClick={() => setShowSettings(true)}
+              className="p-1.5 rounded bg-gray-100 hover:bg-gray-200 text-blue-600 transition-colors"
+              title="Settings"
+            >
               <Settings2 className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -416,174 +230,117 @@ export default function SiteData() {
 
         {/* ── Error banner ── */}
         {error && (
-          <div className="bg-red-900/60 border-b border-red-700 px-4 py-2 text-[11px] text-red-200 flex items-center gap-2">
+          <div className="bg-red-50 border-b border-red-200 px-4 py-2 text-[11px] text-red-600 flex items-center gap-2">
             <WifiOff className="w-3 h-3" />
             {error}
-            <span className="text-red-400 ml-1">Check that the API server is running and the /api/site-data endpoint is registered.</span>
           </div>
         )}
 
         {/* ── Simulated data notice ── */}
         {connected && isSimulated && (
-          <div className="bg-amber-900/30 border-b border-amber-800/40 px-4 py-1.5 text-[11px] text-amber-300 flex items-center gap-2">
+          <div className="bg-amber-50 border-b border-amber-200 px-4 py-1.5 text-[11px] text-amber-700 flex items-center gap-2">
             <span className="font-bold">DEMO MODE</span> — Showing simulated data. Connect your Beckhoff ADS bridge to see live values.
-            <a href="#ads-setup" className="underline ml-1 text-amber-200">How to connect →</a>
           </div>
         )}
 
-        {/* ── Main content ── */}
+        {/* ── Table ── */}
         <div className="flex-1 overflow-auto p-3">
           {sites.length === 0 ? (
             <div className="flex items-center justify-center h-64">
-              <div className="text-[#2a4a6a] text-sm animate-pulse">Loading site configuration…</div>
+              <div className="text-gray-400 text-sm animate-pulse">Loading site configuration…</div>
             </div>
-          ) : viewMode === "table" ? (
-            <TableView sites={sites} values={values} />
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">
-              {sites.map(site => (
-                <SitePanel
-                  key={site.id}
-                  site={site}
-                  values={values}
-                  isActive={activeSite === site.id}
-                  onClick={() => setActiveSite(prev => prev === site.id ? null : site.id)}
-                />
-              ))}
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-auto">
+              <table className="w-full border-collapse text-left text-sm">
+                <thead>
+                  <tr className="bg-blue-700 text-white">
+                    <th className="px-4 py-3 text-[11px] font-extrabold uppercase tracking-widest whitespace-nowrap border-r border-blue-600 sticky left-0 bg-blue-700 z-10 min-w-[150px]">
+                      Site Name
+                    </th>
+                    {SYSTEMS.map((sys, i) => (
+                      <th
+                        key={sys.key}
+                        className={cn(
+                          "px-4 py-3 text-[11px] font-extrabold uppercase tracking-widest text-center whitespace-nowrap",
+                          i < SYSTEMS.length - 1 ? "border-r border-blue-600" : ""
+                        )}
+                      >
+                        {sys.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sites.map((site, rowIdx) => {
+                    const sysMap = siteSystemMap(site);
+                    const allTagIds = site.sections.flatMap(s => s.tags.map(t => t.id));
+                    const hasAlarm = allTagIds.some(id => values?.[id]?.status === "alarm");
+
+                    return (
+                      <tr
+                        key={site.id}
+                        className={cn(
+                          "border-b border-gray-100 align-top",
+                          hasAlarm ? "bg-red-50" : rowIdx % 2 === 0 ? "bg-white" : "bg-slate-50/60"
+                        )}
+                      >
+                        {/* Site name */}
+                        <td className={cn(
+                          "px-4 py-3 border-r border-gray-100 sticky left-0 z-10",
+                          hasAlarm ? "bg-red-50" : rowIdx % 2 === 0 ? "bg-white" : "bg-slate-50/60"
+                        )}>
+                          <div className="flex items-center gap-2">
+                            <span className={cn(
+                              "text-[12px] font-bold uppercase tracking-wide whitespace-nowrap",
+                              hasAlarm ? "text-red-600" : "text-blue-800"
+                            )}>
+                              {site.name}
+                            </span>
+                            {hasAlarm && (
+                              <span className="text-[9px] font-bold bg-red-500 text-white px-1.5 py-0.5 rounded animate-pulse">
+                                ALARM
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* System columns */}
+                        {SYSTEMS.map((sys, i) => (
+                          <td
+                            key={sys.key}
+                            className={cn(
+                              "px-3 py-2.5",
+                              i < SYSTEMS.length - 1 ? "border-r border-gray-100" : ""
+                            )}
+                          >
+                            <SystemCell tags={sysMap[sys.key]} values={values} />
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
-
-          {/* ── ADS setup guide ── */}
-          <div id="ads-setup" className="mt-6 bg-[#0a1628] border border-[#1a3050] rounded-xl p-5 max-w-3xl">
-            <h3 className="text-[#4a9eda] font-bold text-sm mb-3 flex items-center gap-2">
-              <Settings2 className="w-4 h-4" />
-              Connecting Beckhoff ADS — Setup Guide
-            </h3>
-            <div className="space-y-3 text-[11px] text-[#8aaccb]">
-              <p><span className="text-[#90c8f8] font-semibold">Option 1 — Local Bridge (Recommended):</span> Run a small Node.js script on the machine with TwinCAT installed that reads ADS tags and POSTs them to this app's API.</p>
-              <div className="bg-[#060e1e] border border-[#1a2a40] rounded p-3 font-mono text-[10px] text-[#6aacda] whitespace-pre-wrap overflow-x-auto">
-{`// bridge.js — run on your TwinCAT machine
-const ADS = require('ads-client');
-const client = new ADS.Client({ targetAmsNetId: 'YOUR.PLC.AMS.NET.ID' });
-
-setInterval(async () => {
-  const tags = {};
-  // Read each tag from PLC
-  tags['k13_mr_feed'] = await client.readValue('GVL.Kanchan1_3.MainRO.FeedFlow');
-  // ... add all your tags ...
-  
-  // Push to this app
-  await fetch('https://your-replit-app.replit.app/pm-app/api/site-data/push', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tags })
-  });
-}, 2000);`}
-              </div>
-              <p><span className="text-[#90c8f8] font-semibold">Option 2 — Direct (if PLC is internet-accessible):</span> Set <code className="bg-[#0d1f30] px-1 rounded text-[#4ad0f8]">BECKHOFF_AMS_NET_ID</code> environment variable and contact the development team to enable direct ADS connection mode.</p>
-              <p className="text-[#4a6a8a]">
-                All tag IDs and their ADS variable paths can be fetched from <code className="bg-[#0d1f30] px-1 rounded text-[#4ad0f8]">/api/site-data/ads-tags</code> to help you build the bridge script.
-              </p>
-            </div>
-          </div>
         </div>
-
-        {/* ── Bottom site navigation (grid view only) ── */}
-        {viewMode === "grid" && (
-          <div className="bg-[#001530] border-t border-[#1a3050] px-2 py-1.5 flex items-center gap-1.5 overflow-x-auto flex-shrink-0">
-            <button
-              onClick={() => setActiveSite(null)}
-              className={cn(
-                "flex items-center gap-1 px-2.5 py-1.5 rounded text-[10px] font-bold whitespace-nowrap transition-colors",
-                activeSite === null ? "bg-[#0060cc] text-white" : "bg-[#0a1628] text-[#6a9abf] hover:bg-[#1a2a40] hover:text-[#8abcdf]"
-              )}
-            >
-              <Home className="w-3 h-3" />
-              ALL
-            </button>
-            {sites.map(site => {
-              const allTagIds = site.sections.flatMap(s => s.tags.map(t => t.id));
-              const hasAlarm = allTagIds.some(id => values?.[id]?.status === "alarm");
-              return (
-                <button
-                  key={site.id}
-                  onClick={() => setActiveSite(prev => prev === site.id ? null : site.id)}
-                  className={cn(
-                    "px-2.5 py-1.5 rounded text-[10px] font-bold whitespace-nowrap transition-colors",
-                    activeSite === site.id
-                      ? hasAlarm ? "bg-red-600 text-white" : "bg-[#0060cc] text-white"
-                      : hasAlarm
-                        ? "bg-red-900/50 text-red-300 border border-red-700 hover:bg-red-800/50"
-                        : "bg-[#0a1628] text-[#6a9abf] hover:bg-[#1a2a40] hover:text-[#8abcdf]"
-                  )}
-                >
-                  {site.name}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* ── Focused site detail overlay (grid view) ── */}
-        {activeSiteData && viewMode === "grid" && (
-          <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setActiveSite(null)}>
-            <div
-              className="bg-[#0a1628] border border-[#1a3050] rounded-xl max-w-xl w-full max-h-[85vh] overflow-auto shadow-2xl"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a3050] bg-[#003570] rounded-t-xl">
-                <span className="text-[#90c8f8] font-extrabold tracking-widest uppercase text-sm">{activeSiteData.name}</span>
-                <button onClick={() => setActiveSite(null)} className="text-[#4a9eda] hover:text-white transition-colors">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="p-4 space-y-4">
-                {activeSiteData.sections.map((sec, i) => (
-                  <div key={i}>
-                    {sec.title && (
-                      <div className="text-[11px] font-bold text-[#4a9eda] uppercase tracking-widest mb-2 border-b border-[#1a2a40] pb-1">
-                        {sec.title}
-                      </div>
-                    )}
-                    <div className="space-y-1">
-                      {sec.tags.map(tag => {
-                        const tv = values?.[tag.id];
-                        return (
-                          <div key={tag.id} className="flex items-center justify-between py-1 border-b border-[#0f1e30]">
-                            <div>
-                              <span className="text-[12px] text-[#c0cce0]">{tag.label}{tag.unit ? ` (${tag.unit})` : ""}</span>
-                              <span className="block text-[9px] text-[#2a4a6a] font-mono">{tag.adsTag}</span>
-                            </div>
-                            <div className="text-right">
-                              <ValueBox tagId={tag.id} decimals={tag.decimals} values={values} />
-                              {tv && (
-                                <div className="text-[9px] text-[#2a4a6a] mt-0.5">
-                                  {tv.source} · {tv.timestamp ? new Date(tv.timestamp).toLocaleTimeString() : "—"}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* ── Settings modal ── */}
         {showSettings && (
-          <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setShowSettings(false)}>
-            <div className="bg-[#0a1628] border border-[#1a3050] rounded-xl w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a3050]">
-                <span className="text-white font-bold text-sm flex items-center gap-2"><Settings2 className="w-4 h-4 text-[#4a9eda]" />Display Settings</span>
-                <button onClick={() => setShowSettings(false)} className="text-[#4a9eda] hover:text-white"><X className="w-4 h-4" /></button>
+          <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={() => setShowSettings(false)}>
+            <div className="bg-white border border-gray-200 rounded-xl w-full max-w-sm shadow-xl" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                <span className="text-gray-800 font-bold text-sm flex items-center gap-2">
+                  <Settings2 className="w-4 h-4 text-blue-600" />
+                  Display Settings
+                </span>
+                <button onClick={() => setShowSettings(false)} className="text-gray-400 hover:text-gray-700">
+                  <X className="w-4 h-4" />
+                </button>
               </div>
               <div className="p-4 space-y-4">
                 <div>
-                  <label className="text-[11px] text-[#8aaccb] block mb-2">Refresh Interval</label>
+                  <label className="text-[11px] text-gray-500 block mb-2 font-semibold uppercase tracking-wider">Refresh Interval</label>
                   <div className="flex gap-2">
                     {[1, 2, 5, 10].map(s => (
                       <button
@@ -592,8 +349,8 @@ setInterval(async () => {
                         className={cn(
                           "flex-1 py-1.5 rounded text-[11px] font-bold border transition-colors",
                           refreshInterval === s
-                            ? "bg-[#0060cc] border-[#0080ff] text-white"
-                            : "bg-[#0d1f30] border-[#1a3050] text-[#6a9abf] hover:border-[#2a4060]"
+                            ? "bg-blue-600 border-blue-600 text-white"
+                            : "bg-white border-gray-200 text-gray-600 hover:border-blue-300"
                         )}
                       >
                         {s}s
@@ -601,10 +358,10 @@ setInterval(async () => {
                     ))}
                   </div>
                 </div>
-                <div className="text-[11px] text-[#4a6a8a] border border-[#1a2a40] rounded p-3 bg-[#060e1e]">
-                  <p className="font-semibold text-[#6a9abf] mb-1">ADS Bridge API Key</p>
-                  <p>POST to <code className="text-[#4ad0f8] text-[10px]">/api/site-data/push</code> with:</p>
-                  <pre className="text-[9px] mt-1 text-[#4a9eda] overflow-x-auto">{"{ tags: { tagId: value } }"}</pre>
+                <div className="text-[11px] text-gray-500 border border-gray-100 rounded-lg p-3 bg-gray-50">
+                  <p className="font-semibold text-gray-600 mb-1">ADS Bridge Push Endpoint</p>
+                  <p>POST to <code className="text-blue-600 bg-blue-50 px-1 rounded text-[10px]">/api/site-data/push</code></p>
+                  <pre className="text-[9px] mt-1 text-blue-500 overflow-x-auto">{"{ tags: { tagId: value } }"}</pre>
                 </div>
               </div>
             </div>
