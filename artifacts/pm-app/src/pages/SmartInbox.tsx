@@ -1343,79 +1343,70 @@ export default function SmartInbox() {
             </div>
           </div>
 
-          {/* Action buttons */}
-          <div className="px-3 py-3 space-y-2 border-b border-gray-100">
+          {/* Primary action: Sync */}
+          <div className="px-3 pt-3 pb-2 border-b border-gray-100">
             <button onClick={syncAllEmails} disabled={syncing}
-              className="w-full flex items-center gap-2.5 px-3 py-2.5 bg-teal-600 text-white text-[11px] font-semibold rounded-lg hover:bg-teal-700 active:scale-[0.98] transition-all disabled:opacity-50">
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 bg-[#1B2A5E] text-white text-[11px] font-semibold rounded-xl hover:bg-[#243672] active:scale-[0.98] transition-all disabled:opacity-50 shadow-sm">
               {syncing
                 ? <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
                 : <CloudDownload className="w-3.5 h-3.5 shrink-0" />}
-              <span>{syncing ? "Syncing…" : "Sync All Emails"}</span>
+              <span>{syncing ? "Syncing…" : "Sync Emails"}</span>
             </button>
-            <button onClick={() => {
-              setAnalyzing(true);
-              triggerAutoAnalysis().then(success => {
-                if (success) {
-                  setSyncProgress({ message: "Auto-analysis completed! Refreshing emails...", progress: 100, total: 100 });
-                  setTimeout(() => {
-                    loadStats();
-                    loadEmails(activeFilter, filterValue, search || undefined);
-                    setSyncProgress(null);
-                  }, 2000);
-                } else {
-                  setSyncProgress({ message: "Auto-analysis failed. Please try again.", progress: 0, total: 0 });
-                  setTimeout(() => setSyncProgress(null), 3000);
-                }
-                setAnalyzing(false);
-              });
-            }} disabled={analyzing}
-              className="w-full flex items-center gap-2.5 px-3 py-2.5 bg-purple-600 text-white text-[11px] font-semibold rounded-lg hover:bg-purple-700 active:scale-[0.98] transition-all disabled:opacity-50">
-              {analyzing
-                ? <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-                : <BrainCircuit className="w-3.5 h-3.5 shrink-0" />}
-              <span>{analyzing ? "Analyzing…" : "AI Auto-Analysis"}</span>
-            </button>
+
+            {/* Progress bar */}
             {syncProgress && (
-              <div className="px-2 py-2 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-[10px] text-blue-700 font-medium">{syncProgress.message}</p>
+              <div className="mt-2 px-1 py-2 bg-blue-50 border border-blue-100 rounded-lg">
+                <p className="text-[10px] text-blue-700 font-medium truncate">{syncProgress.message}</p>
                 {syncProgress.total > 0 && (
-                  <div className="mt-1 w-full bg-blue-100 rounded-full h-1">
-                    <div 
-                      className="bg-blue-500 h-1 rounded-full transition-all duration-300"
-                      style={{ width: `${(syncProgress.progress / syncProgress.total) * 100}%` }}
+                  <div className="mt-1.5 w-full bg-blue-100 rounded-full h-1.5">
+                    <div
+                      className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
+                      style={{ width: `${Math.min(100, Math.round((syncProgress.progress / syncProgress.total) * 100))}%` }}
                     />
                   </div>
                 )}
               </div>
             )}
-            <button onClick={handleClassifyAll} disabled={classifying}
-              className="w-full flex items-center gap-2.5 px-3 py-2.5 bg-indigo-600 text-white text-[11px] font-semibold rounded-lg hover:bg-indigo-700 active:scale-[0.98] transition-all disabled:opacity-50">
-              {classifying
-                ? <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-                : <BrainCircuit className="w-3.5 h-3.5 shrink-0" />}
-              <span>{classifying ? "Classifying…" : "AI Classify All"}</span>
-            </button>
-            {draftAllResult === "all_done" ? (
-              <div className="flex flex-col gap-1.5">
-                <div className="w-full flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 text-green-700 text-[10px] font-medium rounded-lg">
-                  <Bot className="w-3.5 h-3.5 shrink-0" />
-                  <span>All drafts up to date</span>
-                </div>
-                <button onClick={() => { setDraftAllResult(""); handleDraftAll(true); }} disabled={classifying}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 bg-amber-500 text-white text-[10px] font-semibold rounded-lg hover:bg-amber-600 active:scale-[0.98] transition-all disabled:opacity-50">
-                  <RefreshCw className="w-3 h-3 shrink-0" />
-                  <span>Regenerate All Drafts</span>
-                </button>
-              </div>
-            ) : (
-              <button onClick={() => handleDraftAll(false)} disabled={draftingAll || classifying}
-                className="w-full flex items-center gap-2.5 px-3 py-2.5 bg-amber-500 text-white text-[11px] font-semibold rounded-lg hover:bg-amber-600 active:scale-[0.98] transition-all disabled:opacity-50">
-                {draftingAll
-                  ? <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-                  : <Bot className="w-3.5 h-3.5 shrink-0" />}
-                <span>{draftingAll ? (draftAllResult || "Drafting…") : "AI Draft All Replies"}</span>
+
+            {/* Secondary AI actions - compact icon row */}
+            <div className="mt-2 grid grid-cols-3 gap-1.5">
+              <button
+                onClick={() => {
+                  setAnalyzing(true);
+                  triggerAutoAnalysis().then(success => {
+                    setSyncProgress({ message: success ? "Analysis done! Refreshing…" : "Analysis failed.", progress: 100, total: 100 });
+                    setTimeout(() => { loadStats(); loadEmails(activeFilter, filterValue, search || undefined); setSyncProgress(null); }, 2000);
+                    setAnalyzing(false);
+                  });
+                }}
+                disabled={analyzing}
+                title="AI Auto-Analysis"
+                className="flex flex-col items-center gap-1 py-2 rounded-lg bg-purple-50 hover:bg-purple-100 border border-purple-100 text-purple-700 transition-colors disabled:opacity-50">
+                {analyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BrainCircuit className="w-3.5 h-3.5" />}
+                <span className="text-[9px] font-semibold">Analyse</span>
               </button>
-            )}
+              <button
+                onClick={handleClassifyAll}
+                disabled={classifying}
+                title="AI Classify All"
+                className="flex flex-col items-center gap-1 py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 text-indigo-700 transition-colors disabled:opacity-50">
+                {classifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                <span className="text-[9px] font-semibold">Classify</span>
+              </button>
+              <button
+                onClick={() => handleDraftAll(draftAllResult === "all_done")}
+                disabled={draftingAll || classifying}
+                title={draftAllResult === "all_done" ? "Regenerate All Drafts" : "AI Draft All Replies"}
+                className={cn(
+                  "flex flex-col items-center gap-1 py-2 rounded-lg border transition-colors disabled:opacity-50",
+                  draftAllResult === "all_done"
+                    ? "bg-green-50 hover:bg-green-100 border-green-100 text-green-700"
+                    : "bg-amber-50 hover:bg-amber-100 border-amber-100 text-amber-700"
+                )}>
+                {draftingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : draftAllResult === "all_done" ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
+                <span className="text-[9px] font-semibold">{draftAllResult === "all_done" ? "Regen" : "Draft"}</span>
+              </button>
+            </div>
           </div>
 
           {/* Auto-reply toggle */}
@@ -1579,16 +1570,16 @@ export default function SmartInbox() {
         <div className="flex flex-col w-[340px] shrink-0 border-r border-gray-100 bg-white h-full">
           {/* Stats bar */}
           {stats && (
-            <div className="grid grid-cols-4 gap-0 border-b border-gray-100 shrink-0">
+            <div className="grid grid-cols-4 gap-0 border-b border-gray-100 shrink-0 bg-[#f8f9fc]">
               {[
-                { label: "Unread",     value: n(stats.unread),         color: "text-[#1B2A5E]" },
-                { label: "Important",  value: n(stats.important),      color: "text-red-600" },
-                { label: "Drafts",     value: n(stats.drafts_count),   color: "text-orange-600" },
-                { label: "Replied",    value: n(stats.auto_replied_count), color: "text-green-600" },
+                { label: "Unread",    value: n(stats.unread),              color: "text-[#1B2A5E]",  bg: n(stats.unread) > 0 ? "bg-[#edf2fb]" : "" },
+                { label: "Important", value: n(stats.important),           color: "text-red-600",    bg: n(stats.important) > 0 ? "bg-red-50" : "" },
+                { label: "Drafts",    value: n(stats.drafts_count),        color: "text-orange-600", bg: n(stats.drafts_count) > 0 ? "bg-orange-50" : "" },
+                { label: "Replied",   value: n(stats.auto_replied_count),  color: "text-green-600",  bg: "" },
               ].map(s => (
-                <div key={s.label} className="flex flex-col items-center py-2 border-r last:border-r-0 border-gray-100">
-                  <span className={cn("text-base font-black", s.color)}>{s.value}</span>
-                  <span className="text-[9px] text-gray-400 uppercase tracking-wider font-semibold">{s.label}</span>
+                <div key={s.label} className={cn("flex flex-col items-center py-2.5 border-r last:border-r-0 border-gray-100 transition-colors", s.bg)}>
+                  <span className={cn("text-[17px] font-black leading-none", s.color)}>{s.value}</span>
+                  <span className="text-[9px] text-gray-400 uppercase tracking-wider font-bold mt-0.5">{s.label}</span>
                 </div>
               ))}
             </div>
@@ -1676,17 +1667,30 @@ export default function SmartInbox() {
               </div>
             )}
             {loading ? (
-              <div className="flex items-center justify-center py-16 flex-col gap-3">
-                <Loader2 className="w-6 h-6 text-gray-300 animate-spin" />
-                <span className="text-xs text-gray-400">Loading…</span>
+              <div className="flex items-center justify-center py-20 flex-col gap-3">
+                <Loader2 className="w-7 h-7 text-[#1B2A5E]/30 animate-spin" />
+                <span className="text-xs text-gray-400">Loading emails…</span>
               </div>
             ) : emails.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 gap-3 px-6 text-center">
-                <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center">
-                  <Inbox className="w-6 h-6 text-gray-300" />
+              <div className="flex flex-col items-center justify-center py-14 gap-4 px-6 text-center">
+                <div className="w-14 h-14 rounded-2xl bg-[#f4f6fb] border border-gray-100 flex items-center justify-center">
+                  <Inbox className="w-7 h-7 text-gray-300" />
                 </div>
-                <p className="text-sm font-semibold text-gray-500">No emails found</p>
-                <p className="text-xs text-gray-400">Your inbox syncs automatically every 5 minutes</p>
+                <div>
+                  <p className="text-sm font-bold text-gray-600 mb-1">No emails here</p>
+                  <p className="text-xs text-gray-400 leading-relaxed">
+                    {activeFilter === "all"
+                      ? "Sync your inbox to load emails from the last 90 days."
+                      : `No emails match the current filter. Try \"All Emails\" or sync again.`}
+                  </p>
+                </div>
+                {activeFilter === "all" && (
+                  <button onClick={syncAllEmails} disabled={syncing}
+                    className="flex items-center gap-2 px-4 py-2 bg-[#1B2A5E] text-white text-xs font-semibold rounded-lg hover:opacity-90 disabled:opacity-50 shadow-sm">
+                    {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CloudDownload className="w-3.5 h-3.5" />}
+                    {syncing ? "Syncing…" : "Sync Now"}
+                  </button>
+                )}
               </div>
             ) : emails.map(email => {
               const isSelected = selected?.uid === email.uid;
@@ -1741,15 +1745,24 @@ export default function SmartInbox() {
                   {/* Content */}
                   <div className="flex-1 min-w-0 py-2.5 px-2.5 pr-3">
                     <div className="flex items-baseline justify-between gap-1 mb-0.5">
-                      <span className={cn("text-[12px] truncate", email.seen ? "text-gray-600 font-normal" : "text-gray-900 font-bold")}>
+                      <span className={cn("text-[12px] truncate flex-1", email.seen ? "text-gray-600 font-normal" : "text-gray-900 font-bold")}>
                         {senderName(email.from_addr)}
                       </span>
-                      <span className="text-[10px] text-gray-400 shrink-0">{formatDate(email.email_date)}</span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {email.has_attachment && <Paperclip className="w-2.5 h-2.5 text-gray-400" />}
+                        <span className="text-[10px] text-gray-400">{formatDate(email.email_date)}</span>
+                      </div>
                     </div>
 
                     <div className={cn("text-[11px] truncate mb-1", email.seen ? "text-gray-500" : "text-gray-800 font-semibold")}>
-                      {email.subject}
+                      {email.subject || "(No Subject)"}
                     </div>
+
+                    {email.snippet && (
+                      <div className="text-[10px] text-gray-400 truncate mb-1.5 leading-relaxed">
+                        {email.snippet.replace(/\s+/g, " ").trim()}
+                      </div>
+                    )}
 
                     <div className="flex items-center gap-1 flex-wrap">
                       {email.email_type && typeConf && (
@@ -1764,8 +1777,8 @@ export default function SmartInbox() {
                         </span>
                       )}
                       {email.has_draft && !email.auto_replied && (
-                        <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-orange-50 border border-orange-300 text-orange-700 flex items-center gap-0.5 animate-pulse">
-                          <Bot className="w-2 h-2" />Draft Ready
+                        <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-orange-50 border border-orange-300 text-orange-700 flex items-center gap-0.5">
+                          <Bot className="w-2 h-2" />Draft
                         </span>
                       )}
                       {email.auto_replied && (
@@ -1778,7 +1791,6 @@ export default function SmartInbox() {
                           <Clock className="w-2 h-2" />Classifying…
                         </span>
                       )}
-                      {email.has_attachment && <Paperclip className="w-2.5 h-2.5 text-gray-400 ml-auto" />}
                     </div>
                   </div>
                 </div>

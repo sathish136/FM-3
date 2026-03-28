@@ -187,20 +187,12 @@ function parseEmailDate(date: any): Date | null {
   }
 }
 
-// Helper function to check if email is from March 21, 2026 onwards
-function isEmailFromMarch212026(date: Date | null): boolean {
-  if (!date) return false; // If no date, don't include
-  
-  const year = date.getFullYear();
-  const month = date.getMonth(); // 0-based (0 = January, 2 = March)
-  const day = date.getDate();
-  
-  // Check if date is March 21, 2026 or later
-  if (year > 2026) return true;
-  if (year < 2026) return false;
-  if (month > 2) return true; // After March
-  if (month < 2) return false; // Before March
-  return day >= 21; // March 21 or later
+// Helper function to check if email is within the 90-day lookback window
+function isEmailWithinLookback(date: Date | null): boolean {
+  if (!date) return false;
+  const ninetyDaysAgo = new Date();
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+  return date >= ninetyDaysAgo;
 }
 function detectAttachments(bodyStructure: any): boolean {
   if (bodyStructure.disposition?.toLowerCase() === "attachment") return true;
@@ -243,8 +235,8 @@ async function syncFolder(account: Account, folderPath: string, syncId: string):
         
         const parsedDate = parseEmailDate(msg.envelope?.date);
         
-        // Skip emails not from March 21, 2026 onwards
-        if (!isEmailFromMarch212026(parsedDate)) {
+        // Skip emails outside the 90-day lookback window
+        if (!isEmailWithinLookback(parsedDate)) {
           continue;
         }
         
@@ -280,17 +272,19 @@ async function syncFolder(account: Account, folderPath: string, syncId: string):
         );
       }
       
-      // Update total to reflect only March 21, 2026 emails
+      // Update total to reflect only emails within lookback window
       operation.total = emailsFromMarch21;
-      operation.message = `Processed ${processed} emails, found ${emailsFromMarch21} from March 21, 2026 onwards in ${folderPath}`;
+      operation.message = `Processed ${processed} emails, found ${emailsFromMarch21} within lookback window in ${folderPath}`;
 
       // Fetch bodies for new emails (limit to prevent memory issues)
+      const lookbackDate = new Date();
+      lookbackDate.setDate(lookbackDate.getDate() - 90);
       const newEmailsRes = await emailPool.query(
         `SELECT uid FROM email_cache 
          WHERE account_id=$1 AND folder_path=$2 AND body_fetched=false 
-         AND email_date >= '2026-03-21'
+         AND email_date >= $3
          ORDER BY email_date DESC LIMIT 50`,
-        [account.id, folderPath]
+        [account.id, folderPath, lookbackDate]
       );
 
       for (const row of newEmailsRes.rows) {
@@ -388,18 +382,20 @@ async function ingestIntoSmartInbox(userEmail?: string): Promise<void> {
 
     const accountId = accountFilter?.rows[0]?.id;
     
-    // Get emails not yet in smart inbox, but only from March 21, 2026 onwards
+    // Get emails not yet in smart inbox, within 90-day lookback window
+    const lookbackDate = new Date();
+    lookbackDate.setDate(lookbackDate.getDate() - 90);
     let query = `
       SELECT ec.uid, ec.account_id, ec.subject, ec.from_addr, ec.to_addr, ec.cc_addr,
              ec.email_date, ec.body_text, ec.body_html, ec.seen, ec.has_attachment
       FROM email_cache ec
       LEFT JOIN smart_email_inbox sei ON ec.uid::text = sei.uid
-      WHERE sei.uid IS NULL AND ec.email_date >= '2026-03-21'
+      WHERE sei.uid IS NULL AND ec.email_date >= $1
     `;
-    const params: any[] = [];
+    const params: any[] = [lookbackDate];
     
     if (accountId) {
-      query += ` AND ec.account_id = $1`;
+      query += ` AND ec.account_id = $2`;
       params.push(accountId);
     }
 

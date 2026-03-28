@@ -481,7 +481,7 @@ router.post("/email/:uid/ai-summary", async (req, res) => {
   if (!text) return res.status(400).json({ error: "No body content provided" });
   try {
     const completion = await getOpenAI().chat.completions.create({
-      model: "gpt-5-mini",
+      model: "gpt-4o-mini",
       max_completion_tokens: 400,
       messages: [
         { role: "system", content: "You are an email assistant. Summarize the email concisely in 2-3 sentences. Focus on key points, action items, and important details." },
@@ -502,7 +502,7 @@ router.post("/email/:uid/ai-reply", async (req, res) => {
   if (!text) return res.status(400).json({ error: "No body content provided" });
   try {
     const completion = await getOpenAI().chat.completions.create({
-      model: "gpt-5-mini",
+      model: "gpt-4o-mini",
       max_completion_tokens: 600,
       messages: [
         { role: "system", content: 'Generate 3 short, professional reply options for this email. Return a JSON object with a "replies" key containing an array of 3 strings. Each reply should be concise (1-3 sentences) and differ in tone (formal, friendly, brief).' },
@@ -614,7 +614,7 @@ router.post("/email/ai-compose", async (req, res) => {
   if (!body && !subject) return res.status(400).json({ error: "No content provided" });
   try {
     const completion = await getOpenAI().chat.completions.create({
-      model: "gpt-5-mini",
+      model: "gpt-4o-mini",
       max_completion_tokens: 700,
       messages: [
         { role: "system", content: "You are a professional email writing assistant. Improve the user's email draft to be clearer, more professional, and polished. Preserve the intent and key information. Return only the improved email body text, no subject or extra commentary." },
