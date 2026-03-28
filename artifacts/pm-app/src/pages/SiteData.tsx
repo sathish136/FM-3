@@ -13,7 +13,6 @@ interface ValuesResponse { values: Record<string, TagValueResult>; isSimulated: 
 
 const SYSTEMS = [
   { key: "biological", label: "Biological" },
-  { key: "cts_mbr",   label: "CTS MBR"    },
   { key: "mbr",       label: "MBR"         },
   { key: "ro",        label: "RO"          },
   { key: "reject_ro", label: "Reject RO"   },
@@ -23,8 +22,7 @@ type SystemKey = typeof SYSTEMS[number]["key"];
 function classifySection(sec: SectionDef): SystemKey {
   const title = (sec.title ?? "").toUpperCase().trim();
   if (title.includes("REJECT"))  return "reject_ro";
-  if (title.includes("CTS"))     return "cts_mbr";
-  if (title === "MBR" || title.includes("MBR SKID")) return "mbr";
+  if (title === "MBR" || title.includes("MBR SKID") || title.includes("CTS")) return "mbr";
   if (title.includes("MAIN RO") || (title.includes("RO") && !title.includes("REJECT"))) return "ro";
   const combined = [...sec.tags.map(t => t.label.toLowerCase()), ...sec.tags.map(t => t.id)].join(" ");
   if (combined.includes("bio") || combined.includes("blower") || combined.includes("ntflow") || combined.includes("nt flow") || combined.includes("srs")) return "biological";
@@ -34,7 +32,7 @@ function classifySection(sec: SectionDef): SystemKey {
 }
 
 function siteSystemMap(site: SiteDef): Record<SystemKey, TagDef[]> {
-  const map: Record<SystemKey, TagDef[]> = { biological: [], cts_mbr: [], mbr: [], ro: [], reject_ro: [] };
+  const map: Record<SystemKey, TagDef[]> = { biological: [], mbr: [], ro: [], reject_ro: [] };
   for (const sec of site.sections) map[classifySection(sec)].push(...sec.tags);
   return map;
 }
@@ -160,48 +158,62 @@ export default function SiteData() {
             <div className="flex items-center justify-center h-full">
               <span className="text-gray-400 text-xs animate-pulse">Loading site configuration…</span>
             </div>
-          ) : (
-            <table className="w-full border-collapse bg-white rounded-xl overflow-hidden shadow-sm border border-gray-200 table-fixed text-[11px]">
-              <colgroup>
-                <col style={{ width: "13%" }} />
-                <col style={{ width: "17.4%" }} />
-                <col style={{ width: "17.4%" }} />
-                <col style={{ width: "17.4%" }} />
-                <col style={{ width: "17.4%" }} />
-                <col style={{ width: "17.4%" }} />
-              </colgroup>
-              <thead className="sticky top-0 z-10">
-                <tr className="bg-blue-700">
-                  <th className="px-2 py-1.5 text-[10px] font-extrabold text-white uppercase tracking-wider text-left border-r border-blue-600">Site</th>
-                  {SYSTEMS.map((sys, i) => (
-                    <th key={sys.key} className={cn("px-2 py-1.5 text-[10px] font-extrabold text-white uppercase tracking-wider text-center", i < SYSTEMS.length - 1 ? "border-r border-blue-600" : "")}>
-                      {sys.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {sites.map((site, ri) => {
-                  const sysMap = siteSystemMap(site);
-                  const allIds = site.sections.flatMap(s => s.tags.map(t => t.id));
-                  const hasAlarm = allIds.some(id => values?.[id]?.status === "alarm");
-                  return (
-                    <tr key={site.id} className={cn("align-top", hasAlarm ? "bg-red-50" : ri % 2 === 0 ? "bg-white" : "bg-slate-50/50")}>
-                      <td className={cn("px-2 py-1.5 border-r border-gray-100 font-bold text-[10px] uppercase tracking-wide whitespace-nowrap", hasAlarm ? "text-red-600" : "text-blue-800")}>
-                        {site.name}
-                        {hasAlarm && <span className="ml-1 text-[8px] bg-red-500 text-white px-1 py-px rounded animate-pulse">!</span>}
-                      </td>
-                      {SYSTEMS.map((sys, i) => (
-                        <td key={sys.key} className={cn("px-2 py-1.5", i < SYSTEMS.length - 1 ? "border-r border-gray-100" : "")}>
-                          <SystemCell tags={sysMap[sys.key]} values={values} />
+          ) : (() => {
+            const visibleSites = sites.filter(s => s.id !== "swaraj");
+            return (
+              <table className="w-full border-collapse bg-white rounded-xl overflow-hidden shadow border border-gray-200 table-fixed text-[11px]">
+                <colgroup>
+                  <col style={{ width: "14%" }} />
+                  <col style={{ width: "21.5%" }} />
+                  <col style={{ width: "21.5%" }} />
+                  <col style={{ width: "21.5%" }} />
+                  <col style={{ width: "21.5%" }} />
+                </colgroup>
+                <thead className="sticky top-0 z-10">
+                  <tr>
+                    <th className="px-3 py-2 text-[10px] font-black text-white uppercase tracking-widest text-left bg-blue-800 border-r border-blue-700">Site</th>
+                    {SYSTEMS.map((sys, i) => {
+                      const colors = ["bg-blue-700", "bg-indigo-600", "bg-violet-600", "bg-purple-700"];
+                      return (
+                        <th key={sys.key} className={cn("px-3 py-2 text-[10px] font-black text-white uppercase tracking-widest text-center", colors[i], i < SYSTEMS.length - 1 ? "border-r border-white/20" : "")}>
+                          {sys.label}
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleSites.map((site, ri) => {
+                    const sysMap = siteSystemMap(site);
+                    const allIds = site.sections.flatMap(s => s.tags.map(t => t.id));
+                    const hasAlarm = allIds.some(id => values?.[id]?.status === "alarm");
+                    const isEven = ri % 2 === 0;
+                    return (
+                      <tr key={site.id} className={cn(
+                        "border-b border-gray-100 align-top transition-colors",
+                        hasAlarm ? "bg-red-50" : isEven ? "bg-white" : "bg-slate-50/60"
+                      )}>
+                        <td className={cn(
+                          "px-3 py-2 border-r border-gray-100 align-middle",
+                          hasAlarm ? "bg-red-50" : isEven ? "bg-white" : "bg-slate-50/60"
+                        )}>
+                          <div className={cn("font-black text-[11px] uppercase tracking-wide leading-tight", hasAlarm ? "text-red-600" : "text-blue-800")}>
+                            {site.name}
+                          </div>
+                          {hasAlarm && <span className="text-[8px] font-bold bg-red-500 text-white px-1 py-px rounded animate-pulse">ALARM</span>}
                         </td>
-                      ))}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
+                        {SYSTEMS.map((sys, i) => (
+                          <td key={sys.key} className={cn("px-3 py-2", i < SYSTEMS.length - 1 ? "border-r border-gray-100" : "")}>
+                            <SystemCell tags={sysMap[sys.key]} values={values} />
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            );
+          })()}
         </div>
 
         {/* ── Settings modal ── */}
