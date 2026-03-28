@@ -6,6 +6,7 @@ import {
   ChevronRight, Bot, Wand2, Reply, Paperclip, Search, Shield,
   CheckCircle2, Clock, Zap, Star, Eye, Trash2, BarChart3, Settings,
   Plus, Download, Bell, BellOff, BrainCircuit, CloudDownload, MailCheck, KeyRound, Plane,
+  LayoutList, List, Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -999,6 +1000,7 @@ export default function SmartInbox() {
   const [error, setError] = useState("");
   const [checkedUids, setCheckedUids] = useState<Set<string>>(new Set());
   const [bulkWorking, setBulkWorking] = useState(false);
+  const [viewType, setViewType] = useState<"wtt" | "outlook" | "gmail">("wtt");
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadEmails = useCallback(async (filter: FilterKey = activeFilter, value?: string, q?: string) => {
@@ -1040,61 +1042,71 @@ export default function SmartInbox() {
   const syncAllEmails = async () => {
     if (syncing) return;
     setSyncing(true);
-    setSyncProgress({ message: "Starting email synchronization...", progress: 0, total: 0 });
-    
+    setError("");
+    setSyncProgress({ message: "Connecting to email server…", progress: 0, total: 0 });
+
+    const finishSync = async (msg?: string) => {
+      try {
+        setSyncProgress({ message: "Ingesting new emails…", progress: 0, total: 0 });
+        await api("/smart-email/ingest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_email: userEmail }),
+        });
+      } catch {}
+      try {
+        setSyncProgress({ message: "Running AI classify…", progress: 0, total: 0 });
+        await api("/smart-email/auto-analyze", { method: "POST" });
+      } catch {}
+      await loadEmails(activeFilter, filterValue, search || undefined);
+      await loadStats();
+      setSyncing(false);
+      setSyncProgress(null);
+      if (msg) setError(msg);
+    };
+
     try {
-      // Start the comprehensive sync
       const syncResponse = await api("/email-sync/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_email: userEmail }),
       });
-      
+
       const syncId = syncResponse.sync_id;
-      
-      // Poll for progress
+      let pollAttempts = 0;
+      const MAX_POLLS = 90; // 3 minutes max (90 × 2s)
+
       const pollSync = async () => {
+        pollAttempts++;
+        if (pollAttempts > MAX_POLLS) {
+          await finishSync();
+          return;
+        }
         try {
           const status = await api(`/email-sync/status/${syncId}`);
-          setSyncProgress({ 
-            message: status.message, 
-            progress: status.progress, 
-            total: status.total 
+          setSyncProgress({
+            message: status.message || "Syncing…",
+            progress: status.progress || 0,
+            total: status.total || 0,
           });
-          
-          if (status.status === 'completed') {
-            // Refresh data
-            await api("/smart-email/ingest", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ user_email: userEmail }),
-            });
-            await loadEmails(activeFilter, filterValue, search || undefined);
-            await loadStats();
-            setSyncing(false);
-            setSyncProgress(null);
-          } else if (status.status === 'error') {
-            setError(status.message);
-            setSyncing(false);
-            setSyncProgress(null);
+
+          if (status.status === "completed") {
+            await finishSync();
+          } else if (status.status === "error") {
+            await finishSync(status.message);
           } else {
-            // Still running, continue polling
             setTimeout(pollSync, 2000);
           }
-        } catch (error) {
-          console.error('Sync polling error:', error);
-          setSyncing(false);
-          setSyncProgress(null);
+        } catch {
+          // Polling failed — still refresh emails from DB
+          await finishSync();
         }
       };
-      
-      // Start polling
-      setTimeout(pollSync, 1000);
-      
-    } catch (error: any) {
-      setError(error.message);
-      setSyncing(false);
-      setSyncProgress(null);
+
+      setTimeout(pollSync, 1500);
+    } catch (err: any) {
+      // Start failed — refresh whatever is already in DB
+      await finishSync(err.message);
     }
   };
 
@@ -1624,6 +1636,29 @@ export default function SmartInbox() {
             <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex-1">
               {checkedUids.size > 0 ? `${checkedUids.size} selected` : `${emails.length} email${emails.length !== 1 ? "s" : ""}`}
             </span>
+
+            {/* View type toggle */}
+            <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
+              {([
+                { key: "wtt",     icon: Layers,      title: "WTT Style" },
+                { key: "gmail",   icon: LayoutList,  title: "Gmail Style" },
+                { key: "outlook", icon: List,        title: "Outlook Style" },
+              ] as const).map(v => (
+                <button
+                  key={v.key}
+                  onClick={() => setViewType(v.key)}
+                  title={v.title}
+                  className={cn(
+                    "p-1 rounded-md transition-all",
+                    viewType === v.key
+                      ? "bg-white text-[#1B2A5E] shadow-sm"
+                      : "text-gray-400 hover:text-gray-600"
+                  )}>
+                  <v.icon className="w-3 h-3" />
+                </button>
+              ))}
+            </div>
+
             <button onClick={() => loadEmails(activeFilter, filterValue, search || undefined)}
               className="p-1 text-gray-400 hover:text-gray-700 rounded transition-colors">
               <RefreshCw className="w-3.5 h-3.5" />
@@ -1698,54 +1733,39 @@ export default function SmartInbox() {
               const typeConf = email.email_type ? TYPE_CONFIG[email.email_type] : null;
               const CatIcon = email.category ? CAT_CONFIG[email.category]?.icon : Mail;
               const catColor = email.category ? CAT_CONFIG[email.category]?.color : "text-gray-400";
+              const snippet = email.snippet?.replace(/\s+/g, " ").trim() || "";
 
-              return (
-                <div key={email.uid}
-                  onClick={() => handleSelectEmail(email)}
+              const CheckBox = () => (
+                <button onClick={e => toggleCheck(email.uid, e)}
+                  className={cn(
+                    "w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors",
+                    isChecked
+                      ? "bg-[#1B2A5E] border-[#1B2A5E]"
+                      : "border-gray-300 bg-white hover:border-[#1B2A5E] opacity-0 group-hover:opacity-100"
+                  )}>
+                  {isChecked && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                </button>
+              );
+
+              // ── WTT View ──────────────────────────────────────────────
+              if (viewType === "wtt") return (
+                <div key={email.uid} onClick={() => handleSelectEmail(email)}
                   className={cn(
                     "group flex items-stretch border-b border-gray-50 cursor-pointer transition-colors relative",
-                    isChecked
-                      ? "bg-[#eef2fb]"
-                      : isSelected
-                        ? "bg-[#edf2fb] border-[#c8d6ef]"
-                        : email.seen
-                          ? "bg-white hover:bg-[#f8f9ff]"
-                          : "bg-white hover:bg-[#f0f4ff]"
+                    isChecked ? "bg-[#eef2fb]" : isSelected ? "bg-[#edf2fb]" : email.seen ? "bg-white hover:bg-[#f8f9ff]" : "bg-white hover:bg-[#f0f4ff]"
                   )}>
-                  {/* Priority stripe */}
-                  {email.priority === "high" && (
-                    <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-red-500 rounded-r" />
-                  )}
-                  {!email.seen && email.priority !== "high" && !isChecked && (
-                    <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-[#1B2A5E] rounded-r" />
-                  )}
-
-                  {/* Checkbox + Avatar */}
+                  {email.priority === "high" && <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-red-500 rounded-r" />}
+                  {!email.seen && email.priority !== "high" && <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-[#1B2A5E] rounded-r" />}
                   <div className="flex items-start pl-2 pt-2.5 pr-1 shrink-0 gap-1.5">
-                    <button
-                      onClick={e => toggleCheck(email.uid, e)}
-                      className={cn(
-                        "w-4 h-4 rounded border flex items-center justify-center shrink-0 mt-0.5 transition-colors",
-                        isChecked
-                          ? "bg-[#1B2A5E] border-[#1B2A5E]"
-                          : "border-gray-300 bg-white hover:border-[#1B2A5E] opacity-0 group-hover:opacity-100"
-                      )}>
-                      {isChecked && (
-                        <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </button>
+                    <CheckBox />
                     <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[11px] shrink-0"
                       style={{ backgroundColor: avatarColor(email.from_addr) }}>
                       {senderInitial(email.from_addr)}
                     </div>
                   </div>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0 py-2.5 px-2.5 pr-3">
+                  <div className="flex-1 min-w-0 py-2.5 px-2 pr-3">
                     <div className="flex items-baseline justify-between gap-1 mb-0.5">
-                      <span className={cn("text-[12px] truncate flex-1", email.seen ? "text-gray-600 font-normal" : "text-gray-900 font-bold")}>
+                      <span className={cn("text-[12px] truncate flex-1", email.seen ? "text-gray-600" : "text-gray-900 font-bold")}>
                         {senderName(email.from_addr)}
                       </span>
                       <div className="flex items-center gap-1 shrink-0">
@@ -1753,45 +1773,84 @@ export default function SmartInbox() {
                         <span className="text-[10px] text-gray-400">{formatDate(email.email_date)}</span>
                       </div>
                     </div>
-
-                    <div className={cn("text-[11px] truncate mb-1", email.seen ? "text-gray-500" : "text-gray-800 font-semibold")}>
+                    <div className={cn("text-[11px] truncate mb-0.5", email.seen ? "text-gray-500" : "text-gray-800 font-semibold")}>
                       {email.subject || "(No Subject)"}
                     </div>
-
-                    {email.snippet && (
-                      <div className="text-[10px] text-gray-400 truncate mb-1.5 leading-relaxed">
-                        {email.snippet.replace(/\s+/g, " ").trim()}
-                      </div>
-                    )}
-
+                    {snippet && <div className="text-[10px] text-gray-400 truncate mb-1">{snippet}</div>}
                     <div className="flex items-center gap-1 flex-wrap">
-                      {email.email_type && typeConf && (
-                        <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full border", typeConf.bg, typeConf.color)}>
-                          {typeConf.label}
-                        </span>
-                      )}
+                      {typeConf && <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full border", typeConf.bg, typeConf.color)}>{typeConf.label}</span>}
                       {email.category && email.category !== "other" && (
                         <span className={cn("text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-gray-100 border border-gray-200 flex items-center gap-0.5", catColor)}>
-                          <CatIcon className="w-2 h-2" />
-                          {email.project_name || email.supplier_name || email.category}
+                          <CatIcon className="w-2 h-2" />{email.project_name || email.supplier_name || email.category}
                         </span>
                       )}
-                      {email.has_draft && !email.auto_replied && (
-                        <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-orange-50 border border-orange-300 text-orange-700 flex items-center gap-0.5">
-                          <Bot className="w-2 h-2" />Draft
-                        </span>
-                      )}
-                      {email.auto_replied && (
-                        <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-green-50 border border-green-200 text-green-700 flex items-center gap-0.5">
-                          <CheckCircle2 className="w-2 h-2" />Replied
-                        </span>
-                      )}
-                      {!email.classified && (
-                        <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-600 flex items-center gap-0.5">
-                          <Clock className="w-2 h-2" />Classifying…
-                        </span>
-                      )}
+                      {email.has_draft && !email.auto_replied && <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-orange-50 border border-orange-300 text-orange-700 flex items-center gap-0.5"><Bot className="w-2 h-2" />Draft</span>}
+                      {email.auto_replied && <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-green-50 border border-green-200 text-green-700 flex items-center gap-0.5"><CheckCircle2 className="w-2 h-2" />Replied</span>}
+                      {!email.classified && <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-600 flex items-center gap-0.5"><Clock className="w-2 h-2" />Classifying…</span>}
                     </div>
+                  </div>
+                </div>
+              );
+
+              // ── Gmail View ────────────────────────────────────────────
+              if (viewType === "gmail") return (
+                <div key={email.uid} onClick={() => handleSelectEmail(email)}
+                  className={cn(
+                    "group flex items-center border-b border-gray-100 cursor-pointer px-3 transition-colors h-[52px]",
+                    isChecked ? "bg-[#eef2fb]" : isSelected ? "bg-[#e8f0fe]" : email.seen ? "bg-white hover:bg-gray-50" : "bg-white hover:bg-[#f8f9ff] font-medium"
+                  )}>
+                  <div className="flex items-center gap-2 shrink-0 mr-2">
+                    <CheckBox />
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
+                      style={{ backgroundColor: avatarColor(email.from_addr) }}>
+                      {senderInitial(email.from_addr)}
+                    </div>
+                  </div>
+                  <div className="w-[90px] shrink-0 truncate text-[12px] mr-2" style={{ fontWeight: email.seen ? 400 : 700, color: email.seen ? "#5f6368" : "#202124" }}>
+                    {senderName(email.from_addr)}
+                  </div>
+                  <div className="flex-1 min-w-0 flex items-center gap-1.5 mr-2">
+                    {email.has_draft && !email.auto_replied && <span className="text-[9px] font-bold text-orange-600 shrink-0">DRAFT</span>}
+                    {typeConf && <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-sm border shrink-0", typeConf.bg, typeConf.color)}>{typeConf.label}</span>}
+                    <span className={cn("text-[12px] truncate", email.seen ? "text-gray-500" : "text-gray-900 font-semibold")} style={{ fontWeight: email.seen ? 400 : 600 }}>
+                      {email.subject || "(No Subject)"}
+                      {snippet && <span className="text-gray-400 font-normal"> — {snippet}</span>}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {email.has_attachment && <Paperclip className="w-3 h-3 text-gray-400" />}
+                    <span className="text-[11px] text-gray-500 w-[42px] text-right">{formatDate(email.email_date)}</span>
+                  </div>
+                </div>
+              );
+
+              // ── Outlook View ──────────────────────────────────────────
+              return (
+                <div key={email.uid} onClick={() => handleSelectEmail(email)}
+                  className={cn(
+                    "group flex items-center border-b border-gray-100 cursor-pointer px-3 transition-colors",
+                    isChecked ? "bg-blue-50" : isSelected ? "bg-[#dce6f7]" : email.seen ? "hover:bg-gray-50 bg-white" : "bg-white hover:bg-[#f5f8ff]"
+                  )}
+                  style={{ height: 38 }}>
+                  <div className="flex items-center gap-2 shrink-0 mr-2">
+                    <CheckBox />
+                    <div className={cn("w-2 h-2 rounded-full shrink-0", !email.seen ? "bg-[#0F6CBD]" : "bg-transparent")} />
+                  </div>
+                  {email.priority === "high" && <div className="w-1 h-4 rounded bg-red-500 shrink-0 mr-1" />}
+                  <div className="w-[100px] shrink-0 truncate mr-3 text-[12px]" style={{ fontWeight: email.seen ? 400 : 600, color: email.seen ? "#323130" : "#201F1E" }}>
+                    {senderName(email.from_addr)}
+                  </div>
+                  <div className="flex-1 min-w-0 flex items-center gap-2 mr-2">
+                    <span className={cn("text-[12px] shrink-0", email.seen ? "text-gray-600" : "text-gray-900 font-semibold")} style={{ maxWidth: 140, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
+                      {email.subject || "(No Subject)"}
+                    </span>
+                    {snippet && <span className="text-[11px] text-gray-400 truncate">{snippet}</span>}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {email.has_draft && !email.auto_replied && <span className="text-[9px] font-bold text-orange-600 bg-orange-50 border border-orange-200 px-1 rounded">DRAFT</span>}
+                    {email.auto_replied && <span className="text-[9px] font-bold text-green-700 bg-green-50 border border-green-200 px-1 rounded">✓</span>}
+                    {email.has_attachment && <Paperclip className="w-3 h-3 text-gray-400" />}
+                    <span className="text-[11px] text-gray-500 w-[42px] text-right shrink-0">{formatDate(email.email_date)}</span>
                   </div>
                 </div>
               );
