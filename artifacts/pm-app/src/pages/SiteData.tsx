@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Layout } from "@/components/Layout";
 import { cn } from "@/lib/utils";
-import { Wifi, WifiOff, RefreshCw, Settings2, X, Clock, Activity, Home } from "lucide-react";
+import { Wifi, WifiOff, RefreshCw, Settings2, X, Clock, Activity, Home, LayoutGrid, TableProperties, ChevronDown, ChevronRight } from "lucide-react";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "").replace(/\/pm-app$/, "");
 
-// ─── Types (mirroring the backend) ─────────────────────────────────────────
+// ─── Types ──────────────────────────────────────────────────────────────────
 interface TagDef {
   id: string;
   label: string;
@@ -35,7 +35,52 @@ interface ValuesResponse {
   updatedAt: number;
 }
 
-// ─── Value box component ────────────────────────────────────────────────────
+// ─── System column definitions ──────────────────────────────────────────────
+const SYSTEMS = [
+  { key: "biological", label: "Biological" },
+  { key: "cts_mbr",   label: "CTS MBR"    },
+  { key: "mbr",       label: "MBR"         },
+  { key: "ro",        label: "RO"          },
+  { key: "reject_ro", label: "Reject RO"   },
+] as const;
+type SystemKey = typeof SYSTEMS[number]["key"];
+
+function classifySection(sec: SectionDef): SystemKey {
+  const title = (sec.title ?? "").toUpperCase().trim();
+  if (title.includes("REJECT")) return "reject_ro";
+  if (title.includes("CTS"))    return "cts_mbr";
+  if (title === "MBR" || title.includes("MBR SKID")) return "mbr";
+  if (title.includes("MAIN RO") || (title.includes("RO") && !title.includes("REJECT"))) return "ro";
+  const combined = [
+    ...sec.tags.map(t => t.label.toLowerCase()),
+    ...sec.tags.map(t => t.id),
+  ].join(" ");
+  if (combined.includes("bio") || combined.includes("blower") || combined.includes("nt flow") || combined.includes("ntflow") || combined.includes("srs")) return "biological";
+  if (combined.includes("mbr") || combined.includes("tmp")) return "mbr";
+  if (combined.includes("feed") || combined.includes("recov") || combined.includes("setph") || combined.includes("liveph")) return "ro";
+  return "biological";
+}
+
+function siteSystemTags(site: SiteDef): Record<SystemKey, TagDef[]> {
+  const map: Record<SystemKey, TagDef[]> = { biological: [], cts_mbr: [], mbr: [], ro: [], reject_ro: [] };
+  for (const sec of site.sections) {
+    const key = classifySection(sec);
+    map[key].push(...sec.tags);
+  }
+  return map;
+}
+
+function systemStatus(tags: TagDef[], values: Record<string, TagValueResult> | null): "alarm" | "good" | "normal" | "offline" | "none" {
+  if (tags.length === 0) return "none";
+  if (!values) return "offline";
+  const statuses = tags.map(t => values[t.id]?.status ?? "offline");
+  if (statuses.some(s => s === "alarm"))   return "alarm";
+  if (statuses.some(s => s === "good"))    return "good";
+  if (statuses.every(s => s === "offline")) return "offline";
+  return "normal";
+}
+
+// ─── Value box ──────────────────────────────────────────────────────────────
 function ValueBox({ tagId, decimals = 2, values }: { tagId: string; decimals?: number; values: Record<string, TagValueResult> | null }) {
   const tv = values?.[tagId];
   if (!tv || tv.value === null) {
@@ -45,26 +90,19 @@ function ValueBox({ tagId, decimals = 2, values }: { tagId: string; decimals?: n
       </div>
     );
   }
-
   const bgClass =
-    tv.status === "alarm"  ? "bg-red-600 border-red-500 text-white" :
-    tv.status === "good"   ? "bg-[#00a651] border-[#00c864] text-white" :
-    tv.status === "offline"? "bg-[#1a1a2e] border-[#2a2a4a] text-[#4a5a6a]" :
-                             "bg-[#003a7a] border-[#0050a0] text-white";
-
-  const display = tv.value.toFixed(decimals);
-
+    tv.status === "alarm"   ? "bg-red-600 border-red-500 text-white" :
+    tv.status === "good"    ? "bg-[#00a651] border-[#00c864] text-white" :
+    tv.status === "offline" ? "bg-[#1a1a2e] border-[#2a2a4a] text-[#4a5a6a]" :
+                              "bg-[#003a7a] border-[#0050a0] text-white";
   return (
-    <div className={cn(
-      "inline-flex items-center justify-center min-w-[72px] h-5 px-1.5 rounded border text-[10px] font-mono font-bold tabular-nums transition-colors",
-      bgClass
-    )}>
-      {display}
+    <div className={cn("inline-flex items-center justify-center min-w-[72px] h-5 px-1.5 rounded border text-[10px] font-mono font-bold tabular-nums transition-colors", bgClass)}>
+      {tv.value.toFixed(decimals)}
     </div>
   );
 }
 
-// ─── Single tag row ─────────────────────────────────────────────────────────
+// ─── Tag row ─────────────────────────────────────────────────────────────────
 function TagRow({ tag, values }: { tag: TagDef; values: Record<string, TagValueResult> | null }) {
   return (
     <div className="flex items-center gap-1.5 py-[2px]">
@@ -76,7 +114,7 @@ function TagRow({ tag, values }: { tag: TagDef; values: Record<string, TagValueR
   );
 }
 
-// ─── Section within a site ──────────────────────────────────────────────────
+// ─── Section ─────────────────────────────────────────────────────────────────
 function SiteSection({ section, values }: { section: SectionDef; values: Record<string, TagValueResult> | null }) {
   return (
     <div className="mb-1">
@@ -87,22 +125,16 @@ function SiteSection({ section, values }: { section: SectionDef; values: Record<
       )}
       {section.columns && section.columns > 1 ? (
         <div className={cn("grid gap-x-2", section.columns === 2 ? "grid-cols-2" : "grid-cols-3")}>
-          {section.tags.map(tag => (
-            <TagRow key={tag.id} tag={tag} values={values} />
-          ))}
+          {section.tags.map(tag => <TagRow key={tag.id} tag={tag} values={values} />)}
         </div>
       ) : (
-        <div>
-          {section.tags.map(tag => (
-            <TagRow key={tag.id} tag={tag} values={values} />
-          ))}
-        </div>
+        <div>{section.tags.map(tag => <TagRow key={tag.id} tag={tag} values={values} />)}</div>
       )}
     </div>
   );
 }
 
-// ─── Site panel card ────────────────────────────────────────────────────────
+// ─── Site panel card (grid view) ─────────────────────────────────────────────
 function SitePanel({ site, values, isActive, onClick }: {
   site: SiteDef;
   values: Record<string, TagValueResult> | null;
@@ -111,7 +143,6 @@ function SitePanel({ site, values, isActive, onClick }: {
 }) {
   const allTagIds = site.sections.flatMap(s => s.tags.map(t => t.id));
   const hasAlarm = allTagIds.some(id => values?.[id]?.status === "alarm");
-
   return (
     <div
       className={cn(
@@ -129,15 +160,142 @@ function SitePanel({ site, values, isActive, onClick }: {
         {hasAlarm && <span className="text-[9px] font-bold bg-red-600 px-1 rounded animate-pulse">ALARM</span>}
       </div>
       <div className="px-2 pt-1.5 pb-1 bg-[#0a1628]">
-        {site.sections.map((sec, i) => (
-          <SiteSection key={i} section={sec} values={values} />
-        ))}
+        {site.sections.map((sec, i) => <SiteSection key={i} section={sec} values={values} />)}
       </div>
     </div>
   );
 }
 
-// ─── Main page ──────────────────────────────────────────────────────────────
+// ─── System status pill (table view cell) ────────────────────────────────────
+function SystemPill({ status }: { status: ReturnType<typeof systemStatus> }) {
+  if (status === "none") return <span className="text-[#2a3a50] text-[11px]">—</span>;
+  const cls =
+    status === "alarm"   ? "bg-red-600/20 border-red-500/60 text-red-300" :
+    status === "good"    ? "bg-emerald-700/20 border-emerald-500/50 text-emerald-300" :
+    status === "offline" ? "bg-[#1a2030] border-[#2a3040] text-[#4a5a6a]" :
+                           "bg-[#003a7a]/30 border-[#0050a0]/50 text-[#7abcf8]";
+  const label =
+    status === "alarm"   ? "ALARM" :
+    status === "good"    ? "GOOD"  :
+    status === "offline" ? "OFF"   : "OK";
+  return (
+    <span className={cn("inline-flex items-center justify-center px-2 py-0.5 rounded border text-[10px] font-bold tracking-wider", cls)}>
+      {label}
+    </span>
+  );
+}
+
+// ─── Accordion row (table view) ──────────────────────────────────────────────
+function AccordionRow({ site, values, isOpen, onToggle }: {
+  site: SiteDef;
+  values: Record<string, TagValueResult> | null;
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
+  const sysMap = siteSystemTags(site);
+  const allTagIds = site.sections.flatMap(s => s.tags.map(t => t.id));
+  const hasAlarm = allTagIds.some(id => values?.[id]?.status === "alarm");
+
+  return (
+    <>
+      {/* Row header */}
+      <tr
+        className={cn(
+          "border-b border-[#1a3050] cursor-pointer transition-colors select-none",
+          isOpen ? "bg-[#0d2040]" : "hover:bg-[#0a1a30]",
+          hasAlarm && "bg-red-950/30"
+        )}
+        onClick={onToggle}
+      >
+        {/* Site name */}
+        <td className="px-3 py-2.5">
+          <div className="flex items-center gap-2">
+            <span className="text-[#4a9eda]">
+              {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+            </span>
+            <span className={cn(
+              "text-[12px] font-bold tracking-wide uppercase",
+              hasAlarm ? "text-red-300" : "text-[#90c8f8]"
+            )}>
+              {site.name}
+            </span>
+            {hasAlarm && (
+              <span className="text-[9px] font-bold bg-red-600 text-white px-1.5 py-0.5 rounded animate-pulse">ALARM</span>
+            )}
+          </div>
+        </td>
+        {/* System columns */}
+        {SYSTEMS.map(sys => (
+          <td key={sys.key} className="px-3 py-2.5 text-center">
+            <SystemPill status={systemStatus(sysMap[sys.key], values)} />
+          </td>
+        ))}
+      </tr>
+
+      {/* Expanded accordion detail */}
+      {isOpen && (
+        <tr className="border-b border-[#1a3050] bg-[#070f1e]">
+          <td colSpan={SYSTEMS.length + 1} className="px-4 py-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+              {SYSTEMS.map(sys => {
+                const tags = sysMap[sys.key];
+                if (tags.length === 0) return null;
+                return (
+                  <div key={sys.key} className="bg-[#0a1628] border border-[#1a3050] rounded-lg p-3">
+                    <div className="text-[10px] font-bold text-[#4a9eda] uppercase tracking-widest mb-2 border-b border-[#1a2a40] pb-1.5">
+                      {sys.label}
+                    </div>
+                    <div className="space-y-0.5">
+                      {tags.map(tag => <TagRow key={tag.id} tag={tag} values={values} />)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+// ─── Table view ──────────────────────────────────────────────────────────────
+function TableView({ sites, values }: { sites: SiteDef[]; values: Record<string, TagValueResult> | null }) {
+  const [openRows, setOpenRows] = useState<Record<string, boolean>>({});
+  const toggle = (id: string) => setOpenRows(prev => ({ ...prev, [id]: !prev[id] }));
+
+  return (
+    <div className="overflow-auto rounded-xl border border-[#1a3050]">
+      <table className="w-full border-collapse text-left">
+        <thead>
+          <tr className="bg-[#003570] border-b border-[#1a4070]">
+            <th className="px-3 py-2.5 text-[11px] font-extrabold text-[#90c8f8] uppercase tracking-widest whitespace-nowrap min-w-[160px]">
+              Site Name
+            </th>
+            {SYSTEMS.map(sys => (
+              <th key={sys.key} className="px-3 py-2.5 text-[11px] font-extrabold text-[#90c8f8] uppercase tracking-widest text-center whitespace-nowrap">
+                {sys.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sites.map(site => (
+            <AccordionRow
+              key={site.id}
+              site={site}
+              values={values}
+              isOpen={!!openRows[site.id]}
+              onToggle={() => toggle(site.id)}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ─── Main page ───────────────────────────────────────────────────────────────
 export default function SiteData() {
   const [sites, setSites] = useState<SiteDef[]>([]);
   const [values, setValues] = useState<Record<string, TagValueResult> | null>(null);
@@ -148,6 +306,7 @@ export default function SiteData() {
   const [showSettings, setShowSettings] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState(2);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"grid" | "table">("table");
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchConfig = useCallback(async () => {
@@ -156,10 +315,10 @@ export default function SiteData() {
       if (!r.ok) throw new Error(`${r.status}`);
       const data = await r.json() as { sites: SiteDef[] };
       setSites(data.sites);
-    } catch (e) {
+    } catch {
       setError("Failed to load site config. Is the API server running?");
     }
-  }, [API_BASE]);
+  }, []);
 
   const fetchValues = useCallback(async () => {
     try {
@@ -171,15 +330,13 @@ export default function SiteData() {
       setConnected(true);
       setLastUpdated(new Date());
       setError(null);
-    } catch (e) {
+    } catch {
       setConnected(false);
       setError("Cannot reach API server.");
     }
-  }, [API_BASE]);
+  }, []);
 
-  useEffect(() => {
-    fetchConfig();
-  }, [fetchConfig]);
+  useEffect(() => { fetchConfig(); }, [fetchConfig]);
 
   useEffect(() => {
     fetchValues();
@@ -194,7 +351,7 @@ export default function SiteData() {
     <Layout>
       <div className="min-h-screen bg-[#060e1e] flex flex-col">
 
-        {/* ── Top header bar ── */}
+        {/* ── Top header ── */}
         <div className="bg-[#0a1628] border-b border-[#1a3050] px-4 py-2 flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">
             <Activity className="w-5 h-5 text-[#4a9eda]" />
@@ -202,6 +359,32 @@ export default function SiteData() {
           </div>
 
           <div className="ml-auto flex items-center gap-3">
+            {/* View toggle */}
+            <div className="flex items-center gap-0.5 bg-[#0d1f30] border border-[#1a3050] rounded-lg p-0.5">
+              <button
+                onClick={() => setViewMode("table")}
+                title="Table View"
+                className={cn(
+                  "flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-bold transition-colors",
+                  viewMode === "table" ? "bg-[#0060cc] text-white" : "text-[#4a9eda] hover:text-white"
+                )}
+              >
+                <TableProperties className="w-3.5 h-3.5" />
+                Table
+              </button>
+              <button
+                onClick={() => setViewMode("grid")}
+                title="Grid View"
+                className={cn(
+                  "flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-bold transition-colors",
+                  viewMode === "grid" ? "bg-[#0060cc] text-white" : "text-[#4a9eda] hover:text-white"
+                )}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                Grid
+              </button>
+            </div>
+
             {/* Status pill */}
             <div className={cn(
               "flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border",
@@ -215,7 +398,6 @@ export default function SiteData() {
               {!connected ? "Disconnected" : isSimulated ? "Simulated Data" : "Live ADS Data"}
             </div>
 
-            {/* Last updated */}
             {lastUpdated && (
               <div className="flex items-center gap-1 text-[10px] text-[#4a6a8a]">
                 <Clock className="w-3 h-3" />
@@ -223,12 +405,9 @@ export default function SiteData() {
               </div>
             )}
 
-            {/* Manual refresh */}
             <button onClick={fetchValues} className="p-1.5 rounded bg-[#1a2a40] hover:bg-[#2a3a50] text-[#4a9eda] transition-colors" title="Refresh now">
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
-
-            {/* Settings */}
             <button onClick={() => setShowSettings(true)} className="p-1.5 rounded bg-[#1a2a40] hover:bg-[#2a3a50] text-[#4a9eda] transition-colors" title="Settings">
               <Settings2 className="w-3.5 h-3.5" />
             </button>
@@ -252,12 +431,14 @@ export default function SiteData() {
           </div>
         )}
 
-        {/* ── All sites grid ── */}
-        <div className="flex-1 overflow-auto p-2">
+        {/* ── Main content ── */}
+        <div className="flex-1 overflow-auto p-3">
           {sites.length === 0 ? (
             <div className="flex items-center justify-center h-64">
               <div className="text-[#2a4a6a] text-sm animate-pulse">Loading site configuration…</div>
             </div>
+          ) : viewMode === "table" ? (
+            <TableView sites={sites} values={values} />
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">
               {sites.map(site => (
@@ -307,46 +488,44 @@ setInterval(async () => {
           </div>
         </div>
 
-        {/* ── Bottom site navigation (matching the image) ── */}
-        <div className="bg-[#001530] border-t border-[#1a3050] px-2 py-1.5 flex items-center gap-1.5 overflow-x-auto flex-shrink-0">
-          <button
-            onClick={() => setActiveSite(null)}
-            className={cn(
-              "flex items-center gap-1 px-2.5 py-1.5 rounded text-[10px] font-bold whitespace-nowrap transition-colors",
-              activeSite === null ? "bg-[#0060cc] text-white" : "bg-[#0a1628] text-[#6a9abf] hover:bg-[#1a2a40] hover:text-[#8abcdf]"
-            )}
-          >
-            <Home className="w-3 h-3" />
-            ALL
-          </button>
-          {sites.map(site => {
-            const allTagIds = site.sections.flatMap(s => s.tags.map(t => t.id));
-            const hasAlarm = allTagIds.some(id => values?.[id]?.status === "alarm");
-            return (
-              <button
-                key={site.id}
-                onClick={() => {
-                  setActiveSite(prev => prev === site.id ? null : site.id);
-                  const el = document.getElementById(`site-${site.id}`);
-                  el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-                }}
-                className={cn(
-                  "px-2.5 py-1.5 rounded text-[10px] font-bold whitespace-nowrap transition-colors",
-                  activeSite === site.id
-                    ? hasAlarm ? "bg-red-600 text-white" : "bg-[#0060cc] text-white"
-                    : hasAlarm
-                      ? "bg-red-900/50 text-red-300 border border-red-700 hover:bg-red-800/50"
-                      : "bg-[#0a1628] text-[#6a9abf] hover:bg-[#1a2a40] hover:text-[#8abcdf]"
-                )}
-              >
-                {site.name}
-              </button>
-            );
-          })}
-        </div>
+        {/* ── Bottom site navigation (grid view only) ── */}
+        {viewMode === "grid" && (
+          <div className="bg-[#001530] border-t border-[#1a3050] px-2 py-1.5 flex items-center gap-1.5 overflow-x-auto flex-shrink-0">
+            <button
+              onClick={() => setActiveSite(null)}
+              className={cn(
+                "flex items-center gap-1 px-2.5 py-1.5 rounded text-[10px] font-bold whitespace-nowrap transition-colors",
+                activeSite === null ? "bg-[#0060cc] text-white" : "bg-[#0a1628] text-[#6a9abf] hover:bg-[#1a2a40] hover:text-[#8abcdf]"
+              )}
+            >
+              <Home className="w-3 h-3" />
+              ALL
+            </button>
+            {sites.map(site => {
+              const allTagIds = site.sections.flatMap(s => s.tags.map(t => t.id));
+              const hasAlarm = allTagIds.some(id => values?.[id]?.status === "alarm");
+              return (
+                <button
+                  key={site.id}
+                  onClick={() => setActiveSite(prev => prev === site.id ? null : site.id)}
+                  className={cn(
+                    "px-2.5 py-1.5 rounded text-[10px] font-bold whitespace-nowrap transition-colors",
+                    activeSite === site.id
+                      ? hasAlarm ? "bg-red-600 text-white" : "bg-[#0060cc] text-white"
+                      : hasAlarm
+                        ? "bg-red-900/50 text-red-300 border border-red-700 hover:bg-red-800/50"
+                        : "bg-[#0a1628] text-[#6a9abf] hover:bg-[#1a2a40] hover:text-[#8abcdf]"
+                  )}
+                >
+                  {site.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
-        {/* ── Focused site detail overlay (when a site tab is clicked) ── */}
-        {activeSiteData && (
+        {/* ── Focused site detail overlay (grid view) ── */}
+        {activeSiteData && viewMode === "grid" && (
           <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setActiveSite(null)}>
             <div
               className="bg-[#0a1628] border border-[#1a3050] rounded-xl max-w-xl w-full max-h-[85vh] overflow-auto shadow-2xl"
