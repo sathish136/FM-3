@@ -1,6 +1,9 @@
 import { Router } from "express";
+import multer from "multer";
 import OpenAI from "openai";
-import pdfParse from "pdf-parse";
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+const pdfParse: (buf: Buffer) => Promise<{ text: string }> = require("pdf-parse");
 import {
   fetchErpNextEmployees,
   fetchErpNextLeaveApplications,
@@ -47,6 +50,77 @@ async function fetchErpFile(filePath: string): Promise<{ buffer: Buffer; content
 }
 
 const router = Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+function extractJpegsFromPdf(buf: Buffer): Buffer[] {
+  const jpegs: Buffer[] = [];
+  let i = 0;
+  while (i < buf.length - 3) {
+    if (buf[i] === 0xFF && buf[i + 1] === 0xD8 && buf[i + 2] === 0xFF) {
+      const start = i;
+      let j = i + 2;
+      while (j < buf.length - 1) {
+        if (buf[j] === 0xFF && buf[j + 1] === 0xD9) { j += 2; break; }
+        j++;
+      }
+      const candidate = buf.slice(start, j);
+      if (candidate.length > 5000) jpegs.push(candidate);
+      i = j;
+    } else { i++; }
+  }
+  return jpegs;
+}
+
+async function analyzeResumeText(openai: OpenAI, text: string, photoBase64?: string, photoMime?: string) {
+  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+  if (photoBase64 && photoMime) {
+    messages.push({
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: `You are an expert resume parser. Extract all information from this resume. Return ONLY valid JSON (no markdown, no code blocks) with these fields:\n{\n  "name": "",\n  "email": "",\n  "phone": "",\n  "location": "",\n  "current_title": "",\n  "summary": "",\n  "skills": [],\n  "languages": [],\n  "experience": [{"company":"","title":"","duration":"","description":""}],\n  "education": [{"institution":"","degree":"","year":""}],\n  "certifications": [],\n  "total_experience_years": 0\n}\n\nResume text:\n${text.slice(0, 8000)}`
+        },
+        {
+          type: "image_url",
+          image_url: { url: `data:${photoMime};base64,${photoBase64}`, detail: "low" }
+        }
+      ]
+    });
+  } else {
+    messages.push({
+      role: "user",
+      content: `You are an expert resume parser. Extract all information from this resume text. Return ONLY valid JSON (no markdown, no code blocks) with these fields:\n{\n  "name": "",\n  "email": "",\n  "phone": "",\n  "location": "",\n  "current_title": "",\n  "summary": "",\n  "skills": [],\n  "languages": [],\n  "experience": [{"company":"","title":"","duration":"","description":""}],\n  "education": [{"institution":"","degree":"","year":""}],\n  "certifications": [],\n  "total_experience_years": 0\n}\n\nResume text:\n${text.slice(0, 12000)}`
+    });
+  }
+  const resp = await openai.chat.completions.create({ model: "gpt-4o-mini", messages, max_tokens: 2000 });
+  const raw = resp.choices[0]?.message?.content || "{}";
+  try { return JSON.parse(raw.replace(/```json\n?|```\n?/g, "").trim()); }
+  catch { return {}; }
+}
+
+async function analyzeResumeImage(openai: OpenAI, imageBase64: string, mimeType: string) {
+  const resp = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [{
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: `You are an expert resume parser with vision. Extract ALL information visible in this resume image. Return ONLY valid JSON (no markdown, no code blocks) with these fields:\n{\n  "name": "",\n  "email": "",\n  "phone": "",\n  "location": "",\n  "current_title": "",\n  "summary": "",\n  "skills": [],\n  "languages": [],\n  "experience": [{"company":"","title":"","duration":"","description":""}],\n  "education": [{"institution":"","degree":"","year":""}],\n  "certifications": [],\n  "total_experience_years": 0,\n  "has_photo": false\n}`
+        },
+        {
+          type: "image_url",
+          image_url: { url: `data:${mimeType};base64,${imageBase64}`, detail: "high" }
+        }
+      ]
+    }],
+    max_tokens: 2000,
+  });
+  const raw = resp.choices[0]?.message?.content || "{}";
+  try { return JSON.parse(raw.replace(/```json\n?|```\n?/g, "").trim()); }
+  catch { return {}; }
+}
 
 // Determine what data a user is allowed to see.
 // scope: "all" = HR Manager / System Manager
@@ -293,6 +367,51 @@ router.get("/hrms/recruitment/:name", async (req, res) => {
     const data = await fetchErpNextRecruitmentTracker(req.params.name);
     res.json(data);
   } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.post("/hrms/resume-analyze", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
+    const openai = getOpenAI();
+    const mime = req.file.mimetype;
+    const buf = req.file.buffer;
+
+    let analysis: Record<string, unknown> = {};
+    let photoBase64: string | null = null;
+    let photoMime: string | null = null;
+
+    const isImage = mime.startsWith("image/");
+    const isPdf = mime === "application/pdf" || req.file.originalname.toLowerCase().endsWith(".pdf");
+
+    if (isImage) {
+      const b64 = buf.toString("base64");
+      analysis = await analyzeResumeImage(openai, b64, mime);
+      photoBase64 = b64;
+      photoMime = mime;
+    } else if (isPdf) {
+      let text = "";
+      try {
+        const parsed = await pdfParse(buf);
+        text = parsed.text;
+      } catch { text = ""; }
+
+      const jpegs = extractJpegsFromPdf(buf);
+      if (jpegs.length > 0) {
+        photoBase64 = jpegs[0].toString("base64");
+        photoMime = "image/jpeg";
+      }
+
+      analysis = await analyzeResumeText(openai, text, photoBase64 ?? undefined, photoMime ?? undefined);
+    } else {
+      res.status(400).json({ error: "Unsupported file type. Please upload PDF or image." });
+      return;
+    }
+
+    res.json({ ...analysis, photo_base64: photoBase64, photo_mime: photoMime });
+  } catch (e) {
+    console.error("resume-analyze error:", e);
     res.status(500).json({ error: String(e) });
   }
 });
