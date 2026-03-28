@@ -2,6 +2,12 @@ import { Router } from "express";
 import multer from "multer";
 import OpenAI from "openai";
 import { createRequire } from "module";
+import { execFile } from "child_process";
+import { promisify } from "util";
+import * as fs from "fs/promises";
+import * as os from "os";
+import * as path from "path";
+const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
 const pdfParse: (buf: Buffer) => Promise<{ text: string }> = require("pdf-parse");
 import {
@@ -51,6 +57,39 @@ async function fetchErpFile(filePath: string): Promise<{ buffer: Buffer; content
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+async function renderPdfPages(pdfBuf: Buffer): Promise<{ pages: { base64: string; mime: string }[]; text: string }> {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "resume-"));
+  const pdfPath = path.join(tmpDir, "resume.pdf");
+  const outPrefix = path.join(tmpDir, "page");
+  try {
+    await fs.writeFile(pdfPath, pdfBuf);
+
+    // Extract text
+    let text = "";
+    try { const parsed = await pdfParse(pdfBuf); text = parsed.text; } catch { text = ""; }
+
+    // Render pages to JPEG at 150 DPI (good quality / reasonable size)
+    try {
+      await execFileAsync("pdftoppm", ["-jpeg", "-r", "150", "-jpegopt", "quality=85", pdfPath, outPrefix]);
+    } catch {
+      // Try without jpegopt (older versions)
+      try { await execFileAsync("pdftoppm", ["-jpeg", "-r", "150", pdfPath, outPrefix]); } catch { /* fall through */ }
+    }
+
+    const files = await fs.readdir(tmpDir);
+    const pageFiles = files.filter(f => f.startsWith("page") && (f.endsWith(".jpg") || f.endsWith(".jpeg") || f.endsWith(".ppm"))).sort();
+
+    const pages: { base64: string; mime: string }[] = [];
+    for (const file of pageFiles) {
+      const buf = await fs.readFile(path.join(tmpDir, file));
+      pages.push({ base64: buf.toString("base64"), mime: file.endsWith(".ppm") ? "image/x-portable-pixmap" : "image/jpeg" });
+    }
+    return { pages, text: text.replace(/\s+/g, " ").trim() };
+  } finally {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+}
 
 function extractJpegsFromPdf(buf: Buffer): Buffer[] {
   const jpegs: Buffer[] = [];
@@ -184,6 +223,32 @@ ${text.slice(0, 20000)}`;
     messages.push({ role: "user", content: prompt });
   }
   const resp = await openai.chat.completions.create({ model: "gpt-4o", messages, max_tokens: 6000 });
+  return parseJsonResponse(resp.choices[0]?.message?.content || "{}");
+}
+
+async function analyzeResumePdfPages(openai: OpenAI, pages: { base64: string; mime: string }[], text: string) {
+  // Build content with all page images so AI can see the full resume
+  const imageContent: OpenAI.Chat.ChatCompletionContentPart[] = pages.slice(0, 4).map(p => ({
+    type: "image_url" as const,
+    image_url: { url: `data:${p.mime === "image/x-portable-pixmap" ? "image/jpeg" : p.mime};base64,${p.base64}`, detail: "high" as const }
+  }));
+
+  const textHint = text ? `\n\nExtracted text (may be incomplete):\n${text.slice(0, 5000)}` : "";
+
+  const resp = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [{
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: `You are a senior HR expert specializing in Indian engineering and technical resumes. Extract EVERY piece of information visible across ALL pages of this resume with maximum detail. Extract career_objective, internships (separate from experience), all education levels (B.Tech/B.E., Diploma, HSC/12th, SSLC/10th etc.) with CGPA/percentage, all certifications with scores/percentages, all projects with year and highlights, all achievements with year and organization, skills, technical_skills, soft_skills, languages (with proficiency). Return ONLY valid JSON with this schema:\n${RESUME_JSON_SCHEMA}${textHint}`
+        },
+        ...imageContent
+      ]
+    }],
+    max_tokens: 6000,
+  });
   return parseJsonResponse(resp.choices[0]?.message?.content || "{}");
 }
 
@@ -525,36 +590,26 @@ router.post("/hrms/resume-analyze", upload.single("file"), async (req, res) => {
       photoMime = mime;
     } else if (isPdf) {
       pdfBase64 = buf.toString("base64");
+      const { pages, text } = await renderPdfPages(buf);
+      console.log(`resume-analyze (upload): pages=${pages.length}, text length=${text.length}`);
 
-      let text = "";
-      try { const parsed = await pdfParse(buf); text = parsed.text; } catch { text = ""; }
-
-      const cleanText = text.replace(/\s+/g, " ").trim();
+      // Extract portrait photo from embedded JPEGs
       const jpegs = extractJpegsFromPdf(buf);
+      if (jpegs.length > 0) {
+        // Use the smallest JPEG as the portrait photo (smallest = photo, largest = page render)
+        const sorted = [...jpegs].sort((a, b) => a.length - b.length);
+        photoBase64 = sorted[0].toString("base64");
+        photoMime = "image/jpeg";
+      }
 
-      if (cleanText.length < 300 && jpegs.length > 0) {
-        // Text extraction yielded too little — use vision on the largest image found
-        // Sort descending by size; large = likely a full-page scan, small = likely a photo
-        const sorted = [...jpegs].sort((a, b) => b.length - a.length);
-        const largestJpeg = sorted[0];
-        // If the largest image is big enough to be a full-page render, use it for content
-        if (largestJpeg.length > 40000) {
-          resumeData = await analyzeResumeImage(openai, largestJpeg.toString("base64"), "image/jpeg");
-          // Use a smaller image as the candidate photo if available
-          const smallPhoto = sorted.find(j => j.length < 40000);
-          if (smallPhoto) { photoBase64 = smallPhoto.toString("base64"); photoMime = "image/jpeg"; }
-        } else {
-          // All images are small — use the largest for vision analysis (likely a photo-only resume)
-          photoBase64 = largestJpeg.toString("base64");
-          photoMime = "image/jpeg";
-          resumeData = await analyzeResumeImage(openai, photoBase64, photoMime);
-        }
+      if (pages.length > 0) {
+        // Use rendered pages for accurate vision-based extraction, supplemented with text
+        resumeData = await analyzeResumePdfPages(openai, pages, text);
+      } else if (text.length > 100) {
+        resumeData = await analyzeResumeText(openai, text, photoBase64 ?? undefined, photoMime ?? undefined);
       } else {
-        if (jpegs.length > 0) {
-          photoBase64 = jpegs[0].toString("base64");
-          photoMime = "image/jpeg";
-        }
-        resumeData = await analyzeResumeText(openai, cleanText, photoBase64 ?? undefined, photoMime ?? undefined);
+        res.status(422).json({ error: "Could not extract content from this PDF. Please ensure it is not password-protected." });
+        return;
       }
     } else {
       res.status(400).json({ error: "Unsupported file type. Please upload PDF or image." });
@@ -600,34 +655,25 @@ router.post("/hrms/resume-analyze-erp", async (req, res) => {
       photoMime = mime;
     } else if (isPdf) {
       pdfBase64 = buffer.toString("base64");
-      let text = "";
-      try { const parsed = await pdfParse(buffer); text = parsed.text; } catch { text = ""; }
+      const { pages, text } = await renderPdfPages(buffer);
+      console.log(`resume-analyze-erp: pages=${pages.length}, text length=${text.length}`);
 
-      const cleanText = text.replace(/\s+/g, " ").trim();
+      // Extract portrait photo from embedded JPEGs (separate from page renders)
       const jpegs = extractJpegsFromPdf(buffer);
-      console.log(`resume-analyze-erp: text length=${cleanText.length}, jpegs found=${jpegs.length}`);
+      if (jpegs.length > 0) {
+        const sorted = [...jpegs].sort((a, b) => a.length - b.length);
+        photoBase64 = sorted[0].toString("base64");
+        photoMime = "image/jpeg";
+      }
 
-      if (cleanText.length < 300 && jpegs.length > 0) {
-        const sorted = [...jpegs].sort((a, b) => b.length - a.length);
-        const largestJpeg = sorted[0];
-        if (largestJpeg.length > 40000) {
-          console.log(`resume-analyze-erp: short text, using vision on large image (${largestJpeg.length} bytes)`);
-          resumeData = await analyzeResumeImage(openai, largestJpeg.toString("base64"), "image/jpeg");
-          const smallPhoto = sorted.find(j => j.length < 40000);
-          if (smallPhoto) { photoBase64 = smallPhoto.toString("base64"); photoMime = "image/jpeg"; }
-        } else {
-          console.log(`resume-analyze-erp: short text, using vision on photo-sized image`);
-          photoBase64 = largestJpeg.toString("base64");
-          photoMime = "image/jpeg";
-          resumeData = await analyzeResumeImage(openai, photoBase64, photoMime);
-        }
+      if (pages.length > 0) {
+        console.log(`resume-analyze-erp: using page rendering (${pages.length} pages)`);
+        resumeData = await analyzeResumePdfPages(openai, pages, text);
+      } else if (text.length > 100) {
+        console.log(`resume-analyze-erp: falling back to text extraction (${text.length} chars)`);
+        resumeData = await analyzeResumeText(openai, text, photoBase64 ?? undefined, photoMime ?? undefined);
       } else {
-        if (jpegs.length > 0) {
-          photoBase64 = jpegs[0].toString("base64");
-          photoMime = "image/jpeg";
-        }
-        console.log(`resume-analyze-erp: using text extraction (${cleanText.length} chars)`);
-        resumeData = await analyzeResumeText(openai, cleanText, photoBase64 ?? undefined, photoMime ?? undefined);
+        res.status(422).json({ error: "Could not extract content from this PDF." }); return;
       }
     } else {
       res.status(400).json({ error: "Unsupported file type" }); return;
