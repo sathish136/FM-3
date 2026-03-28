@@ -1104,6 +1104,183 @@ export async function fetchErpNextRecruitmentTracker(name: string): Promise<ErpR
   return json.data as ErpRecruitmentTracker;
 }
 
+// ── Employee Checkin ──────────────────────────────────────────────────────────
+
+export interface ErpEmployeeCheckin {
+  name: string;
+  employee: string;
+  employee_name: string;
+  time: string;
+  log_type: string;
+  device_id: string | null;
+  shift: string | null;
+  creation: string;
+}
+
+export async function fetchErpNextCheckins(filters?: {
+  employee?: string;
+  from_date?: string;
+  to_date?: string;
+}): Promise<ErpEmployeeCheckin[]> {
+  if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
+  const fields = JSON.stringify([
+    "name", "employee", "employee_name", "time", "log_type", "device_id", "shift", "creation",
+  ]);
+  const fArr: any[] = [];
+  if (filters?.employee)  fArr.push(["Employee Checkin", "employee", "=", filters.employee]);
+  if (filters?.from_date) fArr.push(["Employee Checkin", "time", ">=", filters.from_date]);
+  if (filters?.to_date)   fArr.push(["Employee Checkin", "time", "<=", filters.to_date + " 23:59:59"]);
+  const params = new URLSearchParams({ fields, limit_page_length: "500", order_by: "time desc" });
+  if (fArr.length) params.set("filters", JSON.stringify(fArr));
+  const url = `${ERPNEXT_URL}/api/resource/Employee Checkin?${params}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader() } });
+  if (!res.ok) throw new Error(`ERPNext checkin: ${res.status}`);
+  const data = await res.json();
+  return data.data ?? [];
+}
+
+export async function createErpNextCheckin(payload: {
+  employee: string;
+  time: string;
+  log_type: "IN" | "OUT";
+  device_id?: string;
+}): Promise<ErpEmployeeCheckin> {
+  if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
+  const res = await fetch(`${ERPNEXT_URL}/api/resource/Employee Checkin`, {
+    method: "POST",
+    headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`ERPNext create checkin: ${res.status} — ${err}`);
+  }
+  const json = await res.json();
+  return json.data as ErpEmployeeCheckin;
+}
+
+// ── Leave Types ───────────────────────────────────────────────────────────────
+
+export async function fetchErpNextLeaveTypes(): Promise<string[]> {
+  if (!ERPNEXT_URL) return [];
+  const fields = JSON.stringify(["name"]);
+  const params = new URLSearchParams({ fields, limit_page_length: "100", order_by: "name asc" });
+  const url = `${ERPNEXT_URL}/api/resource/Leave Type?${params}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader() } });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return ((data.data || []) as any[]).map((lt: any) => lt.name as string);
+}
+
+export async function createErpNextLeaveApplication(payload: {
+  employee: string;
+  leave_type: string;
+  from_date: string;
+  to_date: string;
+  half_day?: number;
+  half_day_date?: string;
+  description?: string;
+  follow_via_email?: number;
+  status?: string;
+}): Promise<{ name: string }> {
+  if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
+  const body = { ...payload, docstatus: 0 };
+  const res = await fetch(`${ERPNEXT_URL}/api/resource/Leave Application`, {
+    method: "POST",
+    headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`ERPNext create leave: ${res.status} — ${err}`);
+  }
+  const json = await res.json();
+  return { name: json.data?.name || "" };
+}
+
+// ── Expense Claim ─────────────────────────────────────────────────────────────
+
+export interface ErpExpenseClaimItem {
+  expense_date: string;
+  expense_type: string;
+  description: string | null;
+  amount: number;
+  sanctioned_amount: number;
+}
+
+export interface ErpExpenseClaim {
+  name: string;
+  employee: string;
+  employee_name: string;
+  posting_date: string;
+  company: string | null;
+  approval_status: string;
+  total_claimed_amount: number;
+  total_sanctioned_amount: number;
+  remark: string | null;
+  modified: string;
+  expenses?: ErpExpenseClaimItem[];
+}
+
+export async function fetchErpNextExpenseClaims(filters?: {
+  employee?: string;
+  approval_status?: string;
+}): Promise<ErpExpenseClaim[]> {
+  if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
+  const fields = JSON.stringify([
+    "name", "employee", "employee_name", "posting_date", "company",
+    "approval_status", "total_claimed_amount", "total_sanctioned_amount", "remark", "modified",
+  ]);
+  const fArr: any[] = [];
+  if (filters?.employee)        fArr.push(["Expense Claim", "employee", "=", filters.employee]);
+  if (filters?.approval_status) fArr.push(["Expense Claim", "approval_status", "=", filters.approval_status]);
+  const params = new URLSearchParams({ fields, limit_page_length: "200", order_by: "modified desc" });
+  if (fArr.length) params.set("filters", JSON.stringify(fArr));
+  const url = `${ERPNEXT_URL}/api/resource/Expense Claim?${params}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader() } });
+  if (!res.ok) throw new Error(`ERPNext expense claim: ${res.status}`);
+  const data = await res.json();
+  return data.data ?? [];
+}
+
+export async function fetchErpNextExpenseClaimTypes(): Promise<string[]> {
+  if (!ERPNEXT_URL) return [];
+  const fields = JSON.stringify(["name"]);
+  const params = new URLSearchParams({ fields, limit_page_length: "100", order_by: "name asc" });
+  const url = `${ERPNEXT_URL}/api/resource/Expense Claim Type?${params}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader() } });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return ((data.data || []) as any[]).map((t: any) => t.name as string);
+}
+
+export async function createErpNextExpenseClaim(payload: {
+  employee: string;
+  posting_date: string;
+  company?: string;
+  remark?: string;
+  expenses: Array<{
+    expense_date: string;
+    expense_type: string;
+    description?: string;
+    amount: number;
+  }>;
+}): Promise<{ name: string }> {
+  if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
+  const body = { ...payload, docstatus: 0, approval_status: "Draft" };
+  const res = await fetch(`${ERPNEXT_URL}/api/resource/Expense Claim`, {
+    method: "POST",
+    headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`ERPNext create expense claim: ${res.status} — ${err}`);
+  }
+  const json = await res.json();
+  return { name: json.data?.name || "" };
+}
+
 export async function fetchErpNextUsers(): Promise<ErpUser[]> {
   if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
   const fields = JSON.stringify(["name", "full_name", "user_image", "enabled"]);

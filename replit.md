@@ -1,5 +1,33 @@
 # Workspace
 
+## HRMS Modules (ERPNext)
+
+All modules sync with ERPNext at `https://erp.wttint.com` via API key auth.
+
+### Attendance Check-in (`/hrms/checkin`)
+- Record employee check-in/check-out (Employee Checkin doctype)
+- Date range filter, type filter (IN/OUT), real-time clock
+- Backend: `GET/POST /api/hrms/checkins`
+
+### Leave Request (`/hrms/leave-request`)
+- View all leave applications + create new ones via modal form
+- Leave type dropdown from ERPNext, half-day support
+- Backend: `GET /api/hrms/leave-applications`, `POST /api/hrms/leave-requests`, `GET /api/hrms/leave-types`
+
+### Claim Request (`/hrms/claims`)
+- View expense claims + create new claims with multi-item expense rows
+- Expense type dropdown from ERPNext, currency formatting in INR
+- Backend: `GET/POST /api/hrms/claims`, `GET /api/hrms/claim-types`
+
+### Recruitment Tracker (`/hrms/recruitment`)
+- View candidate pipeline from Recruitment Tracker doctype
+- Detail side panel showing salary, interview notes, resume link
+- Backend: `GET /api/hrms/recruitment`, `GET /api/hrms/recruitment/:name`
+
+### Scope/Permission Model
+- Scope resolved via `/api/hrms/user-scope` — "all" (HR Manager), "department" (HOD), "self" (employee)
+- All new modules respect this scope automatically
+
 ## Email Feature (Gmail)
 - Email page at `/email` — inbox, sent, compose, reply, forward
 - Backend: `artifacts/api-server/src/routes/email.ts` — nodemailer (SMTP send) + imapflow (IMAP read)

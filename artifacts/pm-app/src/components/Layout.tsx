@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Box, PenTool, GitBranch,
   Briefcase, ChevronDown, FileText,
   ChevronRight, LogOut, ChevronLeft, ChevronRight as ChevronRightIcon, Menu,
-  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Palette, Sun, Moon, Layers, FolderOpen, Sparkles, X, MoreHorizontal, Activity, Bot, PanelLeftClose, Megaphone, Warehouse,
+  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Palette, Sun, Moon, Layers, FolderOpen, Sparkles, X, MoreHorizontal, Activity, Bot, PanelLeftClose, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
@@ -52,15 +52,14 @@ const navGroups: { label?: string; items: NavItem[] }[] = [
     ],
   },
   {
-    label: "Project Management",
+    label: "Projects",
     items: [
-      { path: "/projects", label: "Projects", icon: Briefcase, color: "text-blue-400" },
-      { path: "/project-board", label: "Project Board", icon: LayoutGrid, color: "text-indigo-400" },
-      { path: "/project-timeline", label: "Project Timeline", icon: GanttChartSquare, color: "text-cyan-400" },
-      { path: "/meeting-minutes", label: "Meeting Minutes", icon: FileText, color: "text-teal-400" },
-      { path: "/material-request", label: "Material Request", icon: ShoppingCart, color: "text-amber-400" },
-      { path: "/purchase-order", label: "Purchase Order", icon: ShoppingBag, color: "text-indigo-400" },
-      { path: "/presentation", label: "Presentation", icon: MonitorPlay, color: "text-orange-400" },
+      { path: "/projects",          label: "Projects",          icon: Briefcase,        color: "text-blue-400" },
+      { path: "/project-board",     label: "Project Board",     icon: LayoutGrid,       color: "text-indigo-400" },
+      { path: "/project-timeline",  label: "Project Timeline",  icon: GanttChartSquare, color: "text-cyan-400" },
+      { path: "/meeting-minutes",   label: "Meeting Minutes",   icon: FileText,         color: "text-teal-400" },
+      { path: "/project-drawings",  label: "Project Drawings",  icon: FolderOpen,       color: "text-sky-400" },
+      { path: "/presentation",      label: "Presentation",      icon: MonitorPlay,      color: "text-orange-400" },
     ],
   },
   {
@@ -69,33 +68,52 @@ const navGroups: { label?: string; items: NavItem[] }[] = [
       {
         path: "/drawings", label: "Drawings", icon: PenTool, color: "text-amber-400",
         children: [
-          { path: "/drawings/mechanical", label: "Design Mechanical" },
-          { path: "/drawings/electrical", label: "Design Electrical" },
-          { path: "/drawings/civil", label: "Design Civil" },
+          { path: "/drawings/mechanical", label: "Mechanical" },
+          { path: "/drawings/electrical", label: "Electrical" },
+          { path: "/drawings/civil",      label: "Civil" },
         ],
       },
-      { path: "/design-2d", label: "Design 2D", icon: PenLine, color: "text-emerald-400" },
-      { path: "/design-3d", label: "Design 3D", icon: Box, color: "text-violet-400" },
-      { path: "/pid", label: "P&ID Process", icon: GitBranch, color: "text-rose-400" },
-      { path: "/nesting", label: "Nesting", icon: Layers, color: "text-indigo-400" },
-      { path: "/project-drawings", label: "Project Drawings", icon: FolderOpen, color: "text-sky-400" },
+      { path: "/design-2d", label: "Design 2D",    icon: PenLine,   color: "text-emerald-400" },
+      { path: "/design-3d", label: "Design 3D",    icon: Box,       color: "text-violet-400" },
+      { path: "/pid",       label: "P&ID Process", icon: GitBranch, color: "text-rose-400" },
+      { path: "/nesting",   label: "Nesting",      icon: Layers,    color: "text-indigo-400" },
+    ],
+  },
+  {
+    label: "Procurement",
+    items: [
+      { path: "/material-request",   label: "Material Request",   icon: ShoppingCart, color: "text-amber-400" },
+      { path: "/purchase-order",     label: "Purchase Order",     icon: ShoppingBag,  color: "text-orange-400" },
+      { path: "/purchase-dashboard", label: "Purchase Dashboard", icon: BarChart3,    color: "text-blue-400" },
+      { path: "/stores-dashboard",   label: "Stores Dashboard",   icon: Warehouse,    color: "text-teal-400" },
     ],
   },
   {
     label: "Communication",
     items: [
-      { path: "/email", label: "Email", icon: Mail, color: "text-sky-400" },
-      { path: "/smart-inbox", label: "Smart Inbox (AI)", icon: Bot, color: "text-orange-400" },
-      { path: "/chat", label: "FlowTalk", icon: MessageSquare, color: "text-violet-400" },
-      { path: "/sheets", label: "Sheets", icon: Table2, color: "text-lime-400" },
+      { path: "/email",       label: "Email",           icon: Mail,          color: "text-sky-400" },
+      { path: "/smart-inbox", label: "Smart Inbox (AI)", icon: Bot,          color: "text-orange-400" },
+      { path: "/chat",        label: "FlowTalk",        icon: MessageSquare, color: "text-violet-400" },
+      { path: "/sheets",      label: "Sheets",          icon: Table2,        color: "text-lime-400" },
     ],
   },
   {
-    label: "Marketing",
+    label: "Marketing & CRM",
     items: [
-      { path: "/marketing", label: "Marketing", icon: Megaphone, color: "text-violet-400" },
-      { path: "/purchase-dashboard", label: "Purchase Dashboard", icon: ShoppingBag, color: "text-amber-400" },
-      { path: "/stores-dashboard", label: "Stores Dashboard", icon: Warehouse, color: "text-teal-400" },
+      { path: "/marketing",  label: "Marketing",  icon: Megaphone,  color: "text-violet-400" },
+      { path: "/leads",      label: "Leads",      icon: Target,     color: "text-rose-400" },
+      { path: "/campaigns",  label: "Campaigns",  icon: BarChart3,  color: "text-pink-400" },
+    ],
+  },
+  {
+    label: "HR",
+    items: [
+      { path: "/hrms",              label: "HRMS",              icon: UserCircle,    color: "text-emerald-400" },
+      { path: "/hrms/checkin",      label: "Attendance Checkin", icon: Clock,         color: "text-teal-400" },
+      { path: "/hrms/leave-request",label: "Leave Request",     icon: Calendar,      color: "text-amber-400" },
+      { path: "/hrms/claims",       label: "Claim Request",     icon: Receipt,       color: "text-violet-400" },
+      { path: "/hrms/recruitment",  label: "Recruitment",       icon: UserPlus,      color: "text-blue-400" },
+      { path: "/hrms/incidents",    label: "HR Incidents",      icon: AlertTriangle, color: "text-rose-400" },
     ],
   },
   {
@@ -105,17 +123,11 @@ const navGroups: { label?: string; items: NavItem[] }[] = [
     ],
   },
   {
-    label: "HR",
-    items: [
-      { path: "/hrms", label: "HRMS", icon: UserCircle, color: "text-emerald-400" },
-    ],
-  },
-  {
     label: "Admin",
     items: [
-      { path: "/user-management", label: "User Management", icon: Users, color: "text-red-400" },
-      { path: "/settings", label: "Settings", icon: Settings, color: "text-slate-400" },
-      { path: "/email-settings", label: "Email Settings", icon: MailOpen, color: "text-sky-400" },
+      { path: "/user-management", label: "User Management", icon: Users,    color: "text-red-400" },
+      { path: "/settings",        label: "Settings",         icon: Settings, color: "text-slate-400" },
+      { path: "/email-settings",  label: "Email Settings",  icon: MailOpen, color: "text-sky-400" },
     ],
   },
 ];

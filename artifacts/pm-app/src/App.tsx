@@ -30,6 +30,10 @@ import MaterialRequest from "@/pages/MaterialRequest";
 import PurchaseOrder from "@/pages/PurchaseOrder";
 import UserManagement from "@/pages/UserManagement";
 import HRMS from "@/pages/HRMS";
+import AttendanceCheckin from "@/pages/AttendanceCheckin";
+import LeaveRequest from "@/pages/LeaveRequest";
+import ClaimRequest from "@/pages/ClaimRequest";
+import Recruitment from "@/pages/Recruitment";
 import ProjectBoard from "@/pages/ProjectBoard";
 import Email from "@/pages/Email";
 import EmailSettings from "@/pages/EmailSettings";
@@ -93,6 +97,10 @@ function ProtectedRoutes() {
       <Route path="/purchase-order" component={PurchaseOrder} />
       <Route path="/user-management" component={UserManagement} />
       <Route path="/hrms" component={HRMS} />
+      <Route path="/hrms/checkin" component={AttendanceCheckin} />
+      <Route path="/hrms/leave-request" component={LeaveRequest} />
+      <Route path="/hrms/claims" component={ClaimRequest} />
+      <Route path="/hrms/recruitment" component={Recruitment} />
       <Route path="/project-board" component={ProjectBoard} />
       <Route path="/email" component={Email} />
       <Route path="/email-settings" component={EmailSettings} />

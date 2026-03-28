@@ -8,6 +8,15 @@ import {
   fetchErpNextUserDepartmentPermissions,
   fetchErpNextSubordinates,
   fetchErpNextUsers,
+  fetchErpNextCheckins,
+  createErpNextCheckin,
+  fetchErpNextLeaveTypes,
+  createErpNextLeaveApplication,
+  fetchErpNextExpenseClaims,
+  fetchErpNextExpenseClaimTypes,
+  createErpNextExpenseClaim,
+  fetchErpNextRecruitmentTrackers,
+  fetchErpNextRecruitmentTracker,
 } from "../lib/erpnext";
 
 const ERPNEXT_URL = process.env.ERPNEXT_URL?.replace(/\/$/, "");
@@ -153,6 +162,113 @@ router.get("/employees", async (req, res) => {
         avatar: e.image ? `${ERPNEXT_URL}${e.image}` : null,
       }));
     res.json(filtered);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ── Employee Checkin ──────────────────────────────────────────────────────────
+
+router.get("/hrms/checkins", async (req, res) => {
+  try {
+    const { employee, from_date, to_date } = req.query as Record<string, string>;
+    const data = await fetchErpNextCheckins({ employee, from_date, to_date });
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.post("/hrms/checkins", async (req, res) => {
+  try {
+    const { employee, time, log_type, device_id } = req.body;
+    if (!employee || !time || !log_type) {
+      res.status(400).json({ error: "employee, time, log_type required" });
+      return;
+    }
+    const data = await createErpNextCheckin({ employee, time, log_type, device_id });
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ── Leave Types ───────────────────────────────────────────────────────────────
+
+router.get("/hrms/leave-types", async (req, res) => {
+  try {
+    const data = await fetchErpNextLeaveTypes();
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.post("/hrms/leave-requests", async (req, res) => {
+  try {
+    const { employee, leave_type, from_date, to_date, half_day, half_day_date, description } = req.body;
+    if (!employee || !leave_type || !from_date || !to_date) {
+      res.status(400).json({ error: "employee, leave_type, from_date, to_date required" });
+      return;
+    }
+    const data = await createErpNextLeaveApplication({ employee, leave_type, from_date, to_date, half_day, half_day_date, description });
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ── Expense Claims ────────────────────────────────────────────────────────────
+
+router.get("/hrms/claims", async (req, res) => {
+  try {
+    const { employee, approval_status } = req.query as Record<string, string>;
+    const data = await fetchErpNextExpenseClaims({ employee, approval_status });
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get("/hrms/claim-types", async (req, res) => {
+  try {
+    const data = await fetchErpNextExpenseClaimTypes();
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.post("/hrms/claims", async (req, res) => {
+  try {
+    const { employee, posting_date, company, remark, expenses } = req.body;
+    if (!employee || !posting_date || !expenses || !Array.isArray(expenses) || expenses.length === 0) {
+      res.status(400).json({ error: "employee, posting_date, expenses[] required" });
+      return;
+    }
+    const data = await createErpNextExpenseClaim({ employee, posting_date, company, remark, expenses });
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ── Recruitment Tracker ───────────────────────────────────────────────────────
+
+router.get("/hrms/recruitment", async (req, res) => {
+  try {
+    const { status, department, position } = req.query as Record<string, string>;
+    const data = await fetchErpNextRecruitmentTrackers({ status, department, position });
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get("/hrms/recruitment/:name", async (req, res) => {
+  try {
+    const data = await fetchErpNextRecruitmentTracker(req.params.name);
+    res.json(data);
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
