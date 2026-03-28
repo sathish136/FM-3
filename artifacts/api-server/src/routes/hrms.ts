@@ -623,6 +623,81 @@ router.post("/hrms/candidate-enrich", async (req, res) => {
   }
 });
 
+router.post("/hrms/recruitment-insights", async (req, res) => {
+  try {
+    const { candidates } = req.body as {
+      candidates: Array<{
+        candidate_name: string;
+        applying_for_the_post: string;
+        department: string | null;
+        status: string;
+        not_suitable_reason: string | null;
+        experience_status: string | null;
+        telephonic_interview_commands: string | null;
+        existing_salary_per_month: number;
+        expected_salary: number;
+        date: string;
+      }>;
+    };
+    if (!candidates || candidates.length === 0) {
+      res.status(400).json({ error: "candidates array required" });
+      return;
+    }
+    const openai = getOpenAI();
+    const summary = candidates.map(c => ({
+      name: c.candidate_name,
+      position: c.applying_for_the_post,
+      department: c.department,
+      status: c.status,
+      rejection_reason: c.not_suitable_reason || null,
+      interview_notes: c.telephonic_interview_commands || null,
+      experience_status: c.experience_status || null,
+      salary_ask: c.expected_salary,
+    }));
+
+    const resp = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{
+        role: "user",
+        content: `You are a senior HR analytics expert. Analyze this recruitment data and provide deep actionable insights.
+
+Recruitment Data (${candidates.length} candidates):
+${JSON.stringify(summary, null, 2).slice(0, 8000)}
+
+Return ONLY valid JSON with this schema:
+{
+  "key_metrics": {
+    "acceptance_rate_pct": 0,
+    "rejection_rate_pct": 0,
+    "avg_salary_ask": 0,
+    "top_applied_position": "",
+    "top_rejection_reason_category": ""
+  },
+  "rejection_patterns": [
+    {"category": "", "count": 0, "percentage": 0, "description": "", "recommendation": ""}
+  ],
+  "position_insights": [
+    {"position": "", "total_applied": 0, "selected": 0, "rejected": 0, "open": 0, "difficulty": "easy|medium|hard", "insight": ""}
+  ],
+  "department_insights": [
+    {"department": "", "total": 0, "hired": 0, "pipeline": 0, "insight": ""}
+  ],
+  "overall_insights": [""],
+  "hiring_recommendations": [""],
+  "pipeline_health": "healthy|moderate|critical",
+  "pipeline_health_reason": ""
+}`
+      }],
+      max_tokens: 2500,
+    });
+    const raw = resp.choices[0]?.message?.content || "{}";
+    res.json(parseJsonResponse(raw));
+  } catch (e) {
+    console.error("recruitment-insights error:", e);
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 router.get("/users/mention", async (req, res) => {
   try {
     const { q = "" } = req.query as Record<string, string>;

@@ -7,6 +7,7 @@ import {
   TrendingUp, TrendingDown, Minus, Target, Shield, AlertTriangle,
   HelpCircle, Lightbulb, BarChart2, Link, Github, Linkedin, ChevronRight,
   FolderOpen, Trophy, MessageCircle, Brain, ArrowUpRight, ArrowRight,
+  PieChart, Activity, XCircle, Users, BarChart, Filter,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -1795,7 +1796,424 @@ function DetailView({ record, onBack }: { record: RecruitmentTracker; onBack: ()
   );
 }
 
-// ── Main Page ──────────────────────────────────────────────────────────────
+// ── Analytics Dashboard ────────────────────────────────────────────────────
+
+interface AIInsights {
+  key_metrics: {
+    acceptance_rate_pct: number;
+    rejection_rate_pct: number;
+    avg_salary_ask: number;
+    top_applied_position: string;
+    top_rejection_reason_category: string;
+  };
+  rejection_patterns: { category: string; count: number; percentage: number; description: string; recommendation: string }[];
+  position_insights: { position: string; total_applied: number; selected: number; rejected: number; open: number; difficulty: string; insight: string }[];
+  department_insights: { department: string; total: number; hired: number; pipeline: number; insight: string }[];
+  overall_insights: string[];
+  hiring_recommendations: string[];
+  pipeline_health: "healthy" | "moderate" | "critical";
+  pipeline_health_reason: string;
+}
+
+function MiniBar({ value, max, color }: { value: number; max: number; color: string }) {
+  const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
+  return (
+    <div className="h-2 bg-gray-100 rounded-full overflow-hidden flex-1">
+      <div className={`h-full ${color} rounded-full transition-all duration-700`} style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+function AnalyticsDashboard({ trackers }: { trackers: RecruitmentTracker[] }) {
+  const { toast } = useToast();
+  const [insights, setInsights] = useState<AIInsights | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+
+  const total = trackers.length;
+  const statusCounts = trackers.reduce((acc, t) => {
+    const s = t.status || "Unknown";
+    acc[s] = (acc[s] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const selected = (statusCounts["Selected"] || 0) + (statusCounts["Joined"] || 0);
+  const rejected = statusCounts["Not Suitable"] || 0;
+  const open = statusCounts["Open"] || 0;
+  const hold = statusCounts["Hold"] || 0;
+  const offerDeclined = statusCounts["Offer Declined"] || 0;
+
+  const acceptanceRate = total > 0 ? Math.round((selected / total) * 100) : 0;
+  const rejectionRate = total > 0 ? Math.round((rejected / total) * 100) : 0;
+
+  const positionMap = trackers.reduce((acc, t) => {
+    const pos = t.applying_for_the_post || "Unspecified";
+    if (!acc[pos]) acc[pos] = { total: 0, selected: 0, rejected: 0, open: 0, hold: 0 };
+    acc[pos].total++;
+    const s = (t.status || "").toLowerCase();
+    if (s === "selected" || s === "joined") acc[pos].selected++;
+    else if (s === "not suitable") acc[pos].rejected++;
+    else if (s === "open") acc[pos].open++;
+    else if (s === "hold") acc[pos].hold++;
+    return acc;
+  }, {} as Record<string, { total: number; selected: number; rejected: number; open: number; hold: number }>);
+
+  const positions = Object.entries(positionMap)
+    .map(([pos, d]) => ({ pos, ...d }))
+    .sort((a, b) => b.total - a.total);
+
+  const deptMap = trackers.reduce((acc, t) => {
+    const d = t.department || "No Department";
+    if (!acc[d]) acc[d] = { total: 0, hired: 0 };
+    acc[d].total++;
+    const s = (t.status || "").toLowerCase();
+    if (s === "selected" || s === "joined") acc[d].hired++;
+    return acc;
+  }, {} as Record<string, { total: number; hired: number }>);
+
+  const departments = Object.entries(deptMap).map(([d, v]) => ({ dept: d, ...v })).sort((a, b) => b.total - a.total);
+
+  const rejectedCandidates = trackers.filter(t => t.status === "Not Suitable" && t.not_suitable_reason);
+  const reasonKeywords = rejectedCandidates.reduce((acc, t) => {
+    const reason = (t.not_suitable_reason || "").toLowerCase();
+    const keywords = ["salary", "experience", "skills", "qualification", "location", "communication", "attitude", "notice", "not interested", "overqualified", "underqualified"];
+    keywords.forEach(kw => {
+      if (reason.includes(kw)) acc[kw] = (acc[kw] || 0) + 1;
+    });
+    if (!keywords.some(kw => reason.includes(kw))) {
+      acc["other"] = (acc["other"] || 0) + 1;
+    }
+    return acc;
+  }, {} as Record<string, number>);
+
+  const reasonEntries = Object.entries(reasonKeywords).sort((a, b) => b[1] - a[1]);
+  const maxReasonCount = reasonEntries[0]?.[1] || 1;
+
+  const statusColors: Record<string, string> = {
+    "Open": "bg-blue-500",
+    "Hold": "bg-amber-400",
+    "Selected": "bg-emerald-500",
+    "Not Suitable": "bg-red-400",
+    "Joined": "bg-teal-500",
+    "Offer Declined": "bg-orange-400",
+    "Unknown": "bg-gray-400",
+  };
+
+  const statusOrder = ["Open", "Hold", "Selected", "Joined", "Not Suitable", "Offer Declined"];
+  const sortedStatuses = [...statusOrder.filter(s => statusCounts[s]), ...Object.keys(statusCounts).filter(s => !statusOrder.includes(s))];
+
+  async function generateInsights() {
+    setInsightsLoading(true);
+    try {
+      const r = await fetch(`${BASE}/api/hrms/recruitment-insights`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidates: trackers }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      setInsights(await r.json());
+    } catch (e) {
+      toast({ title: "AI analysis failed", description: String(e), variant: "destructive" });
+    } finally { setInsightsLoading(false); }
+  }
+
+  const healthColor = insights?.pipeline_health === "healthy" ? "text-emerald-600 bg-emerald-50 border-emerald-200" :
+    insights?.pipeline_health === "critical" ? "text-red-600 bg-red-50 border-red-200" :
+    "text-amber-600 bg-amber-50 border-amber-200";
+
+  return (
+    <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        {[
+          { label: "Total Candidates", value: total, icon: Users, color: "text-blue-600", bg: "bg-blue-50", border: "border-blue-100" },
+          { label: "Active Pipeline", value: open + hold, icon: Activity, color: "text-indigo-600", bg: "bg-indigo-50", border: "border-indigo-100" },
+          { label: "Hired / Joined", value: selected, icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-100" },
+          { label: "Rejected", value: rejected, icon: XCircle, color: "text-red-500", bg: "bg-red-50", border: "border-red-100" },
+          { label: "Offer Declined", value: offerDeclined, icon: AlertTriangle, color: "text-orange-500", bg: "bg-orange-50", border: "border-orange-100" },
+        ].map(card => {
+          const Icon = card.icon;
+          return (
+            <div key={card.label} className={`bg-white rounded-2xl border ${card.border} shadow-sm p-4`}>
+              <div className={`w-9 h-9 rounded-xl ${card.bg} flex items-center justify-center mb-3`}>
+                <Icon className={`w-4.5 h-4.5 ${card.color}`} />
+              </div>
+              <p className="text-2xl font-black text-gray-900">{card.value}</p>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">{card.label}</p>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Acceptance & Rejection Rate */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp className="w-4 h-4 text-emerald-500" />
+            <span className="text-xs font-bold text-gray-700 uppercase tracking-widest">Acceptance Rate</span>
+          </div>
+          <div className="flex items-end gap-3">
+            <span className="text-4xl font-black text-emerald-600">{acceptanceRate}%</span>
+            <span className="text-sm text-gray-400 mb-1">{selected} of {total} candidates</span>
+          </div>
+          <div className="mt-3 h-3 bg-gray-100 rounded-full overflow-hidden">
+            <div className="h-full bg-emerald-500 rounded-full transition-all duration-700" style={{ width: `${acceptanceRate}%` }} />
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingDown className="w-4 h-4 text-red-400" />
+            <span className="text-xs font-bold text-gray-700 uppercase tracking-widest">Rejection Rate</span>
+          </div>
+          <div className="flex items-end gap-3">
+            <span className="text-4xl font-black text-red-500">{rejectionRate}%</span>
+            <span className="text-sm text-gray-400 mb-1">{rejected} of {total} candidates</span>
+          </div>
+          <div className="mt-3 h-3 bg-gray-100 rounded-full overflow-hidden">
+            <div className="h-full bg-red-400 rounded-full transition-all duration-700" style={{ width: `${rejectionRate}%` }} />
+          </div>
+        </div>
+      </div>
+
+      {/* Status Breakdown */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <PieChart className="w-4 h-4 text-indigo-500" />
+          <span className="text-xs font-bold text-gray-700 uppercase tracking-widest">Status Breakdown</span>
+        </div>
+        <div className="space-y-2.5">
+          {sortedStatuses.map(status => {
+            const count = statusCounts[status] || 0;
+            const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+            return (
+              <div key={status} className="flex items-center gap-3">
+                <span className="text-xs font-semibold text-gray-600 w-28 shrink-0">{status}</span>
+                <MiniBar value={count} max={total} color={statusColors[status] || "bg-gray-400"} />
+                <span className="text-xs font-bold text-gray-500 w-10 text-right shrink-0">{count}</span>
+                <span className="text-[10px] text-gray-400 w-8 shrink-0">{pct}%</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Position-wise Breakdown */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/60 flex items-center gap-2">
+            <Briefcase className="w-3.5 h-3.5 text-indigo-500" />
+            <span className="text-xs font-bold text-gray-700 uppercase tracking-widest">Position Tracker</span>
+            <span className="ml-auto text-[10px] font-bold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{positions.length} positions</span>
+          </div>
+          <div className="divide-y divide-gray-50 max-h-80 overflow-y-auto">
+            {positions.map(p => (
+              <div key={p.pos} className="px-5 py-3">
+                <div className="flex items-start justify-between gap-2 mb-1.5">
+                  <p className="text-xs font-semibold text-gray-800 flex-1">{p.pos}</p>
+                  <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full shrink-0">{p.total} applied</span>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  {p.open > 0 && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">{p.open} open</span>}
+                  {p.hold > 0 && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 text-amber-600">{p.hold} hold</span>}
+                  {p.selected > 0 && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600">{p.selected} hired</span>}
+                  {p.rejected > 0 && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-50 text-red-500">{p.rejected} rejected</span>}
+                </div>
+                <div className="mt-2 flex gap-1 h-1.5">
+                  {p.selected > 0 && <div className="bg-emerald-500 rounded-full" style={{ width: `${(p.selected / p.total) * 100}%` }} />}
+                  {p.open > 0 && <div className="bg-blue-400 rounded-full" style={{ width: `${(p.open / p.total) * 100}%` }} />}
+                  {p.hold > 0 && <div className="bg-amber-400 rounded-full" style={{ width: `${(p.hold / p.total) * 100}%` }} />}
+                  {p.rejected > 0 && <div className="bg-red-400 rounded-full" style={{ width: `${(p.rejected / p.total) * 100}%` }} />}
+                </div>
+              </div>
+            ))}
+            {positions.length === 0 && <div className="px-5 py-8 text-center text-xs text-gray-400">No data</div>}
+          </div>
+        </div>
+
+        {/* Department Breakdown */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/60 flex items-center gap-2">
+            <Building2 className="w-3.5 h-3.5 text-blue-500" />
+            <span className="text-xs font-bold text-gray-700 uppercase tracking-widest">Department Breakdown</span>
+          </div>
+          <div className="divide-y divide-gray-50 max-h-80 overflow-y-auto">
+            {departments.map(d => (
+              <div key={d.dept} className="px-5 py-3 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-gray-800 truncate">{d.dept}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">{d.hired} hired of {d.total}</p>
+                </div>
+                <MiniBar value={d.hired} max={d.total} color="bg-emerald-500" />
+                <span className="text-xs font-bold text-gray-600 w-6 text-right shrink-0">{d.total}</span>
+              </div>
+            ))}
+            {departments.length === 0 && <div className="px-5 py-8 text-center text-xs text-gray-400">No data</div>}
+          </div>
+        </div>
+      </div>
+
+      {/* Rejection Reasons Analysis */}
+      {rejectedCandidates.length > 0 && (
+        <div className="bg-white rounded-2xl border border-red-100 shadow-sm overflow-hidden">
+          <div className="px-5 py-3 border-b border-red-50 bg-red-50/40 flex items-center gap-2">
+            <XCircle className="w-3.5 h-3.5 text-red-500" />
+            <span className="text-xs font-bold text-gray-700 uppercase tracking-widest">Rejection Reasons Analysis</span>
+            <span className="ml-auto text-[10px] font-bold text-red-400 bg-red-50 px-2 py-0.5 rounded-full border border-red-100">{rejectedCandidates.length} rejected</span>
+          </div>
+          <div className="p-5 space-y-4">
+            {reasonEntries.length > 0 && (
+              <div className="space-y-2.5">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Common Rejection Categories</p>
+                {reasonEntries.map(([kw, count]) => (
+                  <div key={kw} className="flex items-center gap-3">
+                    <span className="text-xs font-semibold text-gray-600 w-32 shrink-0 capitalize">{kw}</span>
+                    <MiniBar value={count} max={maxReasonCount} color="bg-red-400" />
+                    <span className="text-xs font-bold text-gray-500 w-6 text-right shrink-0">{count}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Individual Rejection Notes</p>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {rejectedCandidates.map(c => (
+                  <div key={c.name} className="bg-red-50/60 border border-red-100 rounded-xl px-4 py-2.5">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[11px] font-bold text-gray-700">{c.candidate_name}</span>
+                      <span className="text-[10px] text-gray-400">·</span>
+                      <span className="text-[10px] text-indigo-500 font-semibold">{c.applying_for_the_post}</span>
+                    </div>
+                    <p className="text-xs text-red-700 leading-relaxed">{c.not_suitable_reason}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Insights Section */}
+      <div className="bg-white rounded-2xl border border-indigo-100 shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b border-indigo-50 bg-gradient-to-r from-indigo-50 to-blue-50 flex items-center gap-2">
+          <Brain className="w-3.5 h-3.5 text-indigo-500" />
+          <span className="text-xs font-bold text-gray-700 uppercase tracking-widest">AI Insights</span>
+          <span className="ml-auto text-[10px] text-indigo-400 font-medium">Powered by GPT-4o</span>
+        </div>
+        <div className="p-5">
+          {!insights && !insightsLoading && (
+            <div className="text-center py-8">
+              <Brain className="w-10 h-10 text-indigo-200 mx-auto mb-3" />
+              <p className="text-sm text-gray-500 mb-4">Get AI-powered insights on rejection patterns,<br />hiring trends, and recommendations</p>
+              <button onClick={generateInsights}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-colors shadow-sm">
+                <Sparkles className="w-4 h-4" /> Generate AI Analysis
+              </button>
+            </div>
+          )}
+          {insightsLoading && (
+            <div className="text-center py-8">
+              <Loader2 className="w-8 h-8 text-indigo-400 animate-spin mx-auto mb-3" />
+              <p className="text-sm font-semibold text-indigo-600">Analyzing {trackers.length} candidates with AI…</p>
+              <p className="text-xs text-indigo-400 mt-1">Finding patterns · Rejection reasons · Recommendations</p>
+            </div>
+          )}
+          {insights && !insightsLoading && (
+            <div className="space-y-5">
+              {/* Pipeline Health */}
+              <div className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${healthColor}`}>
+                <Activity className="w-4 h-4 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest">Pipeline Health: {insights.pipeline_health?.toUpperCase()}</p>
+                  <p className="text-xs mt-1 leading-relaxed">{insights.pipeline_health_reason}</p>
+                </div>
+              </div>
+
+              {/* Key Metrics */}
+              {insights.key_metrics && (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {[
+                    { label: "Acceptance Rate", value: `${insights.key_metrics.acceptance_rate_pct}%`, color: "text-emerald-600" },
+                    { label: "Rejection Rate", value: `${insights.key_metrics.rejection_rate_pct}%`, color: "text-red-500" },
+                    { label: "Avg Salary Ask", value: insights.key_metrics.avg_salary_ask ? fmtCurrency(insights.key_metrics.avg_salary_ask) : "—", color: "text-blue-600" },
+                    { label: "Top Position", value: insights.key_metrics.top_applied_position || "—", color: "text-indigo-600" },
+                    { label: "Top Rejection Reason", value: insights.key_metrics.top_rejection_reason_category || "—", color: "text-orange-500" },
+                  ].map(m => (
+                    <div key={m.label} className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                      <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">{m.label}</p>
+                      <p className={`text-sm font-bold ${m.color} leading-tight`}>{m.value}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Rejection Patterns */}
+              {(insights.rejection_patterns || []).length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                    <XCircle className="w-3 h-3 text-red-400" /> Rejection Patterns
+                  </p>
+                  <div className="space-y-2">
+                    {insights.rejection_patterns.map((rp, i) => (
+                      <div key={i} className="bg-red-50/60 border border-red-100 rounded-xl p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-bold text-red-700">{rp.category}</span>
+                          <span className="text-[10px] text-red-400 bg-red-100 px-1.5 py-0.5 rounded-full">{rp.count} cases · {rp.percentage}%</span>
+                        </div>
+                        <p className="text-[11px] text-gray-600 mb-1">{rp.description}</p>
+                        {rp.recommendation && (
+                          <p className="text-[11px] text-indigo-600 flex items-start gap-1.5">
+                            <Lightbulb className="w-3 h-3 shrink-0 mt-0.5 text-amber-400" />{rp.recommendation}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Overall Insights */}
+              {(insights.overall_insights || []).length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                    <Sparkles className="w-3 h-3 text-indigo-400" /> Key Observations
+                  </p>
+                  <ul className="space-y-1.5">
+                    {insights.overall_insights.map((obs, i) => (
+                      <li key={i} className="flex items-start gap-2 text-xs text-gray-700 bg-indigo-50/50 rounded-lg px-3 py-2 border border-indigo-50">
+                        <ChevronRight className="w-3.5 h-3.5 text-indigo-400 shrink-0 mt-0.5" />{obs}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Hiring Recommendations */}
+              {(insights.hiring_recommendations || []).length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                    <Lightbulb className="w-3 h-3 text-amber-400" /> Recommendations
+                  </p>
+                  <ul className="space-y-1.5">
+                    {insights.hiring_recommendations.map((rec, i) => (
+                      <li key={i} className="flex items-start gap-2 text-xs text-gray-700 bg-amber-50/60 rounded-lg px-3 py-2 border border-amber-100">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />{rec}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <button onClick={generateInsights} disabled={insightsLoading}
+                className="text-xs text-indigo-500 hover:text-indigo-700 font-semibold flex items-center gap-1.5">
+                <RefreshCw className="w-3 h-3" /> Regenerate Analysis
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Recruitment() {
   const { toast } = useToast();
@@ -1806,6 +2224,7 @@ export default function Recruitment() {
   const [statusFilter, setStatusFilter] = useState("");
   const [deptFilter, setDeptFilter] = useState("");
   const [detailRecord, setDetailRecord] = useState<RecruitmentTracker | null>(null);
+  const [mainView, setMainView] = useState<"tracker" | "analyzer" | "analytics">("tracker");
 
   const loadTrackers = useCallback(async () => {
     setLoading(true);
@@ -1876,17 +2295,74 @@ export default function Recruitment() {
     <Layout>
       <div className="h-full flex flex-col bg-[#f1f5f9] overflow-hidden">
         {/* Header */}
-        <div className="bg-white border-b border-gray-100 px-6 py-3 flex items-center gap-4 shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
+        <div className="bg-white border-b border-gray-100 px-6 py-0 flex items-center gap-4 shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+          <div className="flex items-center gap-2 shrink-0">
             <UserPlus className="w-4 h-4 text-blue-500 shrink-0" />
             <h1 className="text-sm font-bold text-gray-900">Recruitment</h1>
           </div>
-          <button onClick={loadTrackers} disabled={loading} className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors">
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          </button>
+
+          {/* View tabs */}
+          <div className="flex gap-1 flex-1">
+            {([
+              { id: "tracker", label: "Tracker", icon: Users },
+              { id: "analytics", label: "Analytics", icon: BarChart },
+              { id: "analyzer", label: "Resume Analyzer", icon: FileText },
+            ] as const).map(tab => {
+              const Icon = tab.icon;
+              return (
+                <button key={tab.id} onClick={() => setMainView(tab.id)}
+                  className={`flex items-center gap-1.5 px-4 py-3.5 text-xs font-bold border-b-2 -mb-px transition-all
+                    ${mainView === tab.id ? "text-indigo-700 border-indigo-500" : "text-gray-400 border-transparent hover:text-gray-700 hover:border-gray-200"}`}>
+                  <Icon className="w-3.5 h-3.5" />{tab.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {mainView === "tracker" && (
+            <button onClick={loadTrackers} disabled={loading} className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors shrink-0">
+              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            </button>
+          )}
         </div>
 
-        <>
+        {/* Analytics view */}
+        {mainView === "analytics" && (
+          <>
+            <div className="px-6 pt-3 pb-0 flex items-center gap-3 shrink-0">
+              <div className="flex gap-2 flex-wrap flex-1">
+                {[
+                  { label: "Total", value: trackers.length, color: "bg-blue-500" },
+                  { label: "Open", value: openCount, color: "bg-indigo-400" },
+                  { label: "Selected", value: selectedCount, color: "bg-emerald-500" },
+                  { label: "Joined", value: joinedCount, color: "bg-teal-500" },
+                  { label: "Rejected", value: trackers.filter(t => t.status === "Not Suitable").length, color: "bg-red-400" },
+                ].map(s => (
+                  <div key={s.label} className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+                    <span className={`w-2 h-2 rounded-full ${s.color} shrink-0`} />
+                    <span className="text-xs font-bold text-gray-700">{s.value}</span>
+                    <span className="text-[10px] text-gray-400">{s.label}</span>
+                  </div>
+                ))}
+              </div>
+              <button onClick={loadTrackers} disabled={loading} className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors shrink-0">
+                <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+              </button>
+            </div>
+            {loading ? (
+              <div className="flex-1 flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-indigo-400" /></div>
+            ) : (
+              <AnalyticsDashboard trackers={trackers} />
+            )}
+          </>
+        )}
+
+        {/* Resume Analyzer view */}
+        {mainView === "analyzer" && <ResumeAnalyzer />}
+
+        {/* Tracker list view */}
+        {mainView === "tracker" && (
+          <>
             <div className="px-6 pt-3 pb-0 flex gap-2 shrink-0 flex-wrap">
               {[
                 { label: "Total", value: trackers.length, color: "bg-blue-500" },
@@ -1983,6 +2459,7 @@ export default function Recruitment() {
               )}
             </div>
           </>
+        )}
       </div>
     </Layout>
   );
