@@ -1,4 +1,6 @@
 import { Router } from "express";
+import OpenAI from "openai";
+import pdfParse from "pdf-parse";
 import {
   fetchErpNextEmployees,
   fetchErpNextLeaveApplications,
@@ -22,6 +24,27 @@ import {
 const ERPNEXT_URL = process.env.ERPNEXT_URL?.replace(/\/$/, "");
 const ERPNEXT_API_KEY = process.env.ERPNEXT_API_KEY;
 const ERPNEXT_API_SECRET = process.env.ERPNEXT_API_SECRET;
+
+function getOpenAI(): OpenAI {
+  return new OpenAI({
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  });
+}
+
+function erpAuthHeader(): string {
+  return `token ${ERPNEXT_API_KEY}:${ERPNEXT_API_SECRET}`;
+}
+
+async function fetchErpFile(filePath: string): Promise<{ buffer: Buffer; contentType: string; ext: string }> {
+  const url = `${ERPNEXT_URL}${filePath}`;
+  const res = await fetch(url, { headers: { Authorization: erpAuthHeader() } });
+  if (!res.ok) throw new Error(`ERPNext file fetch error ${res.status}`);
+  const contentType = res.headers.get("content-type") || "application/octet-stream";
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const ext = filePath.split(".").pop()?.toLowerCase() || "";
+  return { buffer, contentType, ext };
+}
 
 const router = Router();
 
