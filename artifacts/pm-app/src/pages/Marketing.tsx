@@ -519,54 +519,44 @@ function WorldMapTab() {
                     const shortName = name.length > 12 ? name.split(" ")[0] : name;
                     return (
                       <Marker key={name} coordinates={coords}>
-                        {/* Outer glow ring */}
-                        <circle
-                          r={r + 2.5}
-                          fill={isSelected ? "rgba(99,102,241,0.2)" : "rgba(59,130,246,0.12)"}
-                          style={{ pointerEvents: "none" }}
-                        />
-                        {/* Main bubble */}
+                        {/* Bubble */}
                         <circle
                           r={r}
-                          fill={isSelected ? "#4f46e5" : "#1d4ed8"}
-                          stroke={isSelected ? "#a5b4fc" : "rgba(255,255,255,0.6)"}
-                          strokeWidth={1.2}
+                          fill={isSelected ? "#3730a3" : "#2563eb"}
+                          stroke="none"
                           style={{
                             cursor: "pointer",
-                            filter: isSelected
-                              ? "drop-shadow(0 2px 6px rgba(79,70,229,0.7))"
-                              : "drop-shadow(0 2px 5px rgba(29,78,216,0.5))",
+                            filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.28))",
                           }}
                           onClick={() => setSelectedCountry(selectedCountry === name ? null : name)}
                           onMouseEnter={(e) => setTooltip({ name: `${name}: ${total} leads`, x: (e as any).clientX, y: (e as any).clientY })}
                           onMouseLeave={() => setTooltip(null)}
                         />
-                        {/* Count label */}
+                        {/* Count */}
                         <text
                           textAnchor="middle"
-                          y={r * 0.4}
+                          dominantBaseline="central"
                           style={{
                             fontFamily: "system-ui, sans-serif",
-                            fontSize: total >= 1000 ? r * 0.58 : r * 0.72,
-                            fontWeight: "800",
+                            fontSize: total >= 1000 ? r * 0.6 : r * 0.76,
+                            fontWeight: "700",
                             fill: "white",
                             pointerEvents: "none",
-                            letterSpacing: "-0.03em",
+                            letterSpacing: "-0.02em",
                           }}
                         >
                           {total >= 1000 ? `${(total / 1000).toFixed(1)}k` : total}
                         </text>
-                        {/* Country name below bubble */}
+                        {/* Country name */}
                         <text
                           textAnchor="middle"
-                          y={r + 8}
+                          y={r + 7}
                           style={{
                             fontFamily: "system-ui, sans-serif",
-                            fontSize: 5.5,
+                            fontSize: 6,
                             fontWeight: "600",
-                            fill: isSelected ? "#4f46e5" : "#1e3a8a",
+                            fill: "#1e3a8a",
                             pointerEvents: "none",
-                            letterSpacing: "0.01em",
                           }}
                         >
                           {shortName}
