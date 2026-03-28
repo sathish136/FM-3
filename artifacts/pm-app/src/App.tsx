@@ -5,6 +5,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Login from "@/pages/Login";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { useState, useEffect } from "react";
+import { ShieldOff, Mail } from "lucide-react";
 
 import Dashboard from "@/pages/Dashboard";
 import Projects from "@/pages/Projects";
@@ -58,8 +60,27 @@ const queryClient = new QueryClient({
   },
 });
 
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+type PermStatus = "loading" | "allowed" | "no-record" | "blocked";
+
 function ProtectedRoutes() {
-  const { user, loading } = useAuth();
+  const { user, loading, logout } = useAuth();
+  const [permStatus, setPermStatus] = useState<PermStatus>("loading");
+
+  useEffect(() => {
+    if (!user) return;
+    setPermStatus("loading");
+    fetch(`${BASE}/api/user-permissions`)
+      .then(r => r.ok ? r.json() : [])
+      .then((rows: { email: string; hasAccess: boolean }[]) => {
+        const record = rows.find(r => r.email === user.email);
+        if (!record) setPermStatus("no-record");
+        else if (!record.hasAccess) setPermStatus("blocked");
+        else setPermStatus("allowed");
+      })
+      .catch(() => setPermStatus("no-record"));
+  }, [user]);
 
   if (loading) {
     return (
@@ -70,6 +91,44 @@ function ProtectedRoutes() {
   }
 
   if (!user) return <Login />;
+
+  if (permStatus === "loading") {
+    return (
+      <div className="min-h-screen bg-[#0f0f1a] flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  if (permStatus === "no-record" || permStatus === "blocked") {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-6">
+        <div className="bg-white rounded-2xl shadow-lg border border-slate-200 max-w-sm w-full p-10 flex flex-col items-center text-center gap-5">
+          <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center">
+            <ShieldOff className="w-8 h-8 text-slate-400" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold text-slate-800 mb-1">Access Not Configured</h1>
+            <p className="text-sm text-slate-500 leading-relaxed">
+              {permStatus === "blocked"
+                ? "Your account has been blocked. Please contact your administrator."
+                : "Your account hasn't been set up yet. Please contact your administrator to get access."}
+            </p>
+          </div>
+          <a
+            href="mailto:admin@wttint.com"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors"
+          >
+            <Mail className="w-4 h-4" />
+            Contact Admin
+          </a>
+          <button onClick={logout} className="text-xs text-slate-400 hover:text-slate-600 transition-colors mt-1">
+            Sign out
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Switch>
