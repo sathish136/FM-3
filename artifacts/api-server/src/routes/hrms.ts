@@ -129,8 +129,22 @@ const ASSESSMENT_JSON_SCHEMA = `{
 }`;
 
 function parseJsonResponse(raw: string): Record<string, unknown> {
-  try { return JSON.parse(raw.replace(/```json\n?|```\n?/g, "").trim()); }
-  catch { return {}; }
+  const cleaned = raw.replace(/```json\n?|```\n?/g, "").trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    // Try to recover truncated JSON by finding the last valid closing brace
+    const lastBrace = cleaned.lastIndexOf("}");
+    if (lastBrace > 0) {
+      let partial = cleaned.slice(0, lastBrace + 1);
+      // Balance any unclosed arrays before the closing brace
+      let openArrays = (partial.match(/\[/g) || []).length - (partial.match(/\]/g) || []).length;
+      for (let i = 0; i < openArrays; i++) partial += "]";
+      try { return JSON.parse(partial); } catch { /* fall through */ }
+    }
+    console.error("parseJsonResponse: failed to parse, raw length:", raw.length, "start:", raw.slice(0, 200));
+    return {};
+  }
 }
 
 async function analyzeResumeText(openai: OpenAI, text: string, photoBase64?: string, photoMime?: string) {
@@ -155,7 +169,7 @@ Return ONLY valid JSON matching this exact schema:
 ${RESUME_JSON_SCHEMA}
 
 Resume text:
-${text.slice(0, 14000)}`;
+${text.slice(0, 20000)}`;
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
   if (photoBase64 && photoMime) {
@@ -169,7 +183,7 @@ ${text.slice(0, 14000)}`;
   } else {
     messages.push({ role: "user", content: prompt });
   }
-  const resp = await openai.chat.completions.create({ model: "gpt-4o", messages, max_tokens: 3000 });
+  const resp = await openai.chat.completions.create({ model: "gpt-4o", messages, max_tokens: 6000 });
   return parseJsonResponse(resp.choices[0]?.message?.content || "{}");
 }
 
@@ -181,18 +195,18 @@ async function analyzeResumeImage(openai: OpenAI, imageBase64: string, mimeType:
       content: [
         {
           type: "text",
-          text: `You are a senior HR expert specializing in Indian engineering and technical resumes. Extract EVERY piece of information visible in this resume image. Extract career_objective, internships (separate from experience), all education levels (B.Tech, Diploma, HSC, SSLC etc.) with percentage/CGPA, all certifications with scores, all projects with year and highlights, all achievements with year and organization. Return ONLY valid JSON with this schema:\n${RESUME_JSON_SCHEMA}`
+          text: `You are a senior HR expert specializing in Indian engineering and technical resumes. Extract EVERY piece of information visible in this resume image with maximum detail. Extract career_objective, internships (separate from experience), all education levels (B.Tech, Diploma, HSC, SSLC etc.) with percentage/CGPA, all certifications with scores/percentages, all projects with year and highlights, all achievements with year and organization, skills, technical_skills, soft_skills, languages. Return ONLY valid JSON with this schema:\n${RESUME_JSON_SCHEMA}`
         },
         { type: "image_url", image_url: { url: `data:${mimeType};base64,${imageBase64}`, detail: "high" } }
       ]
     }],
-    max_tokens: 4000,
+    max_tokens: 6000,
   });
   return parseJsonResponse(resp.choices[0]?.message?.content || "{}");
 }
 
 async function assessCandidate(openai: OpenAI, resumeData: Record<string, unknown>, linkedinContent?: string) {
-  const contextParts = [`Resume Data:\n${JSON.stringify(resumeData, null, 2).slice(0, 6000)}`];
+  const contextParts = [`Resume Data:\n${JSON.stringify(resumeData, null, 2).slice(0, 8000)}`];
   if (linkedinContent) contextParts.push(`\nLinkedIn/Web Profile:\n${linkedinContent.slice(0, 3000)}`);
 
   const resp = await openai.chat.completions.create({
@@ -209,7 +223,7 @@ Be honest, detailed and specific. Return ONLY valid JSON with this schema:\n${AS
 
 ${contextParts.join("\n\n")}`
     }],
-    max_tokens: 3000,
+    max_tokens: 4000,
   });
   return parseJsonResponse(resp.choices[0]?.message?.content || "{}");
 }
@@ -515,13 +529,33 @@ router.post("/hrms/resume-analyze", upload.single("file"), async (req, res) => {
       let text = "";
       try { const parsed = await pdfParse(buf); text = parsed.text; } catch { text = ""; }
 
+      const cleanText = text.replace(/\s+/g, " ").trim();
       const jpegs = extractJpegsFromPdf(buf);
-      if (jpegs.length > 0) {
-        photoBase64 = jpegs[0].toString("base64");
-        photoMime = "image/jpeg";
-      }
 
-      resumeData = await analyzeResumeText(openai, text, photoBase64 ?? undefined, photoMime ?? undefined);
+      if (cleanText.length < 300 && jpegs.length > 0) {
+        // Text extraction yielded too little — use vision on the largest image found
+        // Sort descending by size; large = likely a full-page scan, small = likely a photo
+        const sorted = [...jpegs].sort((a, b) => b.length - a.length);
+        const largestJpeg = sorted[0];
+        // If the largest image is big enough to be a full-page render, use it for content
+        if (largestJpeg.length > 40000) {
+          resumeData = await analyzeResumeImage(openai, largestJpeg.toString("base64"), "image/jpeg");
+          // Use a smaller image as the candidate photo if available
+          const smallPhoto = sorted.find(j => j.length < 40000);
+          if (smallPhoto) { photoBase64 = smallPhoto.toString("base64"); photoMime = "image/jpeg"; }
+        } else {
+          // All images are small — use the largest for vision analysis (likely a photo-only resume)
+          photoBase64 = largestJpeg.toString("base64");
+          photoMime = "image/jpeg";
+          resumeData = await analyzeResumeImage(openai, photoBase64, photoMime);
+        }
+      } else {
+        if (jpegs.length > 0) {
+          photoBase64 = jpegs[0].toString("base64");
+          photoMime = "image/jpeg";
+        }
+        resumeData = await analyzeResumeText(openai, cleanText, photoBase64 ?? undefined, photoMime ?? undefined);
+      }
     } else {
       res.status(400).json({ error: "Unsupported file type. Please upload PDF or image." });
       return;
@@ -568,12 +602,33 @@ router.post("/hrms/resume-analyze-erp", async (req, res) => {
       pdfBase64 = buffer.toString("base64");
       let text = "";
       try { const parsed = await pdfParse(buffer); text = parsed.text; } catch { text = ""; }
+
+      const cleanText = text.replace(/\s+/g, " ").trim();
       const jpegs = extractJpegsFromPdf(buffer);
-      if (jpegs.length > 0) {
-        photoBase64 = jpegs[0].toString("base64");
-        photoMime = "image/jpeg";
+      console.log(`resume-analyze-erp: text length=${cleanText.length}, jpegs found=${jpegs.length}`);
+
+      if (cleanText.length < 300 && jpegs.length > 0) {
+        const sorted = [...jpegs].sort((a, b) => b.length - a.length);
+        const largestJpeg = sorted[0];
+        if (largestJpeg.length > 40000) {
+          console.log(`resume-analyze-erp: short text, using vision on large image (${largestJpeg.length} bytes)`);
+          resumeData = await analyzeResumeImage(openai, largestJpeg.toString("base64"), "image/jpeg");
+          const smallPhoto = sorted.find(j => j.length < 40000);
+          if (smallPhoto) { photoBase64 = smallPhoto.toString("base64"); photoMime = "image/jpeg"; }
+        } else {
+          console.log(`resume-analyze-erp: short text, using vision on photo-sized image`);
+          photoBase64 = largestJpeg.toString("base64");
+          photoMime = "image/jpeg";
+          resumeData = await analyzeResumeImage(openai, photoBase64, photoMime);
+        }
+      } else {
+        if (jpegs.length > 0) {
+          photoBase64 = jpegs[0].toString("base64");
+          photoMime = "image/jpeg";
+        }
+        console.log(`resume-analyze-erp: using text extraction (${cleanText.length} chars)`);
+        resumeData = await analyzeResumeText(openai, cleanText, photoBase64 ?? undefined, photoMime ?? undefined);
       }
-      resumeData = await analyzeResumeText(openai, text, photoBase64 ?? undefined, photoMime ?? undefined);
     } else {
       res.status(400).json({ error: "Unsupported file type" }); return;
     }
