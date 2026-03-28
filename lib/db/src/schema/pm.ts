@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, numeric, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, numeric, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -140,3 +140,10 @@ export const emailAccountsTable = pgTable("email_accounts", {
 export const insertEmailAccountSchema = createInsertSchema(emailAccountsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertEmailAccount = z.infer<typeof insertEmailAccountSchema>;
 export type EmailAccount = typeof emailAccountsTable.$inferSelect;
+
+export const resumeAnalysisCacheTable = pgTable("resume_analysis_cache", {
+  id: serial("id").primaryKey(),
+  fileHash: text("file_hash").notNull().unique(),
+  result: jsonb("result").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});

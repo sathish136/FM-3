@@ -7,6 +7,9 @@ import { promisify } from "util";
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
+import { createHash } from "crypto";
+import { db, resumeAnalysisCacheTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
 const pdfParse: (buf: Buffer) => Promise<{ text: string }> = require("pdf-parse");
@@ -571,9 +574,19 @@ router.get("/hrms/recruitment/:name", async (req, res) => {
 router.post("/hrms/resume-analyze", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
+    const buf = req.file.buffer;
+
+    // Check cache first using SHA256 hash of the file
+    const fileHash = createHash("sha256").update(buf).digest("hex");
+    const cached = await db.select().from(resumeAnalysisCacheTable).where(eq(resumeAnalysisCacheTable.fileHash, fileHash)).limit(1);
+    if (cached.length > 0) {
+      console.log(`resume-analyze: cache hit for hash ${fileHash}`);
+      res.json({ ...(cached[0].result as object), cached: true });
+      return;
+    }
+
     const openai = getOpenAI();
     const mime = req.file.mimetype;
-    const buf = req.file.buffer;
 
     let resumeData: Record<string, unknown> = {};
     let photoBase64: string | null = null;
@@ -618,13 +631,23 @@ router.post("/hrms/resume-analyze", upload.single("file"), async (req, res) => {
 
     const assessment = await assessCandidate(openai, resumeData);
 
-    res.json({
+    const resultPayload = {
       resume: resumeData,
       assessment,
       photo_base64: photoBase64,
       photo_mime: photoMime,
       pdf_base64: pdfBase64,
-    });
+    };
+
+    // Store in cache
+    try {
+      await db.insert(resumeAnalysisCacheTable).values({ fileHash, result: resultPayload });
+      console.log(`resume-analyze: cached result for hash ${fileHash}`);
+    } catch (cacheErr) {
+      console.warn("resume-analyze: failed to cache result:", cacheErr);
+    }
+
+    res.json(resultPayload);
   } catch (e) {
     console.error("resume-analyze error:", e);
     res.status(500).json({ error: String(e) });
@@ -635,6 +658,15 @@ router.post("/hrms/resume-analyze-erp", async (req, res) => {
   try {
     const { file_path } = req.body as { file_path?: string };
     if (!file_path) { res.status(400).json({ error: "file_path required" }); return; }
+
+    // Check cache using file_path as the cache key
+    const fileHash = createHash("sha256").update(file_path).digest("hex");
+    const cached = await db.select().from(resumeAnalysisCacheTable).where(eq(resumeAnalysisCacheTable.fileHash, fileHash)).limit(1);
+    if (cached.length > 0) {
+      console.log(`resume-analyze-erp: cache hit for ${file_path}`);
+      res.json({ ...(cached[0].result as object), cached: true });
+      return;
+    }
 
     const { buffer, contentType, ext } = await fetchErpFile(file_path);
     const openai = getOpenAI();
@@ -682,18 +714,29 @@ router.post("/hrms/resume-analyze-erp", async (req, res) => {
     const assessment = await assessCandidate(openai, resumeData);
 
     // Auto-enrich with LinkedIn if found in resume
-    let linkedinEnriched = false;
     const linkedinUrl = (resumeData.linkedin_url as string) || "";
+    let resultPayload: Record<string, unknown>;
     if (linkedinUrl) {
       const linkedinContent = await fetchLinkedInData(linkedinUrl);
       if (linkedinContent) {
         const enrichedAssessment = await assessCandidate(openai, resumeData, linkedinContent);
-        res.json({ resume: resumeData, assessment: enrichedAssessment, photo_base64: photoBase64, photo_mime: photoMime, pdf_base64: pdfBase64, linkedin_enriched: true });
-        return;
+        resultPayload = { resume: resumeData, assessment: enrichedAssessment, photo_base64: photoBase64, photo_mime: photoMime, pdf_base64: pdfBase64, linkedin_enriched: true };
+      } else {
+        resultPayload = { resume: resumeData, assessment, photo_base64: photoBase64, photo_mime: photoMime, pdf_base64: pdfBase64, linkedin_enriched: false };
       }
+    } else {
+      resultPayload = { resume: resumeData, assessment, photo_base64: photoBase64, photo_mime: photoMime, pdf_base64: pdfBase64, linkedin_enriched: false };
     }
 
-    res.json({ resume: resumeData, assessment, photo_base64: photoBase64, photo_mime: photoMime, pdf_base64: pdfBase64, linkedin_enriched: linkedinEnriched });
+    // Store in cache
+    try {
+      await db.insert(resumeAnalysisCacheTable).values({ fileHash, result: resultPayload });
+      console.log(`resume-analyze-erp: cached result for ${file_path}`);
+    } catch (cacheErr) {
+      console.warn("resume-analyze-erp: failed to cache result:", cacheErr);
+    }
+
+    res.json(resultPayload);
   } catch (e) {
     console.error("resume-analyze-erp error:", e);
     res.status(500).json({ error: String(e) });

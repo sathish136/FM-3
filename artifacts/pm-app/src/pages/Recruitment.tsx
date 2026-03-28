@@ -2256,8 +2256,8 @@ export default function Recruitment() {
   const depts = [...new Set(trackers.map(t => t.department).filter(Boolean) as string[])].sort();
   const statuses = [...new Set(trackers.map(t => t.status).filter(Boolean))].sort();
   const filtered = trackers.filter(t =>
-    (!search || t.candidate_name.toLowerCase().includes(search.toLowerCase()) || t.applying_for_the_post.toLowerCase().includes(search.toLowerCase())) &&
-    (!statusFilter || t.status.toLowerCase() === statusFilter.toLowerCase()) &&
+    (!search || (t.candidate_name ?? "").toLowerCase().includes(search.toLowerCase()) || (t.applying_for_the_post ?? "").toLowerCase().includes(search.toLowerCase())) &&
+    (!statusFilter || (t.status ?? "").toLowerCase() === statusFilter.toLowerCase()) &&
     (!deptFilter || t.department === deptFilter)
   );
   const selectedCount = trackers.filter(t => t.status === "Selected").length;
