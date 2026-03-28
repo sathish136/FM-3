@@ -199,7 +199,57 @@ export function ResumeAnalyzer() {
   const [enriching, setEnriching] = useState(false);
   const [result, setResult] = useState<FullAnalysis | null>(null);
   const [activeSection, setActiveSection] = useState<string>("overview");
+  const [autoStatus, setAutoStatus] = useState<string>("");
   const inputRef = useRef<HTMLInputElement>(null);
+
+  async function enrichWithLinkedin(url: string, currentResult: FullAnalysis) {
+    if (!url) return;
+    setEnriching(true);
+    setAutoStatus("Enriching with LinkedIn profile…");
+    try {
+      const companies = (currentResult.resume.experience || []).map(e => e.company).filter(Boolean);
+      const r = await fetch(`${BASE}/api/hrms/candidate-enrich`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          linkedin_url: url,
+          name: currentResult.resume.name,
+          companies,
+          resume_summary: currentResult.resume.summary,
+        }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      const data = await r.json();
+      setResult(prev => prev ? { ...prev, assessment: data.assessment } : prev);
+      toast({ title: "LinkedIn enrichment complete", description: data.linkedin_fetched ? "Profile data fetched and analyzed" : "AI analysis updated based on profile URL" });
+    } catch (e) {
+      toast({ title: "LinkedIn enrichment failed", description: String(e), variant: "destructive" });
+    } finally { setEnriching(false); setAutoStatus(""); }
+  }
+
+  async function analyzeResume(f: File) {
+    setAnalyzing(true);
+    setAutoStatus("Extracting resume data with AI…");
+    try {
+      const form = new FormData();
+      form.append("file", f);
+      const r = await fetch(`${BASE}/api/hrms/resume-analyze`, { method: "POST", body: form });
+      if (!r.ok) throw new Error(await r.text());
+      const data: FullAnalysis = await r.json();
+      setResult(data);
+      setActiveSection("overview");
+
+      // Auto-enrich with LinkedIn if URL found in resume
+      const detectedLinkedin = data.resume.linkedin_url || "";
+      if (detectedLinkedin) {
+        setLinkedinUrl(detectedLinkedin);
+        toast({ title: "LinkedIn detected", description: "Auto-analyzing LinkedIn profile from resume…" });
+        await enrichWithLinkedin(detectedLinkedin, data);
+      }
+    } catch (e) {
+      toast({ title: "Analysis failed", description: String(e), variant: "destructive" });
+    } finally { setAnalyzing(false); setAutoStatus(""); }
+  }
 
   function handleFile(f: File) {
     const allowed = ["application/pdf", "image/jpeg", "image/png", "image/jpg", "image/webp"];
@@ -207,7 +257,11 @@ export function ResumeAnalyzer() {
       toast({ title: "Unsupported file", description: "Please upload a PDF or image (JPG, PNG, WEBP).", variant: "destructive" });
       return;
     }
-    setFile(f); setResult(null);
+    setFile(f);
+    setResult(null);
+    setLinkedinUrl("");
+    // Auto-start analysis immediately
+    analyzeResume(f);
   }
 
   function onDrop(e: React.DragEvent) {
@@ -216,43 +270,9 @@ export function ResumeAnalyzer() {
     if (f) handleFile(f);
   }
 
-  async function analyzeResume() {
-    if (!file) return;
-    setAnalyzing(true);
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      const r = await fetch(`${BASE}/api/hrms/resume-analyze`, { method: "POST", body: form });
-      if (!r.ok) throw new Error(await r.text());
-      setResult(await r.json());
-      setActiveSection("overview");
-    } catch (e) {
-      toast({ title: "Analysis failed", description: String(e), variant: "destructive" });
-    } finally { setAnalyzing(false); }
-  }
-
-  async function enrichWithLinkedin() {
+  async function enrichWithLinkedinManual() {
     if (!result || !linkedinUrl) return;
-    setEnriching(true);
-    try {
-      const companies = (result.resume.experience || []).map(e => e.company).filter(Boolean);
-      const r = await fetch(`${BASE}/api/hrms/candidate-enrich`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          linkedin_url: linkedinUrl,
-          name: result.resume.name,
-          companies,
-          resume_summary: result.resume.summary,
-        }),
-      });
-      if (!r.ok) throw new Error(await r.text());
-      const data = await r.json();
-      setResult(prev => prev ? { ...prev, assessment: data.assessment } : prev);
-      toast({ title: "LinkedIn enrichment complete", description: data.linkedin_fetched ? "Profile data fetched and analyzed" : "AI analysis updated based on profile URL" });
-    } catch (e) {
-      toast({ title: "Enrichment failed", description: String(e), variant: "destructive" });
-    } finally { setEnriching(false); }
+    await enrichWithLinkedin(linkedinUrl, result);
   }
 
   const photoSrc = result?.photo_base64 && result?.photo_mime
@@ -279,13 +299,23 @@ export function ResumeAnalyzer() {
             onDragOver={e => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
             onDrop={onDrop}
-            onClick={() => !file && inputRef.current?.click()}
-            className={`relative border-2 border-dashed rounded-2xl transition-all cursor-pointer select-none
-              ${dragging ? "border-indigo-400 bg-indigo-50" : "border-gray-200 bg-white hover:border-indigo-300 hover:bg-indigo-50/30"}`}
+            onClick={() => !analyzing && !file && inputRef.current?.click()}
+            className={`relative border-2 border-dashed rounded-2xl transition-all select-none
+              ${analyzing ? "border-indigo-400 bg-indigo-50 cursor-default" : "cursor-pointer border-gray-200 bg-white hover:border-indigo-300 hover:bg-indigo-50/30"}
+              ${dragging ? "border-indigo-400 bg-indigo-50" : ""}`}
           >
             <input ref={inputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" className="hidden"
               onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
-            {file ? (
+            {analyzing ? (
+              <div className="flex flex-col items-center justify-center py-14 px-6 text-center">
+                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-100 to-blue-100 flex items-center justify-center mb-4 shadow-inner">
+                  <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+                </div>
+                <p className="text-base font-bold text-indigo-700">{autoStatus || "Analyzing with AI…"}</p>
+                {file && <p className="text-xs text-gray-500 mt-1 truncate max-w-xs">{file.name}</p>}
+                <p className="text-xs text-indigo-400 mt-3 font-medium">Extracting data · Rating · Interview questions · LinkedIn</p>
+              </div>
+            ) : file ? (
               <div className="flex items-center gap-4 px-6 py-5">
                 <div className="w-12 h-12 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0">
                   <FileText className="w-5 h-5 text-indigo-600" />
@@ -306,37 +336,10 @@ export function ResumeAnalyzer() {
                 </div>
                 <p className="text-base font-bold text-gray-700">Drop resume here or click to upload</p>
                 <p className="text-sm text-gray-400 mt-1">PDF, JPG, PNG, WEBP · Max 20MB</p>
-                <p className="text-xs text-indigo-500 mt-3 font-medium">AI will extract all details + photo + deep assessment</p>
+                <p className="text-xs text-indigo-500 mt-3 font-medium">AI auto-analyzes instantly — no buttons needed</p>
               </div>
             )}
           </div>
-
-          {file && (
-            <>
-              <div className="bg-white rounded-2xl border border-gray-100 p-4">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 block">LinkedIn URL (optional — for deeper analysis)</label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Linkedin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-600" />
-                    <input value={linkedinUrl} onChange={e => setLinkedinUrl(e.target.value)}
-                      placeholder="https://linkedin.com/in/candidate-name"
-                      className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:bg-white" />
-                  </div>
-                </div>
-              </div>
-              <button onClick={analyzeResume} disabled={analyzing}
-                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-bold text-sm shadow-lg hover:from-indigo-700 hover:to-blue-700 transition-all disabled:opacity-60 disabled:cursor-not-allowed">
-                {analyzing
-                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Analyzing with AI — please wait…</>
-                  : <><Sparkles className="w-4 h-4" /> Analyze Resume + Generate Full Assessment</>}
-              </button>
-              {analyzing && (
-                <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 text-center">
-                  <p className="text-xs text-indigo-600 font-medium">Extracting data, generating candidate assessment, rating, interview questions…</p>
-                </div>
-              )}
-            </>
-          )}
         </div>
       </div>
     );
@@ -460,9 +463,9 @@ export function ResumeAnalyzer() {
               placeholder="linkedin.com/in/name"
               className="w-full pl-8 pr-3 py-2 text-[11px] rounded-xl border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
           </div>
-          <button onClick={enrichWithLinkedin} disabled={enriching || !linkedinUrl}
+          <button onClick={enrichWithLinkedinManual} disabled={enriching || !linkedinUrl}
             className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl bg-blue-600 text-white text-[11px] font-bold hover:bg-blue-700 transition-colors disabled:opacity-50">
-            {enriching ? <><Loader2 className="w-3 h-3 animate-spin" /> Analyzing…</> : <><Sparkles className="w-3 h-3" /> Re-Analyze</>}
+            {enriching ? <><Loader2 className="w-3 h-3 animate-spin" /> {autoStatus || "Analyzing…"}</> : <><Sparkles className="w-3 h-3" /> Re-Analyze with LinkedIn</>}
           </button>
         </div>
 
