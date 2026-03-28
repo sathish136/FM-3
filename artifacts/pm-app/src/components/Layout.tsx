@@ -238,34 +238,36 @@ function AppLauncher({ open, onClose }: { open: boolean; onClose: () => void }) 
 function AppItem({ item, location, theme, onClose }: { item: any; location: string; theme: any; onClose: () => void }) {
   const isActive = location === item.path || item.children?.some((c: any) => c.path === location);
   const Icon = item.icon;
+  // Convert dark-mode tints (bg-xxx-500/15, text-xxx-400) → solid light-mode versions
+  const lightBg    = (item.bgColor ?? "bg-slate-100").replace(/bg-(\w+)-\d+\/\d+/, "bg-$1-100");
+  const lightColor = (item.color  ?? "text-slate-500").replace(/text-(\w+)-\d+/,   "text-$1-600");
   return (
     <Link href={item.path} onClick={onClose}>
       <div className={cn(
-        "group flex flex-col items-center gap-2.5 p-3 rounded-2xl cursor-pointer transition-all duration-150 text-center relative overflow-hidden",
+        "group flex flex-col items-center justify-center gap-2 py-4 px-2 rounded-2xl cursor-pointer transition-all duration-150 text-center relative overflow-hidden",
         isActive
-          ? "bg-white shadow-md ring-1 ring-slate-200"
+          ? "bg-white shadow-md ring-2 ring-indigo-100"
           : "hover:bg-white hover:shadow-sm hover:ring-1 hover:ring-slate-200"
       )}>
         {isActive && (
-          <div className="absolute inset-0 opacity-10 pointer-events-none"
-            style={{ background: `radial-gradient(circle at 50% 30%, ${theme.accent}, transparent 70%)` }} />
+          <div className="absolute inset-0 opacity-[0.06] pointer-events-none"
+            style={{ background: `radial-gradient(circle at 50% 20%, ${theme.accent}, transparent 75%)` }} />
         )}
         <div className={cn(
-          "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-150",
-          item.bgColor ?? "bg-slate-100",
-          isActive ? "scale-105 shadow-sm" : "group-hover:scale-105"
+          "w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-150 shadow-sm",
+          lightBg,
+          isActive ? "scale-105" : "group-hover:scale-105"
         )}>
-          <Icon className={cn("w-5 h-5 transition-transform duration-150 group-hover:scale-110", item.color ?? "text-slate-500")} />
+          <Icon className={cn("w-6 h-6 transition-transform duration-150 group-hover:scale-110", lightColor)} />
         </div>
         <span className={cn(
-          "text-[11px] font-medium leading-tight w-full transition-colors",
+          "text-[11px] font-semibold leading-tight w-full transition-colors line-clamp-2",
           isActive ? "text-slate-800" : "text-slate-500 group-hover:text-slate-700"
         )}>
           {item.label}
         </span>
         {isActive && (
-          <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-4 h-0.5 rounded-full"
-            style={{ backgroundColor: theme.accent }} />
+          <span className="w-5 h-0.5 rounded-full" style={{ backgroundColor: theme.accent }} />
         )}
       </div>
     </Link>
