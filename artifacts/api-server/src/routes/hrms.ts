@@ -8,8 +8,20 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 import { createHash } from "crypto";
-import { db, resumeAnalysisCacheTable } from "@workspace/db";
+import { db, pool, resumeAnalysisCacheTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+
+pool
+  .query(`
+    CREATE TABLE IF NOT EXISTS resume_analysis_cache (
+      id SERIAL PRIMARY KEY,
+      file_hash TEXT NOT NULL UNIQUE,
+      result JSONB NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `)
+  .then(() => console.log("resume_analysis_cache table ready"))
+  .catch((e: any) => console.error("resume_analysis_cache table error:", e.message));
 const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
 const pdfParse: (buf: Buffer) => Promise<{ text: string }> = require("pdf-parse");
