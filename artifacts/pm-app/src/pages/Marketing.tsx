@@ -515,61 +515,61 @@ function WorldMapTab() {
                   {markers.map(({ name, total, coords }) => {
                     const r = getBubbleSize(total);
                     const isSelected = selectedCountry === name;
-                    const labelY = -(r + 14);
-                    const lineY1 = -(r + 3);
-                    const lineY2 = -(r + 10);
                     // Shorten long names
                     const shortName = name.length > 12 ? name.split(" ")[0] : name;
                     return (
                       <Marker key={name} coordinates={coords}>
-                        {/* Connector line */}
-                        <line
-                          x1={0} y1={lineY1}
-                          x2={0} y2={lineY2}
-                          stroke={isSelected ? "#4f46e5" : "#3b82f6"}
-                          strokeWidth={1}
-                          strokeDasharray="2,1.5"
+                        {/* Outer glow ring */}
+                        <circle
+                          r={r + 2.5}
+                          fill={isSelected ? "rgba(99,102,241,0.2)" : "rgba(59,130,246,0.12)"}
                           style={{ pointerEvents: "none" }}
                         />
-                        {/* Country name label */}
+                        {/* Main bubble */}
+                        <circle
+                          r={r}
+                          fill={isSelected ? "#4f46e5" : "#1d4ed8"}
+                          stroke={isSelected ? "#a5b4fc" : "rgba(255,255,255,0.6)"}
+                          strokeWidth={1.2}
+                          style={{
+                            cursor: "pointer",
+                            filter: isSelected
+                              ? "drop-shadow(0 2px 6px rgba(79,70,229,0.7))"
+                              : "drop-shadow(0 2px 5px rgba(29,78,216,0.5))",
+                          }}
+                          onClick={() => setSelectedCountry(selectedCountry === name ? null : name)}
+                          onMouseEnter={(e) => setTooltip({ name: `${name}: ${total} leads`, x: (e as any).clientX, y: (e as any).clientY })}
+                          onMouseLeave={() => setTooltip(null)}
+                        />
+                        {/* Count label */}
                         <text
                           textAnchor="middle"
-                          y={labelY}
+                          y={r * 0.4}
                           style={{
                             fontFamily: "system-ui, sans-serif",
-                            fontSize: 6.5,
-                            fontWeight: "700",
+                            fontSize: total >= 1000 ? r * 0.58 : r * 0.72,
+                            fontWeight: "800",
+                            fill: "white",
+                            pointerEvents: "none",
+                            letterSpacing: "-0.03em",
+                          }}
+                        >
+                          {total >= 1000 ? `${(total / 1000).toFixed(1)}k` : total}
+                        </text>
+                        {/* Country name below bubble */}
+                        <text
+                          textAnchor="middle"
+                          y={r + 8}
+                          style={{
+                            fontFamily: "system-ui, sans-serif",
+                            fontSize: 5.5,
+                            fontWeight: "600",
                             fill: isSelected ? "#4f46e5" : "#1e3a8a",
                             pointerEvents: "none",
                             letterSpacing: "0.01em",
                           }}
                         >
                           {shortName}
-                        </text>
-                        {/* Count bubble */}
-                        <circle
-                          r={r}
-                          fill={isSelected ? "#4f46e5" : "rgba(255,255,255,0.94)"}
-                          stroke={isSelected ? "#3730a3" : "#2563eb"}
-                          strokeWidth={1.8}
-                          style={{ cursor: "pointer", filter: "drop-shadow(0 1px 3px rgba(37,99,235,0.25))" }}
-                          onClick={() => setSelectedCountry(selectedCountry === name ? null : name)}
-                          onMouseEnter={(e) => setTooltip({ name: `${name}: ${total} leads`, x: (e as any).clientX, y: (e as any).clientY })}
-                          onMouseLeave={() => setTooltip(null)}
-                        />
-                        <text
-                          textAnchor="middle"
-                          y={r * 0.42}
-                          style={{
-                            fontFamily: "system-ui, sans-serif",
-                            fontSize: total >= 1000 ? r * 0.62 : r * 0.75,
-                            fontWeight: "700",
-                            fill: isSelected ? "white" : "#1e40af",
-                            pointerEvents: "none",
-                            letterSpacing: "-0.02em",
-                          }}
-                        >
-                          {total >= 1000 ? `${(total / 1000).toFixed(1)}k` : total}
                         </text>
                       </Marker>
                     );
