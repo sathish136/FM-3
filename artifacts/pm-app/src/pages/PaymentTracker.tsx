@@ -5,7 +5,7 @@ import {
   CreditCard, Plus, RefreshCw, Smartphone, Wifi, Tv, ShoppingBag,
   Phone, Shield, Zap, MoreHorizontal, CheckCircle, Clock, AlertTriangle,
   ChevronDown, X, Edit3, Trash2, History, Bell, BellOff, ArrowLeft,
-  Calendar, DollarSign, Tag, Building2, FileText, Check, Search,
+  Calendar, DollarSign, Tag, Building2, FileText, Check, Search, Receipt,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -109,6 +109,50 @@ function DueBadge({ dueDate }: { dueDate: string | null }) {
   );
 }
 
+// Operator brand colors
+const OPERATOR_STYLE: Record<string, { bg: string; text: string; border: string; dot: string }> = {
+  "Jio":    { bg: "bg-blue-100",   text: "text-blue-700",   border: "border-blue-300",   dot: "bg-blue-500" },
+  "Airtel": { bg: "bg-red-100",    text: "text-red-700",    border: "border-red-300",    dot: "bg-red-500" },
+  "Vi":     { bg: "bg-purple-100", text: "text-purple-700", border: "border-purple-300", dot: "bg-purple-500" },
+  "BSNL":   { bg: "bg-green-100",  text: "text-green-700",  border: "border-green-300",  dot: "bg-green-500" },
+};
+
+// Common plans per operator
+const QUICK_PLANS: Record<string, { amount: string; validity: string; label: string }[]> = {
+  Jio: [
+    { amount: "199", validity: "28", label: "₹199 · 28d" },
+    { amount: "239", validity: "28", label: "₹239 · 28d" },
+    { amount: "299", validity: "28", label: "₹299 · 28d" },
+    { amount: "349", validity: "28", label: "₹349 · 28d" },
+    { amount: "449", validity: "56", label: "₹449 · 56d" },
+    { amount: "599", validity: "84", label: "₹599 · 84d" },
+    { amount: "2999", validity: "365", label: "₹2999 · 1yr" },
+  ],
+  Airtel: [
+    { amount: "199", validity: "28", label: "₹199 · 28d" },
+    { amount: "299", validity: "28", label: "₹299 · 28d" },
+    { amount: "349", validity: "28", label: "₹349 · 28d" },
+    { amount: "449", validity: "56", label: "₹449 · 56d" },
+    { amount: "599", validity: "84", label: "₹599 · 84d" },
+    { amount: "3359", validity: "365", label: "₹3359 · 1yr" },
+  ],
+  Vi: [
+    { amount: "199", validity: "28", label: "₹199 · 28d" },
+    { amount: "299", validity: "28", label: "₹299 · 28d" },
+    { amount: "349", validity: "28", label: "₹349 · 28d" },
+    { amount: "449", validity: "56", label: "₹449 · 56d" },
+    { amount: "599", validity: "84", label: "₹599 · 84d" },
+    { amount: "2899", validity: "365", label: "₹2899 · 1yr" },
+  ],
+  BSNL: [
+    { amount: "97", validity: "26", label: "₹97 · 26d" },
+    { amount: "187", validity: "28", label: "₹187 · 28d" },
+    { amount: "247", validity: "28", label: "₹247 · 28d" },
+    { amount: "399", validity: "90", label: "₹399 · 90d" },
+    { amount: "1999", validity: "365", label: "₹1999 · 1yr" },
+  ],
+};
+
 const EMPTY_FORM = {
   name: "", type: "mobile" as SubType, mobile_or_account: "", operator: "",
   plan_name: "", plan_amount: "", validity_days: "30", due_date: "", notes: "",
@@ -125,32 +169,41 @@ function SubscriptionForm({ initial, onSave, onCancel }: {
 
   function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })); }
 
-  async function detectOperator() {
-    if (!form.mobile_or_account || form.type !== "mobile") return;
+  // Auto-detect operator when mobile number is 10 digits
+  useEffect(() => {
+    const digits = form.mobile_or_account.replace(/\D/g, "");
+    if (form.type === "mobile" && digits.length === 10) {
+      autoDetect(digits);
+    }
+  }, [form.mobile_or_account, form.type]);
+
+  async function autoDetect(mobile: string) {
     setDetecting(true);
     try {
       const r = await fetch(`${BASE}/api/admin/payment-tracker/lookup-mobile`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mobile: form.mobile_or_account }),
+        body: JSON.stringify({ mobile }),
       });
       const data = await r.json();
       if (data.operator && data.operator !== "Unknown") {
-        set("operator", data.operator);
-        toast({ title: `Operator detected: ${data.operator}` });
-      } else {
-        toast({ title: "Could not detect operator", variant: "destructive" });
+        setForm(f => ({ ...f, operator: data.operator }));
       }
-    } finally { setDetecting(false); }
+    } catch {}
+    setDetecting(false);
   }
+
+  const opStyle = form.operator ? OPERATOR_STYLE[form.operator] : null;
+  const quickPlans = form.operator ? QUICK_PLANS[form.operator] : null;
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-sm font-bold text-gray-900">{initial?.id ? "Edit Subscription" : "Add Subscription"}</h2>
+          <h2 className="text-sm font-bold text-gray-900">{initial?.id ? "Edit Entry" : "Add Recharge / Bill Entry"}</h2>
           <button onClick={onCancel} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"><X className="w-4 h-4" /></button>
         </div>
         <div className="px-6 py-4 space-y-4">
+          {/* Type selector */}
           <div>
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Type</label>
             <div className="grid grid-cols-4 gap-2">
@@ -172,35 +225,90 @@ function SubscriptionForm({ initial, onSave, onCancel }: {
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Label / Name *</label>
-              <input value={form.name} onChange={e => set("name", e.target.value)} placeholder="e.g. Office WiFi, CEO Mobile"
+              <input value={form.name} onChange={e => set("name", e.target.value)} placeholder="e.g. Office WiFi, CEO Mobile, Sathish Phone"
                 className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
             </div>
-            <div>
+
+            {/* Mobile number with auto-detect */}
+            <div className="col-span-2">
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">
                 {form.type === "mobile" ? "Mobile Number" : form.type === "broadband" ? "Account / Username" : "Account Number"}
               </label>
-              <div className="flex gap-2">
-                <input value={form.mobile_or_account} onChange={e => set("mobile_or_account", e.target.value)}
-                  placeholder={form.type === "mobile" ? "10-digit number" : "Account ID"}
-                  className="flex-1 px-3 py-2 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                {form.type === "mobile" && (
-                  <button onClick={detectOperator} disabled={detecting}
-                    className="px-3 py-2 text-xs font-semibold bg-indigo-100 text-indigo-700 rounded-xl hover:bg-indigo-200 transition-colors whitespace-nowrap">
-                    {detecting ? "…" : "Detect"}
-                  </button>
-                )}
+              <div className="relative">
+                <input
+                  value={form.mobile_or_account}
+                  onChange={e => set("mobile_or_account", e.target.value)}
+                  placeholder={form.type === "mobile" ? "Enter 10-digit mobile number" : "Account ID"}
+                  maxLength={form.type === "mobile" ? 10 : undefined}
+                  className={`w-full px-3 py-2.5 text-sm rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-300 pr-28
+                    ${opStyle ? `border-${opStyle.border.replace("border-","")}` : "border-gray-200"}`}
+                />
+                {/* Operator chip shown inside the input on the right */}
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                  {detecting && (
+                    <span className="text-[10px] text-gray-400 flex items-center gap-1">
+                      <RefreshCw className="w-3 h-3 animate-spin" /> Detecting…
+                    </span>
+                  )}
+                  {!detecting && form.operator && opStyle && (
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${opStyle.bg} ${opStyle.text} ${opStyle.border}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${opStyle.dot}`} />
+                      {form.operator}
+                    </span>
+                  )}
+                  {!detecting && form.operator && !opStyle && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-gray-100 text-gray-600 border border-gray-200">
+                      {form.operator}
+                    </span>
+                  )}
+                </div>
               </div>
+              {form.type === "mobile" && (
+                <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
+                  <Zap className="w-2.5 h-2.5 text-indigo-400" />
+                  Operator is auto-detected when you enter 10 digits
+                </p>
+              )}
             </div>
+
+            {/* Operator override */}
             <div>
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Operator / Provider</label>
               <input value={form.operator} onChange={e => set("operator", e.target.value)} placeholder="e.g. Airtel, BSNL, JioFiber"
                 className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
             </div>
+
+            {/* Plan name */}
             <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Plan Name</label>
-              <input value={form.plan_name} onChange={e => set("plan_name", e.target.value)} placeholder="e.g. 299 Unlimited"
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Plan Name / Description</label>
+              <input value={form.plan_name} onChange={e => set("plan_name", e.target.value)} placeholder="e.g. 299 Unlimited, Annual"
                 className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
             </div>
+
+            {/* Quick plan picker */}
+            {quickPlans && (
+              <div className="col-span-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 block">Quick Select Plan</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {quickPlans.map(p => {
+                    const isSelected = form.plan_amount === p.amount && form.validity_days === p.validity;
+                    return (
+                      <button
+                        key={p.label}
+                        onClick={() => setForm(f => ({ ...f, plan_amount: p.amount, validity_days: p.validity }))}
+                        className={`px-3 py-1.5 rounded-xl text-[11px] font-semibold border transition-all ${
+                          isSelected
+                            ? `${opStyle?.bg || "bg-indigo-100"} ${opStyle?.text || "text-indigo-700"} ${opStyle?.border || "border-indigo-300"}`
+                            : "border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+                        }`}>
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Amount (₹)</label>
               <input type="number" value={form.plan_amount} onChange={e => set("plan_amount", e.target.value)} placeholder="0"
@@ -212,7 +320,7 @@ function SubscriptionForm({ initial, onSave, onCancel }: {
                 className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
             </div>
             <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Due / Expiry Date</label>
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Due / Recharge Date</label>
               <input type="date" value={form.due_date} onChange={e => set("due_date", e.target.value)}
                 className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
             </div>
@@ -227,7 +335,7 @@ function SubscriptionForm({ initial, onSave, onCancel }: {
           <button onClick={onCancel} className="flex-1 py-2.5 text-sm font-semibold rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50">Cancel</button>
           <button onClick={() => onSave(form)} disabled={!form.name}
             className="flex-1 py-2.5 text-sm font-semibold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 transition-colors">
-            {initial?.id ? "Save Changes" : "Add Subscription"}
+            {initial?.id ? "Save Changes" : "Add Entry"}
           </button>
         </div>
       </div>
@@ -542,8 +650,9 @@ export default function PaymentTracker() {
         {/* Header */}
         <div className="bg-white border-b border-gray-100 px-6 py-0 flex items-center gap-4 shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
           <div className="flex items-center gap-2">
-            <CreditCard className="w-4 h-4 text-indigo-500" />
-            <h1 className="text-sm font-bold text-gray-900">Payment Tracker</h1>
+            <Receipt className="w-4 h-4 text-indigo-500" />
+            <h1 className="text-sm font-bold text-gray-900">Bill & Recharge Tracker</h1>
+            <span className="text-[10px] text-gray-400 font-medium hidden sm:inline">Follow-up & Renewal Manager</span>
           </div>
           <div className="flex-1" />
           <button onClick={load} disabled={loading} className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors">
@@ -551,7 +660,7 @@ export default function PaymentTracker() {
           </button>
           <button onClick={() => { setEditSub(null); setShowForm(true); }}
             className="flex items-center gap-2 px-4 py-3.5 text-xs font-bold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
-            <Plus className="w-3.5 h-3.5" /> Add Subscription
+            <Plus className="w-3.5 h-3.5" /> Add Entry
           </button>
         </div>
 
@@ -694,7 +803,15 @@ export default function PaymentTracker() {
                           {s.mobile_or_account && <p className="text-[10px] text-gray-400 font-mono">{s.mobile_or_account}</p>}
                         </td>
                         <td className="px-4 py-3">
-                          <span className="text-xs text-gray-600">{s.operator || "—"}</span>
+                          {s.operator ? (() => {
+                            const os = OPERATOR_STYLE[s.operator];
+                            return os ? (
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${os.bg} ${os.text} ${os.border}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${os.dot}`} />
+                                {s.operator}
+                              </span>
+                            ) : <span className="text-xs text-gray-600">{s.operator}</span>;
+                          })() : <span className="text-gray-300">—</span>}
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-xs text-gray-500">{s.plan_name || "—"}</span>
