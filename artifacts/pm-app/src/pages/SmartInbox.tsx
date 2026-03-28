@@ -1054,15 +1054,17 @@ export default function SmartInbox() {
           body: JSON.stringify({ user_email: userEmail }),
         });
       } catch {}
-      try {
-        setSyncProgress({ message: "Running AI classify…", progress: 0, total: 0 });
-        await api("/smart-email/auto-analyze", { method: "POST" });
-      } catch {}
+      // Load emails immediately so user sees results without waiting for AI classification
       await loadEmails(activeFilter, filterValue, search || undefined);
       await loadStats();
       setSyncing(false);
       setSyncProgress(null);
       if (msg) setError(msg);
+      // Run AI classification in background (non-blocking)
+      api("/smart-email/auto-analyze", { method: "POST" }).then(() => {
+        loadEmails(activeFilter, filterValue, search || undefined);
+        loadStats();
+      }).catch(() => {});
     };
 
     try {
@@ -1095,6 +1097,10 @@ export default function SmartInbox() {
           } else if (status.status === "error") {
             await finishSync(status.message);
           } else {
+            // Reload emails every 30s during sync so new emails appear progressively
+            if (pollAttempts % 15 === 0) {
+              loadEmails(activeFilter, filterValue, search || undefined).catch(() => {});
+            }
             setTimeout(pollSync, 2000);
           }
         } catch {
@@ -1640,21 +1646,22 @@ export default function SmartInbox() {
             {/* View type toggle */}
             <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
               {([
-                { key: "wtt",     icon: Layers,      title: "WTT Style" },
-                { key: "gmail",   icon: LayoutList,  title: "Gmail Style" },
-                { key: "outlook", icon: List,        title: "Outlook Style" },
+                { key: "wtt",     icon: Layers,      title: "WTT" },
+                { key: "gmail",   icon: LayoutList,  title: "Gmail" },
+                { key: "outlook", icon: List,        title: "Outlook" },
               ] as const).map(v => (
                 <button
                   key={v.key}
                   onClick={() => setViewType(v.key)}
-                  title={v.title}
+                  title={`${v.title} Style`}
                   className={cn(
-                    "p-1 rounded-md transition-all",
+                    "flex items-center gap-1 px-2 py-1 rounded-md transition-all text-[10px] font-semibold",
                     viewType === v.key
                       ? "bg-white text-[#1B2A5E] shadow-sm"
                       : "text-gray-400 hover:text-gray-600"
                   )}>
                   <v.icon className="w-3 h-3" />
+                  <span>{v.title}</span>
                 </button>
               ))}
             </div>

@@ -1159,13 +1159,14 @@ router.post("/smart-email/ingest", async (req, res) => {
       : "";
 
     const cached = await pool.query(`
-      SELECT e.uid::text as uid, e.subject, e.from_addr, e.to_addr, e.cc_addr,
+      SELECT DISTINCT ON (e.uid)
+             e.uid::text as uid, e.subject, e.from_addr, e.to_addr, e.cc_addr,
              e.email_date, e.body_text, e.body_html, e.seen, e.has_attachment
       FROM email_cache e
-      WHERE e.folder_path = 'INBOX'
+      WHERE 1=1
       ${accountFilter}
-      ORDER BY e.email_date DESC NULLS LAST
-      LIMIT 200
+      ORDER BY e.uid, e.email_date DESC NULLS LAST
+      LIMIT 500
     `);
 
     const accountId = account?.id || null;
