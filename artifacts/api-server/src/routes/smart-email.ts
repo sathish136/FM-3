@@ -595,7 +595,7 @@ async function classifyWithAI(subject: string, fromAddr: string, bodySnippet: st
       messages: [
         {
           role: "system",
-          content: `You are an expert email classification AI. Analyze the email and categorize it accurately.`,
+          content: `You are an expert email classification AI. Analyze the email and categorize it accurately. Return a JSON object with fields: email_type, category, project_name, supplier_name, priority.`,
         },
         {
           role: "user",

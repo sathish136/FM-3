@@ -1359,7 +1359,7 @@ export default function SmartInbox() {
                   setSyncProgress({ message: "Auto-analysis completed! Refreshing emails...", progress: 100, total: 100 });
                   setTimeout(() => {
                     loadStats();
-                    loadMessages();
+                    loadEmails(activeFilter, filterValue, search || undefined);
                     setSyncProgress(null);
                   }, 2000);
                 } else {
