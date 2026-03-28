@@ -35,12 +35,15 @@ interface RecruitmentTracker {
 interface ResumeData {
   name?: string; email?: string; phone?: string; location?: string;
   current_title?: string; linkedin_url?: string; github_url?: string; portfolio_url?: string;
-  summary?: string; skills?: string[]; technical_skills?: string[]; soft_skills?: string[];
-  languages?: { language: string; proficiency: string }[];
+  career_objective?: string; summary?: string;
+  skills?: string[]; technical_skills?: string[]; soft_skills?: string[];
+  languages?: { language: string; proficiency: string; can_write?: boolean }[];
   experience?: { company: string; title: string; duration: string; start_year: string; end_year: string; location: string; description: string; achievements: string[] }[];
-  education?: { institution: string; degree: string; field: string; year: string; gpa: string }[];
-  certifications?: { name: string; issuer: string; year: string }[];
-  projects?: { name: string; description: string; technologies: string[] }[];
+  internships?: { company: string; title: string; duration: string; location: string; description: string; responsibilities: string[] }[];
+  education?: { institution: string; degree: string; field: string; year: string; gpa: string; percentage?: string; grade?: string; level?: string }[];
+  certifications?: { name: string; issuer: string; platform?: string; year: string; score?: string; percentage?: string }[];
+  projects?: { name: string; year?: string; description: string; technologies: string[]; highlights?: string[] }[];
+  achievements?: { title: string; year: string; organization: string; description: string }[];
   awards?: string[]; publications?: string[];
   total_experience_years?: number; career_level?: string; industry?: string; has_photo?: boolean;
 }
@@ -1540,56 +1543,172 @@ function DetailView({ record, onBack }: { record: RecruitmentTracker; onBack: ()
 
           {/* ── EXPERIENCE TAB ── */}
           {activeTab === "experience" && (
-            <div className="space-y-4 max-w-3xl">
+            <div className="space-y-6 max-w-3xl">
               {aiLoading && <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-indigo-400 animate-spin" /></div>}
               {aiAnalysis && !aiLoading && (() => {
                 const resume = aiAnalysis.resume;
                 const assessment = aiAnalysis.assessment;
+                const hasExp = (resume.experience || []).length > 0;
+                const hasInternships = (resume.internships || []).length > 0;
+                const hasProjects = (resume.projects || []).length > 0;
+                const hasAchievements = (resume.achievements || []).length > 0;
+                const hasEducation = (resume.education || []).length > 0;
                 return (
                   <>
-                    {(resume.experience || []).map((exp, i) => (
-                      <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-                        <div className="flex items-start justify-between gap-4 flex-wrap mb-2">
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h3 className="text-sm font-bold text-gray-900">{exp.title}</h3>
-                              {(() => { const ca = (assessment.company_analysis || []).find(c => c.company?.toLowerCase() === exp.company?.toLowerCase()); return ca ? <CompanyTierBadge tier={ca.tier} /> : null; })()}
-                            </div>
-                            <p className="text-sm font-semibold text-indigo-600 mt-0.5">{exp.company}</p>
-                            {exp.location && <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5"><MapPin className="w-3 h-3" />{exp.location}</p>}
-                          </div>
-                          <div className="text-right">
-                            {exp.duration && <span className="text-[11px] font-bold text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full">{exp.duration}</span>}
-                            {(exp.start_year || exp.end_year) && <p className="text-[10px] text-gray-400 mt-1">{exp.start_year}{exp.start_year && exp.end_year ? " – " : ""}{exp.end_year}</p>}
-                          </div>
-                        </div>
-                        {exp.description && <p className="text-xs text-gray-600 leading-relaxed mb-2">{exp.description}</p>}
-                        {(exp.achievements || []).length > 0 && (
-                          <div className="space-y-1.5">
-                            {exp.achievements.map((a, j) => (
-                              <div key={j} className="flex items-start gap-2 text-xs text-gray-700 bg-gray-50 rounded-lg px-3 py-1.5">
-                                <ChevronRight className="w-3.5 h-3.5 text-indigo-400 shrink-0 mt-0.5" />{a}
+                    {/* Work Experience */}
+                    {hasExp && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-3"><Briefcase className="w-3.5 h-3.5 text-indigo-500" /><span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Work Experience</span></div>
+                        <div className="space-y-3">
+                          {(resume.experience || []).map((exp, i) => (
+                            <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                              <div className="flex items-start justify-between gap-4 flex-wrap mb-2">
+                                <div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <h3 className="text-sm font-bold text-gray-900">{exp.title}</h3>
+                                    {(() => { const ca = (assessment.company_analysis || []).find(c => c.company?.toLowerCase() === exp.company?.toLowerCase()); return ca ? <CompanyTierBadge tier={ca.tier} /> : null; })()}
+                                  </div>
+                                  <p className="text-sm font-semibold text-indigo-600 mt-0.5">{exp.company}</p>
+                                  {exp.location && <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5"><MapPin className="w-3 h-3" />{exp.location}</p>}
+                                </div>
+                                <div className="text-right">
+                                  {exp.duration && <span className="text-[11px] font-bold text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full">{exp.duration}</span>}
+                                  {(exp.start_year || exp.end_year) && <p className="text-[10px] text-gray-400 mt-1">{exp.start_year}{exp.start_year && exp.end_year ? " – " : ""}{exp.end_year}</p>}
+                                </div>
                               </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    {(resume.education || []).map((edu, i) => (
-                      <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-start gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-blue-50 border-2 border-blue-100 flex items-center justify-center shrink-0">
-                          <BookOpen className="w-5 h-5 text-blue-400" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-sm font-bold text-gray-900">{edu.degree}{edu.field ? ` in ${edu.field}` : ""}</p>
-                          <p className="text-sm text-indigo-600 font-semibold">{edu.institution}</p>
-                          <div className="flex items-center gap-3 mt-1 flex-wrap">
-                            {edu.year && <span className="text-xs text-gray-400">{edu.year}</span>}
-                            {edu.gpa && <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">GPA: {edu.gpa}</span>}
-                          </div>
+                              {exp.description && <p className="text-xs text-gray-600 leading-relaxed mb-2">{exp.description}</p>}
+                              {(exp.achievements || []).length > 0 && (
+                                <div className="space-y-1.5">
+                                  {exp.achievements.map((a, j) => (
+                                    <div key={j} className="flex items-start gap-2 text-xs text-gray-700 bg-gray-50 rounded-lg px-3 py-1.5">
+                                      <ChevronRight className="w-3.5 h-3.5 text-indigo-400 shrink-0 mt-0.5" />{a}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       </div>
-                    ))}
+                    )}
+
+                    {/* Internships */}
+                    {hasInternships && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-3"><Star className="w-3.5 h-3.5 text-amber-500" /><span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Internships</span></div>
+                        <div className="space-y-3">
+                          {(resume.internships || []).map((intern, i) => (
+                            <div key={i} className="bg-white rounded-2xl border border-amber-100 shadow-sm p-5">
+                              <div className="flex items-start justify-between gap-4 flex-wrap mb-2">
+                                <div>
+                                  <h3 className="text-sm font-bold text-gray-900">{intern.title}</h3>
+                                  <p className="text-sm font-semibold text-amber-600 mt-0.5">{intern.company}</p>
+                                  {intern.location && <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5"><MapPin className="w-3 h-3" />{intern.location}</p>}
+                                </div>
+                                {intern.duration && <span className="text-[11px] font-bold text-amber-600 bg-amber-50 border border-amber-100 px-2.5 py-1 rounded-full">{intern.duration}</span>}
+                              </div>
+                              {intern.description && <p className="text-xs text-gray-600 leading-relaxed mb-2">{intern.description}</p>}
+                              {(intern.responsibilities || []).length > 0 && (
+                                <div className="space-y-1.5">
+                                  {intern.responsibilities.map((r, j) => (
+                                    <div key={j} className="flex items-start gap-2 text-xs text-gray-700 bg-amber-50/60 rounded-lg px-3 py-1.5">
+                                      <ChevronRight className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />{r}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Projects */}
+                    {hasProjects && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-3"><Zap className="w-3.5 h-3.5 text-purple-500" /><span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Projects</span></div>
+                        <div className="space-y-3">
+                          {(resume.projects || []).map((proj, i) => (
+                            <div key={i} className="bg-white rounded-2xl border border-purple-100 shadow-sm p-5">
+                              <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
+                                <h3 className="text-sm font-bold text-gray-900">{proj.name}</h3>
+                                {proj.year && <span className="text-[11px] font-bold text-purple-600 bg-purple-50 border border-purple-100 px-2.5 py-1 rounded-full shrink-0">{proj.year}</span>}
+                              </div>
+                              {proj.description && <p className="text-xs text-gray-600 leading-relaxed mb-2">{proj.description}</p>}
+                              {(proj.highlights || []).length > 0 && (
+                                <div className="space-y-1.5 mb-2">
+                                  {proj.highlights!.map((h, j) => (
+                                    <div key={j} className="flex items-start gap-2 text-xs text-gray-700 bg-purple-50/60 rounded-lg px-3 py-1.5">
+                                      <ChevronRight className="w-3.5 h-3.5 text-purple-400 shrink-0 mt-0.5" />{h}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {(proj.technologies || []).length > 0 && (
+                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                  {proj.technologies.map((t, j) => <span key={j} className="px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-purple-50 text-purple-600 border border-purple-100">{t}</span>)}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Achievements */}
+                    {hasAchievements && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-3"><Award className="w-3.5 h-3.5 text-emerald-500" /><span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Achievements & Awards</span></div>
+                        <div className="space-y-3">
+                          {(resume.achievements || []).map((ach, i) => (
+                            <div key={i} className="bg-white rounded-2xl border border-emerald-100 shadow-sm p-5 flex items-start gap-4">
+                              <div className="w-10 h-10 rounded-xl bg-emerald-50 border-2 border-emerald-100 flex items-center justify-center shrink-0">
+                                <Award className="w-4 h-4 text-emerald-500" />
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex items-start justify-between gap-2 flex-wrap">
+                                  <p className="text-sm font-bold text-gray-900">{ach.title}</p>
+                                  {ach.year && <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded shrink-0">{ach.year}</span>}
+                                </div>
+                                {ach.organization && <p className="text-xs text-emerald-600 font-semibold mt-0.5">{ach.organization}</p>}
+                                {ach.description && <p className="text-xs text-gray-500 leading-relaxed mt-1">{ach.description}</p>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Education */}
+                    {hasEducation && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-3"><BookOpen className="w-3.5 h-3.5 text-blue-500" /><span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Education</span></div>
+                        <div className="space-y-3">
+                          {(resume.education || []).map((edu, i) => (
+                            <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-start gap-4">
+                              <div className="w-12 h-12 rounded-xl bg-blue-50 border-2 border-blue-100 flex items-center justify-center shrink-0">
+                                <BookOpen className="w-5 h-5 text-blue-400" />
+                              </div>
+                              <div className="flex-1">
+                                <p className="text-sm font-bold text-gray-900">{edu.degree}{edu.field && edu.field !== edu.degree ? ` in ${edu.field}` : ""}</p>
+                                <p className="text-sm text-indigo-600 font-semibold">{edu.institution}</p>
+                                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                  {edu.year && <span className="text-xs text-gray-400">{edu.year}</span>}
+                                  {edu.gpa && <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg">CGPA: {edu.gpa}</span>}
+                                  {edu.percentage && <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-lg">{edu.percentage}</span>}
+                                  {edu.grade && <span className="text-xs text-gray-500 bg-gray-50 px-2 py-0.5 rounded-lg">{edu.grade}</span>}
+                                  {edu.level && <span className="text-[10px] text-gray-400 uppercase tracking-wide">{edu.level}</span>}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {!hasExp && !hasInternships && !hasProjects && !hasAchievements && !hasEducation && (
+                      <div className="text-center py-16 text-gray-400"><BookOpen className="w-8 h-8 mx-auto mb-3 opacity-30" /><p className="text-sm">No experience data extracted</p></div>
+                    )}
                   </>
                 );
               })()}

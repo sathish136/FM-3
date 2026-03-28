@@ -80,15 +80,20 @@ const RESUME_JSON_SCHEMA = `{
   "linkedin_url": "",
   "github_url": "",
   "portfolio_url": "",
+  "career_objective": "",
   "summary": "",
   "skills": [],
   "technical_skills": [],
   "soft_skills": [],
-  "languages": [{"language":"","proficiency":""}],
+  "languages": [{"language":"","proficiency":"","can_write": true}],
   "experience": [{"company":"","title":"","duration":"","start_year":"","end_year":"","location":"","description":"","achievements":[]}],
-  "education": [{"institution":"","degree":"","field":"","year":"","gpa":""}],
-  "certifications": [{"name":"","issuer":"","year":""}],
-  "projects": [{"name":"","description":"","technologies":[]}],
+  "internships": [{"company":"","title":"","duration":"","location":"","description":"","responsibilities":[]}],
+  "education": [
+    {"institution":"","degree":"","field":"","year":"","gpa":"","percentage":"","grade":"","level":""}
+  ],
+  "certifications": [{"name":"","issuer":"","platform":"","year":"","score":"","percentage":""}],
+  "projects": [{"name":"","year":"","description":"","technologies":[],"highlights":[]}],
+  "achievements": [{"title":"","year":"","organization":"","description":""}],
   "awards": [],
   "publications": [],
   "total_experience_years": 0,
@@ -129,7 +134,28 @@ function parseJsonResponse(raw: string): Record<string, unknown> {
 }
 
 async function analyzeResumeText(openai: OpenAI, text: string, photoBase64?: string, photoMime?: string) {
-  const prompt = `You are a senior HR expert and resume analyst. Deeply analyze this resume and extract ALL available information. Be thorough and detailed. Return ONLY valid JSON with this exact schema:\n${RESUME_JSON_SCHEMA}\n\nResume text:\n${text.slice(0, 12000)}`;
+  const prompt = `You are a senior HR expert specializing in Indian engineering and technical resumes. Extract EVERY piece of information from this resume with maximum detail.
+
+IMPORTANT RULES:
+1. career_objective: Extract the full career objective / personal statement verbatim.
+2. experience: Only full-time professional work experience (not internships).
+3. internships: Extract ALL internships separately — include company, title, duration (e.g. "31 days"), location, description, and a responsibilities array.
+4. education: Extract ALL levels — B.Tech/B.E., Diploma, B.A., HSC (12th), SSLC (10th), etc. For each, capture: institution, degree, field, year (graduation/passing year), gpa (CGPA), percentage (e.g. "82.3%"), grade ("First class", "Distinction" etc.), and level ("undergraduate", "diploma", "postgraduate", "12th", "10th", "certification_program").
+5. certifications: Extract ALL certifications — include name, issuer (e.g. "NPTEL", "IGNOU"), platform (e.g. "Swayam portal", "CABI Academy"), year, and score/percentage if mentioned (e.g. "69%", "73%"). Also include professional diplomas as certifications.
+6. projects: Extract ALL projects with name, year (e.g. "2025-2026"), full description, technologies/tools used, and key highlights as bullet points.
+7. achievements: Extract competitions, hackathons, recognitions — include title, year, organization name, and description.
+8. skills: All skills listed (software, tools, domain skills).
+9. technical_skills: Technical/software tools only (SolidWorks, AutoCAD, GIS, etc.).
+10. languages: All languages with proficiency level ("Speak and Write" or "Speak only").
+11. Set has_photo: true only if a passport-style photograph is embedded in the resume.
+12. For total_experience_years: count internship months as partial experience for freshers.
+13. career_level: "fresher", "entry", "mid", "senior", or "executive".
+
+Return ONLY valid JSON matching this exact schema:
+${RESUME_JSON_SCHEMA}
+
+Resume text:
+${text.slice(0, 14000)}`;
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
   if (photoBase64 && photoMime) {
@@ -155,12 +181,12 @@ async function analyzeResumeImage(openai: OpenAI, imageBase64: string, mimeType:
       content: [
         {
           type: "text",
-          text: `You are a senior HR expert. Extract ALL information visible in this resume image. Be thorough. Return ONLY valid JSON with this schema:\n${RESUME_JSON_SCHEMA}`
+          text: `You are a senior HR expert specializing in Indian engineering and technical resumes. Extract EVERY piece of information visible in this resume image. Extract career_objective, internships (separate from experience), all education levels (B.Tech, Diploma, HSC, SSLC etc.) with percentage/CGPA, all certifications with scores, all projects with year and highlights, all achievements with year and organization. Return ONLY valid JSON with this schema:\n${RESUME_JSON_SCHEMA}`
         },
         { type: "image_url", image_url: { url: `data:${mimeType};base64,${imageBase64}`, detail: "high" } }
       ]
     }],
-    max_tokens: 3000,
+    max_tokens: 4000,
   });
   return parseJsonResponse(resp.choices[0]?.message?.content || "{}");
 }
