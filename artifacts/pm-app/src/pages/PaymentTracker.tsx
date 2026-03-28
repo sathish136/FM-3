@@ -117,6 +117,14 @@ const OPERATOR_STYLE: Record<string, { bg: string; text: string; border: string;
   "BSNL":   { bg: "bg-green-100",  text: "text-green-700",  border: "border-green-300",  dot: "bg-green-500" },
 };
 
+// Default plan to pre-select when operator is detected (most popular 28-day plan)
+const DEFAULT_PLAN: Record<string, { amount: string; validity: string }> = {
+  Jio:    { amount: "299", validity: "28" },
+  Airtel: { amount: "299", validity: "28" },
+  Vi:     { amount: "299", validity: "28" },
+  BSNL:   { amount: "187", validity: "28" },
+};
+
 // Common plans per operator
 const QUICK_PLANS: Record<string, { amount: string; validity: string; label: string }[]> = {
   Jio: [
@@ -186,7 +194,14 @@ function SubscriptionForm({ initial, onSave, onCancel }: {
       });
       const data = await r.json();
       if (data.operator && data.operator !== "Unknown") {
-        setForm(f => ({ ...f, operator: data.operator }));
+        const def = DEFAULT_PLAN[data.operator];
+        setForm(f => ({
+          ...f,
+          operator: data.operator,
+          // Auto-fill amount & validity only if user hasn't entered them yet
+          plan_amount: f.plan_amount || (def?.amount ?? f.plan_amount),
+          validity_days: (f.validity_days === "30" || !f.validity_days) ? (def?.validity ?? f.validity_days) : f.validity_days,
+        }));
       }
     } catch {}
     setDetecting(false);
