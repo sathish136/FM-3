@@ -49,6 +49,9 @@ pool
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
   );
   ALTER TABLE user_permissions ADD COLUMN IF NOT EXISTS module_roles TEXT NOT NULL DEFAULT '{}';
+  ALTER TABLE user_permissions ADD COLUMN IF NOT EXISTS two_fa_enabled BOOLEAN NOT NULL DEFAULT false;
+  ALTER TABLE user_permissions ADD COLUMN IF NOT EXISTS theme TEXT NOT NULL DEFAULT 'system';
+  ALTER TABLE user_permissions ADD COLUMN IF NOT EXISTS navbar_style TEXT NOT NULL DEFAULT 'full';
 `,
   )
   .then(() => console.log("PM tables ready"))
@@ -583,8 +586,7 @@ router.get("/user-permissions", async (_req, res) => {
 router.put("/user-permissions/:email", async (req, res) => {
   try {
     const { email } = req.params;
-    const { fullName, hasAccess, modules, moduleRoles, allowedProjects } = req.body;
-    // Derive modules list from moduleRoles if provided (keys where role != "none")
+    const { fullName, hasAccess, modules, moduleRoles, allowedProjects, twoFaEnabled, theme, navbarStyle } = req.body;
     const derivedModules = moduleRoles
       ? Object.entries(moduleRoles as Record<string, string>)
           .filter(([, role]) => role !== "none")
@@ -599,6 +601,9 @@ router.put("/user-permissions/:email", async (req, res) => {
         modules: JSON.stringify(derivedModules),
         moduleRoles: JSON.stringify(moduleRoles ?? {}),
         allowedProjects: JSON.stringify(allowedProjects ?? []),
+        twoFaEnabled: twoFaEnabled ?? false,
+        theme: theme ?? "system",
+        navbarStyle: navbarStyle ?? "full",
         updatedAt: new Date(),
       })
       .onConflictDoUpdate({
@@ -609,6 +614,9 @@ router.put("/user-permissions/:email", async (req, res) => {
           modules: JSON.stringify(derivedModules),
           moduleRoles: JSON.stringify(moduleRoles ?? {}),
           allowedProjects: JSON.stringify(allowedProjects ?? []),
+          twoFaEnabled: twoFaEnabled ?? false,
+          theme: theme ?? "system",
+          navbarStyle: navbarStyle ?? "full",
           updatedAt: new Date(),
         },
       })

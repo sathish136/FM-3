@@ -2,6 +2,7 @@ import { Layout } from "@/components/Layout";
 import {
   Users, Search, Shield, ShieldOff, Save,
   RefreshCw, ChevronRight, Loader2, Lock, Unlock, Eye, Pencil, Ban,
+  KeyRound, SunMedium, Moon, Monitor, LayoutDashboard, PanelLeftClose, Layers,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -52,6 +53,9 @@ interface ErpUser {
   enabled: number;
 }
 
+type ThemeOption = "light" | "dark" | "system";
+type NavbarStyleOption = "full" | "mini" | "auto";
+
 interface Permission {
   email: string;
   fullName: string | null;
@@ -59,6 +63,9 @@ interface Permission {
   modules: string;
   moduleRoles: string;
   allowedProjects: string;
+  twoFaEnabled: boolean;
+  theme: ThemeOption;
+  navbarStyle: NavbarStyleOption;
   updatedAt: string;
 }
 
@@ -196,10 +203,13 @@ export function UserManagementContent() {
   const [selected, setSelected]   = useState<ErpUser | null>(null);
 
   // Draft state
-  const [draftAccess, setDraftAccess]     = useState(true);
-  const [draftRoles, setDraftRoles]       = useState<Record<string, ModuleRole>>({});
-  const [draftProjects, setDraftProjects] = useState<string[]>([]);
-  const [projSearch, setProjSearch]       = useState("");
+  const [draftAccess, setDraftAccess]         = useState(true);
+  const [draftRoles, setDraftRoles]           = useState<Record<string, ModuleRole>>({});
+  const [draftProjects, setDraftProjects]     = useState<string[]>([]);
+  const [draftTwoFa, setDraftTwoFa]           = useState(false);
+  const [draftTheme, setDraftTheme]           = useState<ThemeOption>("system");
+  const [draftNavbarStyle, setDraftNavbarStyle] = useState<NavbarStyleOption>("full");
+  const [projSearch, setProjSearch]           = useState("");
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -232,6 +242,9 @@ export function UserManagementContent() {
     setDraftAccess(p ? p.hasAccess : true);
     setDraftRoles(p ? rolesFromPermission(p) : buildDefaultRoles("write"));
     setDraftProjects(p ? JSON.parse(p.allowedProjects || "[]") : []);
+    setDraftTwoFa(p ? (p.twoFaEnabled ?? false) : false);
+    setDraftTheme(p ? (p.theme ?? "system") : "system");
+    setDraftNavbarStyle(p ? (p.navbarStyle ?? "full") : "full");
     setProjSearch("");
   }
 
@@ -247,6 +260,9 @@ export function UserManagementContent() {
           hasAccess: draftAccess,
           moduleRoles: draftRoles,
           allowedProjects: draftProjects,
+          twoFaEnabled: draftTwoFa,
+          theme: draftTheme,
+          navbarStyle: draftNavbarStyle,
         }),
       });
       if (!res.ok) throw new Error(await res.text());
@@ -548,6 +564,88 @@ export function UserManagementContent() {
                       </div>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* ── User Settings (2FA, Theme, Navbar) ── */}
+              <div className="w-56 shrink-0 space-y-5">
+
+                {/* 2FA */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <KeyRound className="w-4 h-4 text-amber-500" />
+                    <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Security</h3>
+                  </div>
+                  <div className={`flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
+                    draftTwoFa ? "bg-amber-50 border-amber-200" : "bg-white border-gray-200"
+                  }`}>
+                    <div className="min-w-0">
+                      <p className={`text-xs font-semibold ${draftTwoFa ? "text-amber-800" : "text-gray-700"}`}>
+                        Two-Factor Auth
+                      </p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        {draftTwoFa ? "OTP required at login" : "OTP not required"}
+                      </p>
+                    </div>
+                    <Toggle on={draftTwoFa} onChange={setDraftTwoFa} />
+                  </div>
+                </div>
+
+                {/* Theme */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <SunMedium className="w-4 h-4 text-orange-400" />
+                    <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Theme</h3>
+                  </div>
+                  <div className="space-y-1.5">
+                    {([
+                      { value: "light", label: "Light", icon: <SunMedium className="w-3.5 h-3.5" />, active: "bg-orange-50 border-orange-300 text-orange-700" },
+                      { value: "dark",  label: "Dark",  icon: <Moon className="w-3.5 h-3.5" />,      active: "bg-gray-800 border-gray-700 text-gray-100" },
+                      { value: "system",label: "System",icon: <Monitor className="w-3.5 h-3.5" />,   active: "bg-indigo-50 border-indigo-300 text-indigo-700" },
+                    ] as { value: ThemeOption; label: string; icon: React.ReactNode; active: string }[]).map(opt => (
+                      <button key={opt.value} onClick={() => setDraftTheme(opt.value)}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl border text-left transition-all ${
+                          draftTheme === opt.value ? opt.active : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+                        }`}
+                      >
+                        {opt.icon}
+                        <span className="text-xs font-medium">{opt.label}</span>
+                        {draftTheme === opt.value && (
+                          <span className="ml-auto w-2 h-2 rounded-full bg-current opacity-60" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Navbar Style */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <LayoutDashboard className="w-4 h-4 text-teal-500" />
+                    <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Navbar Style</h3>
+                  </div>
+                  <div className="space-y-1.5">
+                    {([
+                      { value: "full", label: "Full Sidebar",  desc: "Expanded with labels",  icon: <Layers className="w-3.5 h-3.5" />,          active: "bg-teal-50 border-teal-300 text-teal-700" },
+                      { value: "mini", label: "Mini Sidebar",  desc: "Icons only, compact",   icon: <PanelLeftClose className="w-3.5 h-3.5" />,   active: "bg-teal-50 border-teal-300 text-teal-700" },
+                      { value: "auto", label: "Auto",          desc: "Collapses on small screens", icon: <Monitor className="w-3.5 h-3.5" />,      active: "bg-teal-50 border-teal-300 text-teal-700" },
+                    ] as { value: NavbarStyleOption; label: string; desc: string; icon: React.ReactNode; active: string }[]).map(opt => (
+                      <button key={opt.value} onClick={() => setDraftNavbarStyle(opt.value)}
+                        className={`w-full flex items-start gap-2.5 px-3 py-2 rounded-xl border text-left transition-all ${
+                          draftNavbarStyle === opt.value ? opt.active : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+                        }`}
+                      >
+                        <span className="mt-0.5">{opt.icon}</span>
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium">{opt.label}</p>
+                          <p className="text-[10px] opacity-60 mt-0.5">{opt.desc}</p>
+                        </div>
+                        {draftNavbarStyle === opt.value && (
+                          <span className="ml-auto mt-1 w-2 h-2 rounded-full bg-current opacity-60 shrink-0" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
