@@ -998,7 +998,7 @@ function InfoChip({ icon: Icon, label, color = "gray" }: { icon: React.ElementTy
 
 function DetailView({ record, onBack }: { record: RecruitmentTracker; onBack: () => void }) {
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<"info" | "interview" | "calllog" | "ai" | "experience" | "skills">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "interview" | "calllog" | "ai" | "experience" | "skills">(() => record.candidate_resume ? "ai" : "info");
   const [aiAnalysis, setAiAnalysis] = useState<FullAnalysis | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -1033,14 +1033,14 @@ function DetailView({ record, onBack }: { record: RecruitmentTracker; onBack: ()
   const hasResume = !!record.candidate_resume;
 
   const tabs: { id: "info" | "interview" | "calllog" | "ai" | "experience" | "skills"; label: string; icon: React.ElementType; count?: number }[] = [
-    { id: "info", label: "Profile", icon: User },
-    { id: "interview", label: "Interview", icon: MessageSquare },
-    { id: "calllog", label: "Call Logs", count: followups.length, icon: Phone },
     ...(hasResume ? [
-      { id: "ai" as const, label: "AI Assessment", icon: Brain },
+      { id: "ai" as const, label: "AI Overview", icon: Brain },
       { id: "experience" as const, label: "Experience", icon: Briefcase },
       { id: "skills" as const, label: "Skills", icon: Zap },
     ] : []),
+    { id: "info", label: "Profile", icon: User },
+    { id: "interview", label: "Interview", icon: MessageSquare },
+    { id: "calllog", label: "Call Logs", count: followups.length, icon: Phone },
   ];
 
   return (
@@ -1057,9 +1057,17 @@ function DetailView({ record, onBack }: { record: RecruitmentTracker; onBack: ()
 
         {/* Avatar + Name */}
         <div className="flex flex-col items-center px-5 py-6 border-b border-gray-100 text-center">
-          <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center text-white font-black text-3xl shadow-lg mb-4">
-            {initials}
-          </div>
+          {aiAnalysis?.photo_base64 && aiAnalysis?.photo_mime ? (
+            <img
+              src={`data:${aiAnalysis.photo_mime};base64,${aiAnalysis.photo_base64}`}
+              alt={record.candidate_name}
+              className="w-24 h-24 rounded-3xl object-cover shadow-lg mb-4 border-2 border-indigo-100"
+            />
+          ) : (
+            <div className={`w-24 h-24 rounded-3xl flex items-center justify-center text-white font-black text-3xl shadow-lg mb-4 transition-all ${aiLoading ? "bg-gradient-to-br from-indigo-300 to-blue-400 animate-pulse" : "bg-gradient-to-br from-indigo-500 to-blue-600"}`}>
+              {aiLoading ? <Loader2 className="w-8 h-8 animate-spin opacity-80" /> : initials}
+            </div>
+          )}
           <h2 className="text-sm font-black text-gray-900 leading-tight">{record.candidate_name}</h2>
           {record.qualification && (
             <p className="text-xs text-gray-400 font-medium mt-1">{record.qualification}</p>
