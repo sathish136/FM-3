@@ -1,8 +1,9 @@
 import { Layout } from "@/components/Layout";
 import { useState } from "react";
-import { Shield, Bell, Palette, Globe, Key, Plus, Trash2, Sun, Moon, Check } from "lucide-react";
+import { Shield, Bell, Palette, Globe, Key, Plus, Trash2, Sun, Moon, Check, PanelLeft, Grid3x3 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useTheme, THEME_PRESETS } from "@/hooks/useTheme";
+import { useNavStyle } from "@/hooks/useNavStyle";
 import { UserManagementContent } from "@/pages/UserManagement";
 
 const settingsSections = [
@@ -82,10 +83,88 @@ function APIKeys() {
 
 function AppearanceSettings() {
   const { theme, themeIndex, setTheme, darkMode, toggleDarkMode } = useTheme();
+  const { navStyle, setNavStyle } = useNavStyle();
 
   return (
     <div className="space-y-6">
       <h2 className="text-lg font-semibold text-foreground">Appearance</h2>
+
+      {/* Navigation Style */}
+      <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+        <div className="p-5">
+          <p className="text-sm font-semibold text-foreground mb-1">Navigation Style</p>
+          <p className="text-xs text-muted-foreground mb-4">Choose how you navigate between modules. This is saved as your personal default.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Classic Sidebar */}
+            <button
+              onClick={() => setNavStyle("sidebar")}
+              className={`relative flex flex-col gap-3 p-4 rounded-2xl border-2 text-left transition-all ${navStyle === "sidebar" ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/40"}`}
+            >
+              {navStyle === "sidebar" && (
+                <span className="absolute top-3 right-3 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                  <Check className="w-3 h-3 text-white" />
+                </span>
+              )}
+              {/* Mini preview */}
+              <div className="w-full h-20 rounded-xl bg-slate-900 flex overflow-hidden ring-1 ring-white/10">
+                <div className="w-8 bg-slate-800 flex flex-col items-center py-2 gap-1.5 shrink-0">
+                  {[...Array(5)].map((_, i) => (
+                    <span key={i} className={`w-4 h-1 rounded-full ${i === 0 ? "bg-indigo-400" : "bg-slate-600"}`} />
+                  ))}
+                </div>
+                <div className="flex-1 bg-slate-50 dark:bg-slate-900 p-2">
+                  <span className="block w-3/4 h-2 rounded bg-slate-200 dark:bg-slate-700 mb-1.5" />
+                  <span className="block w-1/2 h-2 rounded bg-slate-100 dark:bg-slate-800" />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <PanelLeft className={`w-4 h-4 ${navStyle === "sidebar" ? "text-primary" : "text-muted-foreground"}`} />
+                <div>
+                  <p className={`text-sm font-semibold ${navStyle === "sidebar" ? "text-primary" : "text-foreground"}`}>Classic Sidebar</p>
+                  <p className="text-xs text-muted-foreground">Persistent sidebar with grouped links</p>
+                </div>
+              </div>
+            </button>
+
+            {/* App Launcher */}
+            <button
+              onClick={() => setNavStyle("launcher")}
+              className={`relative flex flex-col gap-3 p-4 rounded-2xl border-2 text-left transition-all ${navStyle === "launcher" ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/40"}`}
+            >
+              {navStyle === "launcher" && (
+                <span className="absolute top-3 right-3 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                  <Check className="w-3 h-3 text-white" />
+                </span>
+              )}
+              {/* Mini preview */}
+              <div className="w-full h-20 rounded-xl bg-slate-50 dark:bg-slate-900 ring-1 ring-border overflow-hidden flex flex-col">
+                <div className="h-5 bg-white dark:bg-slate-800 border-b border-border flex items-center px-2 gap-1.5">
+                  <span className="w-3 h-3 rounded bg-indigo-500/30 flex items-center justify-center">
+                    <Grid3x3 className="w-2 h-2 text-indigo-500" />
+                  </span>
+                  <span className="w-10 h-1.5 rounded bg-slate-200 dark:bg-slate-700" />
+                </div>
+                <div className="flex-1 p-2 grid grid-cols-4 gap-1 content-start">
+                  {[...Array(8)].map((_, i) => (
+                    <span key={i} className="flex flex-col items-center gap-0.5">
+                      <span className={`w-5 h-5 rounded-lg ${["bg-sky-400/20","bg-blue-400/20","bg-indigo-400/20","bg-violet-400/20","bg-rose-400/20","bg-amber-400/20","bg-emerald-400/20","bg-cyan-400/20"][i]}`} />
+                      <span className="w-4 h-0.5 rounded bg-slate-200 dark:bg-slate-700" />
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Grid3x3 className={`w-4 h-4 ${navStyle === "launcher" ? "text-primary" : "text-muted-foreground"}`} />
+                <div>
+                  <p className={`text-sm font-semibold ${navStyle === "launcher" ? "text-primary" : "text-foreground"}`}>App Launcher Grid</p>
+                  <p className="text-xs text-muted-foreground">Open a grid of all apps from the header</p>
+                </div>
+              </div>
+            </button>
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-3 px-1">Changes take effect immediately and are saved to your browser.</p>
+        </div>
+      </div>
 
       <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
         <div className="p-5 border-b border-border">
