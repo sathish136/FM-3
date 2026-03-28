@@ -48,30 +48,55 @@ function addDays(dateStr: string | null | undefined, days: number): string {
   return base.toISOString().split("T")[0];
 }
 
+// Operator lookup by 2-digit prefix (based on TRAI numbering plan)
+const PREFIX2_OPERATOR: Record<string, string> = {
+  // Jio: all 6-series
+  "60": "Jio", "61": "Jio", "62": "Jio", "63": "Jio", "64": "Jio",
+  "65": "Jio", "66": "Jio", "67": "Jio", "68": "Jio", "69": "Jio",
+  // 7-series
+  "70": "Airtel", "71": "Airtel", "72": "Jio",   "73": "Vi",
+  "74": "Airtel", "75": "Vi",     "76": "Airtel", "77": "Airtel",
+  "78": "Airtel", "79": "Airtel",
+  // 8-series
+  "80": "Jio",    "81": "Airtel", "82": "Vi",     "83": "Airtel",
+  "84": "Vi",     "85": "Vi",     "86": "Vi",     "87": "BSNL",
+  "88": "Vi",     "89": "Jio",
+  // 9-series
+  "90": "BSNL",   "91": "Airtel", "92": "Airtel", "93": "Airtel",
+  "94": "BSNL",   "95": "Vi",     "96": "Vi",     "97": "Airtel",
+  "98": "Airtel", "99": "Airtel",
+};
+
+// Known 4-digit prefixes that override the 2-digit map
+const PREFIX4_OPERATOR: Record<string, string> = {
+  // Jio 7-series overrides
+  "7000": "Jio", "7001": "Jio", "7002": "Jio", "7003": "Jio",
+  "7200": "Jio", "7201": "Jio", "7202": "Jio", "7203": "Jio",
+  "7204": "Jio", "7205": "Jio", "7206": "Jio", "7207": "Jio",
+  "7208": "Jio", "7209": "Jio", "7210": "Jio", "7211": "Jio",
+  "7212": "Jio", "7213": "Jio", "7214": "Jio", "7215": "Jio",
+  // BSNL specific known series
+  "7005": "BSNL", "7006": "BSNL", "7007": "BSNL", "7009": "BSNL",
+  "9000": "BSNL", "9001": "BSNL", "9002": "BSNL", "9003": "BSNL",
+  "9004": "BSNL", "9005": "BSNL", "9007": "BSNL", "9009": "BSNL",
+  "9434": "BSNL", "9435": "BSNL", "9436": "BSNL", "9476": "BSNL",
+  "9832": "BSNL", "9862": "BSNL", "9856": "BSNL", "9857": "BSNL",
+  "9858": "BSNL", "9895": "BSNL", "9896": "BSNL", "9897": "BSNL",
+  "9447": "BSNL", "9446": "BSNL", "9400": "BSNL", "9496": "BSNL",
+  // Vi specific known series
+  "8800": "Vi", "8801": "Vi", "8802": "Vi", "8803": "Vi",
+  "9811": "Vi", "9312": "Vi", "9810": "Airtel",
+};
+
 function detectOperatorFromMobile(mobile: string): string {
   const num = mobile.replace(/\D/g, "");
   if (num.length < 10) return "Unknown";
-  const prefix4 = parseInt(num.slice(0, 4));
-  const prefix2 = parseInt(num.slice(0, 2));
 
-  if ([6000,6001,6002,6003,6004,6005,6006,6007,6008,6009,6200,6201,6202,6203,6204,6205,6206,6207,6208,6209,6210,6211,6212,6213,6214,6215,6216,6217,6218,6219,6220,6221,6222,6223,6224,6225,6226,6227,6228,6229,6230,6231,6232,6233,6234,6235,6236,6237,6238,6239,6240,6241,6242,6243,6244,6245,6246,6247,6248,6249,6250,6251,6252,6253,6254,6255,6256,6257,6258,6259,6260,6261,6262,6263,6264,6265,6266,6267,6268,6269,6270,6271,6272,6273,6274,6275,6276,6277,6278,6279,6280,6281,6282,6283,6284,6285,6286,6287,6288,6289,6290,6291,6292,6293,6294,6295,6296,6297,6298,6299].includes(prefix4)) return "Jio";
+  const p4 = num.slice(0, 4);
+  if (PREFIX4_OPERATOR[p4]) return PREFIX4_OPERATOR[p4];
 
-  const jioStart = parseInt(num.slice(0, 1));
-  if (jioStart === 6) return "Jio";
-
-  const p3 = parseInt(num.slice(0, 3));
-  if ([700,701,702,703,704,705,706,707,708,709,800,801,802,803,804,805,806,807,808,809,810,811,812,813,814,815,816,817,818,819,820,821,822,823,824,825,826,827,828,829].includes(p3)) {
-    const subPrefix = parseInt(num.slice(0, 5));
-    if (subPrefix >= 70000 && subPrefix <= 70019) return "BSNL";
-    if (subPrefix >= 70200 && subPrefix <= 70299) return "Airtel";
-    return "Airtel";
-  }
-
-  if (prefix2 === 99 || prefix2 === 98 || prefix2 === 97 || prefix2 === 96 || prefix2 === 95) return "Airtel";
-  if (prefix2 === 90 || prefix2 === 91 || prefix2 === 92 || prefix2 === 93 || prefix2 === 94) return "Vi";
-  if (prefix2 === 88 || prefix2 === 89) return "BSNL";
-
-  return "Unknown";
+  const p2 = num.slice(0, 2);
+  return PREFIX2_OPERATOR[p2] || "Unknown";
 }
 
 router.get("/admin/payment-tracker/subscriptions", async (req, res) => {
