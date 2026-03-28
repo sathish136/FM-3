@@ -7,7 +7,7 @@ import {
   FolderOpen, Loader2, CheckCircle2, RefreshCw,
   LayoutGrid, FileText, ShoppingCart,
   Users, MessageSquare, Briefcase, ArrowRight, Sparkles,
-  Clock, PauseCircle, Search, ChevronUp, ChevronDown,
+  Clock, PauseCircle, Search, ChevronUp, ChevronDown, UserCircle,
 } from "lucide-react";
 import { useTheme } from "@/hooks/useTheme";
 
@@ -19,12 +19,14 @@ const STATUS_CONFIG: Record<string, { label: string; textColor: string; badgeBg:
 };
 
 const QUICK_ACTIONS = [
-  { label: "Project Board", icon: LayoutGrid,  path: "/project-board",   color: "#6366f1", desc: "Kanban tasks" },
-  { label: "Projects",      icon: Briefcase,   path: "/projects",         color: "#3b82f6", desc: "All projects" },
-  { label: "Meetings",      icon: FileText,    path: "/meeting-minutes",  color: "#14b8a6", desc: "Minutes & notes" },
-  { label: "Material Req.", icon: ShoppingCart, path: "/material-request", color: "#f59e0b", desc: "Procurement" },
-  { label: "FlowTalk",      icon: MessageSquare, path: "/chat",           color: "#a855f7", desc: "Team chat" },
-  { label: "User Mgmt.",    icon: Users,       path: "/user-management",  color: "#ef4444", desc: "Access control" },
+  { label: "Project Board",   icon: LayoutGrid,    path: "/project-board",      color: "#6366f1", desc: "Kanban tasks" },
+  { label: "Projects",        icon: Briefcase,     path: "/projects",           color: "#3b82f6", desc: "All projects" },
+  { label: "Meetings",        icon: FileText,      path: "/meeting-minutes",    color: "#14b8a6", desc: "Minutes & notes" },
+  { label: "Material Req.",   icon: ShoppingCart,  path: "/material-request",   color: "#f59e0b", desc: "Procurement" },
+  { label: "FlowTalk",        icon: MessageSquare, path: "/chat",               color: "#a855f7", desc: "Team chat" },
+  { label: "Smart Inbox",     icon: Sparkles,      path: "/smart-inbox",        color: "#f97316", desc: "AI email inbox" },
+  { label: "HRMS",            icon: UserCircle,    path: "/hrms",               color: "#22c55e", desc: "HR & employees" },
+  { label: "User Mgmt.",      icon: Users,         path: "/user-management",    color: "#ef4444", desc: "Access control" },
 ];
 
 type SortKey = "name" | "progress" | "status";
