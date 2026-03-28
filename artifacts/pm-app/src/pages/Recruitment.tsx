@@ -997,7 +997,12 @@ function InfoChip({ icon: Icon, label, color = "gray" }: { icon: React.ElementTy
 }
 
 function DetailView({ record, onBack }: { record: RecruitmentTracker; onBack: () => void }) {
-  const [activeTab, setActiveTab] = useState<"info" | "interview" | "calllog">("info");
+  const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState<"info" | "interview" | "calllog" | "ai" | "experience" | "skills">("info");
+  const [aiAnalysis, setAiAnalysis] = useState<FullAnalysis | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
   const followups = record.followup_table || [];
   const hikePercent = record.existing_salary_per_month && record.expected_salary
     ? Math.round(((record.expected_salary - record.existing_salary_per_month) / record.existing_salary_per_month) * 100)
@@ -1005,11 +1010,38 @@ function DetailView({ record, onBack }: { record: RecruitmentTracker; onBack: ()
 
   const initials = record.candidate_name.trim().split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase();
 
-  const tabs = [
+  useEffect(() => {
+    if (!record.candidate_resume) return;
+    setAiLoading(true);
+    setAiError(null);
+    fetch(`${BASE}/api/hrms/resume-analyze-erp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file_path: record.candidate_resume }),
+    })
+      .then(r => { if (!r.ok) throw new Error(`Analysis failed (${r.status})`); return r.json(); })
+      .then((data: FullAnalysis) => {
+        setAiAnalysis(data);
+        if ((data as any).linkedin_enriched) {
+          toast({ title: "LinkedIn also analyzed", description: "Profile from resume was enriched automatically" });
+        }
+      })
+      .catch(e => setAiError(String(e)))
+      .finally(() => setAiLoading(false));
+  }, [record.candidate_resume]); // eslint-disable-line
+
+  const hasResume = !!record.candidate_resume;
+
+  const tabs: { id: "info" | "interview" | "calllog" | "ai" | "experience" | "skills"; label: string; icon: React.ElementType; count?: number }[] = [
     { id: "info", label: "Profile", icon: User },
     { id: "interview", label: "Interview", icon: MessageSquare },
-    { id: "calllog", label: `Call Logs`, count: followups.length, icon: Phone },
-  ] as const;
+    { id: "calllog", label: "Call Logs", count: followups.length, icon: Phone },
+    ...(hasResume ? [
+      { id: "ai" as const, label: "AI Assessment", icon: Brain },
+      { id: "experience" as const, label: "Experience", icon: Briefcase },
+      { id: "skills" as const, label: "Skills", icon: Zap },
+    ] : []),
+  ];
 
   return (
     <div className="flex-1 flex overflow-hidden bg-[#f1f5f9]">
@@ -1092,19 +1124,25 @@ function DetailView({ record, onBack }: { record: RecruitmentTracker; onBack: ()
           </div>
         </div>
 
-        {/* ERPNext Link */}
-        <div className="px-5 py-4 mt-auto">
-          <a href={`${ERP_URL}/app/recruitment-tracker/${record.name}`} target="_blank" rel="noopener noreferrer"
-            className="flex items-center justify-center gap-2 w-full px-3 py-2 rounded-xl text-[11px] font-semibold text-gray-500 bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-colors">
-            <ExternalLink className="w-3.5 h-3.5" /> Open in ERPNext
-          </a>
-          {record.candidate_resume && (
-            <a href={`${ERP_URL}${record.candidate_resume}`} target="_blank" rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 w-full mt-2 px-3 py-2 rounded-xl text-[11px] font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm">
-              <FileText className="w-3.5 h-3.5" /> View Resume / CV
-            </a>
-          )}
-        </div>
+        {/* Resume AI status indicator */}
+        {hasResume && (
+          <div className="px-5 py-4 mt-auto border-t border-gray-100">
+            {aiLoading ? (
+              <div className="flex items-center gap-2 text-[11px] text-indigo-500 font-semibold">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Analyzing resume with AI…
+              </div>
+            ) : aiAnalysis ? (
+              <div className="flex items-center gap-2 text-[11px] text-emerald-600 font-semibold">
+                <CheckCircle2 className="w-3.5 h-3.5" /> AI analysis complete
+                {(aiAnalysis as any).linkedin_enriched && <Linkedin className="w-3 h-3 text-blue-500" />}
+              </div>
+            ) : aiError ? (
+              <div className="flex items-center gap-2 text-[11px] text-red-400 font-semibold">
+                <AlertCircle className="w-3.5 h-3.5" /> Resume analysis failed
+              </div>
+            ) : null}
+          </div>
+        )}
       </div>
 
       {/* Main Content */}
@@ -1246,19 +1284,18 @@ function DetailView({ record, onBack }: { record: RecruitmentTracker; onBack: ()
                 </div>
               )}
 
-              {/* Resume link */}
+              {/* Resume AI status */}
               {record.candidate_resume && (
-                <a href={`${ERP_URL}${record.candidate_resume}`} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-3 bg-white rounded-2xl border border-indigo-100 shadow-sm px-5 py-4 hover:bg-indigo-50 transition-colors group">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0 group-hover:bg-indigo-200 transition-colors">
-                    <FileText className="w-5 h-5 text-indigo-500" />
+                <div className={`flex items-center gap-3 rounded-2xl border shadow-sm px-5 py-4 ${aiLoading ? "bg-indigo-50 border-indigo-100" : aiAnalysis ? "bg-emerald-50 border-emerald-100" : aiError ? "bg-red-50 border-red-100" : "bg-gray-50 border-gray-100"}`}>
+                  <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shrink-0 shadow-sm">
+                    {aiLoading ? <Loader2 className="w-5 h-5 text-indigo-500 animate-spin" /> : aiAnalysis ? <Sparkles className="w-5 h-5 text-emerald-500" /> : <FileText className="w-5 h-5 text-gray-400" />}
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm font-bold text-indigo-700">Candidate Resume / CV</p>
-                    <p className="text-xs text-gray-400">Click to open attached file</p>
+                    <p className="text-sm font-bold text-gray-800">Resume / CV</p>
+                    <p className="text-xs text-gray-500">{aiLoading ? "AI is analyzing the resume…" : aiAnalysis ? "AI analysis complete — see AI Assessment tab" : aiError ? aiError : "Resume attached"}</p>
                   </div>
-                  <ExternalLink className="w-4 h-4 text-indigo-400" />
-                </a>
+                  {aiAnalysis && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
+                </div>
               )}
             </div>
           )}
@@ -1326,6 +1363,305 @@ function DetailView({ record, onBack }: { record: RecruitmentTracker; onBack: ()
             </div>
           )}
 
+          {/* ── AI ASSESSMENT TAB ── */}
+          {activeTab === "ai" && (
+            <div className="space-y-4 max-w-3xl">
+              {aiLoading && (
+                <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-8 text-center">
+                  <Loader2 className="w-8 h-8 text-indigo-400 animate-spin mx-auto mb-3" />
+                  <p className="text-sm font-semibold text-indigo-600">Analyzing resume with AI…</p>
+                  <p className="text-xs text-indigo-400 mt-1">Extracting data · Rating · Interview questions · LinkedIn</p>
+                </div>
+              )}
+              {aiError && !aiLoading && (
+                <div className="bg-red-50 border border-red-100 rounded-2xl p-6 text-center">
+                  <AlertTriangle className="w-8 h-8 text-red-300 mx-auto mb-2" />
+                  <p className="text-sm text-red-600">{aiError}</p>
+                </div>
+              )}
+              {aiAnalysis && !aiLoading && (() => {
+                const resume = aiAnalysis.resume;
+                const assessment = aiAnalysis.assessment;
+                const photoSrc = aiAnalysis.photo_base64 && aiAnalysis.photo_mime ? `data:${aiAnalysis.photo_mime};base64,${aiAnalysis.photo_base64}` : null;
+                return (
+                  <>
+                    {/* Candidate identity from resume */}
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-start gap-4">
+                      {photoSrc ? (
+                        <img src={photoSrc} alt="Candidate" className="w-16 h-20 object-cover rounded-xl border-2 border-indigo-100 shrink-0" />
+                      ) : (
+                        <div className="w-16 h-20 rounded-xl bg-gradient-to-br from-indigo-400 to-blue-600 flex items-center justify-center shrink-0">
+                          <span className="text-white font-black text-xl">{(resume.name || record.candidate_name || "?").slice(0,2).toUpperCase()}</span>
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-black text-gray-900">{resume.name || record.candidate_name}</p>
+                        {resume.current_title && <p className="text-xs text-indigo-600 font-semibold mt-0.5">{resume.current_title}</p>}
+                        {resume.career_level && <span className="inline-block mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-500">{resume.career_level}</span>}
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {resume.email && <span className="text-[11px] text-gray-500 flex items-center gap-1"><Mail className="w-3 h-3" />{resume.email}</span>}
+                          {resume.phone && <span className="text-[11px] text-gray-500 flex items-center gap-1"><Phone className="w-3 h-3" />{resume.phone}</span>}
+                          {resume.location && <span className="text-[11px] text-gray-500 flex items-center gap-1"><MapPin className="w-3 h-3" />{resume.location}</span>}
+                        </div>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {resume.linkedin_url && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700"><Linkedin className="w-3 h-3" /> LinkedIn</span>}
+                          {resume.github_url && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-gray-100 text-gray-600"><Github className="w-3 h-3" /> GitHub</span>}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Rating */}
+                    {typeof assessment.overall_rating === "number" && (
+                      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                        <div className="flex items-center gap-2 mb-4">
+                          <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                          <span className="text-xs font-bold text-gray-700 uppercase tracking-widest">AI Rating</span>
+                          {(aiAnalysis as any).linkedin_enriched && <span className="ml-auto text-[10px] font-bold bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full flex items-center gap-1"><Linkedin className="w-3 h-3" /> LinkedIn Enriched</span>}
+                        </div>
+                        <div className="flex items-center gap-8 flex-wrap">
+                          <RatingGauge value={assessment.overall_rating} />
+                          <div className="flex-1 min-w-[200px] space-y-3">
+                            {Object.entries(assessment.rating_breakdown || {}).map(([key, val]) => (
+                              <RatingBar key={key} label={key.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())} value={val as number} />
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Hiring Recommendation */}
+                    {assessment.hiring_recommendation && (
+                      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                        <div className="flex items-center gap-2 mb-3"><Target className="w-3.5 h-3.5 text-indigo-500" /><span className="text-xs font-bold text-gray-700 uppercase tracking-widest">Hiring Recommendation</span></div>
+                        <div className="flex items-start gap-4">
+                          <HiringBadge rec={assessment.hiring_recommendation} />
+                          <p className="text-sm text-gray-700 leading-relaxed flex-1">{assessment.hiring_reason}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Summary */}
+                    {resume.summary && (
+                      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                        <div className="flex items-center gap-2 mb-2"><User className="w-3.5 h-3.5 text-indigo-500" /><span className="text-xs font-bold text-gray-700 uppercase tracking-widest">Professional Summary</span></div>
+                        <p className="text-sm text-gray-700 leading-relaxed">{resume.summary}</p>
+                      </div>
+                    )}
+
+                    {/* Stats row */}
+                    <div className="grid grid-cols-4 gap-3">
+                      {[
+                        { label: "Years Exp.", value: resume.total_experience_years ? `${resume.total_experience_years}y` : "—", color: "text-indigo-600", bg: "bg-indigo-50" },
+                        { label: "Companies", value: (resume.experience || []).length || "—", color: "text-blue-600", bg: "bg-blue-50" },
+                        { label: "Skills", value: (resume.skills || []).length + (resume.technical_skills || []).length || "—", color: "text-emerald-600", bg: "bg-emerald-50" },
+                        { label: "AI Score", value: assessment.overall_rating ? `${assessment.overall_rating}/10` : "—", color: "text-purple-600", bg: "bg-purple-50" },
+                      ].map(s => (
+                        <div key={s.label} className={`${s.bg} rounded-2xl p-4 text-center`}>
+                          <p className={`text-xl font-black ${s.color}`}>{s.value}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Strengths + Concerns */}
+                    {(assessment.strengths || []).length > 0 && (
+                      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                        <div className="flex items-center gap-2 mb-3"><Shield className="w-3.5 h-3.5 text-emerald-500" /><span className="text-xs font-bold text-gray-700 uppercase tracking-widest">Strengths</span></div>
+                        <ul className="space-y-2">
+                          {(assessment.strengths || []).map((s, i) => (
+                            <li key={i} className="flex items-start gap-2.5 p-2.5 rounded-xl bg-emerald-50 border border-emerald-100">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /><span className="text-sm text-gray-700">{s}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {(assessment.concerns || []).length > 0 && (
+                      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                        <div className="flex items-center gap-2 mb-3"><AlertCircle className="w-3.5 h-3.5 text-amber-500" /><span className="text-xs font-bold text-gray-700 uppercase tracking-widest">Concerns</span></div>
+                        <ul className="space-y-2">
+                          {(assessment.concerns || []).map((c, i) => (
+                            <li key={i} className="flex items-start gap-2.5 p-2.5 rounded-xl bg-amber-50 border border-amber-100">
+                              <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" /><span className="text-sm text-gray-700">{c}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Salary + Trajectory */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {assessment.salary_assessment && (
+                        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                          <div className="flex items-center gap-2 mb-2"><DollarSign className="w-3.5 h-3.5 text-emerald-500" /><span className="text-xs font-bold text-gray-700 uppercase tracking-widest">Salary Assessment</span></div>
+                          <p className="text-sm text-gray-700">{assessment.salary_assessment}</p>
+                        </div>
+                      )}
+                      {assessment.career_trajectory && (
+                        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                          <div className="flex items-center gap-2 mb-2"><BarChart2 className="w-3.5 h-3.5 text-indigo-500" /><span className="text-xs font-bold text-gray-700 uppercase tracking-widest">Career Trajectory</span></div>
+                          <div className="flex items-center gap-2"><TrajectoryIcon traj={assessment.career_trajectory} /><span className="text-sm font-bold text-gray-800">{assessment.career_trajectory}</span></div>
+                          {assessment.career_trajectory_detail && <p className="text-xs text-gray-500 mt-1">{assessment.career_trajectory_detail}</p>}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Interview Questions */}
+                    {(assessment.interview_questions || []).length > 0 && (
+                      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                        <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/60 flex items-center gap-2">
+                          <MessageCircle className="w-3.5 h-3.5 text-indigo-500" />
+                          <span className="text-xs font-bold text-gray-700 uppercase tracking-widest">AI Interview Questions</span>
+                        </div>
+                        <div className="divide-y divide-gray-50">
+                          {(assessment.interview_questions || []).map((q, i) => q && (
+                            <div key={i} className="px-5 py-4">
+                              <p className="text-sm font-semibold text-gray-800">{q.question}</p>
+                              {q.category && <span className="text-[10px] font-bold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full mt-1 inline-block">{q.category}</span>}
+                              {q.purpose && <p className="text-[11px] text-gray-400 mt-1 flex items-start gap-1.5"><Lightbulb className="w-3 h-3 text-amber-400 shrink-0 mt-0.5" />{q.purpose}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* ── EXPERIENCE TAB ── */}
+          {activeTab === "experience" && (
+            <div className="space-y-4 max-w-3xl">
+              {aiLoading && <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-indigo-400 animate-spin" /></div>}
+              {aiAnalysis && !aiLoading && (() => {
+                const resume = aiAnalysis.resume;
+                const assessment = aiAnalysis.assessment;
+                return (
+                  <>
+                    {(resume.experience || []).map((exp, i) => (
+                      <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                        <div className="flex items-start justify-between gap-4 flex-wrap mb-2">
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="text-sm font-bold text-gray-900">{exp.title}</h3>
+                              {(() => { const ca = (assessment.company_analysis || []).find(c => c.company?.toLowerCase() === exp.company?.toLowerCase()); return ca ? <CompanyTierBadge tier={ca.tier} /> : null; })()}
+                            </div>
+                            <p className="text-sm font-semibold text-indigo-600 mt-0.5">{exp.company}</p>
+                            {exp.location && <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5"><MapPin className="w-3 h-3" />{exp.location}</p>}
+                          </div>
+                          <div className="text-right">
+                            {exp.duration && <span className="text-[11px] font-bold text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full">{exp.duration}</span>}
+                            {(exp.start_year || exp.end_year) && <p className="text-[10px] text-gray-400 mt-1">{exp.start_year}{exp.start_year && exp.end_year ? " – " : ""}{exp.end_year}</p>}
+                          </div>
+                        </div>
+                        {exp.description && <p className="text-xs text-gray-600 leading-relaxed mb-2">{exp.description}</p>}
+                        {(exp.achievements || []).length > 0 && (
+                          <div className="space-y-1.5">
+                            {exp.achievements.map((a, j) => (
+                              <div key={j} className="flex items-start gap-2 text-xs text-gray-700 bg-gray-50 rounded-lg px-3 py-1.5">
+                                <ChevronRight className="w-3.5 h-3.5 text-indigo-400 shrink-0 mt-0.5" />{a}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {(resume.education || []).map((edu, i) => (
+                      <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-start gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-blue-50 border-2 border-blue-100 flex items-center justify-center shrink-0">
+                          <BookOpen className="w-5 h-5 text-blue-400" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-bold text-gray-900">{edu.degree}{edu.field ? ` in ${edu.field}` : ""}</p>
+                          <p className="text-sm text-indigo-600 font-semibold">{edu.institution}</p>
+                          <div className="flex items-center gap-3 mt-1 flex-wrap">
+                            {edu.year && <span className="text-xs text-gray-400">{edu.year}</span>}
+                            {edu.gpa && <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">GPA: {edu.gpa}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* ── SKILLS TAB ── */}
+          {activeTab === "skills" && (
+            <div className="space-y-4 max-w-3xl">
+              {aiLoading && <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-indigo-400 animate-spin" /></div>}
+              {aiAnalysis && !aiLoading && (() => {
+                const resume = aiAnalysis.resume;
+                return (
+                  <>
+                    {(resume.technical_skills || []).length > 0 && (
+                      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                        <div className="flex items-center gap-2 mb-3"><Zap className="w-3.5 h-3.5 text-indigo-500" /><span className="text-xs font-bold text-gray-700 uppercase tracking-widest">Technical Skills</span></div>
+                        <div className="flex flex-wrap gap-2">
+                          {(resume.technical_skills || []).map((s, i) => <span key={i} className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">{s}</span>)}
+                        </div>
+                      </div>
+                    )}
+                    {(resume.soft_skills || []).length > 0 && (
+                      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                        <div className="flex items-center gap-2 mb-3"><Brain className="w-3.5 h-3.5 text-purple-500" /><span className="text-xs font-bold text-gray-700 uppercase tracking-widest">Soft Skills</span></div>
+                        <div className="flex flex-wrap gap-2">
+                          {(resume.soft_skills || []).map((s, i) => <span key={i} className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-100">{s}</span>)}
+                        </div>
+                      </div>
+                    )}
+                    {(resume.skills || []).length > 0 && (
+                      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                        <div className="flex items-center gap-2 mb-3"><Star className="w-3.5 h-3.5 text-amber-500" /><span className="text-xs font-bold text-gray-700 uppercase tracking-widest">All Skills</span></div>
+                        <div className="flex flex-wrap gap-2">
+                          {(resume.skills || []).map((s, i) => <span key={i} className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-gray-50 text-gray-700 border border-gray-200">{s}</span>)}
+                        </div>
+                      </div>
+                    )}
+                    {(resume.certifications || []).length > 0 && (
+                      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                        <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/60 flex items-center gap-2"><Award className="w-3.5 h-3.5 text-emerald-500" /><span className="text-xs font-bold text-gray-700 uppercase tracking-widest">Certifications</span></div>
+                        <div className="divide-y divide-gray-50">
+                          {(resume.certifications || []).map((cert, i) => {
+                            const c = typeof cert === "string" ? { name: cert, issuer: "", year: "" } : cert;
+                            return (
+                              <div key={i} className="px-5 py-3 flex items-center gap-3">
+                                <Award className="w-4 h-4 text-amber-400 shrink-0" />
+                                <div>
+                                  <p className="text-sm font-semibold text-gray-800">{c.name}</p>
+                                  {(c.issuer || c.year) && <p className="text-xs text-gray-400">{c.issuer}{c.issuer && c.year ? " · " : ""}{c.year}</p>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {(resume.languages || []).length > 0 && (
+                      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                        <div className="flex items-center gap-2 mb-3"><Globe className="w-3.5 h-3.5 text-blue-500" /><span className="text-xs font-bold text-gray-700 uppercase tracking-widest">Languages</span></div>
+                        <div className="flex flex-wrap gap-3">
+                          {(resume.languages || []).map((l, i) => {
+                            const lang = typeof l === "string" ? { language: l, proficiency: "" } : l;
+                            return (
+                              <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-100">
+                                <Globe className="w-3.5 h-3.5 text-blue-400" />
+                                <span className="text-xs font-bold text-blue-700">{lang.language}</span>
+                                {lang.proficiency && <span className="text-[10px] text-blue-400">· {lang.proficiency}</span>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
         </div>
       </div>
     </div>
@@ -1336,7 +1672,6 @@ function DetailView({ record, onBack }: { record: RecruitmentTracker; onBack: ()
 
 export default function Recruitment() {
   const { toast } = useToast();
-  const [tab, setTab] = useState<"tracker" | "analyze">("tracker");
   const [trackers, setTrackers] = useState<RecruitmentTracker[]>([]);
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -1419,33 +1754,12 @@ export default function Recruitment() {
             <UserPlus className="w-4 h-4 text-blue-500 shrink-0" />
             <h1 className="text-sm font-bold text-gray-900">Recruitment</h1>
           </div>
-          <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-1">
-            <button onClick={() => setTab("tracker")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${tab === "tracker" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-              Tracker
-            </button>
-            <button onClick={() => setTab("analyze")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${tab === "analyze" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-              <Sparkles className="w-3 h-3" /> Analyze Resume
-            </button>
-          </div>
-          {tab === "tracker" && (
-            <>
-              <a href={`${ERP_URL}/app/recruitment-tracker`} target="_blank" rel="noopener noreferrer"
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-colors">
-                <ExternalLink className="w-3.5 h-3.5" /> ERPNext
-              </a>
-              <button onClick={loadTrackers} disabled={loading} className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors">
-                <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-              </button>
-            </>
-          )}
+          <button onClick={loadTrackers} disabled={loading} className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors">
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          </button>
         </div>
 
-        {tab === "analyze" && <ResumeAnalyzer />}
-
-        {tab === "tracker" && (
-          <>
+        <>
             <div className="px-6 pt-3 pb-0 flex gap-2 shrink-0 flex-wrap">
               {[
                 { label: "Total", value: trackers.length, color: "bg-blue-500" },
@@ -1495,7 +1809,7 @@ export default function Recruitment() {
                   <table className="w-full text-left">
                     <thead>
                       <tr className="border-b border-gray-100 bg-gray-50/60">
-                        {["#", "Candidate", "Position", "Department", "Location", "Current Salary", "Expected", "Date", "Last Convo", "Status", ""].map(h => (
+                        {["#", "Candidate", "Position", "Department", "Location", "Current Salary", "Expected", "Date", "Last Convo", "Status"].map(h => (
                           <th key={h} className="px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">{h}</th>
                         ))}
                       </tr>
@@ -1534,12 +1848,6 @@ export default function Recruitment() {
                           <td className="px-3 py-2.5"><span className="text-xs text-gray-500">{fmtDate(t.date)}</span></td>
                           <td className="px-3 py-2.5"><span className="text-xs text-gray-500">{fmtDate(t.rt_last_convo)}</span></td>
                           <td className="px-3 py-2.5"><StatusPill status={t.status} /></td>
-                          <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
-                            <a href={`${ERP_URL}/app/recruitment-tracker/${t.name}`} target="_blank" rel="noopener noreferrer"
-                              className="text-gray-300 hover:text-indigo-500 transition-colors">
-                              <ExternalLink className="w-3.5 h-3.5" />
-                            </a>
-                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1548,7 +1856,6 @@ export default function Recruitment() {
               )}
             </div>
           </>
-        )}
       </div>
     </Layout>
   );

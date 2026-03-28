@@ -516,6 +516,63 @@ router.post("/hrms/resume-analyze", upload.single("file"), async (req, res) => {
   }
 });
 
+router.post("/hrms/resume-analyze-erp", async (req, res) => {
+  try {
+    const { file_path } = req.body as { file_path?: string };
+    if (!file_path) { res.status(400).json({ error: "file_path required" }); return; }
+
+    const { buffer, contentType, ext } = await fetchErpFile(file_path);
+    const openai = getOpenAI();
+
+    let resumeData: Record<string, unknown> = {};
+    let photoBase64: string | null = null;
+    let photoMime: string | null = null;
+    let pdfBase64: string | null = null;
+
+    const isImage = contentType.startsWith("image/") || ["jpg","jpeg","png","webp"].includes(ext);
+    const isPdf = contentType === "application/pdf" || ext === "pdf";
+
+    if (isImage) {
+      const mime = contentType.startsWith("image/") ? contentType : `image/${ext === "jpg" ? "jpeg" : ext}`;
+      const b64 = buffer.toString("base64");
+      resumeData = await analyzeResumeImage(openai, b64, mime);
+      photoBase64 = b64;
+      photoMime = mime;
+    } else if (isPdf) {
+      pdfBase64 = buffer.toString("base64");
+      let text = "";
+      try { const parsed = await pdfParse(buffer); text = parsed.text; } catch { text = ""; }
+      const jpegs = extractJpegsFromPdf(buffer);
+      if (jpegs.length > 0) {
+        photoBase64 = jpegs[0].toString("base64");
+        photoMime = "image/jpeg";
+      }
+      resumeData = await analyzeResumeText(openai, text, photoBase64 ?? undefined, photoMime ?? undefined);
+    } else {
+      res.status(400).json({ error: "Unsupported file type" }); return;
+    }
+
+    const assessment = await assessCandidate(openai, resumeData);
+
+    // Auto-enrich with LinkedIn if found in resume
+    let linkedinEnriched = false;
+    const linkedinUrl = (resumeData.linkedin_url as string) || "";
+    if (linkedinUrl) {
+      const linkedinContent = await fetchLinkedInData(linkedinUrl);
+      if (linkedinContent) {
+        const enrichedAssessment = await assessCandidate(openai, resumeData, linkedinContent);
+        res.json({ resume: resumeData, assessment: enrichedAssessment, photo_base64: photoBase64, photo_mime: photoMime, pdf_base64: pdfBase64, linkedin_enriched: true });
+        return;
+      }
+    }
+
+    res.json({ resume: resumeData, assessment, photo_base64: photoBase64, photo_mime: photoMime, pdf_base64: pdfBase64, linkedin_enriched: linkedinEnriched });
+  } catch (e) {
+    console.error("resume-analyze-erp error:", e);
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 router.post("/hrms/candidate-enrich", async (req, res) => {
   try {
     const { linkedin_url, name, companies, resume_summary } = req.body as {
