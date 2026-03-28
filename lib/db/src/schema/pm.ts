@@ -119,6 +119,7 @@ export const userPermissionsTable = pgTable("user_permissions", {
   fullName: text("full_name"),
   hasAccess: boolean("has_access").notNull().default(true),
   modules: text("modules").notNull().default("[]"),
+  moduleRoles: text("module_roles").notNull().default("{}"),
   allowedProjects: text("allowed_projects").notNull().default("[]"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

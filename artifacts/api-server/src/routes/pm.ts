@@ -44,9 +44,11 @@ pool
   );
   CREATE TABLE IF NOT EXISTS user_permissions (
     email TEXT PRIMARY KEY, full_name TEXT, has_access BOOLEAN NOT NULL DEFAULT true,
-    modules TEXT NOT NULL DEFAULT '[]', allowed_projects TEXT NOT NULL DEFAULT '[]',
+    modules TEXT NOT NULL DEFAULT '[]', module_roles TEXT NOT NULL DEFAULT '{}',
+    allowed_projects TEXT NOT NULL DEFAULT '[]',
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
   );
+  ALTER TABLE user_permissions ADD COLUMN IF NOT EXISTS module_roles TEXT NOT NULL DEFAULT '{}';
 `,
   )
   .then(() => console.log("PM tables ready"))
@@ -581,14 +583,21 @@ router.get("/user-permissions", async (_req, res) => {
 router.put("/user-permissions/:email", async (req, res) => {
   try {
     const { email } = req.params;
-    const { fullName, hasAccess, modules, allowedProjects } = req.body;
+    const { fullName, hasAccess, modules, moduleRoles, allowedProjects } = req.body;
+    // Derive modules list from moduleRoles if provided (keys where role != "none")
+    const derivedModules = moduleRoles
+      ? Object.entries(moduleRoles as Record<string, string>)
+          .filter(([, role]) => role !== "none")
+          .map(([key]) => key)
+      : (modules ?? []);
     const [row] = await db
       .insert(userPermissionsTable)
       .values({
         email,
         fullName: fullName ?? null,
         hasAccess: hasAccess ?? true,
-        modules: JSON.stringify(modules ?? []),
+        modules: JSON.stringify(derivedModules),
+        moduleRoles: JSON.stringify(moduleRoles ?? {}),
         allowedProjects: JSON.stringify(allowedProjects ?? []),
         updatedAt: new Date(),
       })
@@ -597,7 +606,8 @@ router.put("/user-permissions/:email", async (req, res) => {
         set: {
           fullName: fullName ?? null,
           hasAccess: hasAccess ?? true,
-          modules: JSON.stringify(modules ?? []),
+          modules: JSON.stringify(derivedModules),
+          moduleRoles: JSON.stringify(moduleRoles ?? {}),
           allowedProjects: JSON.stringify(allowedProjects ?? []),
           updatedAt: new Date(),
         },
