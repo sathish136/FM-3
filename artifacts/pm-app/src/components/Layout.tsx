@@ -168,34 +168,33 @@ function AppLauncher({ open, onClose }: { open: boolean; onClose: () => void }) 
     <div
       ref={overlayRef}
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backdropFilter: "blur(8px)", backgroundColor: "rgba(2,6,23,0.75)" }}
+      style={{ backdropFilter: "blur(8px)", backgroundColor: "rgba(100,116,139,0.35)" }}
       onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
     >
       <div
-        className="relative w-full max-w-[680px] max-h-[82vh] flex flex-col rounded-3xl shadow-[0_32px_80px_rgba(0,0,0,0.7)] overflow-hidden border border-white/[0.08]"
-        style={{ background: "linear-gradient(160deg, #0f172a 0%, #111827 60%, #0a0f1e 100%)" }}
+        className="relative w-full max-w-[680px] max-h-[82vh] flex flex-col rounded-3xl shadow-[0_24px_60px_rgba(0,0,0,0.18)] overflow-hidden border border-slate-200"
+        style={{ background: "linear-gradient(160deg, #f8fafc 0%, #f1f5f9 60%, #f0f4ff 100%)" }}
       >
         {/* Glow top */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-80 h-px bg-gradient-to-r from-transparent via-indigo-500/60 to-transparent pointer-events-none" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-80 h-px bg-gradient-to-r from-transparent via-indigo-300/80 to-transparent pointer-events-none" />
 
         {/* Header */}
-        <div className="flex items-center gap-3 px-6 py-4 border-b border-white/[0.06] shrink-0">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-            style={{ background: "linear-gradient(135deg, rgba(99,102,241,0.35), rgba(168,85,247,0.2))", border: "1px solid rgba(99,102,241,0.45)" }}>
-            <Grid3x3 className="w-4 h-4 text-indigo-400" />
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-200/80 shrink-0">
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 bg-indigo-100 border border-indigo-200">
+            <Grid3x3 className="w-4 h-4 text-indigo-500" />
           </div>
           <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search apps…"
               autoFocus
-              className="w-full bg-white/[0.06] border border-white/[0.09] rounded-xl pl-9 pr-4 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:bg-white/[0.08] transition-all"
+              className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-4 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all"
             />
           </div>
           <button onClick={onClose}
-            className="p-2 rounded-xl text-slate-500 hover:text-white hover:bg-white/10 transition-all shrink-0">
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all shrink-0">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -204,7 +203,7 @@ function AppLauncher({ open, onClose }: { open: boolean; onClose: () => void }) 
         <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-5 space-y-7">
           {searchResults ? (
             <div>
-              <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-600 mb-3">
+              <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400 mb-3">
                 {searchResults.length} result{searchResults.length !== 1 ? "s" : ""}
               </p>
               <div className="grid grid-cols-5 gap-3">
@@ -215,8 +214,8 @@ function AppLauncher({ open, onClose }: { open: boolean; onClose: () => void }) 
             navGroups.map((group) => (
               <div key={group.label}>
                 <div className="flex items-center gap-2 mb-3">
-                  <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-500">{group.label}</p>
-                  <div className="flex-1 h-px bg-white/[0.05]" />
+                  <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400">{group.label}</p>
+                  <div className="flex-1 h-px bg-slate-200" />
                 </div>
                 <div className="grid grid-cols-5 gap-3">
                   {group.items.map((item) => <AppItem key={item.path} item={item} location={location} theme={theme} onClose={onClose} />)}
@@ -227,9 +226,9 @@ function AppLauncher({ open, onClose }: { open: boolean; onClose: () => void }) 
         </div>
 
         {/* Footer */}
-        <div className="shrink-0 px-6 py-3 border-t border-white/[0.05] flex items-center justify-between">
-          <span className="text-[10px] text-slate-600 font-semibold uppercase tracking-widest">FlowMatriX</span>
-          <span className="text-[10px] text-slate-700">Press Esc to close</span>
+        <div className="shrink-0 px-6 py-3 border-t border-slate-200/80 flex items-center justify-between bg-white/60">
+          <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-widest">FlowMatriX</span>
+          <span className="text-[10px] text-slate-400">Press Esc to close</span>
         </div>
       </div>
     </div>
@@ -242,25 +241,25 @@ function AppItem({ item, location, theme, onClose }: { item: any; location: stri
   return (
     <Link href={item.path} onClick={onClose}>
       <div className={cn(
-        "group flex flex-col items-center gap-2.5 p-3.5 rounded-2xl cursor-pointer transition-all duration-150 text-center relative overflow-hidden",
+        "group flex flex-col items-center gap-2.5 p-3 rounded-2xl cursor-pointer transition-all duration-150 text-center relative overflow-hidden",
         isActive
-          ? "bg-white/[0.12] ring-1 ring-white/20 shadow-lg"
-          : "hover:bg-white/[0.08] hover:ring-1 hover:ring-white/10"
+          ? "bg-white shadow-md ring-1 ring-slate-200"
+          : "hover:bg-white hover:shadow-sm hover:ring-1 hover:ring-slate-200"
       )}>
         {isActive && (
-          <div className="absolute inset-0 opacity-20 pointer-events-none"
-            style={{ background: `radial-gradient(circle at 50% 30%, ${theme.accent}40, transparent 70%)` }} />
+          <div className="absolute inset-0 opacity-10 pointer-events-none"
+            style={{ background: `radial-gradient(circle at 50% 30%, ${theme.accent}, transparent 70%)` }} />
         )}
         <div className={cn(
-          "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-150 shadow-md",
-          item.bgColor ?? "bg-white/[0.08]",
-          isActive ? "scale-105 shadow-lg" : "group-hover:scale-105 group-hover:shadow-lg"
+          "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-150",
+          item.bgColor ?? "bg-slate-100",
+          isActive ? "scale-105 shadow-sm" : "group-hover:scale-105"
         )}>
-          <Icon className={cn("w-5 h-5 transition-transform duration-150 group-hover:scale-110", item.color ?? "text-slate-400")} />
+          <Icon className={cn("w-5 h-5 transition-transform duration-150 group-hover:scale-110", item.color ?? "text-slate-500")} />
         </div>
         <span className={cn(
           "text-[11px] font-medium leading-tight w-full transition-colors",
-          isActive ? "text-white" : "text-slate-400 group-hover:text-slate-200"
+          isActive ? "text-slate-800" : "text-slate-500 group-hover:text-slate-700"
         )}>
           {item.label}
         </span>
