@@ -1854,7 +1854,7 @@ function MiniBar({ value, max, color }: { value: number; max: number; color: str
   );
 }
 
-function AnalyticsDashboard({ trackers }: { trackers: RecruitmentTracker[] }) {
+function AnalyticsDashboard({ trackers, onFilterStatus }: { trackers: RecruitmentTracker[]; onFilterStatus: (status: string) => void }) {
   const { toast } = useToast();
   const [insights, setInsights] = useState<AIInsights | null>(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
@@ -2016,11 +2016,12 @@ function AnalyticsDashboard({ trackers }: { trackers: RecruitmentTracker[] }) {
             const count = statusCounts[status] || 0;
             const pct = total > 0 ? Math.round((count / total) * 100) : 0;
             return (
-              <div key={status} className="flex items-center gap-3">
+              <div key={status} className="flex items-center gap-3 cursor-pointer group hover:bg-indigo-50/60 rounded-lg px-1 -mx-1 transition-colors" onClick={() => onFilterStatus(status)} title={`Filter by ${status}`}>
                 <span className="w-28 shrink-0"><StatusPill status={status} /></span>
                 <MiniBar value={count} max={total} color={statusColors[status] || "bg-gray-400"} />
                 <span className="text-xs font-bold text-gray-500 w-10 text-right shrink-0">{count}</span>
                 <span className="text-[10px] text-gray-400 w-8 shrink-0">{pct}%</span>
+                <span className="text-[10px] text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">Filter →</span>
               </div>
             );
           })}
@@ -2362,17 +2363,18 @@ export default function Recruitment() {
             <div className="px-6 pt-3 pb-0 flex items-center gap-3 shrink-0">
               <div className="flex gap-2 flex-wrap flex-1">
                 {[
-                  { label: "Total", value: trackers.length, color: "bg-blue-500" },
-                  { label: "Open", value: openCount, color: "bg-indigo-400" },
-                  { label: "Selected", value: selectedCount, color: "bg-emerald-500" },
-                  { label: "Joined", value: joinedCount, color: "bg-teal-500" },
-                  { label: "Rejected", value: trackers.filter(t => t.status === "Not Suitable").length, color: "bg-red-400" },
+                  { label: "Total", value: trackers.length, color: "bg-blue-500", filter: "" },
+                  { label: "Open", value: openCount, color: "bg-indigo-400", filter: "Open" },
+                  { label: "Selected", value: selectedCount, color: "bg-emerald-500", filter: "Selected" },
+                  { label: "Joined", value: joinedCount, color: "bg-teal-500", filter: "Joined" },
+                  { label: "Rejected", value: trackers.filter(t => t.status === "Not Suitable").length, color: "bg-red-400", filter: "Not Suitable" },
                 ].map(s => (
-                  <div key={s.label} className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+                  <button key={s.label} onClick={() => { setStatusFilter(s.filter); setMainView("tracker"); }}
+                    className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-[0_1px_2px_rgba(0,0,0,0.04)] hover:border-indigo-300 hover:bg-indigo-50/40 transition-all cursor-pointer">
                     <span className={`w-2 h-2 rounded-full ${s.color} shrink-0`} />
                     <span className="text-xs font-bold text-gray-700">{s.value}</span>
                     <span className="text-[10px] text-gray-400">{s.label}</span>
-                  </div>
+                  </button>
                 ))}
               </div>
               <button onClick={loadTrackers} disabled={loading} className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors shrink-0">
@@ -2382,7 +2384,7 @@ export default function Recruitment() {
             {loading ? (
               <div className="flex-1 flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-indigo-400" /></div>
             ) : (
-              <AnalyticsDashboard trackers={trackers} />
+              <AnalyticsDashboard trackers={trackers} onFilterStatus={(status) => { setStatusFilter(status); setMainView("tracker"); }} />
             )}
           </>
         )}
