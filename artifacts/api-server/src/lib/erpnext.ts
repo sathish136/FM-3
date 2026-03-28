@@ -1070,9 +1070,9 @@ export async function fetchErpNextRecruitmentTrackers(filters?: {
     "name", "date", "company", "candidate_name", "qualification",
     "applying_for_the_post", "department", "location",
     "existing_salary_per_month", "expected_salary",
-    "status", "rt_telephonic_interview", "rt_last_convo",
-    "not_suitable_reason", "experience_status", "candidate_resume",
-    "owner", "modified",
+    "status", "rt_telephonic_interview", "telephonic_interview_commands",
+    "rt_last_convo", "not_suitable_reason", "experience_status",
+    "candidate_resume", "owner", "modified",
   ]);
   const fArr: any[] = [];
   if (filters?.status)     fArr.push(["Recruitment Tracker", "status", "=", filters.status]);
