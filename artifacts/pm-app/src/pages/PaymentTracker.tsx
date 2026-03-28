@@ -3,121 +3,51 @@ import { Layout } from "@/components/Layout";
 import { useToast } from "@/hooks/use-toast";
 import {
   CreditCard, Plus, RefreshCw, Smartphone, Wifi, Tv, ShoppingBag,
-  Phone, Shield, Zap, MoreHorizontal, CheckCircle, Clock, AlertTriangle,
-  ChevronDown, X, Edit3, Trash2, History, Bell, BellOff, ArrowLeft,
-  Calendar, DollarSign, Tag, Building2, FileText, Check, Search, Receipt,
+  Phone, Shield, Zap, CheckCircle, Clock, AlertTriangle,
+  X, Edit3, Trash2, Bell, ArrowLeft,
+  Calendar, DollarSign, Tag, FileText, Check, Search, Receipt,
+  Users, ChevronDown, ChevronRight,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-type SubType = "mobile" | "broadband" | "dth" | "ott" | "office_phone" | "electricity" | "insurance" | "other";
+type SubType = "mobile" | "cug" | "broadband" | "dth" | "ott" | "office_phone" | "electricity" | "insurance" | "other";
 type SubStatus = "active" | "inactive" | "expired";
 
 interface Subscription {
-  id: number;
-  name: string;
-  type: SubType;
-  mobile_or_account: string;
-  operator: string;
-  plan_name: string;
-  plan_amount: string;
-  validity_days: number;
-  due_date: string | null;
-  status: SubStatus;
-  notes: string;
-  created_at: string;
-  payment_count: string;
-  pending_followups: string;
+  id: number; name: string; type: SubType; mobile_or_account: string;
+  operator: string; plan_name: string; plan_amount: string;
+  validity_days: number; due_date: string | null; status: SubStatus;
+  notes: string; created_at: string; payment_count: string; pending_followups: string;
 }
-
 interface PaymentHistory {
-  id: number;
-  subscription_id: number;
-  amount: string;
-  paid_date: string;
-  method: string;
-  reference: string;
-  notes: string;
-  created_at: string;
+  id: number; subscription_id: number; amount: string; paid_date: string;
+  method: string; reference: string; notes: string; created_at: string;
 }
-
 interface Followup {
-  id: number;
-  subscription_id: number;
-  followup_date: string;
-  notes: string;
-  done: boolean;
-  done_at: string | null;
+  id: number; subscription_id: number; followup_date: string; notes: string;
+  done: boolean; done_at: string | null;
 }
 
-const TYPE_META: Record<SubType, { label: string; icon: React.ElementType; color: string; bg: string }> = {
-  mobile: { label: "Mobile", icon: Smartphone, color: "text-blue-600", bg: "bg-blue-100" },
-  broadband: { label: "Broadband", icon: Wifi, color: "text-indigo-600", bg: "bg-indigo-100" },
-  dth: { label: "DTH / Cable", icon: Tv, color: "text-purple-600", bg: "bg-purple-100" },
-  ott: { label: "OTT / Streaming", icon: ShoppingBag, color: "text-pink-600", bg: "bg-pink-100" },
-  office_phone: { label: "Office Phone", icon: Phone, color: "text-teal-600", bg: "bg-teal-100" },
-  electricity: { label: "Electricity", icon: Zap, color: "text-amber-600", bg: "bg-amber-100" },
-  insurance: { label: "Insurance", icon: Shield, color: "text-emerald-600", bg: "bg-emerald-100" },
-  other: { label: "Other", icon: CreditCard, color: "text-gray-600", bg: "bg-gray-100" },
+const TYPE_META: Record<SubType, { label: string; icon: React.ElementType; color: string; bg: string; border: string; accent: string }> = {
+  mobile:       { label: "Mobile",       icon: Smartphone, color: "text-sky-600",    bg: "bg-sky-50",      border: "border-sky-200",    accent: "bg-sky-500" },
+  cug:          { label: "CUG Group",    icon: Users,      color: "text-violet-600", bg: "bg-violet-50",   border: "border-violet-200", accent: "bg-violet-500" },
+  broadband:    { label: "Broadband",    icon: Wifi,       color: "text-indigo-600", bg: "bg-indigo-50",   border: "border-indigo-200", accent: "bg-indigo-500" },
+  dth:          { label: "DTH / Cable",  icon: Tv,         color: "text-purple-600", bg: "bg-purple-50",   border: "border-purple-200", accent: "bg-purple-500" },
+  ott:          { label: "OTT",          icon: ShoppingBag,color: "text-pink-600",   bg: "bg-pink-50",     border: "border-pink-200",   accent: "bg-pink-500" },
+  office_phone: { label: "Office Phone", icon: Phone,      color: "text-teal-600",   bg: "bg-teal-50",     border: "border-teal-200",   accent: "bg-teal-500" },
+  electricity:  { label: "Electricity",  icon: Zap,        color: "text-amber-600",  bg: "bg-amber-50",    border: "border-amber-200",  accent: "bg-amber-500" },
+  insurance:    { label: "Insurance",    icon: Shield,     color: "text-emerald-600",bg: "bg-emerald-50",  border: "border-emerald-200",accent: "bg-emerald-500" },
+  other:        { label: "Other",        icon: CreditCard, color: "text-gray-600",   bg: "bg-gray-50",     border: "border-gray-200",   accent: "bg-gray-500" },
 };
 
-function daysUntil(dateStr: string | null): number | null {
-  if (!dateStr) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const due = new Date(dateStr);
-  due.setHours(0, 0, 0, 0);
-  return Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-}
-
-function fmtDate(d: string | null) {
-  if (!d) return "—";
-  return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-}
-
-function fmtAmt(a: string | number) {
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(Number(a));
-}
-
-function DueBadge({ dueDate }: { dueDate: string | null }) {
-  const days = daysUntil(dueDate);
-  if (days === null) return <span className="text-xs text-gray-400">No due date</span>;
-  if (days < 0) return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 ring-1 ring-red-300">
-      <AlertTriangle className="w-3 h-3" /> Overdue {Math.abs(days)}d
-    </span>
-  );
-  if (days === 0) return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 ring-1 ring-red-300">
-      <AlertTriangle className="w-3 h-3" /> Due Today
-    </span>
-  );
-  if (days <= 3) return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700 ring-1 ring-orange-300">
-      <Clock className="w-3 h-3" /> {days}d left
-    </span>
-  );
-  if (days <= 7) return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 ring-1 ring-amber-300">
-      <Clock className="w-3 h-3" /> {days}d left
-    </span>
-  );
-  return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300">
-      <CheckCircle className="w-3 h-3" /> {days}d left
-    </span>
-  );
-}
-
-// Operator brand colors
-const OPERATOR_STYLE: Record<string, { bg: string; text: string; border: string; dot: string }> = {
-  "Jio":    { bg: "bg-blue-100",   text: "text-blue-700",   border: "border-blue-300",   dot: "bg-blue-500" },
-  "Airtel": { bg: "bg-red-100",    text: "text-red-700",    border: "border-red-300",    dot: "bg-red-500" },
-  "Vi":     { bg: "bg-purple-100", text: "text-purple-700", border: "border-purple-300", dot: "bg-purple-500" },
-  "BSNL":   { bg: "bg-green-100",  text: "text-green-700",  border: "border-green-300",  dot: "bg-green-500" },
+const OPERATOR_STYLE: Record<string, { bg: string; text: string; border: string; dot: string; pill: string }> = {
+  "Jio":    { bg: "bg-blue-50",   text: "text-blue-700",   border: "border-blue-200",   dot: "bg-blue-500",   pill: "bg-blue-500" },
+  "Airtel": { bg: "bg-red-50",    text: "text-red-700",    border: "border-red-200",    dot: "bg-red-500",    pill: "bg-red-500" },
+  "Vi":     { bg: "bg-purple-50", text: "text-purple-700", border: "border-purple-200", dot: "bg-purple-500", pill: "bg-purple-500" },
+  "BSNL":   { bg: "bg-green-50",  text: "text-green-700",  border: "border-green-200",  dot: "bg-green-500",  pill: "bg-green-500" },
 };
 
-// Default plan to pre-select when operator is detected (most popular 28-day plan)
 const DEFAULT_PLAN: Record<string, { amount: string; validity: string }> = {
   Jio:    { amount: "299", validity: "28" },
   Airtel: { amount: "299", validity: "28" },
@@ -125,45 +55,89 @@ const DEFAULT_PLAN: Record<string, { amount: string; validity: string }> = {
   BSNL:   { amount: "187", validity: "28" },
 };
 
-// Common plans per operator
 const QUICK_PLANS: Record<string, { amount: string; validity: string; label: string }[]> = {
   Jio: [
-    { amount: "199", validity: "28", label: "₹199 · 28d" },
-    { amount: "239", validity: "28", label: "₹239 · 28d" },
-    { amount: "299", validity: "28", label: "₹299 · 28d" },
-    { amount: "349", validity: "28", label: "₹349 · 28d" },
-    { amount: "449", validity: "56", label: "₹449 · 56d" },
-    { amount: "599", validity: "84", label: "₹599 · 84d" },
-    { amount: "2999", validity: "365", label: "₹2999 · 1yr" },
+    { amount: "199", validity: "28", label: "₹199 · 28d" }, { amount: "299", validity: "28", label: "₹299 · 28d" },
+    { amount: "349", validity: "28", label: "₹349 · 28d" }, { amount: "449", validity: "56", label: "₹449 · 56d" },
+    { amount: "599", validity: "84", label: "₹599 · 84d" }, { amount: "2999", validity: "365", label: "₹2999 · 1yr" },
   ],
   Airtel: [
-    { amount: "199", validity: "28", label: "₹199 · 28d" },
-    { amount: "299", validity: "28", label: "₹299 · 28d" },
-    { amount: "349", validity: "28", label: "₹349 · 28d" },
-    { amount: "449", validity: "56", label: "₹449 · 56d" },
-    { amount: "599", validity: "84", label: "₹599 · 84d" },
-    { amount: "3359", validity: "365", label: "₹3359 · 1yr" },
+    { amount: "199", validity: "28", label: "₹199 · 28d" }, { amount: "299", validity: "28", label: "₹299 · 28d" },
+    { amount: "349", validity: "28", label: "₹349 · 28d" }, { amount: "449", validity: "56", label: "₹449 · 56d" },
+    { amount: "599", validity: "84", label: "₹599 · 84d" }, { amount: "3359", validity: "365", label: "₹3359 · 1yr" },
   ],
   Vi: [
-    { amount: "199", validity: "28", label: "₹199 · 28d" },
-    { amount: "299", validity: "28", label: "₹299 · 28d" },
-    { amount: "349", validity: "28", label: "₹349 · 28d" },
-    { amount: "449", validity: "56", label: "₹449 · 56d" },
-    { amount: "599", validity: "84", label: "₹599 · 84d" },
-    { amount: "2899", validity: "365", label: "₹2899 · 1yr" },
+    { amount: "199", validity: "28", label: "₹199 · 28d" }, { amount: "299", validity: "28", label: "₹299 · 28d" },
+    { amount: "349", validity: "28", label: "₹349 · 28d" }, { amount: "449", validity: "56", label: "₹449 · 56d" },
+    { amount: "599", validity: "84", label: "₹599 · 84d" }, { amount: "2899", validity: "365", label: "₹2899 · 1yr" },
   ],
   BSNL: [
-    { amount: "97", validity: "26", label: "₹97 · 26d" },
-    { amount: "187", validity: "28", label: "₹187 · 28d" },
-    { amount: "247", validity: "28", label: "₹247 · 28d" },
-    { amount: "399", validity: "90", label: "₹399 · 90d" },
+    { amount: "97", validity: "26", label: "₹97 · 26d" }, { amount: "187", validity: "28", label: "₹187 · 28d" },
+    { amount: "247", validity: "28", label: "₹247 · 28d" }, { amount: "399", validity: "90", label: "₹399 · 90d" },
     { amount: "1999", validity: "365", label: "₹1999 · 1yr" },
   ],
 };
 
+function daysUntil(dateStr: string | null): number | null {
+  if (!dateStr) return null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const due = new Date(dateStr); due.setHours(0, 0, 0, 0);
+  return Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+function fmtDate(d: string | null) {
+  if (!d) return "—";
+  return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+function fmtAmt(a: string | number) {
+  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(Number(a));
+}
+
+function DueBadge({ dueDate }: { dueDate: string | null }) {
+  const days = daysUntil(dueDate);
+  if (days === null) return <span className="text-[10px] text-gray-400">No date</span>;
+  if (days < 0) return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700 ring-1 ring-red-200">
+      <AlertTriangle className="w-2.5 h-2.5" /> Overdue {Math.abs(days)}d
+    </span>
+  );
+  if (days === 0) return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700 ring-1 ring-red-200">
+      <AlertTriangle className="w-2.5 h-2.5" /> Due Today
+    </span>
+  );
+  if (days <= 3) return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-700 ring-1 ring-orange-200">
+      <Clock className="w-2.5 h-2.5" /> {days}d left
+    </span>
+  );
+  if (days <= 7) return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 ring-1 ring-amber-200">
+      <Clock className="w-2.5 h-2.5" /> {days}d left
+    </span>
+  );
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200">
+      <CheckCircle className="w-2.5 h-2.5" /> {days}d left
+    </span>
+  );
+}
+
+function OperatorChip({ operator }: { operator: string }) {
+  if (!operator) return null;
+  const os = OPERATOR_STYLE[operator];
+  if (!os) return <span className="text-[11px] text-gray-500 font-semibold">{operator}</span>;
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${os.bg} ${os.text} ${os.border}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${os.dot}`} />
+      {operator}
+    </span>
+  );
+}
+
 const EMPTY_FORM = {
   name: "", type: "mobile" as SubType, mobile_or_account: "", operator: "",
-  plan_name: "", plan_amount: "", validity_days: "30", due_date: "", notes: "",
+  plan_name: "", plan_amount: "", validity_days: "28", due_date: "", notes: "",
+  bulk_numbers: "",
 };
 
 function SubscriptionForm({ initial, onSave, onCancel }: {
@@ -177,12 +151,9 @@ function SubscriptionForm({ initial, onSave, onCancel }: {
 
   function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })); }
 
-  // Auto-detect operator when mobile number is 10 digits
   useEffect(() => {
     const digits = form.mobile_or_account.replace(/\D/g, "");
-    if (form.type === "mobile" && digits.length === 10) {
-      autoDetect(digits);
-    }
+    if (form.type === "mobile" && digits.length === 10) autoDetect(digits);
   }, [form.mobile_or_account, form.type]);
 
   async function autoDetect(mobile: string) {
@@ -196,11 +167,9 @@ function SubscriptionForm({ initial, onSave, onCancel }: {
       if (data.operator && data.operator !== "Unknown") {
         const def = DEFAULT_PLAN[data.operator];
         setForm(f => ({
-          ...f,
-          operator: data.operator,
-          // Auto-fill amount & validity only if user hasn't entered them yet
+          ...f, operator: data.operator,
           plan_amount: f.plan_amount || (def?.amount ?? f.plan_amount),
-          validity_days: (f.validity_days === "30" || !f.validity_days) ? (def?.validity ?? f.validity_days) : f.validity_days,
+          validity_days: (f.validity_days === "28" || f.validity_days === "30" || !f.validity_days) ? (def?.validity ?? f.validity_days) : f.validity_days,
         }));
       }
     } catch {}
@@ -209,28 +178,35 @@ function SubscriptionForm({ initial, onSave, onCancel }: {
 
   const opStyle = form.operator ? OPERATOR_STYLE[form.operator] : null;
   const quickPlans = form.operator ? QUICK_PLANS[form.operator] : null;
+  const isCug = form.type === "cug";
+
+  const typeOptions: SubType[] = ["mobile", "cug", "broadband", "dth", "ott", "office_phone", "electricity", "insurance", "other"];
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[92vh] overflow-y-auto">
+        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-sm font-bold text-gray-900">{initial?.id ? "Edit Entry" : "Add Recharge / Bill Entry"}</h2>
+          <div>
+            <h2 className="text-sm font-bold text-gray-900">{initial?.id ? "Edit Entry" : isCug ? "Add CUG Group" : "Add Recharge / Bill Entry"}</h2>
+            {isCug && !initial?.id && <p className="text-[10px] text-violet-600 mt-0.5">Paste all CUG numbers at once — one per line</p>}
+          </div>
           <button onClick={onCancel} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"><X className="w-4 h-4" /></button>
         </div>
+
         <div className="px-6 py-4 space-y-4">
           {/* Type selector */}
           <div>
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Type</label>
-            <div className="grid grid-cols-4 gap-2">
-              {(Object.keys(TYPE_META) as SubType[]).map(t => {
-                const m = TYPE_META[t];
-                const Icon = m.icon;
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">Category</label>
+            <div className="grid grid-cols-3 gap-1.5">
+              {typeOptions.map(t => {
+                const m = TYPE_META[t]; const Icon = m.icon;
                 return (
                   <button key={t} onClick={() => set("type", t)}
-                    className={`flex flex-col items-center gap-1 py-2 px-1 rounded-xl border text-[10px] font-semibold transition-all
-                      ${form.type === t ? `${m.bg} ${m.color} border-current` : "border-gray-200 text-gray-500 hover:border-gray-300"}`}>
-                    <Icon className="w-4 h-4" />
-                    {m.label}
+                    className={`flex items-center gap-2 px-2.5 py-2 rounded-xl border text-[11px] font-semibold transition-all
+                      ${form.type === t ? `${m.bg} ${m.color} ${m.border} shadow-sm` : "border-gray-200 text-gray-500 hover:border-gray-300 bg-white"}`}>
+                    <Icon className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">{m.label}</span>
                   </button>
                 );
               })}
@@ -238,83 +214,92 @@ function SubscriptionForm({ initial, onSave, onCancel }: {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2">
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Label / Name *</label>
-              <input value={form.name} onChange={e => set("name", e.target.value)} placeholder="e.g. Office WiFi, CEO Mobile, Sathish Phone"
-                className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-            </div>
-
-            {/* Mobile number with auto-detect */}
+            {/* Name */}
             <div className="col-span-2">
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">
-                {form.type === "mobile" ? "Mobile Number" : form.type === "broadband" ? "Account / Username" : "Account Number"}
+                {isCug ? "CUG Group Name *" : "Label / Name *"}
               </label>
-              <div className="relative">
-                <input
-                  value={form.mobile_or_account}
-                  onChange={e => set("mobile_or_account", e.target.value)}
-                  placeholder={form.type === "mobile" ? "Enter 10-digit mobile number" : "Account ID"}
-                  maxLength={form.type === "mobile" ? 10 : undefined}
-                  className={`w-full px-3 py-2.5 text-sm rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-300 pr-28
-                    ${opStyle ? `border-${opStyle.border.replace("border-","")}` : "border-gray-200"}`}
-                />
-                {/* Operator chip shown inside the input on the right */}
-                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-                  {detecting && (
-                    <span className="text-[10px] text-gray-400 flex items-center gap-1">
-                      <RefreshCw className="w-3 h-3 animate-spin" /> Detecting…
-                    </span>
-                  )}
-                  {!detecting && form.operator && opStyle && (
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${opStyle.bg} ${opStyle.text} ${opStyle.border}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${opStyle.dot}`} />
-                      {form.operator}
-                    </span>
-                  )}
-                  {!detecting && form.operator && !opStyle && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-gray-100 text-gray-600 border border-gray-200">
-                      {form.operator}
-                    </span>
-                  )}
-                </div>
-              </div>
-              {form.type === "mobile" && (
-                <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
-                  <Zap className="w-2.5 h-2.5 text-indigo-400" />
-                  Operator is auto-detected when you enter 10 digits
-                </p>
-              )}
+              <input value={form.name} onChange={e => set("name", e.target.value)}
+                placeholder={isCug ? "e.g. Sales Team CUG, Field Staff CUG" : "e.g. CEO Mobile, Office WiFi"}
+                className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
             </div>
 
-            {/* Operator override */}
+            {/* CUG bulk numbers */}
+            {isCug && !initial?.id ? (
+              <div className="col-span-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">
+                  Mobile Numbers <span className="text-violet-500 normal-case font-normal">(one per line — name + number or just number)</span>
+                </label>
+                <textarea value={form.bulk_numbers} onChange={e => set("bulk_numbers", e.target.value)} rows={6}
+                  placeholder={"9876543210 Sathish\n9876543211 Ravi Kumar\n9876543212\n9876543213 CEO Sir\n..."}
+                  className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-violet-300 font-mono resize-none" />
+                {form.bulk_numbers.trim() && (
+                  <p className="text-[10px] text-violet-600 mt-1 font-semibold">
+                    {form.bulk_numbers.trim().split("\n").filter(l => l.trim()).length} numbers entered
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="col-span-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">
+                  {form.type === "mobile" || form.type === "cug" ? "Mobile Number" : form.type === "broadband" ? "Account / Username" : "Account Number"}
+                </label>
+                <div className="relative">
+                  <input value={form.mobile_or_account} onChange={e => set("mobile_or_account", e.target.value)}
+                    placeholder={form.type === "mobile" || form.type === "cug" ? "Enter 10-digit mobile number" : "Account ID"}
+                    maxLength={form.type === "mobile" ? 10 : undefined}
+                    className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300 pr-32" />
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                    {detecting && <span className="text-[10px] text-gray-400 flex items-center gap-1"><RefreshCw className="w-3 h-3 animate-spin" /> Detecting…</span>}
+                    {!detecting && form.operator && opStyle && (
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${opStyle.bg} ${opStyle.text} ${opStyle.border}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${opStyle.dot}`} /> {form.operator}
+                      </span>
+                    )}
+                    {!detecting && form.operator && !opStyle && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-gray-100 text-gray-600 border border-gray-200">{form.operator}</span>
+                    )}
+                  </div>
+                </div>
+                {(form.type === "mobile") && (
+                  <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
+                    <Zap className="w-2.5 h-2.5 text-indigo-400" /> Operator auto-detected at 10 digits
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Operator */}
             <div>
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Operator / Provider</label>
-              <input value={form.operator} onChange={e => set("operator", e.target.value)} placeholder="e.g. Airtel, BSNL, JioFiber"
-                className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+              <input value={form.operator} onChange={e => set("operator", e.target.value)}
+                placeholder={isCug ? "e.g. Airtel, Jio" : "e.g. Airtel, BSNL, JioFiber"}
+                className={`w-full px-3 py-2.5 text-sm rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-300
+                  ${opStyle ? `${opStyle.border} ${opStyle.bg}` : "border-gray-200"}`} />
             </div>
 
             {/* Plan name */}
             <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Plan Name / Description</label>
-              <input value={form.plan_name} onChange={e => set("plan_name", e.target.value)} placeholder="e.g. 299 Unlimited, Annual"
-                className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Plan / Description</label>
+              <input value={form.plan_name} onChange={e => set("plan_name", e.target.value)}
+                placeholder={isCug ? "e.g. CUG 299, Unlimited" : "e.g. 299 Unlimited"}
+                className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
             </div>
 
-            {/* Quick plan picker */}
+            {/* Quick plan chips */}
             {quickPlans && (
               <div className="col-span-2">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 block">Quick Select Plan</label>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">Quick Plan</label>
                 <div className="flex flex-wrap gap-1.5">
                   {quickPlans.map(p => {
                     const isSelected = form.plan_amount === p.amount && form.validity_days === p.validity;
                     return (
-                      <button
-                        key={p.label}
+                      <button key={p.label}
                         onClick={() => setForm(f => ({ ...f, plan_amount: p.amount, validity_days: p.validity }))}
                         className={`px-3 py-1.5 rounded-xl text-[11px] font-semibold border transition-all ${
                           isSelected
-                            ? `${opStyle?.bg || "bg-indigo-100"} ${opStyle?.text || "text-indigo-700"} ${opStyle?.border || "border-indigo-300"}`
-                            : "border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+                            ? `${opStyle?.bg || "bg-indigo-50"} ${opStyle?.text || "text-indigo-700"} ${opStyle?.border || "border-indigo-300"} shadow-sm`
+                            : "border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50 bg-white"
                         }`}>
                         {p.label}
                       </button>
@@ -324,33 +309,50 @@ function SubscriptionForm({ initial, onSave, onCancel }: {
               </div>
             )}
 
+            {/* Amount + Validity */}
             <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Amount (₹)</label>
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">
+                Amount (₹){isCug ? " / per number" : ""}
+              </label>
               <input type="number" value={form.plan_amount} onChange={e => set("plan_amount", e.target.value)} placeholder="0"
-                className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
             </div>
             <div>
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Validity (days)</label>
-              <input type="number" value={form.validity_days} onChange={e => set("validity_days", e.target.value)} placeholder="30"
-                className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+              <input type="number" value={form.validity_days} onChange={e => set("validity_days", e.target.value)} placeholder="28"
+                className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
             </div>
             <div>
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Due / Recharge Date</label>
               <input type="date" value={form.due_date} onChange={e => set("due_date", e.target.value)}
-                className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
             </div>
-            <div className="col-span-2">
+            <div>
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Notes</label>
-              <textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={2}
-                className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none" />
+              <input value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="Optional"
+                className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
             </div>
           </div>
+
+          {/* CUG summary */}
+          {isCug && !initial?.id && form.bulk_numbers.trim() && form.plan_amount && (
+            <div className="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3">
+              <p className="text-xs font-bold text-violet-700">
+                {form.bulk_numbers.trim().split("\n").filter(l => l.trim()).length} CUG numbers
+                {form.plan_amount && ` · ₹${form.plan_amount} each`}
+                {form.plan_amount && form.bulk_numbers.trim() && ` = ${fmtAmt(
+                  Number(form.plan_amount) * form.bulk_numbers.trim().split("\n").filter(l => l.trim()).length
+                )} total`}
+              </p>
+            </div>
+          )}
         </div>
+
         <div className="flex gap-3 px-6 py-4 border-t border-gray-100">
-          <button onClick={onCancel} className="flex-1 py-2.5 text-sm font-semibold rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50">Cancel</button>
+          <button onClick={onCancel} className="flex-1 py-2.5 text-sm font-semibold rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">Cancel</button>
           <button onClick={() => onSave(form)} disabled={!form.name}
             className="flex-1 py-2.5 text-sm font-semibold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 transition-colors">
-            {initial?.id ? "Save Changes" : "Add Entry"}
+            {initial?.id ? "Save Changes" : isCug && form.bulk_numbers.trim() ? `Add ${form.bulk_numbers.trim().split("\n").filter(l => l.trim()).length} CUG Numbers` : "Add Entry"}
           </button>
         </div>
       </div>
@@ -370,27 +372,32 @@ function PayModal({ sub, onClose, onPaid }: { sub: Subscription; onClose: () => 
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form),
     });
     if (!r.ok) { toast({ title: "Failed", variant: "destructive" }); return; }
-    toast({ title: "Payment recorded!", description: `Next due date updated.` });
+    toast({ title: "Payment recorded!" });
     onPaid();
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h2 className="text-sm font-bold text-gray-900">Mark as Paid</h2>
+          <div>
+            <h2 className="text-sm font-bold text-gray-900">Mark as Recharged</h2>
+            <p className="text-[10px] text-gray-400 mt-0.5">{sub.name} · {sub.mobile_or_account}</p>
+          </div>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400"><X className="w-4 h-4" /></button>
         </div>
         <div className="px-5 py-4 space-y-3">
-          <div>
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Amount (₹)</label>
-            <input type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
-              className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Paid Date</label>
-            <input type="date" value={form.paid_date} onChange={e => setForm(f => ({ ...f, paid_date: e.target.value }))}
-              className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Amount (₹)</label>
+              <input type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+                className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Paid Date</label>
+              <input type="date" value={form.paid_date} onChange={e => setForm(f => ({ ...f, paid_date: e.target.value }))}
+                className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+            </div>
           </div>
           <div>
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Payment Method</label>
@@ -402,15 +409,15 @@ function PayModal({ sub, onClose, onPaid }: { sub: Subscription; onClose: () => 
             </select>
           </div>
           <div>
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Reference / Transaction ID</label>
-            <input value={form.reference} onChange={e => setForm(f => ({ ...f, reference: e.target.value }))} placeholder="Optional"
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Transaction ID (optional)</label>
+            <input value={form.reference} onChange={e => setForm(f => ({ ...f, reference: e.target.value }))} placeholder="UPI ref / txn ID"
               className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
           </div>
-          <p className="text-[10px] text-indigo-600 bg-indigo-50 rounded-lg px-3 py-2">
-            Next due date will be set to <strong>{sub.due_date
+          <div className="bg-indigo-50 rounded-xl px-3 py-2.5 text-[11px] text-indigo-700">
+            Next due: <strong>{sub.due_date
               ? new Date(new Date(sub.due_date).getTime() + sub.validity_days * 86400000).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
-              : `+${sub.validity_days} days from today`}</strong>
-          </p>
+              : `Today + ${sub.validity_days} days`}</strong>
+          </div>
         </div>
         <div className="flex gap-3 px-5 py-4 border-t border-gray-100">
           <button onClick={onClose} className="flex-1 py-2.5 text-sm font-semibold rounded-xl border border-gray-200 text-gray-600">Cancel</button>
@@ -445,9 +452,7 @@ function DetailPanel({ sub, onBack, onRefresh }: { sub: Subscription; onBack: ()
     await fetch(`${BASE}/api/admin/payment-tracker/subscriptions/${sub.id}/followups`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ followup_date: newFollowup.date, notes: newFollowup.notes }),
     });
-    setNewFollowup({ date: "", notes: "" });
-    setShowFollowupForm(false);
-    load();
+    setNewFollowup({ date: "", notes: "" }); setShowFollowupForm(false); load();
     toast({ title: "Follow-up added" });
   }
 
@@ -464,12 +469,15 @@ function DetailPanel({ sub, onBack, onRefresh }: { sub: Subscription; onBack: ()
     <div className="h-full flex flex-col">
       <div className="bg-white border-b border-gray-100 px-6 py-4 flex items-center gap-3 shrink-0">
         <button onClick={onBack} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"><ArrowLeft className="w-4 h-4" /></button>
-        <div className={`w-8 h-8 rounded-xl ${meta.bg} flex items-center justify-center shrink-0`}>
+        <div className={`w-9 h-9 rounded-xl ${meta.bg} ${meta.border} border flex items-center justify-center shrink-0`}>
           <Icon className={`w-4 h-4 ${meta.color}`} />
         </div>
         <div className="flex-1">
           <h2 className="text-sm font-bold text-gray-900">{sub.name}</h2>
-          <p className="text-[10px] text-gray-400">{sub.operator} · {sub.mobile_or_account}</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <OperatorChip operator={sub.operator} />
+            {sub.mobile_or_account && <span className="text-[10px] text-gray-400 font-mono">{sub.mobile_or_account}</span>}
+          </div>
         </div>
         <DueBadge dueDate={sub.due_date} />
       </div>
@@ -477,23 +485,17 @@ function DetailPanel({ sub, onBack, onRefresh }: { sub: Subscription; onBack: ()
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4 bg-[#f1f5f9]">
         <div className="grid grid-cols-3 gap-3">
           {[
-            { label: "Plan Amount", value: fmtAmt(sub.plan_amount), icon: DollarSign, color: "text-emerald-600" },
+            { label: "Amount", value: fmtAmt(sub.plan_amount), icon: DollarSign, color: "text-emerald-600" },
             { label: "Due Date", value: fmtDate(sub.due_date), icon: Calendar, color: days !== null && days < 0 ? "text-red-600" : "text-gray-700" },
-            { label: "Validity", value: `${sub.validity_days} days`, icon: Clock, color: "text-indigo-600" },
-          ].map(c => {
-            const CI = c.icon;
-            return (
-              <div key={c.label} className="bg-white rounded-2xl px-4 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <CI className={`w-3 h-3 ${c.color}`} />
-                  <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">{c.label}</p>
-                </div>
-                <p className={`text-sm font-bold ${c.color}`}>{c.value}</p>
-              </div>
-            );
-          })}
+            { label: "Validity", value: `${sub.validity_days}d`, icon: Clock, color: "text-indigo-600" },
+          ].map(c => { const CI = c.icon; return (
+            <div key={c.label} className="bg-white rounded-2xl px-4 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
+              <div className="flex items-center gap-1.5 mb-1"><CI className={`w-3 h-3 ${c.color}`} />
+                <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">{c.label}</p></div>
+              <p className={`text-sm font-bold ${c.color}`}>{c.value}</p>
+            </div>
+          ); })}
         </div>
-
         {sub.plan_name && (
           <div className="bg-white rounded-2xl px-4 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex items-center gap-2">
             <Tag className="w-3.5 h-3.5 text-indigo-400" />
@@ -506,18 +508,16 @@ function DetailPanel({ sub, onBack, onRefresh }: { sub: Subscription; onBack: ()
             <span className="text-xs text-gray-600">{sub.notes}</span>
           </div>
         )}
-
         <div className="bg-white rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.06)] overflow-hidden">
           <div className="flex border-b border-gray-100">
             {(["history", "followups"] as const).map(t => (
               <button key={t} onClick={() => setTab(t)}
                 className={`flex-1 py-3 text-xs font-bold capitalize transition-colors
-                  ${tab === t ? "text-indigo-700 border-b-2 border-indigo-500" : "text-gray-400 hover:text-gray-700"}`}>
-                {t === "history" ? `Payment History (${history.length})` : `Follow-ups (${followups.filter(f => !f.done).length} pending)`}
+                  ${tab === t ? "text-indigo-700 border-b-2 border-indigo-500 bg-indigo-50/30" : "text-gray-400 hover:text-gray-700"}`}>
+                {t === "history" ? `Payments (${history.length})` : `Follow-ups (${followups.filter(f => !f.done).length})`}
               </button>
             ))}
           </div>
-
           {tab === "history" && (
             <div className="divide-y divide-gray-50">
               {history.length === 0 ? (
@@ -536,7 +536,6 @@ function DetailPanel({ sub, onBack, onRefresh }: { sub: Subscription; onBack: ()
               ))}
             </div>
           )}
-
           {tab === "followups" && (
             <div>
               <div className="divide-y divide-gray-50">
@@ -587,12 +586,206 @@ function DetailPanel({ sub, onBack, onRefresh }: { sub: Subscription; onBack: ()
   );
 }
 
+// ─── CUG Group Card ───────────────────────────────────────────────────────────
+function CugGroupCard({ groupName, operator, items, onPayAll, onEdit, onAddNumber, onItemClick }: {
+  groupName: string; operator: string; items: Subscription[];
+  onPayAll: () => void; onEdit: (s: Subscription) => void;
+  onAddNumber: () => void; onItemClick: (s: Subscription) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const os = OPERATOR_STYLE[operator];
+  const totalAmt = items.reduce((a, s) => a + Number(s.plan_amount), 0);
+  const overdue = items.filter(s => { const d = daysUntil(s.due_date); return d !== null && d < 0; }).length;
+  const dueSoon = items.filter(s => { const d = daysUntil(s.due_date); return d !== null && d >= 0 && d <= 7; }).length;
+  const sample = items[0];
+
+  const borderColor = overdue > 0 ? "border-red-300 shadow-red-100" : dueSoon > 0 ? "border-amber-300 shadow-amber-100" : "border-violet-200";
+
+  return (
+    <div className={`bg-white rounded-2xl border-2 ${borderColor} shadow-sm overflow-hidden`}>
+      {/* Group header */}
+      <div className={`px-4 pt-4 pb-3 ${os ? os.bg : "bg-violet-50"}`}>
+        <div className="flex items-start gap-3">
+          <div className={`w-10 h-10 rounded-xl bg-white ${os ? os.border : "border-violet-200"} border flex items-center justify-center shrink-0 shadow-sm`}>
+            <Users className="w-5 h-5 text-violet-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-bold text-gray-900 truncate">{groupName}</span>
+              <OperatorChip operator={operator} />
+              <span className="text-[10px] font-bold text-violet-700 bg-violet-100 border border-violet-200 px-1.5 py-0.5 rounded-full">
+                {items.length} numbers
+              </span>
+            </div>
+            <div className="flex items-center gap-3 mt-1 text-[11px] text-gray-500">
+              {sample?.plan_amount && <span className="font-semibold text-emerald-700">{fmtAmt(sample.plan_amount)}/num</span>}
+              {sample?.validity_days && <span>{sample.validity_days}d validity</span>}
+              {sample?.due_date && <span>Due {fmtDate(sample.due_date)}</span>}
+            </div>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="text-sm font-black text-gray-900">{fmtAmt(totalAmt)}</p>
+            <p className="text-[10px] text-gray-400">total / cycle</p>
+          </div>
+        </div>
+
+        {/* Alert row */}
+        {(overdue > 0 || dueSoon > 0) && (
+          <div className="mt-2 flex items-center gap-2">
+            {overdue > 0 && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-red-100 text-red-700 rounded-full">
+                <AlertTriangle className="w-2.5 h-2.5" /> {overdue} overdue
+              </span>
+            )}
+            {dueSoon > 0 && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">
+                <Clock className="w-2.5 h-2.5" /> {dueSoon} due soon
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Numbers grid */}
+      <div className="px-4 py-3">
+        <div className="flex flex-wrap gap-1.5">
+          {(expanded ? items : items.slice(0, 12)).map(s => {
+            const d = daysUntil(s.due_date);
+            const chipColor = d !== null && d < 0 ? "bg-red-50 border-red-200 text-red-700"
+              : d !== null && d <= 7 ? "bg-amber-50 border-amber-200 text-amber-700"
+              : "bg-gray-50 border-gray-200 text-gray-700";
+            return (
+              <button key={s.id} onClick={() => onItemClick(s)}
+                title={s.name}
+                className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-mono font-semibold transition-all hover:shadow-sm ${chipColor}`}>
+                {s.mobile_or_account || s.name}
+                {s.name && s.mobile_or_account && (
+                  <span className="text-[10px] font-sans font-normal opacity-70 ml-0.5 not-italic max-w-[60px] truncate">{s.name.split(" ")[0]}</span>
+                )}
+              </button>
+            );
+          })}
+          {!expanded && items.length > 12 && (
+            <button onClick={() => setExpanded(true)}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-violet-200 bg-violet-50 text-[11px] font-semibold text-violet-700 hover:bg-violet-100 transition-colors">
+              +{items.length - 12} more <ChevronDown className="w-3 h-3" />
+            </button>
+          )}
+          {expanded && items.length > 12 && (
+            <button onClick={() => setExpanded(false)}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-gray-200 bg-gray-50 text-[11px] font-semibold text-gray-500 hover:bg-gray-100 transition-colors">
+              Show less
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center gap-2 px-4 pb-4 pt-1 border-t border-gray-100 mt-2">
+        <button onClick={onPayAll}
+          className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors">
+          <CheckCircle className="w-3.5 h-3.5" /> Recharge All
+        </button>
+        <button onClick={onAddNumber}
+          className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-semibold border border-violet-200 text-violet-700 bg-violet-50 rounded-xl hover:bg-violet-100 transition-colors">
+          <Plus className="w-3.5 h-3.5" /> Add Number
+        </button>
+        <div className="flex-1" />
+        <DueBadge dueDate={sample?.due_date || null} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Individual Subscription Card ────────────────────────────────────────────
+function SubCard({ s, onPay, onEdit, onDelete, onClick }: {
+  s: Subscription; onPay: () => void; onEdit: () => void; onDelete: () => void; onClick: () => void;
+}) {
+  const meta = TYPE_META[s.type] || TYPE_META.other;
+  const Icon = meta.icon;
+  const days = daysUntil(s.due_date);
+  const urgency = days !== null && days < 0 ? "border-red-300 shadow-red-100"
+    : days !== null && days <= 3 ? "border-orange-300 shadow-orange-100"
+    : days !== null && days <= 7 ? "border-amber-200"
+    : "border-gray-200";
+
+  return (
+    <div onClick={onClick} className={`bg-white rounded-2xl border ${urgency} shadow-sm hover:shadow-md transition-all cursor-pointer group overflow-hidden`}>
+      {/* Left accent bar */}
+      <div className={`h-0.5 w-full ${meta.accent}`} />
+
+      <div className="p-4">
+        {/* Top row */}
+        <div className="flex items-start justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2">
+            <div className={`w-8 h-8 rounded-xl ${meta.bg} ${meta.border} border flex items-center justify-center shrink-0`}>
+              <Icon className={`w-4 h-4 ${meta.color}`} />
+            </div>
+            <OperatorChip operator={s.operator} />
+          </div>
+          <DueBadge dueDate={s.due_date} />
+        </div>
+
+        {/* Name */}
+        <p className="text-sm font-bold text-gray-900 leading-tight">{s.name}</p>
+        {s.mobile_or_account && (
+          <p className="text-[11px] text-gray-400 font-mono mt-0.5 tracking-wide">{s.mobile_or_account}</p>
+        )}
+
+        {/* Plan info */}
+        <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-50">
+          <div>
+            <p className="text-xs font-black text-emerald-700">{fmtAmt(s.plan_amount)}</p>
+            <p className="text-[9px] text-gray-400">amount</p>
+          </div>
+          <div className="w-px h-6 bg-gray-100" />
+          <div>
+            <p className="text-xs font-semibold text-gray-700">{s.validity_days}d</p>
+            <p className="text-[9px] text-gray-400">validity</p>
+          </div>
+          <div className="w-px h-6 bg-gray-100" />
+          <div className="flex-1">
+            <p className="text-[11px] font-semibold text-gray-700">{fmtDate(s.due_date)}</p>
+            <p className="text-[9px] text-gray-400">due date</p>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-1.5 mt-3 pt-2 border-t border-gray-50" onClick={e => e.stopPropagation()}>
+          <button onClick={onPay}
+            className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl hover:bg-emerald-100 transition-colors">
+            <CheckCircle className="w-3 h-3" /> Recharge
+          </button>
+          <button onClick={onEdit} className="p-1.5 rounded-xl hover:bg-gray-100 text-gray-400 transition-colors" title="Edit">
+            <Edit3 className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={onDelete} className="p-1.5 rounded-xl hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors" title="Delete">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ────────────────────────────────────────────────────────────
+type TabType = "all" | "mobile" | "cug" | "broadband" | "dth" | "ott" | "bills";
+const TABS: { id: TabType; label: string; icon: React.ElementType }[] = [
+  { id: "all",       label: "All",       icon: Receipt },
+  { id: "mobile",    label: "Mobile",    icon: Smartphone },
+  { id: "cug",       label: "CUG",       icon: Users },
+  { id: "broadband", label: "Broadband", icon: Wifi },
+  { id: "dth",       label: "DTH / OTT", icon: Tv },
+  { id: "bills",     label: "Bills",     icon: Zap },
+];
+
 export default function PaymentTracker() {
   const [subs, setSubs] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState<SubType | "">("");
+  const [activeTab, setActiveTab] = useState<TabType>("all");
   const [showForm, setShowForm] = useState(false);
+  const [formType, setFormType] = useState<SubType | undefined>();
   const [editSub, setEditSub] = useState<Subscription | null>(null);
   const [payingSub, setPayingSub] = useState<Subscription | null>(null);
   const [detailSub, setDetailSub] = useState<Subscription | null>(null);
@@ -610,33 +803,75 @@ export default function PaymentTracker() {
   useEffect(() => { load(); }, [load]);
 
   async function saveSub(form: typeof EMPTY_FORM) {
-    const url = editSub
-      ? `${BASE}/api/admin/payment-tracker/subscriptions/${editSub.id}`
-      : `${BASE}/api/admin/payment-tracker/subscriptions`;
-    const method = editSub ? "PUT" : "POST";
-    const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
-    if (!r.ok) { toast({ title: "Failed to save", variant: "destructive" }); return; }
-    toast({ title: editSub ? "Subscription updated" : "Subscription added" });
-    setShowForm(false); setEditSub(null); load();
+    if (editSub) {
+      const r = await fetch(`${BASE}/api/admin/payment-tracker/subscriptions/${editSub.id}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form),
+      });
+      if (!r.ok) { toast({ title: "Failed to save", variant: "destructive" }); return; }
+      toast({ title: "Updated successfully" });
+    } else if (form.type === "cug" && form.bulk_numbers.trim()) {
+      // Bulk CUG create — one entry per line
+      const lines = form.bulk_numbers.trim().split("\n").filter(l => l.trim());
+      let created = 0;
+      for (const line of lines) {
+        const parts = line.trim().split(/\s+/);
+        const isNumber = /^\d{10}$/.test(parts[0]);
+        const mobile = isNumber ? parts[0] : parts[parts.length - 1];
+        const nameParts = isNumber ? parts.slice(1) : parts.slice(0, -1);
+        const name = nameParts.length > 0 ? nameParts.join(" ") : mobile;
+        await fetch(`${BASE}/api/admin/payment-tracker/subscriptions`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...form, name: name || mobile, mobile_or_account: mobile, bulk_numbers: undefined }),
+        });
+        created++;
+      }
+      toast({ title: `${created} CUG numbers added successfully` });
+    } else {
+      const r = await fetch(`${BASE}/api/admin/payment-tracker/subscriptions`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form),
+      });
+      if (!r.ok) { toast({ title: "Failed to save", variant: "destructive" }); return; }
+      toast({ title: "Entry added" });
+    }
+    setShowForm(false); setEditSub(null); setFormType(undefined); load();
   }
 
   async function deleteSub(id: number) {
-    if (!confirm("Delete this subscription?")) return;
+    if (!confirm("Delete this entry?")) return;
     await fetch(`${BASE}/api/admin/payment-tracker/subscriptions/${id}`, { method: "DELETE" });
-    toast({ title: "Deleted" });
-    load();
+    toast({ title: "Deleted" }); load();
   }
 
-  const filtered = subs.filter(s =>
-    (!search || s.name.toLowerCase().includes(search.toLowerCase()) ||
-      (s.mobile_or_account || "").includes(search) ||
-      (s.operator || "").toLowerCase().includes(search.toLowerCase())) &&
-    (!typeFilter || s.type === typeFilter)
-  );
+  // Derive CUG groups — group by operator+plan_name (or just name prefix) for cug type
+  const cugItems = subs.filter(s => s.type === "cug");
+  const cugGroups: Record<string, Subscription[]> = {};
+  for (const s of cugItems) {
+    const key = `${s.name.replace(/\s*\d+$/, "").trim()}|${s.operator}`;
+    if (!cugGroups[key]) cugGroups[key] = [];
+    cugGroups[key].push(s);
+  }
 
   const overdue = subs.filter(s => { const d = daysUntil(s.due_date); return d !== null && d < 0; });
   const dueSoon = subs.filter(s => { const d = daysUntil(s.due_date); return d !== null && d >= 0 && d <= 7; });
   const totalMonthly = subs.reduce((a, s) => a + (Number(s.plan_amount) * (30 / (s.validity_days || 30))), 0);
+
+  // Filter for current tab
+  const tabTypes: Record<TabType, SubType[]> = {
+    all: [], mobile: ["mobile"], cug: ["cug"],
+    broadband: ["broadband"], dth: ["dth", "ott"],
+    bills: ["electricity", "insurance", "office_phone", "other"],
+  };
+  const filtered = subs.filter(s => {
+    const matchSearch = !search
+      || s.name.toLowerCase().includes(search.toLowerCase())
+      || (s.mobile_or_account || "").includes(search)
+      || (s.operator || "").toLowerCase().includes(search.toLowerCase());
+    const matchTab = activeTab === "all" || tabTypes[activeTab].includes(s.type);
+    return matchSearch && matchTab;
+  });
+
+  const filteredNonCug = filtered.filter(s => s.type !== "cug");
+  const filteredCug = filtered.filter(s => s.type === "cug");
 
   if (detailSub) {
     return (
@@ -650,215 +885,223 @@ export default function PaymentTracker() {
 
   return (
     <Layout>
-      <div className="h-full flex flex-col bg-[#f1f5f9] overflow-hidden">
+      <div className="h-full flex flex-col bg-[#f0f4f8] overflow-hidden">
         {showForm && (
           <SubscriptionForm
-            initial={editSub ? { ...editSub, plan_amount: editSub.plan_amount, validity_days: String(editSub.validity_days), due_date: editSub.due_date || "" } : undefined}
+            initial={editSub
+              ? { ...editSub, plan_amount: editSub.plan_amount, validity_days: String(editSub.validity_days), due_date: editSub.due_date || "", type: editSub.type }
+              : formType ? { type: formType } : undefined}
             onSave={saveSub}
-            onCancel={() => { setShowForm(false); setEditSub(null); }}
+            onCancel={() => { setShowForm(false); setEditSub(null); setFormType(undefined); }}
           />
         )}
         {payingSub && (
           <PayModal sub={payingSub} onClose={() => setPayingSub(null)} onPaid={() => { setPayingSub(null); load(); }} />
         )}
 
-        {/* Header */}
-        <div className="bg-white border-b border-gray-100 px-6 py-0 flex items-center gap-4 shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-          <div className="flex items-center gap-2">
-            <Receipt className="w-4 h-4 text-indigo-500" />
-            <h1 className="text-sm font-bold text-gray-900">Bill & Recharge Tracker</h1>
-            <span className="text-[10px] text-gray-400 font-medium hidden sm:inline">Follow-up & Renewal Manager</span>
+        {/* ── Header ── */}
+        <div className="bg-white border-b border-gray-200 shrink-0">
+          <div className="flex items-center gap-4 px-6 py-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center">
+                <Receipt className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h1 className="text-sm font-bold text-gray-900 leading-tight">Bill & Recharge Tracker</h1>
+                <p className="text-[10px] text-gray-400">Follow-up & Renewal Manager</p>
+              </div>
+            </div>
+            <div className="flex-1" />
+            <div className="relative hidden sm:block">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, number, operator…"
+                className="w-52 pl-8 pr-3 py-2 text-xs rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:bg-white transition-all" />
+            </div>
+            <button onClick={load} disabled={loading} className="p-2 rounded-xl text-gray-400 hover:bg-gray-100 transition-colors">
+              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => { setFormType("cug"); setEditSub(null); setShowForm(true); }}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold border-2 border-violet-300 text-violet-700 bg-violet-50 rounded-xl hover:bg-violet-100 transition-colors">
+                <Users className="w-3.5 h-3.5" /> Add CUG
+              </button>
+              <button onClick={() => { setFormType(undefined); setEditSub(null); setShowForm(true); }}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors">
+                <Plus className="w-3.5 h-3.5" /> Add Entry
+              </button>
+            </div>
           </div>
-          <div className="flex-1" />
-          <button onClick={load} disabled={loading} className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors">
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          </button>
-          <button onClick={() => { setEditSub(null); setShowForm(true); }}
-            className="flex items-center gap-2 px-4 py-3.5 text-xs font-bold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
-            <Plus className="w-3.5 h-3.5" /> Add Entry
-          </button>
-        </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 min-h-0">
-          {/* Summary Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[
-              { label: "Total Subscriptions", value: subs.length, icon: CreditCard, color: "text-indigo-600", bg: "bg-indigo-50" },
-              { label: "Overdue", value: overdue.length, icon: AlertTriangle, color: overdue.length > 0 ? "text-red-600" : "text-gray-400", bg: overdue.length > 0 ? "bg-red-50" : "bg-gray-50" },
-              { label: "Due in 7 Days", value: dueSoon.length, icon: Clock, color: dueSoon.length > 0 ? "text-amber-600" : "text-gray-400", bg: dueSoon.length > 0 ? "bg-amber-50" : "bg-gray-50" },
-              { label: "Monthly Cost", value: fmtAmt(totalMonthly.toFixed(0)), icon: DollarSign, color: "text-emerald-600", bg: "bg-emerald-50" },
-            ].map(c => {
-              const CI = c.icon;
+          {/* Tab bar */}
+          <div className="flex items-center gap-0 px-6 border-t border-gray-100 overflow-x-auto scrollbar-hide">
+            {TABS.map(tab => {
+              const Icon = tab.icon;
+              const count = tab.id === "all" ? subs.length
+                : tab.id === "dth" ? subs.filter(s => ["dth","ott"].includes(s.type)).length
+                : tab.id === "bills" ? subs.filter(s => ["electricity","insurance","office_phone","other"].includes(s.type)).length
+                : subs.filter(s => s.type === tab.id).length;
               return (
-                <div key={c.label} className="bg-white rounded-2xl px-4 py-4 shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
-                  <div className={`w-8 h-8 rounded-xl ${c.bg} flex items-center justify-center mb-2`}>
-                    <CI className={`w-4 h-4 ${c.color}`} />
-                  </div>
-                  <p className={`text-xl font-black ${c.color}`}>{c.value}</p>
-                  <p className="text-[10px] text-gray-400 font-semibold mt-0.5">{c.label}</p>
-                </div>
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap
+                    ${activeTab === tab.id
+                      ? "border-indigo-500 text-indigo-700 bg-indigo-50/50"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-200"}`}>
+                  <Icon className="w-3.5 h-3.5" />
+                  {tab.label}
+                  {count > 0 && (
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold
+                      ${activeTab === tab.id ? "bg-indigo-100 text-indigo-700" : "bg-gray-100 text-gray-500"}`}>
+                      {count}
+                    </span>
+                  )}
+                </button>
               );
             })}
           </div>
+        </div>
 
-          {/* Urgent Alerts */}
-          {(overdue.length > 0 || dueSoon.length > 0) && (
-            <div className="space-y-2">
-              {overdue.map(s => {
-                const meta = TYPE_META[s.type] || TYPE_META.other;
-                const Icon = meta.icon;
-                return (
-                  <div key={s.id} className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 flex items-center gap-3">
-                    <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
-                    <div className={`w-7 h-7 rounded-lg ${meta.bg} flex items-center justify-center shrink-0`}>
-                      <Icon className={`w-3.5 h-3.5 ${meta.color}`} />
+        {/* ── Body ── */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="px-6 py-5 space-y-5">
+
+            {/* Summary stats */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: "Total Entries", value: subs.length, sub: `${cugItems.length} CUG numbers`, icon: Receipt, color: "text-indigo-600", bg: "bg-indigo-50", border: "border-indigo-100" },
+                { label: "Overdue", value: overdue.length, sub: "need immediate recharge", icon: AlertTriangle, color: overdue.length > 0 ? "text-red-600" : "text-gray-300", bg: overdue.length > 0 ? "bg-red-50" : "bg-gray-50", border: overdue.length > 0 ? "border-red-100" : "border-gray-100" },
+                { label: "Due in 7 Days", value: dueSoon.length, sub: "upcoming renewals", icon: Clock, color: dueSoon.length > 0 ? "text-amber-600" : "text-gray-300", bg: dueSoon.length > 0 ? "bg-amber-50" : "bg-gray-50", border: dueSoon.length > 0 ? "border-amber-100" : "border-gray-100" },
+                { label: "Monthly Est.", value: fmtAmt(totalMonthly.toFixed(0)), sub: "approx. per month", icon: DollarSign, color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-100" },
+              ].map(c => { const CI = c.icon; return (
+                <div key={c.label} className={`bg-white rounded-2xl px-4 py-3.5 border ${c.border} shadow-[0_1px_3px_rgba(0,0,0,0.05)]`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className={`w-7 h-7 rounded-lg ${c.bg} flex items-center justify-center`}>
+                      <CI className={`w-3.5 h-3.5 ${c.color}`} />
                     </div>
-                    <div className="flex-1">
-                      <p className="text-xs font-bold text-red-800">{s.name} — OVERDUE</p>
-                      <p className="text-[10px] text-red-500">{s.operator} · Due was {fmtDate(s.due_date)} · {fmtAmt(s.plan_amount)}</p>
-                    </div>
-                    <button onClick={() => setPayingSub(s)}
-                      className="px-3 py-1.5 text-xs font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
-                      Pay Now
-                    </button>
                   </div>
-                );
-              })}
-              {dueSoon.map(s => {
-                const meta = TYPE_META[s.type] || TYPE_META.other;
-                const Icon = meta.icon;
-                const days = daysUntil(s.due_date);
-                return (
-                  <div key={s.id} className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex items-center gap-3">
-                    <Clock className="w-4 h-4 text-amber-500 shrink-0" />
-                    <div className={`w-7 h-7 rounded-lg ${meta.bg} flex items-center justify-center shrink-0`}>
-                      <Icon className={`w-3.5 h-3.5 ${meta.color}`} />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-xs font-bold text-amber-800">{s.name} — Due in {days === 0 ? "Today" : `${days} days`}</p>
-                      <p className="text-[10px] text-amber-600">{s.operator} · {fmtDate(s.due_date)} · {fmtAmt(s.plan_amount)}</p>
-                    </div>
-                    <button onClick={() => setPayingSub(s)}
-                      className="px-3 py-1.5 text-xs font-semibold bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors">
-                      Pay
-                    </button>
-                  </div>
-                );
-              })}
+                  <p className={`text-xl font-black ${c.color}`}>{c.value}</p>
+                  <p className="text-[10px] font-semibold text-gray-400 mt-0.5">{c.label}</p>
+                  <p className="text-[9px] text-gray-300 mt-0.5">{c.sub}</p>
+                </div>
+              ); })}
             </div>
-          )}
 
-          {/* Filters */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="relative flex-1 min-w-[160px] max-w-xs">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, number, operator…"
-                className="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-            </div>
-            <div className="flex gap-1.5 flex-wrap">
-              <button onClick={() => setTypeFilter("")}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition-colors ${!typeFilter ? "bg-indigo-600 text-white" : "bg-white border border-gray-200 text-gray-600 hover:border-gray-300"}`}>
-                All
-              </button>
-              {(Object.keys(TYPE_META) as SubType[]).map(t => {
-                const m = TYPE_META[t];
-                const Icon = m.icon;
-                return (
-                  <button key={t} onClick={() => setTypeFilter(typeFilter === t ? "" : t)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl transition-colors
-                      ${typeFilter === t ? `${m.bg} ${m.color}` : "bg-white border border-gray-200 text-gray-600 hover:border-gray-300"}`}>
-                    <Icon className="w-3 h-3" />{m.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Subscriptions Table */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.06)] overflow-hidden">
-            {loading ? (
-              <div className="flex justify-center py-16"><RefreshCw className="w-5 h-5 animate-spin text-indigo-400" /></div>
-            ) : filtered.length === 0 ? (
-              <div className="text-center py-16">
-                <CreditCard className="w-8 h-8 text-gray-300 mx-auto mb-3" />
-                <p className="text-sm font-semibold text-gray-400">No subscriptions yet</p>
-                <p className="text-xs text-gray-300 mt-1">Click "Add Subscription" to get started</p>
+            {/* Urgent alerts */}
+            {(overdue.length > 0 || dueSoon.length > 0) && (
+              <div className="space-y-2">
+                {overdue.slice(0, 5).map(s => {
+                  const meta = TYPE_META[s.type] || TYPE_META.other; const Icon = meta.icon;
+                  return (
+                    <div key={s.id} className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 flex items-center gap-3">
+                      <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+                      <div className={`w-7 h-7 rounded-lg ${meta.bg} flex items-center justify-center shrink-0`}>
+                        <Icon className={`w-3.5 h-3.5 ${meta.color}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-red-800">{s.name}
+                          {s.mobile_or_account && <span className="font-mono font-normal text-red-500 ml-1.5">{s.mobile_or_account}</span>}
+                        </p>
+                        <p className="text-[10px] text-red-400">{s.operator} · Due was {fmtDate(s.due_date)} · {fmtAmt(s.plan_amount)}</p>
+                      </div>
+                      <button onClick={() => setPayingSub(s)}
+                        className="px-3 py-1.5 text-xs font-bold bg-red-600 text-white rounded-xl hover:bg-red-700 shrink-0">Recharge Now</button>
+                    </div>
+                  );
+                })}
+                {dueSoon.slice(0, 3).map(s => {
+                  const meta = TYPE_META[s.type] || TYPE_META.other; const Icon = meta.icon;
+                  const days = daysUntil(s.due_date);
+                  return (
+                    <div key={s.id} className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex items-center gap-3">
+                      <Clock className="w-4 h-4 text-amber-500 shrink-0" />
+                      <div className={`w-7 h-7 rounded-lg ${meta.bg} flex items-center justify-center shrink-0`}>
+                        <Icon className={`w-3.5 h-3.5 ${meta.color}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-amber-800">{s.name} — Due {days === 0 ? "Today" : `in ${days}d`}</p>
+                        <p className="text-[10px] text-amber-500">{s.operator} · {fmtDate(s.due_date)} · {fmtAmt(s.plan_amount)}</p>
+                      </div>
+                      <button onClick={() => setPayingSub(s)}
+                        className="px-3 py-1.5 text-xs font-bold bg-amber-600 text-white rounded-xl hover:bg-amber-700 shrink-0">Recharge</button>
+                    </div>
+                  );
+                })}
               </div>
-            ) : (
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50/60">
-                    {["Type", "Name / Account", "Operator", "Plan", "Amount", "Due Date", "Status", ""].map(h => (
-                      <th key={h} className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((s, i) => {
-                    const meta = TYPE_META[s.type] || TYPE_META.other;
-                    const Icon = meta.icon;
-                    const days = daysUntil(s.due_date);
-                    const rowBg = days !== null && days < 0
-                      ? "bg-red-50/30"
-                      : days !== null && days <= 3
-                      ? "bg-orange-50/30"
-                      : days !== null && days <= 7
-                      ? "bg-amber-50/20"
-                      : i % 2 === 1 ? "bg-gray-50/20" : "bg-white";
+            )}
+
+            {/* CUG Groups section */}
+            {(activeTab === "all" || activeTab === "cug") && filteredCug.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Users className="w-4 h-4 text-violet-600" />
+                  <h2 className="text-sm font-bold text-gray-800">CUG Groups</h2>
+                  <span className="text-[10px] text-violet-600 bg-violet-100 border border-violet-200 px-2 py-0.5 rounded-full font-bold">
+                    {filteredCug.length} numbers
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {Object.entries(cugGroups).filter(([, items]) =>
+                    items.some(s => filteredCug.includes(s))
+                  ).map(([key, items]) => {
+                    const [groupName, operator] = key.split("|");
                     return (
-                      <tr key={s.id} onClick={() => setDetailSub(s)}
-                        className={`border-b border-gray-50 hover:bg-indigo-50/50 transition-colors cursor-pointer ${rowBg}`}>
-                        <td className="px-4 py-3">
-                          <div className={`w-8 h-8 rounded-xl ${meta.bg} flex items-center justify-center`}>
-                            <Icon className={`w-4 h-4 ${meta.color}`} />
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <p className="text-xs font-semibold text-gray-800">{s.name}</p>
-                          {s.mobile_or_account && <p className="text-[10px] text-gray-400 font-mono">{s.mobile_or_account}</p>}
-                        </td>
-                        <td className="px-4 py-3">
-                          {s.operator ? (() => {
-                            const os = OPERATOR_STYLE[s.operator];
-                            return os ? (
-                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${os.bg} ${os.text} ${os.border}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${os.dot}`} />
-                                {s.operator}
-                              </span>
-                            ) : <span className="text-xs text-gray-600">{s.operator}</span>;
-                          })() : <span className="text-gray-300">—</span>}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="text-xs text-gray-500">{s.plan_name || "—"}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="text-xs font-semibold text-emerald-700">{fmtAmt(s.plan_amount)}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="text-xs text-gray-600">{fmtDate(s.due_date)}</span>
-                        </td>
-                        <td className="px-4 py-3"><DueBadge dueDate={s.due_date} /></td>
-                        <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                          <div className="flex items-center gap-1">
-                            <button onClick={() => setPayingSub(s)}
-                              className="p-1.5 rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors" title="Mark as paid">
-                              <CheckCircle className="w-3.5 h-3.5" />
-                            </button>
-                            <button onClick={() => { setEditSub(s); setShowForm(true); }}
-                              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors" title="Edit">
-                              <Edit3 className="w-3.5 h-3.5" />
-                            </button>
-                            <button onClick={() => deleteSub(s.id)}
-                              className="p-1.5 rounded-lg hover:bg-red-100 text-gray-400 hover:text-red-500 transition-colors" title="Delete">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+                      <CugGroupCard key={key}
+                        groupName={groupName} operator={operator} items={items}
+                        onPayAll={() => { if (items[0]) setPayingSub(items[0]); }}
+                        onEdit={(s) => { setEditSub(s); setShowForm(true); }}
+                        onAddNumber={() => { setFormType("cug"); setEditSub(null); setShowForm(true); }}
+                        onItemClick={(s) => setDetailSub(s)}
+                      />
                     );
                   })}
-                </tbody>
-              </table>
+                </div>
+              </div>
+            )}
+
+            {/* Individual cards grid */}
+            {filteredNonCug.length > 0 && activeTab !== "cug" && (
+              <div>
+                {(activeTab === "all" && filteredCug.length > 0) && (
+                  <div className="flex items-center gap-2 mb-3">
+                    <h2 className="text-sm font-bold text-gray-800">Individual Entries</h2>
+                    <span className="text-[10px] text-gray-500 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded-full font-bold">
+                      {filteredNonCug.length}
+                    </span>
+                  </div>
+                )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                  {filteredNonCug.map(s => (
+                    <SubCard key={s.id} s={s}
+                      onPay={() => setPayingSub(s)}
+                      onEdit={() => { setEditSub(s); setShowForm(true); }}
+                      onDelete={() => deleteSub(s.id)}
+                      onClick={() => setDetailSub(s)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Empty state */}
+            {filtered.length === 0 && !loading && (
+              <div className="text-center py-20">
+                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Receipt className="w-8 h-8 text-gray-300" />
+                </div>
+                <p className="text-sm font-bold text-gray-400">
+                  {search ? "No results found" : activeTab === "cug" ? "No CUG groups yet" : "Nothing here yet"}
+                </p>
+                <p className="text-xs text-gray-300 mt-1">
+                  {search ? "Try a different search term" : activeTab === "cug"
+                    ? 'Click "Add CUG" to add your corporate group numbers in bulk'
+                    : 'Click "Add Entry" to get started'}
+                </p>
+              </div>
+            )}
+
+            {loading && (
+              <div className="flex justify-center py-16">
+                <RefreshCw className="w-6 h-6 animate-spin text-indigo-400" />
+              </div>
             )}
           </div>
         </div>
