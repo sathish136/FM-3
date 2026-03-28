@@ -281,7 +281,7 @@ function FullSidebar({ location, expandedItems, toggleExpand, setCollapsed, setM
       <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-indigo-950/30 to-transparent pointer-events-none" />
 
       <div className="relative flex items-center justify-between px-4 py-4 border-b border-white/[0.07]">
-        <div className="flex items-center gap-2">
+        <Link href="/" className="flex items-center gap-2 cursor-pointer">
           <WaterDropAnimation size="sm" />
           <div className="flex flex-col">
             <span className="text-lg font-black tracking-tight leading-none flex items-baseline gap-0">
@@ -290,7 +290,7 @@ function FullSidebar({ location, expandedItems, toggleExpand, setCollapsed, setM
             </span>
             <span className="text-[9px] font-semibold tracking-[0.15em] uppercase text-slate-600 mt-0.5">Project Management</span>
           </div>
-        </div>
+        </Link>
         <button
           onClick={() => { setCollapsed(true); setMobileSidebarOpen(false); }}
           className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-400 hover:bg-indigo-500/10 transition-all group"
@@ -546,13 +546,13 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
 
             {/* Brand (only in launcher mode or mobile) */}
             {!isSidebar && (
-              <div className="flex items-center gap-2 select-none">
+              <Link href="/" className="flex items-center gap-2 select-none cursor-pointer">
                 <WaterDropAnimation size="sm" />
                 <span className="text-base font-black tracking-tight hidden sm:flex items-baseline">
                   <span style={{ background: "linear-gradient(90deg, #818cf8, #a78bfa, #60a5fa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>FlowMatri</span>
                   <span style={{ color: "#22d3ee", textShadow: "0 0 12px rgba(34,211,238,0.7)", fontSize: "1.2em", lineHeight: 1 }}>X</span>
                 </span>
-              </div>
+              </Link>
             )}
 
             {/* Page breadcrumb */}
