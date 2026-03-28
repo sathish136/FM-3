@@ -125,6 +125,7 @@ const navGroups: { label?: string; items: NavItem[] }[] = [
   {
     label: "Admin",
     items: [
+      { path: "/payment-tracker", label: "Payment Tracker", icon: Receipt,  color: "text-indigo-400" },
       { path: "/user-management", label: "User Management", icon: Users,    color: "text-red-400" },
       { path: "/settings",        label: "Settings",         icon: Settings, color: "text-slate-400" },
       { path: "/email-settings",  label: "Email Settings",  icon: MailOpen, color: "text-sky-400" },

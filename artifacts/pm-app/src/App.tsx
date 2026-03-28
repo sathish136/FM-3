@@ -47,6 +47,7 @@ import SmartInbox from "@/pages/SmartInbox";
 import Marketing from "@/pages/Marketing";
 import PurchaseDashboard from "@/pages/PurchaseDashboard";
 import StoresDashboard from "@/pages/StoresDashboard";
+import PaymentTracker from "@/pages/PaymentTracker";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -114,6 +115,7 @@ function ProtectedRoutes() {
       <Route path="/marketing" component={Marketing} />
       <Route path="/purchase-dashboard" component={PurchaseDashboard} />
       <Route path="/stores-dashboard" component={StoresDashboard} />
+      <Route path="/payment-tracker" component={PaymentTracker} />
       <Route component={NotFound} />
     </Switch>
   );

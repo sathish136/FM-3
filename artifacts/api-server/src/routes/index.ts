@@ -20,6 +20,7 @@ import emailSyncRouter from "./email-sync";
 import marketingRouter from "./marketing";
 import purchaseDashboardRouter from "./purchase-dashboard";
 import storesDashboardRouter from "./stores-dashboard";
+import paymentTrackerRouter from "./payment-tracker";
 
 const router: IRouter = Router();
 
@@ -44,5 +45,6 @@ router.use(emailSyncRouter);
 router.use(marketingRouter);
 router.use(purchaseDashboardRouter);
 router.use(storesDashboardRouter);
+router.use(paymentTrackerRouter);
 
 export default router;
