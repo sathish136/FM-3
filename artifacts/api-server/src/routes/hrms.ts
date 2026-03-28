@@ -71,32 +71,80 @@ function extractJpegsFromPdf(buf: Buffer): Buffer[] {
   return jpegs;
 }
 
+const RESUME_JSON_SCHEMA = `{
+  "name": "",
+  "email": "",
+  "phone": "",
+  "location": "",
+  "current_title": "",
+  "linkedin_url": "",
+  "github_url": "",
+  "portfolio_url": "",
+  "summary": "",
+  "skills": [],
+  "technical_skills": [],
+  "soft_skills": [],
+  "languages": [{"language":"","proficiency":""}],
+  "experience": [{"company":"","title":"","duration":"","start_year":"","end_year":"","location":"","description":"","achievements":[]}],
+  "education": [{"institution":"","degree":"","field":"","year":"","gpa":""}],
+  "certifications": [{"name":"","issuer":"","year":""}],
+  "projects": [{"name":"","description":"","technologies":[]}],
+  "awards": [],
+  "publications": [],
+  "total_experience_years": 0,
+  "career_level": "",
+  "industry": "",
+  "has_photo": false
+}`;
+
+const ASSESSMENT_JSON_SCHEMA = `{
+  "overall_rating": 0,
+  "rating_breakdown": {
+    "technical_skills": 0,
+    "experience_depth": 0,
+    "career_growth": 0,
+    "education": 0,
+    "presentation": 0
+  },
+  "hiring_recommendation": "",
+  "hiring_reason": "",
+  "strengths": [],
+  "concerns": [],
+  "red_flags": [],
+  "career_trajectory": "",
+  "career_trajectory_detail": "",
+  "key_achievements": [],
+  "personality_insights": "",
+  "company_analysis": [{"company":"","reputation":"","tier":"","notes":""}],
+  "interview_questions": [{"question":"","category":"","purpose":""}],
+  "salary_assessment": "",
+  "growth_potential": "",
+  "culture_fit_notes": "",
+  "comparable_roles": []
+}`;
+
+function parseJsonResponse(raw: string): Record<string, unknown> {
+  try { return JSON.parse(raw.replace(/```json\n?|```\n?/g, "").trim()); }
+  catch { return {}; }
+}
+
 async function analyzeResumeText(openai: OpenAI, text: string, photoBase64?: string, photoMime?: string) {
+  const prompt = `You are a senior HR expert and resume analyst. Deeply analyze this resume and extract ALL available information. Be thorough and detailed. Return ONLY valid JSON with this exact schema:\n${RESUME_JSON_SCHEMA}\n\nResume text:\n${text.slice(0, 12000)}`;
+
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
   if (photoBase64 && photoMime) {
     messages.push({
       role: "user",
       content: [
-        {
-          type: "text",
-          text: `You are an expert resume parser. Extract all information from this resume. Return ONLY valid JSON (no markdown, no code blocks) with these fields:\n{\n  "name": "",\n  "email": "",\n  "phone": "",\n  "location": "",\n  "current_title": "",\n  "summary": "",\n  "skills": [],\n  "languages": [],\n  "experience": [{"company":"","title":"","duration":"","description":""}],\n  "education": [{"institution":"","degree":"","year":""}],\n  "certifications": [],\n  "total_experience_years": 0\n}\n\nResume text:\n${text.slice(0, 8000)}`
-        },
-        {
-          type: "image_url",
-          image_url: { url: `data:${photoMime};base64,${photoBase64}`, detail: "low" }
-        }
+        { type: "text", text: prompt },
+        { type: "image_url", image_url: { url: `data:${photoMime};base64,${photoBase64}`, detail: "low" } }
       ]
     });
   } else {
-    messages.push({
-      role: "user",
-      content: `You are an expert resume parser. Extract all information from this resume text. Return ONLY valid JSON (no markdown, no code blocks) with these fields:\n{\n  "name": "",\n  "email": "",\n  "phone": "",\n  "location": "",\n  "current_title": "",\n  "summary": "",\n  "skills": [],\n  "languages": [],\n  "experience": [{"company":"","title":"","duration":"","description":""}],\n  "education": [{"institution":"","degree":"","year":""}],\n  "certifications": [],\n  "total_experience_years": 0\n}\n\nResume text:\n${text.slice(0, 12000)}`
-    });
+    messages.push({ role: "user", content: prompt });
   }
-  const resp = await openai.chat.completions.create({ model: "gpt-4o-mini", messages, max_tokens: 2000 });
-  const raw = resp.choices[0]?.message?.content || "{}";
-  try { return JSON.parse(raw.replace(/```json\n?|```\n?/g, "").trim()); }
-  catch { return {}; }
+  const resp = await openai.chat.completions.create({ model: "gpt-4o", messages, max_tokens: 3000 });
+  return parseJsonResponse(resp.choices[0]?.message?.content || "{}");
 }
 
 async function analyzeResumeImage(openai: OpenAI, imageBase64: string, mimeType: string) {
@@ -107,19 +155,63 @@ async function analyzeResumeImage(openai: OpenAI, imageBase64: string, mimeType:
       content: [
         {
           type: "text",
-          text: `You are an expert resume parser with vision. Extract ALL information visible in this resume image. Return ONLY valid JSON (no markdown, no code blocks) with these fields:\n{\n  "name": "",\n  "email": "",\n  "phone": "",\n  "location": "",\n  "current_title": "",\n  "summary": "",\n  "skills": [],\n  "languages": [],\n  "experience": [{"company":"","title":"","duration":"","description":""}],\n  "education": [{"institution":"","degree":"","year":""}],\n  "certifications": [],\n  "total_experience_years": 0,\n  "has_photo": false\n}`
+          text: `You are a senior HR expert. Extract ALL information visible in this resume image. Be thorough. Return ONLY valid JSON with this schema:\n${RESUME_JSON_SCHEMA}`
         },
-        {
-          type: "image_url",
-          image_url: { url: `data:${mimeType};base64,${imageBase64}`, detail: "high" }
-        }
+        { type: "image_url", image_url: { url: `data:${mimeType};base64,${imageBase64}`, detail: "high" } }
       ]
     }],
-    max_tokens: 2000,
+    max_tokens: 3000,
   });
-  const raw = resp.choices[0]?.message?.content || "{}";
-  try { return JSON.parse(raw.replace(/```json\n?|```\n?/g, "").trim()); }
-  catch { return {}; }
+  return parseJsonResponse(resp.choices[0]?.message?.content || "{}");
+}
+
+async function assessCandidate(openai: OpenAI, resumeData: Record<string, unknown>, linkedinContent?: string) {
+  const contextParts = [`Resume Data:\n${JSON.stringify(resumeData, null, 2).slice(0, 6000)}`];
+  if (linkedinContent) contextParts.push(`\nLinkedIn/Web Profile:\n${linkedinContent.slice(0, 3000)}`);
+
+  const resp = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [{
+      role: "user",
+      content: `You are a world-class HR assessor and talent intelligence expert. Perform a comprehensive candidate assessment based on the provided data.
+
+Rate on a scale of 1-10 for each dimension. Hiring recommendation must be one of: "Strong Hire", "Hire", "Consider", "Pass".
+Career trajectory must be one of: "Upward", "Lateral", "Mixed", "Downward", "Early Career".
+Company tier must be one of: "Tier 1 (MNC/Top)", "Tier 2 (Mid-size)", "Tier 3 (Startup/SME)", "Unknown".
+
+Be honest, detailed and specific. Return ONLY valid JSON with this schema:\n${ASSESSMENT_JSON_SCHEMA}
+
+${contextParts.join("\n\n")}`
+    }],
+    max_tokens: 3000,
+  });
+  return parseJsonResponse(resp.choices[0]?.message?.content || "{}");
+}
+
+async function fetchLinkedInData(url: string): Promise<string> {
+  try {
+    const cleanUrl = url.trim();
+    if (!cleanUrl.startsWith("http")) return "";
+    const resp = await fetch(cleanUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!resp.ok) return "";
+    const html = await resp.text();
+    const text = html
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    return text.slice(0, 5000);
+  } catch {
+    return "";
+  }
 }
 
 // Determine what data a user is allowed to see.
@@ -378,24 +470,24 @@ router.post("/hrms/resume-analyze", upload.single("file"), async (req, res) => {
     const mime = req.file.mimetype;
     const buf = req.file.buffer;
 
-    let analysis: Record<string, unknown> = {};
+    let resumeData: Record<string, unknown> = {};
     let photoBase64: string | null = null;
     let photoMime: string | null = null;
+    let pdfBase64: string | null = null;
 
     const isImage = mime.startsWith("image/");
     const isPdf = mime === "application/pdf" || req.file.originalname.toLowerCase().endsWith(".pdf");
 
     if (isImage) {
       const b64 = buf.toString("base64");
-      analysis = await analyzeResumeImage(openai, b64, mime);
+      resumeData = await analyzeResumeImage(openai, b64, mime);
       photoBase64 = b64;
       photoMime = mime;
     } else if (isPdf) {
+      pdfBase64 = buf.toString("base64");
+
       let text = "";
-      try {
-        const parsed = await pdfParse(buf);
-        text = parsed.text;
-      } catch { text = ""; }
+      try { const parsed = await pdfParse(buf); text = parsed.text; } catch { text = ""; }
 
       const jpegs = extractJpegsFromPdf(buf);
       if (jpegs.length > 0) {
@@ -403,15 +495,47 @@ router.post("/hrms/resume-analyze", upload.single("file"), async (req, res) => {
         photoMime = "image/jpeg";
       }
 
-      analysis = await analyzeResumeText(openai, text, photoBase64 ?? undefined, photoMime ?? undefined);
+      resumeData = await analyzeResumeText(openai, text, photoBase64 ?? undefined, photoMime ?? undefined);
     } else {
       res.status(400).json({ error: "Unsupported file type. Please upload PDF or image." });
       return;
     }
 
-    res.json({ ...analysis, photo_base64: photoBase64, photo_mime: photoMime });
+    const assessment = await assessCandidate(openai, resumeData);
+
+    res.json({
+      resume: resumeData,
+      assessment,
+      photo_base64: photoBase64,
+      photo_mime: photoMime,
+      pdf_base64: pdfBase64,
+    });
   } catch (e) {
     console.error("resume-analyze error:", e);
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.post("/hrms/candidate-enrich", async (req, res) => {
+  try {
+    const { linkedin_url, name, companies, resume_summary } = req.body as {
+      linkedin_url?: string;
+      name?: string;
+      companies?: string[];
+      resume_summary?: string;
+    };
+    const openai = getOpenAI();
+
+    let linkedinContent = "";
+    if (linkedin_url) {
+      linkedinContent = await fetchLinkedInData(linkedin_url);
+    }
+
+    const assessment = await assessCandidate(openai, { name, companies, resume_summary }, linkedinContent || undefined);
+
+    res.json({ assessment, linkedin_fetched: !!linkedinContent, linkedin_content_length: linkedinContent.length });
+  } catch (e) {
+    console.error("candidate-enrich error:", e);
     res.status(500).json({ error: String(e) });
   }
 });
