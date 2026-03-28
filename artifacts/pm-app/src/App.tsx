@@ -62,6 +62,8 @@ const queryClient = new QueryClient({
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+const ADMIN_EMAILS = ["edp@wttindia.com", "venkat@wttindia.com"];
+
 type PermStatus = "loading" | "allowed" | "no-record" | "blocked";
 
 function ProtectedRoutes() {
@@ -70,6 +72,10 @@ function ProtectedRoutes() {
 
   useEffect(() => {
     if (!user) return;
+    if (ADMIN_EMAILS.includes(user.email.toLowerCase())) {
+      setPermStatus("allowed");
+      return;
+    }
     setPermStatus("loading");
     fetch(`${BASE}/api/user-permissions`)
       .then(r => r.ok ? r.json() : [])
