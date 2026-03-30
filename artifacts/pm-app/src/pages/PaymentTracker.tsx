@@ -1090,7 +1090,7 @@ export default function PaymentTracker() {
               </div>
             )}
 
-            {/* Individual cards grid */}
+            {/* Individual entries table */}
             {filteredNonCug.length > 0 && activeTab !== "cug" && (
               <div>
                 {(activeTab === "all" && filteredCug.length > 0) && (
@@ -1101,15 +1101,89 @@ export default function PaymentTracker() {
                     </span>
                   </div>
                 )}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                  {filteredNonCug.map(s => (
-                    <SubCard key={s.id} s={s}
-                      onPay={() => setPayingSub(s)}
-                      onEdit={() => { setEditSub(s); setShowForm(true); }}
-                      onDelete={() => deleteSub(s.id)}
-                      onClick={() => setDetailSub(s)}
-                    />
-                  ))}
+                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="bg-gray-50/80 border-b border-gray-100">
+                          <th className="px-4 py-3 text-[9px] font-bold uppercase tracking-widest text-gray-400">Type</th>
+                          <th className="px-3 py-3 text-[9px] font-bold uppercase tracking-widest text-gray-400">Name / Account</th>
+                          <th className="px-3 py-3 text-[9px] font-bold uppercase tracking-widest text-gray-400">Mobile / ID</th>
+                          <th className="px-3 py-3 text-[9px] font-bold uppercase tracking-widest text-gray-400">Operator</th>
+                          <th className="px-3 py-3 text-[9px] font-bold uppercase tracking-widest text-gray-400">Plan</th>
+                          <th className="px-3 py-3 text-[9px] font-bold uppercase tracking-widest text-gray-400">Amount</th>
+                          <th className="px-3 py-3 text-[9px] font-bold uppercase tracking-widest text-gray-400">Validity</th>
+                          <th className="px-3 py-3 text-[9px] font-bold uppercase tracking-widest text-gray-400">Due Date</th>
+                          <th className="px-3 py-3 text-[9px] font-bold uppercase tracking-widest text-gray-400">Status</th>
+                          <th className="px-3 py-3 text-[9px] font-bold uppercase tracking-widest text-gray-400"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredNonCug.map((s, i) => {
+                          const meta = TYPE_META[s.type] || TYPE_META.other;
+                          const Icon = meta.icon;
+                          const d = daysUntil(s.due_date);
+                          const rowBg = d !== null && d < 0 ? "bg-red-50/40"
+                            : d !== null && d <= 3 ? "bg-orange-50/30"
+                            : d !== null && d <= 7 ? "bg-amber-50/20"
+                            : i % 2 === 1 ? "bg-gray-50/30" : "bg-white";
+                          return (
+                            <tr key={s.id} onClick={() => setDetailSub(s)}
+                              className={`border-b border-gray-50 hover:bg-indigo-50/30 transition-colors cursor-pointer ${rowBg}`}>
+                              <td className="px-4 py-3">
+                                <div className={`w-8 h-8 rounded-xl ${meta.bg} ${meta.border} border flex items-center justify-center`}>
+                                  <Icon className={`w-4 h-4 ${meta.color}`} />
+                                </div>
+                              </td>
+                              <td className="px-3 py-3">
+                                <p className="text-xs font-semibold text-gray-800">{s.name}</p>
+                                {s.notes && <p className="text-[10px] text-gray-400 truncate max-w-[140px]">{s.notes}</p>}
+                              </td>
+                              <td className="px-3 py-3">
+                                <span className="text-[11px] font-mono font-semibold text-gray-700 tracking-wide">
+                                  {s.mobile_or_account || "—"}
+                                </span>
+                              </td>
+                              <td className="px-3 py-3">
+                                <OperatorChip operator={s.operator} />
+                              </td>
+                              <td className="px-3 py-3">
+                                <span className="text-[11px] text-gray-500">{s.plan_name || "—"}</span>
+                              </td>
+                              <td className="px-3 py-3">
+                                <span className="text-xs font-bold text-emerald-700">{fmtAmt(s.plan_amount)}</span>
+                              </td>
+                              <td className="px-3 py-3">
+                                <span className="text-[11px] text-gray-600">{s.validity_days}d</span>
+                              </td>
+                              <td className="px-3 py-3">
+                                <span className="text-[11px] text-gray-600 whitespace-nowrap">{fmtDate(s.due_date)}</span>
+                              </td>
+                              <td className="px-3 py-3">
+                                <DueBadge dueDate={s.due_date} />
+                              </td>
+                              <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center gap-1">
+                                  <button onClick={() => setPayingSub(s)}
+                                    className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 transition-colors" title="Recharge">
+                                    <CheckCircle className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button onClick={() => { setEditSub(s); setShowForm(true); }}
+                                    className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors" title="Edit">
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button onClick={() => deleteSub(s.id)}
+                                    className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors" title="Delete">
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             )}
