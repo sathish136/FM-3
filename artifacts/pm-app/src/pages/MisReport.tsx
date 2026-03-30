@@ -182,7 +182,7 @@ function PartyRows({ items, pk, ak = "outstanding", colorText }: { items: any[];
   );
 }
 
-const TABS = ["Overview", "Accounts", "Projects", "Sales & Finance", "Procurement", "HR"] as const;
+const TABS = ["Overview", "Sales Invoice", "Proposals", "Leads", "Accounts", "Projects", "Procurement", "HR"] as const;
 type Tab = typeof TABS[number];
 
 export default function MisReport() {
