@@ -28,6 +28,10 @@ interface Followup {
   id: number; subscription_id: number; followup_date: string; notes: string;
   done: boolean; done_at: string | null;
 }
+interface CugRow {
+  _id: string; mobile: string; name: string;
+  operator: string; plan_name: string; plan_amount: string; validity_days: string; due_date: string;
+}
 
 const TYPE_META: Record<SubType, { label: string; icon: React.ElementType; color: string; bg: string; border: string; accent: string }> = {
   mobile:       { label: "Mobile",       icon: Smartphone, color: "text-sky-600",    bg: "bg-sky-50",      border: "border-sky-200",    accent: "bg-sky-500" },
@@ -140,6 +144,17 @@ const EMPTY_FORM = {
   bulk_numbers: "",
 };
 
+function parseLinesToRows(text: string, defaults: { operator: string; plan_name: string; plan_amount: string; validity_days: string; due_date: string }): CugRow[] {
+  return text.trim().split("\n").filter(l => l.trim()).map((line, i) => {
+    const parts = line.trim().split(/\s+/);
+    const isNumber = /^\d{6,15}$/.test(parts[0]);
+    const mobile = isNumber ? parts[0] : parts[parts.length - 1];
+    const nameParts = isNumber ? parts.slice(1) : parts.slice(0, -1);
+    const name = nameParts.join(" ") || mobile;
+    return { _id: `row_${i}_${Date.now()}`, mobile, name, ...defaults };
+  });
+}
+
 function SubscriptionForm({ initial, onSave, onCancel }: {
   initial?: Partial<typeof EMPTY_FORM & { id: number }>;
   onSave: (data: typeof EMPTY_FORM) => void;
@@ -147,9 +162,31 @@ function SubscriptionForm({ initial, onSave, onCancel }: {
 }) {
   const [form, setForm] = useState({ ...EMPTY_FORM, ...initial });
   const [detecting, setDetecting] = useState(false);
+  const [cugRows, setCugRows] = useState<CugRow[]>([]);
+  const [cugStep, setCugStep] = useState<"paste" | "table">("paste");
+  const [globalDef, setGlobalDef] = useState({ operator: "", plan_name: "", plan_amount: "", validity_days: "28", due_date: "" });
   const { toast } = useToast();
 
   function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })); }
+  function setGlobal(k: string, v: string) { setGlobalDef(g => ({ ...g, [k]: v })); }
+  function setRow(id: string, k: keyof CugRow, v: string) {
+    setCugRows(rows => rows.map(r => r._id === id ? { ...r, [k]: v } : r));
+  }
+  function removeRow(id: string) { setCugRows(rows => rows.filter(r => r._id !== id)); }
+  function addRow() {
+    setCugRows(rows => [...rows, { _id: `row_new_${Date.now()}`, mobile: "", name: "", ...globalDef }]);
+  }
+  function applyGlobalToAll() {
+    setCugRows(rows => rows.map(r => ({ ...r, ...globalDef })));
+    toast({ title: "Applied defaults to all rows" });
+  }
+
+  function parseToCugTable() {
+    const rows = parseLinesToRows(form.bulk_numbers, globalDef);
+    if (rows.length === 0) { toast({ title: "No numbers found", variant: "destructive" }); return; }
+    setCugRows(rows);
+    setCugStep("table");
+  }
 
   useEffect(() => {
     const digits = form.mobile_or_account.replace(/\D/g, "");
@@ -179,181 +216,347 @@ function SubscriptionForm({ initial, onSave, onCancel }: {
   const opStyle = form.operator ? OPERATOR_STYLE[form.operator] : null;
   const quickPlans = form.operator ? QUICK_PLANS[form.operator] : null;
   const isCug = form.type === "cug";
-
+  const isCugTable = isCug && !initial?.id && cugStep === "table";
   const typeOptions: SubType[] = ["mobile", "cug", "broadband", "dth", "ott", "office_phone", "electricity", "insurance", "other"];
+
+  const totalAmt = cugRows.reduce((a, r) => a + Number(r.plan_amount || 0), 0);
+
+  function handleSubmit() {
+    if (isCugTable) {
+      const valid = cugRows.filter(r => r.mobile.trim());
+      onSave({ ...form, bulk_numbers: JSON.stringify(valid) });
+    } else {
+      onSave(form);
+    }
+  }
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[92vh] overflow-y-auto">
+      <div className={`bg-white rounded-2xl w-full shadow-2xl max-h-[95vh] flex flex-col ${isCugTable ? "max-w-5xl" : "max-w-lg"}`}>
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
           <div>
-            <h2 className="text-sm font-bold text-gray-900">{initial?.id ? "Edit Entry" : isCug ? "Add CUG Group" : "Add Recharge / Bill Entry"}</h2>
-            {isCug && !initial?.id && <p className="text-[10px] text-violet-600 mt-0.5">Paste all CUG numbers at once — one per line</p>}
+            <h2 className="text-sm font-bold text-gray-900">
+              {initial?.id ? "Edit Entry" : isCugTable ? `CUG Group — ${form.name || "Untitled"} · ${cugRows.length} numbers` : isCug ? "Add CUG Group" : "Add Recharge / Bill Entry"}
+            </h2>
+            {isCug && !initial?.id && cugStep === "paste" && (
+              <p className="text-[10px] text-violet-600 mt-0.5">Paste all numbers → set default plan → parse into table</p>
+            )}
+            {isCugTable && (
+              <button onClick={() => setCugStep("paste")} className="text-[10px] text-violet-600 hover:text-violet-800 underline mt-0.5">
+                ← Back to paste view
+              </button>
+            )}
           </div>
           <button onClick={onCancel} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"><X className="w-4 h-4" /></button>
         </div>
 
-        <div className="px-6 py-4 space-y-4">
-          {/* Type selector */}
-          <div>
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">Category</label>
-            <div className="grid grid-cols-3 gap-1.5">
-              {typeOptions.map(t => {
-                const m = TYPE_META[t]; const Icon = m.icon;
-                return (
-                  <button key={t} onClick={() => set("type", t)}
-                    className={`flex items-center gap-2 px-2.5 py-2 rounded-xl border text-[11px] font-semibold transition-all
-                      ${form.type === t ? `${m.bg} ${m.color} ${m.border} shadow-sm` : "border-gray-200 text-gray-500 hover:border-gray-300 bg-white"}`}>
-                    <Icon className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">{m.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            {/* Name */}
-            <div className="col-span-2">
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">
-                {isCug ? "CUG Group Name *" : "Label / Name *"}
-              </label>
-              <input value={form.name} onChange={e => set("name", e.target.value)}
-                placeholder={isCug ? "e.g. Sales Team CUG, Field Staff CUG" : "e.g. CEO Mobile, Office WiFi"}
-                className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-            </div>
-
-            {/* CUG bulk numbers */}
-            {isCug && !initial?.id ? (
-              <div className="col-span-2">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">
-                  Mobile Numbers <span className="text-violet-500 normal-case font-normal">(one per line — name + number or just number)</span>
-                </label>
-                <textarea value={form.bulk_numbers} onChange={e => set("bulk_numbers", e.target.value)} rows={6}
-                  placeholder={"9876543210 Sathish\n9876543211 Ravi Kumar\n9876543212\n9876543213 CEO Sir\n..."}
-                  className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-violet-300 font-mono resize-none" />
-                {form.bulk_numbers.trim() && (
-                  <p className="text-[10px] text-violet-600 mt-1 font-semibold">
-                    {form.bulk_numbers.trim().split("\n").filter(l => l.trim()).length} numbers entered
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div className="col-span-2">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">
-                  {form.type === "mobile" || form.type === "cug" ? "Mobile Number" : form.type === "broadband" ? "Account / Username" : "Account Number"}
-                </label>
-                <div className="relative">
-                  <input value={form.mobile_or_account} onChange={e => set("mobile_or_account", e.target.value)}
-                    placeholder={form.type === "mobile" || form.type === "cug" ? "Enter 10-digit mobile number" : "Account ID"}
-                    maxLength={form.type === "mobile" ? 10 : undefined}
-                    className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300 pr-32" />
-                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-                    {detecting && <span className="text-[10px] text-gray-400 flex items-center gap-1"><RefreshCw className="w-3 h-3 animate-spin" /> Detecting…</span>}
-                    {!detecting && form.operator && opStyle && (
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${opStyle.bg} ${opStyle.text} ${opStyle.border}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${opStyle.dot}`} /> {form.operator}
-                      </span>
-                    )}
-                    {!detecting && form.operator && !opStyle && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-gray-100 text-gray-600 border border-gray-200">{form.operator}</span>
-                    )}
+        <div className="overflow-y-auto flex-1">
+          {/* ── CUG TABLE MODE ── */}
+          {isCugTable ? (
+            <div className="flex flex-col gap-0">
+              {/* Global defaults bar */}
+              <div className="px-4 py-3 bg-violet-50 border-b border-violet-100">
+                <div className="flex items-end gap-2 flex-wrap">
+                  <p className="text-[10px] font-bold text-violet-700 uppercase tracking-widest self-center whitespace-nowrap">Default for all:</p>
+                  <div className="flex items-end gap-2 flex-1 flex-wrap">
+                    <div>
+                      <p className="text-[9px] text-gray-400 mb-0.5">Operator</p>
+                      <input value={globalDef.operator} onChange={e => setGlobal("operator", e.target.value)} placeholder="e.g. Airtel"
+                        className="w-24 px-2 py-1.5 text-xs rounded-lg border border-violet-200 bg-white focus:outline-none focus:ring-1 focus:ring-violet-400" />
+                    </div>
+                    <div>
+                      <p className="text-[9px] text-gray-400 mb-0.5">Plan</p>
+                      <input value={globalDef.plan_name} onChange={e => setGlobal("plan_name", e.target.value)} placeholder="e.g. 299 Unlim"
+                        className="w-28 px-2 py-1.5 text-xs rounded-lg border border-violet-200 bg-white focus:outline-none focus:ring-1 focus:ring-violet-400" />
+                    </div>
+                    <div>
+                      <p className="text-[9px] text-gray-400 mb-0.5">Amount (₹)</p>
+                      <input type="number" value={globalDef.plan_amount} onChange={e => setGlobal("plan_amount", e.target.value)} placeholder="0"
+                        className="w-20 px-2 py-1.5 text-xs rounded-lg border border-violet-200 bg-white focus:outline-none focus:ring-1 focus:ring-violet-400" />
+                    </div>
+                    <div>
+                      <p className="text-[9px] text-gray-400 mb-0.5">Validity (d)</p>
+                      <input type="number" value={globalDef.validity_days} onChange={e => setGlobal("validity_days", e.target.value)} placeholder="28"
+                        className="w-16 px-2 py-1.5 text-xs rounded-lg border border-violet-200 bg-white focus:outline-none focus:ring-1 focus:ring-violet-400" />
+                    </div>
+                    <div>
+                      <p className="text-[9px] text-gray-400 mb-0.5">Due Date</p>
+                      <input type="date" value={globalDef.due_date} onChange={e => setGlobal("due_date", e.target.value)}
+                        className="px-2 py-1.5 text-xs rounded-lg border border-violet-200 bg-white focus:outline-none focus:ring-1 focus:ring-violet-400" />
+                    </div>
+                    <button onClick={applyGlobalToAll}
+                      className="px-3 py-1.5 text-[11px] font-bold bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors whitespace-nowrap">
+                      Apply to all
+                    </button>
                   </div>
                 </div>
-                {(form.type === "mobile") && (
-                  <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
-                    <Zap className="w-2.5 h-2.5 text-indigo-400" /> Operator auto-detected at 10 digits
-                  </p>
-                )}
               </div>
-            )}
 
-            {/* Operator */}
-            <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Operator / Provider</label>
-              <input value={form.operator} onChange={e => set("operator", e.target.value)}
-                placeholder={isCug ? "e.g. Airtel, Jio" : "e.g. Airtel, BSNL, JioFiber"}
-                className={`w-full px-3 py-2.5 text-sm rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-300
-                  ${opStyle ? `${opStyle.border} ${opStyle.bg}` : "border-gray-200"}`} />
+              {/* Per-row table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left min-w-[900px]">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-100">
+                      <th className="px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-gray-400 w-8">#</th>
+                      <th className="px-2 py-2 text-[9px] font-bold uppercase tracking-widest text-gray-400">Mobile Number</th>
+                      <th className="px-2 py-2 text-[9px] font-bold uppercase tracking-widest text-gray-400">Name / Label</th>
+                      <th className="px-2 py-2 text-[9px] font-bold uppercase tracking-widest text-gray-400">Operator</th>
+                      <th className="px-2 py-2 text-[9px] font-bold uppercase tracking-widest text-gray-400">Plan</th>
+                      <th className="px-2 py-2 text-[9px] font-bold uppercase tracking-widest text-gray-400">Amount (₹)</th>
+                      <th className="px-2 py-2 text-[9px] font-bold uppercase tracking-widest text-gray-400">Validity (d)</th>
+                      <th className="px-2 py-2 text-[9px] font-bold uppercase tracking-widest text-gray-400">Due Date</th>
+                      <th className="px-2 py-2 w-8"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cugRows.map((row, i) => (
+                      <tr key={row._id} className={`border-b border-gray-50 ${i % 2 === 1 ? "bg-gray-50/40" : "bg-white"}`}>
+                        <td className="px-3 py-1.5 text-[10px] text-gray-400 font-semibold">{i + 1}</td>
+                        <td className="px-2 py-1.5">
+                          <input value={row.mobile} onChange={e => setRow(row._id, "mobile", e.target.value)}
+                            placeholder="10-digit number" maxLength={15}
+                            className="w-32 px-2 py-1 text-xs font-mono rounded-lg border border-gray-200 focus:outline-none focus:ring-1 focus:ring-violet-400 bg-white" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input value={row.name} onChange={e => setRow(row._id, "name", e.target.value)}
+                            placeholder="Name / label"
+                            className="w-32 px-2 py-1 text-xs rounded-lg border border-gray-200 focus:outline-none focus:ring-1 focus:ring-violet-400 bg-white" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input value={row.operator} onChange={e => setRow(row._id, "operator", e.target.value)}
+                            placeholder="Airtel"
+                            className="w-20 px-2 py-1 text-xs rounded-lg border border-gray-200 focus:outline-none focus:ring-1 focus:ring-violet-400 bg-white" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input value={row.plan_name} onChange={e => setRow(row._id, "plan_name", e.target.value)}
+                            placeholder="299 Unlim"
+                            className="w-28 px-2 py-1 text-xs rounded-lg border border-gray-200 focus:outline-none focus:ring-1 focus:ring-violet-400 bg-white" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input type="number" value={row.plan_amount} onChange={e => setRow(row._id, "plan_amount", e.target.value)}
+                            placeholder="0"
+                            className="w-20 px-2 py-1 text-xs rounded-lg border border-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white font-semibold" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input type="number" value={row.validity_days} onChange={e => setRow(row._id, "validity_days", e.target.value)}
+                            placeholder="28"
+                            className="w-16 px-2 py-1 text-xs rounded-lg border border-gray-200 focus:outline-none focus:ring-1 focus:ring-violet-400 bg-white" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input type="date" value={row.due_date} onChange={e => setRow(row._id, "due_date", e.target.value)}
+                            className="px-2 py-1 text-xs rounded-lg border border-gray-200 focus:outline-none focus:ring-1 focus:ring-violet-400 bg-white" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <button onClick={() => removeRow(row._id)} className="p-1 text-gray-300 hover:text-red-400 transition-colors">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-gray-50 border-t border-gray-200">
+                      <td colSpan={5} className="px-3 py-2 text-[10px] font-bold text-gray-500">
+                        {cugRows.length} numbers
+                      </td>
+                      <td className="px-2 py-2">
+                        <span className="text-xs font-black text-emerald-700">{fmtAmt(totalAmt)}</span>
+                        <p className="text-[9px] text-gray-400">total/cycle</p>
+                      </td>
+                      <td colSpan={3} className="px-2 py-2">
+                        <button onClick={addRow}
+                          className="flex items-center gap-1 text-[10px] font-semibold text-violet-600 hover:text-violet-800 transition-colors">
+                          <Plus className="w-3 h-3" /> Add row
+                        </button>
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             </div>
-
-            {/* Plan name */}
-            <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Plan / Description</label>
-              <input value={form.plan_name} onChange={e => set("plan_name", e.target.value)}
-                placeholder={isCug ? "e.g. CUG 299, Unlimited" : "e.g. 299 Unlimited"}
-                className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-            </div>
-
-            {/* Quick plan chips */}
-            {quickPlans && (
-              <div className="col-span-2">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">Quick Plan</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {quickPlans.map(p => {
-                    const isSelected = form.plan_amount === p.amount && form.validity_days === p.validity;
+          ) : (
+            /* ── STANDARD FORM / CUG PASTE MODE ── */
+            <div className="px-6 py-4 space-y-4">
+              {/* Type selector */}
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">Category</label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {typeOptions.map(t => {
+                    const m = TYPE_META[t]; const Icon = m.icon;
                     return (
-                      <button key={p.label}
-                        onClick={() => setForm(f => ({ ...f, plan_amount: p.amount, validity_days: p.validity }))}
-                        className={`px-3 py-1.5 rounded-xl text-[11px] font-semibold border transition-all ${
-                          isSelected
-                            ? `${opStyle?.bg || "bg-indigo-50"} ${opStyle?.text || "text-indigo-700"} ${opStyle?.border || "border-indigo-300"} shadow-sm`
-                            : "border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50 bg-white"
-                        }`}>
-                        {p.label}
+                      <button key={t} onClick={() => set("type", t)}
+                        className={`flex items-center gap-2 px-2.5 py-2 rounded-xl border text-[11px] font-semibold transition-all
+                          ${form.type === t ? `${m.bg} ${m.color} ${m.border} shadow-sm` : "border-gray-200 text-gray-500 hover:border-gray-300 bg-white"}`}>
+                        <Icon className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">{m.label}</span>
                       </button>
                     );
                   })}
                 </div>
               </div>
-            )}
 
-            {/* Amount + Validity */}
-            <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">
-                Amount (₹){isCug ? " / per number" : ""}
-              </label>
-              <input type="number" value={form.plan_amount} onChange={e => set("plan_amount", e.target.value)} placeholder="0"
-                className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Validity (days)</label>
-              <input type="number" value={form.validity_days} onChange={e => set("validity_days", e.target.value)} placeholder="28"
-                className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Due / Recharge Date</label>
-              <input type="date" value={form.due_date} onChange={e => set("due_date", e.target.value)}
-                className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Notes</label>
-              <input value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="Optional"
-                className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-            </div>
-          </div>
+              <div className="grid grid-cols-2 gap-3">
+                {/* Name */}
+                <div className="col-span-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">
+                    {isCug ? "CUG Group Name *" : "Label / Name *"}
+                  </label>
+                  <input value={form.name} onChange={e => set("name", e.target.value)}
+                    placeholder={isCug ? "e.g. Sales Team CUG, Field Staff CUG" : "e.g. CEO Mobile, Office WiFi"}
+                    className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                </div>
 
-          {/* CUG summary */}
-          {isCug && !initial?.id && form.bulk_numbers.trim() && form.plan_amount && (
-            <div className="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3">
-              <p className="text-xs font-bold text-violet-700">
-                {form.bulk_numbers.trim().split("\n").filter(l => l.trim()).length} CUG numbers
-                {form.plan_amount && ` · ₹${form.plan_amount} each`}
-                {form.plan_amount && form.bulk_numbers.trim() && ` = ${fmtAmt(
-                  Number(form.plan_amount) * form.bulk_numbers.trim().split("\n").filter(l => l.trim()).length
-                )} total`}
-              </p>
+                {/* CUG paste step */}
+                {isCug && !initial?.id ? (
+                  <>
+                    <div className="col-span-2">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">
+                        Mobile Numbers <span className="text-violet-500 normal-case font-normal">(one per line — number name or name number)</span>
+                      </label>
+                      <textarea value={form.bulk_numbers} onChange={e => set("bulk_numbers", e.target.value)} rows={6}
+                        placeholder={"9876543210 Sathish\n9876543211 Ravi Kumar\n9876543212\n9876543213 CEO Sir\n..."}
+                        className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-violet-300 font-mono resize-none" />
+                      {form.bulk_numbers.trim() && (
+                        <p className="text-[10px] text-violet-600 mt-1 font-semibold">
+                          {form.bulk_numbers.trim().split("\n").filter(l => l.trim()).length} numbers entered
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Default plan for CUG */}
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Default Operator</label>
+                      <input value={globalDef.operator} onChange={e => setGlobal("operator", e.target.value)} placeholder="e.g. Airtel, Jio"
+                        className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Default Plan</label>
+                      <input value={globalDef.plan_name} onChange={e => setGlobal("plan_name", e.target.value)} placeholder="e.g. CUG 299"
+                        className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Default Amount (₹)</label>
+                      <input type="number" value={globalDef.plan_amount} onChange={e => setGlobal("plan_amount", e.target.value)} placeholder="0"
+                        className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Default Validity (days)</label>
+                      <input type="number" value={globalDef.validity_days} onChange={e => setGlobal("validity_days", e.target.value)} placeholder="28"
+                        className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Default Due Date</label>
+                      <input type="date" value={globalDef.due_date} onChange={e => setGlobal("due_date", e.target.value)}
+                        className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="col-span-2">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">
+                        {form.type === "mobile" || form.type === "cug" ? "Mobile Number" : form.type === "broadband" ? "Account / Username" : "Account Number"}
+                      </label>
+                      <div className="relative">
+                        <input value={form.mobile_or_account} onChange={e => set("mobile_or_account", e.target.value)}
+                          placeholder={form.type === "mobile" || form.type === "cug" ? "Enter 10-digit mobile number" : "Account ID"}
+                          maxLength={form.type === "mobile" ? 10 : undefined}
+                          className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300 pr-32" />
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                          {detecting && <span className="text-[10px] text-gray-400 flex items-center gap-1"><RefreshCw className="w-3 h-3 animate-spin" /> Detecting…</span>}
+                          {!detecting && form.operator && opStyle && (
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${opStyle.bg} ${opStyle.text} ${opStyle.border}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${opStyle.dot}`} /> {form.operator}
+                            </span>
+                          )}
+                          {!detecting && form.operator && !opStyle && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-gray-100 text-gray-600 border border-gray-200">{form.operator}</span>
+                          )}
+                        </div>
+                      </div>
+                      {form.type === "mobile" && (
+                        <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
+                          <Zap className="w-2.5 h-2.5 text-indigo-400" /> Operator auto-detected at 10 digits
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Operator / Provider</label>
+                      <input value={form.operator} onChange={e => set("operator", e.target.value)}
+                        placeholder="e.g. Airtel, BSNL, JioFiber"
+                        className={`w-full px-3 py-2.5 text-sm rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-300
+                          ${opStyle ? `${opStyle.border} ${opStyle.bg}` : "border-gray-200"}`} />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Plan / Description</label>
+                      <input value={form.plan_name} onChange={e => set("plan_name", e.target.value)} placeholder="e.g. 299 Unlimited"
+                        className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                    </div>
+
+                    {quickPlans && (
+                      <div className="col-span-2">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">Quick Plan</label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {quickPlans.map(p => {
+                            const isSelected = form.plan_amount === p.amount && form.validity_days === p.validity;
+                            return (
+                              <button key={p.label}
+                                onClick={() => setForm(f => ({ ...f, plan_amount: p.amount, validity_days: p.validity }))}
+                                className={`px-3 py-1.5 rounded-xl text-[11px] font-semibold border transition-all ${
+                                  isSelected
+                                    ? `${opStyle?.bg || "bg-indigo-50"} ${opStyle?.text || "text-indigo-700"} ${opStyle?.border || "border-indigo-300"} shadow-sm`
+                                    : "border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50 bg-white"
+                                }`}>
+                                {p.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Amount (₹)</label>
+                      <input type="number" value={form.plan_amount} onChange={e => set("plan_amount", e.target.value)} placeholder="0"
+                        className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Validity (days)</label>
+                      <input type="number" value={form.validity_days} onChange={e => set("validity_days", e.target.value)} placeholder="28"
+                        className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Due / Recharge Date</label>
+                      <input type="date" value={form.due_date} onChange={e => set("due_date", e.target.value)}
+                        className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Notes</label>
+                      <input value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="Optional"
+                        className="w-full px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           )}
         </div>
 
-        <div className="flex gap-3 px-6 py-4 border-t border-gray-100">
+        {/* Footer */}
+        <div className="flex gap-3 px-6 py-4 border-t border-gray-100 shrink-0">
           <button onClick={onCancel} className="flex-1 py-2.5 text-sm font-semibold rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">Cancel</button>
-          <button onClick={() => onSave(form)} disabled={!form.name}
-            className="flex-1 py-2.5 text-sm font-semibold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 transition-colors">
-            {initial?.id ? "Save Changes" : isCug && form.bulk_numbers.trim() ? `Add ${form.bulk_numbers.trim().split("\n").filter(l => l.trim()).length} CUG Numbers` : "Add Entry"}
-          </button>
+          {isCug && !initial?.id && cugStep === "paste" ? (
+            <button onClick={parseToCugTable} disabled={!form.name || !form.bulk_numbers.trim()}
+              className="flex-1 py-2.5 text-sm font-bold rounded-xl bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-40 transition-colors">
+              Parse {form.bulk_numbers.trim().split("\n").filter(l => l.trim()).length || 0} Numbers into Table →
+            </button>
+          ) : (
+            <button onClick={handleSubmit} disabled={!form.name && !isCugTable}
+              className="flex-1 py-2.5 text-sm font-semibold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 transition-colors">
+              {initial?.id ? "Save Changes" : isCugTable ? `Save ${cugRows.filter(r => r.mobile.trim()).length} CUG Numbers` : "Add Entry"}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -841,18 +1044,33 @@ export default function PaymentTracker() {
       if (!r.ok) { toast({ title: "Failed to save", variant: "destructive" }); return; }
       toast({ title: "Updated successfully" });
     } else if (form.type === "cug" && form.bulk_numbers.trim()) {
-      // Bulk CUG create — one entry per line
-      const lines = form.bulk_numbers.trim().split("\n").filter(l => l.trim());
+      // Bulk CUG create — JSON rows (from per-row table) or plain text
+      let rows: CugRow[] = [];
+      if (form.bulk_numbers.trim().startsWith("[")) {
+        // Per-row table format
+        rows = JSON.parse(form.bulk_numbers).filter((r: CugRow) => r.mobile.trim());
+      } else {
+        // Legacy plain text format — all rows get same plan from form
+        rows = form.bulk_numbers.trim().split("\n").filter(l => l.trim()).map((line, i) => {
+          const parts = line.trim().split(/\s+/);
+          const isNumber = /^\d{6,15}$/.test(parts[0]);
+          const mobile = isNumber ? parts[0] : parts[parts.length - 1];
+          const nameParts = isNumber ? parts.slice(1) : parts.slice(0, -1);
+          return { _id: `${i}`, mobile, name: nameParts.join(" ") || mobile,
+            operator: form.operator, plan_name: form.plan_name,
+            plan_amount: form.plan_amount, validity_days: form.validity_days, due_date: form.due_date };
+        });
+      }
       let created = 0;
-      for (const line of lines) {
-        const parts = line.trim().split(/\s+/);
-        const isNumber = /^\d{10}$/.test(parts[0]);
-        const mobile = isNumber ? parts[0] : parts[parts.length - 1];
-        const nameParts = isNumber ? parts.slice(1) : parts.slice(0, -1);
-        const name = nameParts.length > 0 ? nameParts.join(" ") : mobile;
+      for (const row of rows) {
         await fetch(`${BASE}/api/admin/payment-tracker/subscriptions`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...form, name: name || mobile, mobile_or_account: mobile, bulk_numbers: undefined }),
+          body: JSON.stringify({
+            ...form, name: row.name || row.mobile, mobile_or_account: row.mobile,
+            operator: row.operator, plan_name: row.plan_name,
+            plan_amount: row.plan_amount, validity_days: row.validity_days, due_date: row.due_date,
+            bulk_numbers: undefined,
+          }),
         });
         created++;
       }
