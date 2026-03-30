@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Layout } from "@/components/Layout";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import {
   RefreshCw, Briefcase, Users, Target, ShoppingBag, FileText,
   AlertTriangle, TrendingUp, TrendingDown, Calendar, Printer,
@@ -182,11 +182,16 @@ const TABS = ["Overview", "Accounts", "Projects", "Sales & Finance", "Procuremen
 type Tab = typeof TABS[number];
 
 export default function MisReport() {
+  const search = useSearch();
+  const initialTab = (() => {
+    const p = new URLSearchParams(search).get("tab");
+    return (TABS as readonly string[]).includes(p ?? "") ? (p as Tab) : "Overview";
+  })();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [tab, setTab] = useState<Tab>("Overview");
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [projectFilter, setProjectFilter] = useState<string>("__all__");
 
   const load = useCallback(async () => {
@@ -282,10 +287,8 @@ export default function MisReport() {
             <div className="flex-1" />
             {lastUpdated && <span className="text-[9px] text-gray-400 hidden sm:block">Updated {lastUpdated.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>}
             <button onClick={() => window.print()} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hidden sm:block"><Printer className="w-3.5 h-3.5" /></button>
-            <Link href="/purchase-dashboard">
-              <a className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold bg-[#1e3a5f] text-white rounded-lg hover:bg-[#163050] no-underline">
-                <ShoppingCart className="w-3 h-3" />Purchase Overview
-              </a>
+            <Link href="/purchase-dashboard" className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold bg-[#1e3a5f] text-white rounded-lg hover:bg-[#163050] no-underline">
+              <ShoppingCart className="w-3 h-3" />Purchase Overview
             </Link>
             <button onClick={load} disabled={loading}
               className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
@@ -880,6 +883,16 @@ export default function MisReport() {
               {/* ══ PROCUREMENT ══ */}
               {tab === "Procurement" && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {/* Quick link to Purchase Dashboard */}
+                  <div className="xl:col-span-3 lg:col-span-2 flex items-center justify-between bg-[#1e3a5f] rounded-xl px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <ShoppingCart className="w-4 h-4 text-white opacity-80" />
+                      <span className="text-[11px] font-semibold text-white">For detailed KPIs — PO Pending, MR Pending, Payment Pending, Delay Transit & more</span>
+                    </div>
+                    <Link href="/purchase-dashboard" className="flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold bg-white text-[#1e3a5f] rounded-lg hover:bg-gray-100 no-underline whitespace-nowrap">
+                      <ShoppingBag className="w-3 h-3" />Open Purchase Dashboard →
+                    </Link>
+                  </div>
                   {/* PO summary */}
                   <Card title="PO Summary" icon={ShoppingBag} iconColor="text-amber-500">
                     <div className="grid grid-cols-2 gap-2 mb-3">

@@ -500,10 +500,8 @@ export default function PurchaseDashboard() {
           </div>
           <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
             <ProjectSelector value={project} onChange={setProject} />
-            <Link href="/mis-report">
-              <a style={{ display:"flex", alignItems:"center", gap:6, background:"#1e3a5f", border:"none", borderRadius:8, padding:"7px 14px", fontSize:13, fontWeight:600, color:"#fff", cursor:"pointer", textDecoration:"none" }}>
-                <BarChart2 style={{ width:14, height:14 }} /> MD Dashboard
-              </a>
+            <Link href="/mis-report?tab=Procurement" style={{ display:"flex", alignItems:"center", gap:6, background:"#1e3a5f", border:"none", borderRadius:8, padding:"7px 14px", fontSize:13, fontWeight:600, color:"#fff", cursor:"pointer", textDecoration:"none" }}>
+              <BarChart2 style={{ width:14, height:14 }} /> MD Dashboard
             </Link>
             <button onClick={refetchAll}
               style={{ display:"flex", alignItems:"center", gap:6, background:"#fff", border:"1px solid #d1d5db", borderRadius:8, padding:"7px 14px", fontSize:13, fontWeight:600, color:"#374151", cursor:"pointer" }}>
