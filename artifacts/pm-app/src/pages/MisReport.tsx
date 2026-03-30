@@ -335,103 +335,236 @@ export default function MisReport() {
             <div className="flex-1 overflow-y-auto px-5 py-3">
 
               {/* ══ OVERVIEW ══ */}
-              {tab === "Overview" && (
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                  {/* Projects summary */}
-                  <Card title="Projects" icon={Briefcase} iconColor="text-blue-500"
-                    right={<button onClick={() => setTab("Projects")} className="text-[9px] text-indigo-500 font-bold flex items-center gap-0.5 hover:underline">Details<ChevronRight className="w-3 h-3" /></button>}>
-                    <div className="grid grid-cols-2 gap-2 mb-3">
-                      <Stat label="Active" value={data.projects.active} color="text-blue-700" />
-                      <Stat label="Completed" value={data.projects.completed} color="text-emerald-700" />
-                      <Stat label="Overdue" value={data.projects.overdue} alert={data.projects.overdue > 0} />
-                      <Stat label="Avg Progress" value={`${data.projects.avg_progress}%`} color="text-indigo-700" />
-                    </div>
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[10px]"><span className="text-gray-500">Estimated</span><span className="font-bold text-gray-700">{fmtCr(data.projects.total_estimated_value)}</span></div>
-                      <div className="flex justify-between text-[10px]"><span className="text-gray-500">Actual Spend</span><span className="font-bold text-gray-700">{fmtCr(data.projects.total_actual_expense)}</span></div>
-                    </div>
-                  </Card>
+              {tab === "Overview" && (() => {
+                const totalRec = filtRec.reduce((a: number, i: any) => a + (i.outstanding || 0), 0);
+                const totalPay = filtPay.reduce((a: number, i: any) => a + (i.outstanding || 0), 0);
+                const netPos = totalRec - totalPay;
+                const collected = filtPmt.filter((p: any) => p.type === "Receive").reduce((a: number, p: any) => a + (p.amount || 0), 0);
+                const paidOut  = filtPmt.filter((p: any) => p.type === "Pay").reduce((a: number, p: any) => a + (p.amount || 0), 0);
+                const overdueRecAmt = filtRec.filter((i: any) => i.overdue).reduce((a: number, i: any) => a + (i.outstanding || 0), 0);
+                const overduePayAmt = filtPay.filter((i: any) => i.overdue).reduce((a: number, i: any) => a + (i.outstanding || 0), 0);
+                const pendingPOList = filtPO.filter((p: any) => ["To Receive and Bill","To Bill","To Receive","Draft"].includes(p.status));
+                const pendingMRList = filtMR.filter((m: any) => ["Draft","Submitted","Partially Ordered"].includes(m.status));
+                const pendingDNList = filtDN.filter((d: any) => d.status === "To Bill" || d.status === "Draft");
+                const activeSO = filtSO.filter((s: any) => ["To Deliver and Bill","To Bill","To Deliver","Submitted"].includes(s.status));
 
-                  {/* Receivables summary */}
-                  <Card title="Receivables" icon={Receipt} iconColor="text-sky-500"
-                    right={<button onClick={() => setTab("Sales & Finance")} className="text-[9px] text-indigo-500 font-bold flex items-center gap-0.5 hover:underline">Details<ChevronRight className="w-3 h-3" /></button>}>
-                    <div className="grid grid-cols-2 gap-2 mb-3">
-                      <Stat label="Outstanding" value={fmtCr(filtRec.reduce((a: number, i: any) => a + (i.outstanding || 0), 0))} color="text-sky-700" small />
-                      <Stat label="Overdue" value={fmtCr(filtRec.filter((i: any) => i.overdue).reduce((a: number, i: any) => a + (i.outstanding || 0), 0))} alert={filtRec.some((i: any) => i.overdue)} small />
-                      <Stat label="Invoices" value={filtRec.length} />
-                      <Stat label="Overdue Inv." value={filtRec.filter((i: any) => i.overdue).length} alert={filtRec.some((i: any) => i.overdue)} />
-                    </div>
-                    <AgingBar items={filtRec} />
-                  </Card>
+                // Group receivables by customer (top 6)
+                const recByParty: Record<string, number> = {};
+                filtRec.forEach((i: any) => { recByParty[i.customer] = (recByParty[i.customer]||0) + (i.outstanding||0); });
+                const topRec = Object.entries(recByParty).sort((a,b)=>b[1]-a[1]).slice(0,6);
 
-                  {/* Payables summary */}
-                  <Card title="Payables" icon={CreditCard} iconColor="text-orange-500"
-                    right={<button onClick={() => setTab("Sales & Finance")} className="text-[9px] text-indigo-500 font-bold flex items-center gap-0.5 hover:underline">Details<ChevronRight className="w-3 h-3" /></button>}>
-                    <div className="grid grid-cols-2 gap-2 mb-3">
-                      <Stat label="Outstanding" value={fmtCr(filtPay.reduce((a: number, i: any) => a + (i.outstanding || 0), 0))} color="text-orange-700" small />
-                      <Stat label="Overdue" value={fmtCr(filtPay.filter((i: any) => i.overdue).reduce((a: number, i: any) => a + (i.outstanding || 0), 0))} alert={filtPay.some((i: any) => i.overdue)} small />
-                      <Stat label="Invoices" value={filtPay.length} />
-                      <Stat label="Overdue Inv." value={filtPay.filter((i: any) => i.overdue).length} alert={filtPay.some((i: any) => i.overdue)} />
-                    </div>
-                    <AgingBar items={filtPay} />
-                  </Card>
+                // Group payables by supplier (top 6)
+                const payByParty: Record<string, number> = {};
+                filtPay.forEach((i: any) => { payByParty[i.supplier] = (payByParty[i.supplier]||0) + (i.outstanding||0); });
+                const topPay = Object.entries(payByParty).sort((a,b)=>b[1]-a[1]).slice(0,6);
 
-                  {/* Sales summary */}
-                  <Card title="Sales Orders" icon={Target} iconColor="text-violet-500"
-                    right={<button onClick={() => setTab("Sales & Finance")} className="text-[9px] text-indigo-500 font-bold flex items-center gap-0.5 hover:underline">Details<ChevronRight className="w-3 h-3" /></button>}>
-                    <div className="grid grid-cols-2 gap-2 mb-2">
-                      <Stat label="Active" value={filtSO.filter((s: any) => ["To Deliver and Bill", "To Bill", "To Deliver", "Submitted"].includes(s.status)).length} color="text-violet-700" />
-                      <Stat label="This Month" value={filtSO.filter((s: any) => s.date >= data.period.month_start).length} />
-                      <Stat label="Total Value" value={fmtCr(filtSO.reduce((a: number, s: any) => a + (s.amount || 0), 0))} color="text-gray-700" small />
-                      <Stat label="Quotations" value={data.sales.quotations.open} sub={fmtCr(data.sales.quotations.total_value)} />
-                    </div>
-                  </Card>
+                // Alerts
+                const alerts: {label:string;value:string;tab:Tab;color:string}[] = [];
+                if(filtRec.filter((i:any)=>i.overdue).length>0) alerts.push({label:`${filtRec.filter((i:any)=>i.overdue).length} overdue sales invoices`,value:fmtCr(overdueRecAmt),tab:"Accounts",color:"text-red-600"});
+                if(filtPay.filter((i:any)=>i.overdue).length>0) alerts.push({label:`${filtPay.filter((i:any)=>i.overdue).length} overdue purchase invoices`,value:fmtCr(overduePayAmt),tab:"Accounts",color:"text-orange-600"});
+                if(data.hr.expense_claims.pending>0) alerts.push({label:`${data.hr.expense_claims.pending} expense claims awaiting approval`,value:fmtCr(data.hr.expense_claims.total_pending_amount),tab:"HR",color:"text-purple-600"});
+                if(data.hr.pending_leave_approvals>0) alerts.push({label:`${data.hr.pending_leave_approvals} leave applications pending`,value:"",tab:"HR",color:"text-sky-600"});
+                if(pendingMRList.length>0) alerts.push({label:`${pendingMRList.length} material requests pending`,value:"",tab:"Procurement",color:"text-rose-600"});
+                if(pendingDNList.length>0) alerts.push({label:`${pendingDNList.length} delivery notes not yet billed`,value:"",tab:"Procurement",color:"text-teal-600"});
 
-                  {/* PO summary */}
-                  <Card title="Purchase Orders" icon={ShoppingBag} iconColor="text-amber-500"
-                    right={<button onClick={() => setTab("Procurement")} className="text-[9px] text-indigo-500 font-bold flex items-center gap-0.5 hover:underline">Details<ChevronRight className="w-3 h-3" /></button>}>
-                    <div className="grid grid-cols-2 gap-2 mb-2">
-                      <Stat label="Total POs" value={filtPO.length} />
-                      <Stat label="Pending" value={filtPO.filter((p: any) => ["Draft", "To Receive and Bill", "To Bill", "To Receive"].includes(p.status)).length} alert={filtPO.filter((p: any) => ["Draft", "To Receive and Bill", "To Bill", "To Receive"].includes(p.status)).length > 0} />
-                      <Stat label="Pending Value" value={fmtCr(filtPO.filter((p: any) => ["Draft", "To Receive and Bill", "To Bill", "To Receive"].includes(p.status)).reduce((a: number, p: any) => a + (p.amount || 0), 0))} small color="text-amber-700" />
-                      <Stat label="This Month" value={filtPO.filter((p: any) => p.date >= data.period.month_start).length} />
+                return (
+                  <div className="space-y-3">
+                    {/* ── Row 1: Financial headline ── */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                      {[
+                        {label:"Total Receivable",sub:`${filtRec.filter((i:any)=>i.overdue).length} overdue invoices`,value:fmtCr(totalRec),sub2:`Overdue: ${fmtCr(overdueRecAmt)}`,color:"from-sky-500 to-cyan-400",alert:filtRec.some((i:any)=>i.overdue)},
+                        {label:"Total Payable",sub:`${filtPay.filter((i:any)=>i.overdue).length} overdue invoices`,value:fmtCr(totalPay),sub2:`Overdue: ${fmtCr(overduePayAmt)}`,color:"from-orange-500 to-amber-400",alert:filtPay.some((i:any)=>i.overdue)},
+                        {label:"Net Position",sub:"Receivable − Payable",value:fmtCr(Math.abs(netPos)),sub2:netPos>=0?"Favourable (you are owed more)":"Unfavourable (you owe more)",color:netPos>=0?"from-emerald-500 to-green-400":"from-red-500 to-orange-400",alert:netPos<0},
+                        {label:"Cash Collected",sub:`Paid out: ${fmtCr(paidOut)}`,value:fmtCr(collected),sub2:`Net cash: ${fmtCr(collected-paidOut)}`,color:"from-violet-500 to-indigo-400",alert:false},
+                      ].map((h,i)=>(
+                        <div key={i} className={`rounded-2xl bg-gradient-to-br ${h.color} p-4 text-white shadow-md`}>
+                          <p className="text-[10px] font-bold uppercase tracking-widest opacity-80 mb-1">{h.label}</p>
+                          <p className="text-2xl font-black leading-tight">{h.value}</p>
+                          <p className="text-[10px] opacity-75 mt-0.5">{h.sub}</p>
+                          <p className="text-[10px] font-semibold mt-1 opacity-90">{h.sub2}</p>
+                        </div>
+                      ))}
                     </div>
-                  </Card>
 
-                  {/* MR + DN summary */}
-                  <Card title="Procurement" icon={ClipboardList} iconColor="text-rose-500"
-                    right={<button onClick={() => setTab("Procurement")} className="text-[9px] text-indigo-500 font-bold flex items-center gap-0.5 hover:underline">Details<ChevronRight className="w-3 h-3" /></button>}>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Stat label="MRs Total" value={filtMR.length} />
-                      <Stat label="MRs Pending" value={filtMR.filter((m: any) => ["Draft", "Submitted", "Partially Ordered"].includes(m.status)).length} alert />
-                      <Stat label="Deliveries" value={filtDN.length} />
-                      <Stat label="DN Pending Bill" value={filtDN.filter((d: any) => d.status === "To Bill" || d.status === "Draft").length} alert={filtDN.filter((d: any) => d.status === "To Bill").length > 0} />
-                    </div>
-                  </Card>
+                    {/* ── Row 2: Action alerts + Sales + Projects ── */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                      {/* Alerts */}
+                      <Card title="Action Required" icon={AlertTriangle} iconColor="text-red-500"
+                        count={alerts.length}
+                        right={alerts.length===0?<Badge label="All Clear" variant="green"/>:<Badge label="Needs Attention" variant="red"/>}>
+                        {alerts.length===0
+                          ? <p className="text-xs text-emerald-600 font-semibold py-2 text-center">✓ Nothing pending action</p>
+                          : <div className="space-y-1.5">
+                              {alerts.map((a,i)=>(
+                                <button key={i} onClick={()=>setTab(a.tab)}
+                                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 text-left transition-colors">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-current shrink-0" style={{color:"currentColor"}} />
+                                  <span className={`flex-1 text-[11px] font-semibold ${a.color}`}>{a.label}</span>
+                                  {a.value&&<span className={`text-[10px] font-black ${a.color} shrink-0`}>{a.value}</span>}
+                                  <ChevronRight className="w-3 h-3 text-gray-300 shrink-0"/>
+                                </button>
+                              ))}
+                            </div>
+                        }
+                      </Card>
 
-                  {/* Payments summary */}
-                  <Card title="Payments" icon={Wallet} iconColor="text-green-600"
-                    right={<button onClick={() => setTab("Sales & Finance")} className="text-[9px] text-indigo-500 font-bold flex items-center gap-0.5 hover:underline">Details<ChevronRight className="w-3 h-3" /></button>}>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Stat label="Received" value={fmtCr(filtPmt.filter((p: any) => p.type === "Receive").reduce((a: number, p: any) => a + (p.amount || 0), 0))} color="text-emerald-700" small />
-                      <Stat label="Paid Out" value={fmtCr(filtPmt.filter((p: any) => p.type === "Pay").reduce((a: number, p: any) => a + (p.amount || 0), 0))} color="text-orange-700" small />
-                      <Stat label="Total Entries" value={filtPmt.length} />
-                      <Stat label="This Month" value={filtPmt.filter((p: any) => p.date >= data.period.month_start).length} />
-                    </div>
-                  </Card>
+                      {/* Sales & Revenue */}
+                      <Card title="Sales & Revenue" icon={Target} iconColor="text-violet-500"
+                        right={<button onClick={()=>setTab("Sales & Finance")} className="text-[9px] text-indigo-500 font-bold flex items-center gap-0.5 hover:underline">Details<ChevronRight className="w-3 h-3"/></button>}>
+                        <div className="grid grid-cols-2 gap-2 mb-3">
+                          <Stat label="Active Sales Orders" value={activeSO.length} color="text-violet-700"/>
+                          <Stat label="SO Value (Active)" value={fmtCr(activeSO.reduce((a:number,s:any)=>a+(s.amount||0),0))} color="text-violet-700" small/>
+                          <Stat label="New SOs This Month" value={filtSO.filter((s:any)=>s.date>=data.period.month_start).length}/>
+                          <Stat label="Open Quotations" value={data.sales.quotations.open} sub={fmtCr(data.sales.quotations.total_value)}/>
+                          <Stat label="Fully Delivered" value={filtSO.filter((s:any)=>s.delivered_pct===100).length} color="text-emerald-700"/>
+                          <Stat label="DNs Pending Bill" value={pendingDNList.length} alert={pendingDNList.length>0}/>
+                        </div>
+                        <div className="border-t border-gray-100 pt-2 space-y-1">
+                          <div className="flex justify-between text-[10px]"><span className="text-gray-500">Total SO Value</span><span className="font-bold">{fmtCr(filtSO.reduce((a:number,s:any)=>a+(s.amount||0),0))}</span></div>
+                          <div className="flex justify-between text-[10px]"><span className="text-gray-500">Quotation Pipeline</span><span className="font-bold text-indigo-600">{fmtCr(data.sales.quotations.total_value)}</span></div>
+                        </div>
+                      </Card>
 
-                  {/* HR summary */}
-                  <Card title="Human Resources" icon={Users} iconColor="text-emerald-500"
-                    right={<button onClick={() => setTab("HR")} className="text-[9px] text-indigo-500 font-bold flex items-center gap-0.5 hover:underline">Details<ChevronRight className="w-3 h-3" /></button>}>
-                    <div className="grid grid-cols-2 gap-2 mb-2">
-                      <Stat label="Total Staff" value={data.hr.total_employees} color="text-emerald-700" />
-                      <Stat label="On Leave Today" value={data.hr.on_leave_today} alert={data.hr.on_leave_today > 0} />
-                      <Stat label="Pending Leaves" value={data.hr.pending_leave_approvals} alert={data.hr.pending_leave_approvals > 0} />
-                      <Stat label="Pending Claims" value={data.hr.expense_claims.pending} alert={data.hr.expense_claims.pending > 0} sub={fmtCr(data.hr.expense_claims.total_pending_amount)} />
+                      {/* Projects */}
+                      <Card title="Project Health" icon={Briefcase} iconColor="text-blue-500"
+                        right={<button onClick={()=>setTab("Projects")} className="text-[9px] text-indigo-500 font-bold flex items-center gap-0.5 hover:underline">Details<ChevronRight className="w-3 h-3"/></button>}>
+                        <div className="grid grid-cols-3 gap-2 mb-3">
+                          <Stat label="Active" value={data.projects.active} color="text-blue-700"/>
+                          <Stat label="Completed" value={data.projects.completed} color="text-emerald-700"/>
+                          <Stat label="Overdue" value={data.projects.overdue} alert={data.projects.overdue>0}/>
+                        </div>
+                        <div className="space-y-2 mb-2">
+                          {filtP.slice(0,4).map((p:any,i:number)=>(
+                            <div key={i} className="flex items-center gap-2">
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${p.overdue?"bg-red-500":p.progress>=80?"bg-emerald-500":"bg-blue-400"}`}/>
+                              <span className="text-[10px] text-gray-700 w-28 truncate font-semibold">{p.name}</span>
+                              <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div className={`h-full rounded-full ${p.overdue?"bg-red-400":p.progress>=80?"bg-emerald-400":"bg-blue-400"}`} style={{width:`${p.progress}%`}}/>
+                              </div>
+                              <span className="text-[9px] font-bold text-gray-500 w-7 text-right">{p.progress}%</span>
+                            </div>
+                          ))}
+                          {filtP.length>4&&<p className="text-[9px] text-gray-400">+{filtP.length-4} more projects</p>}
+                        </div>
+                        <div className="border-t border-gray-100 pt-2 space-y-1">
+                          <div className="flex justify-between text-[10px]"><span className="text-gray-500">Estimated</span><span className="font-bold">{fmtCr(data.projects.total_estimated_value)}</span></div>
+                          <div className="flex justify-between text-[10px]"><span className="text-gray-500">Actual Spend</span><span className="font-bold">{fmtCr(data.projects.total_actual_expense)}</span></div>
+                        </div>
+                      </Card>
                     </div>
-                  </Card>
-                </div>
-              )}
+
+                    {/* ── Row 3: Top Receivables + Top Payables + Procurement + HR ── */}
+                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
+                      {/* Top Receivables */}
+                      <Card title="Top Receivables" icon={TrendingUp} iconColor="text-sky-500"
+                        right={<button onClick={()=>setTab("Accounts")} className="text-[9px] text-indigo-500 font-bold flex items-center gap-0.5 hover:underline">All<ChevronRight className="w-3 h-3"/></button>}>
+                        <div className="mb-2">
+                          <AgingBar items={filtRec}/>
+                        </div>
+                        <div className="space-y-1 mt-2">
+                          {topRec.map(([party,amt],i)=>{
+                            const hasOD = filtRec.some((x:any)=>x.customer===party&&x.overdue);
+                            return (
+                              <div key={i} className="flex items-center gap-2 py-0.5 border-b border-gray-50">
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${hasOD?"bg-red-400":"bg-sky-300"}`}/>
+                                <span className="flex-1 text-[11px] font-semibold text-gray-700 truncate">{party}</span>
+                                <span className={`text-[11px] font-black shrink-0 ${hasOD?"text-red-600":"text-sky-700"}`}>{fmtCr(amt)}</span>
+                              </div>
+                            );
+                          })}
+                          {topRec.length===0&&<p className="text-[10px] text-gray-400 text-center py-2">No outstanding</p>}
+                        </div>
+                        <div className="mt-2 pt-2 border-t border-gray-100 flex justify-between text-[10px]">
+                          <span className="text-gray-500">Total Outstanding</span>
+                          <span className="font-black text-sky-700">{fmtCr(totalRec)}</span>
+                        </div>
+                      </Card>
+
+                      {/* Top Payables */}
+                      <Card title="Top Payables" icon={TrendingDown} iconColor="text-orange-500"
+                        right={<button onClick={()=>setTab("Accounts")} className="text-[9px] text-indigo-500 font-bold flex items-center gap-0.5 hover:underline">All<ChevronRight className="w-3 h-3"/></button>}>
+                        <div className="mb-2">
+                          <AgingBar items={filtPay}/>
+                        </div>
+                        <div className="space-y-1 mt-2">
+                          {topPay.map(([party,amt],i)=>{
+                            const hasOD = filtPay.some((x:any)=>x.supplier===party&&x.overdue);
+                            return (
+                              <div key={i} className="flex items-center gap-2 py-0.5 border-b border-gray-50">
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${hasOD?"bg-red-400":"bg-orange-300"}`}/>
+                                <span className="flex-1 text-[11px] font-semibold text-gray-700 truncate">{party}</span>
+                                <span className={`text-[11px] font-black shrink-0 ${hasOD?"text-red-600":"text-orange-700"}`}>{fmtCr(amt)}</span>
+                              </div>
+                            );
+                          })}
+                          {topPay.length===0&&<p className="text-[10px] text-gray-400 text-center py-2">No outstanding</p>}
+                        </div>
+                        <div className="mt-2 pt-2 border-t border-gray-100 flex justify-between text-[10px]">
+                          <span className="text-gray-500">Total Payable</span>
+                          <span className="font-black text-orange-700">{fmtCr(totalPay)}</span>
+                        </div>
+                      </Card>
+
+                      {/* Procurement */}
+                      <Card title="Procurement" icon={ShoppingBag} iconColor="text-amber-500"
+                        right={<button onClick={()=>setTab("Procurement")} className="text-[9px] text-indigo-500 font-bold flex items-center gap-0.5 hover:underline">Details<ChevronRight className="w-3 h-3"/></button>}>
+                        <div className="space-y-2">
+                          {[
+                            {label:"Purchase Orders",total:filtPO.length,pending:pendingPOList.length,value:fmtCr(pendingPOList.reduce((a:number,p:any)=>a+(p.amount||0),0)),color:"bg-amber-400"},
+                            {label:"Material Requests",total:filtMR.length,pending:pendingMRList.length,value:"",color:"bg-rose-400"},
+                            {label:"Delivery Notes",total:filtDN.length,pending:pendingDNList.length,value:"",color:"bg-teal-400"},
+                          ].map((r,i)=>(
+                            <div key={i} className="rounded-lg bg-gray-50 p-2.5">
+                              <div className="flex justify-between mb-1">
+                                <span className="text-[10px] font-bold text-gray-700">{r.label}</span>
+                                <span className="text-[9px] text-gray-500">{r.total} total</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                  <div className={`h-full ${r.color} rounded-full`} style={{width:`${r.total>0?Math.round((r.pending/r.total)*100):0}%`}}/>
+                                </div>
+                                <span className={`text-[10px] font-black ${r.pending>0?"text-amber-700":"text-emerald-600"}`}>{r.pending} pending</span>
+                              </div>
+                              {r.value&&<p className="text-[9px] text-gray-500 mt-0.5">Value: {r.value}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      </Card>
+
+                      {/* HR & People */}
+                      <Card title="People & HR" icon={Users} iconColor="text-emerald-500"
+                        right={<button onClick={()=>setTab("HR")} className="text-[9px] text-indigo-500 font-bold flex items-center gap-0.5 hover:underline">Details<ChevronRight className="w-3 h-3"/></button>}>
+                        <div className="grid grid-cols-2 gap-2 mb-3">
+                          <Stat label="Total Staff" value={data.hr.total_employees} color="text-emerald-700"/>
+                          <Stat label="On Leave Today" value={data.hr.on_leave_today} alert={data.hr.on_leave_today>0}/>
+                          <Stat label="Pending Leaves" value={data.hr.pending_leave_approvals} alert={data.hr.pending_leave_approvals>0}/>
+                          <Stat label="Expense Claims" value={data.hr.expense_claims.pending} alert={data.hr.expense_claims.pending>0} sub="pending approval"/>
+                        </div>
+                        <div className="border-t border-gray-100 pt-2 space-y-1">
+                          <div className="flex justify-between text-[10px]"><span className="text-gray-500">Salary This Month</span><span className="font-bold text-purple-700">{fmtCr(data.hr.salary.gross_this_month)}</span></div>
+                          <div className="flex justify-between text-[10px]"><span className="text-gray-500">Net Pay This Month</span><span className="font-bold">{fmtCr(data.hr.salary.net_this_month)}</span></div>
+                          <div className="flex justify-between text-[10px]"><span className="text-gray-500">Expense Pending</span><span className="font-bold text-rose-600">{fmtCr(data.hr.expense_claims.total_pending_amount)}</span></div>
+                          <div className="flex justify-between text-[10px]"><span className="text-gray-500">Salary YTD</span><span className="font-bold">{fmtCr(data.hr.salary.gross_ytd)}</span></div>
+                        </div>
+                        {/* Dept mini chart */}
+                        {data.hr.department_breakdown.length>0&&(
+                          <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
+                            {data.hr.department_breakdown.slice(0,3).map((d:any,i:number)=>(
+                              <div key={i} className="flex items-center gap-2">
+                                <span className="text-[9px] text-gray-500 w-24 truncate">{d.dept}</span>
+                                <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+                                  <div className="h-full bg-emerald-400 rounded-full" style={{width:`${Math.round((d.count/data.hr.total_employees)*100)}%`}}/>
+                                </div>
+                                <span className="text-[9px] font-bold text-gray-600">{d.count}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </Card>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* ══ ACCOUNTS ══ */}
               {tab === "Accounts" && (
