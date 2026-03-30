@@ -6,6 +6,10 @@ import {
   AlertTriangle, TrendingUp, TrendingDown, Calendar, Printer,
   BarChart3, ClipboardList, Receipt, CreditCard, UserCheck,
   Truck, Wallet, Filter, X, IndianRupee, ChevronRight, ShoppingCart,
+  Mail, MessageSquare, Megaphone, Activity, LayoutDashboard,
+  LayoutGrid, GanttChartSquare, UserCircle, UserPlus, Clock,
+  PenTool, Box, Warehouse, Table2, MonitorPlay, Settings, Bot,
+  FolderOpen, GitBranch, Layers, BarChart2,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -576,6 +580,51 @@ export default function MisReport() {
                           </div>
                         )}
                       </Card>
+                    </div>
+
+                    {/* ── All Modules Quick Access ── */}
+                    <div className="rounded-2xl bg-white border border-gray-200 p-4 shadow-sm">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-3">All Modules — Quick Access</p>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2">
+                        {[
+                          { label: "Dashboard",       icon: LayoutDashboard, href: "/",                      color: "text-indigo-600",  bg: "bg-indigo-50"  },
+                          { label: "Projects",        icon: Briefcase,       href: "/projects",              color: "text-blue-600",    bg: "bg-blue-50"    },
+                          { label: "Project Board",   icon: LayoutGrid,      href: "/project-board",         color: "text-blue-500",    bg: "bg-blue-50"    },
+                          { label: "Timeline",        icon: GanttChartSquare,href: "/project-timeline",      color: "text-cyan-600",    bg: "bg-cyan-50"    },
+                          { label: "Meeting Minutes", icon: FileText,        href: "/meeting-minutes",       color: "text-teal-600",    bg: "bg-teal-50"    },
+                          { label: "Drawings",        icon: FolderOpen,      href: "/project-drawings",      color: "text-teal-500",    bg: "bg-teal-50"    },
+                          { label: "Presentation",    icon: MonitorPlay,     href: "/presentation",          color: "text-purple-600",  bg: "bg-purple-50"  },
+                          { label: "Design 2D",       icon: PenTool,         href: "/design-2d",             color: "text-violet-600",  bg: "bg-violet-50"  },
+                          { label: "Design 3D",       icon: Box,             href: "/design-3d",             color: "text-violet-500",  bg: "bg-violet-50"  },
+                          { label: "P&ID Process",    icon: GitBranch,       href: "/pid",                   color: "text-slate-600",   bg: "bg-slate-50"   },
+                          { label: "Nesting",         icon: Layers,          href: "/nesting",               color: "text-slate-500",   bg: "bg-slate-50"   },
+                          { label: "Material Req",    icon: ShoppingCart,    href: "/material-request",      color: "text-amber-600",   bg: "bg-amber-50"   },
+                          { label: "Purchase Order",  icon: ShoppingBag,     href: "/purchase-order",        color: "text-amber-500",   bg: "bg-amber-50"   },
+                          { label: "Purchase Dash",   icon: BarChart2,       href: "/purchase-dashboard",    color: "text-orange-600",  bg: "bg-orange-50"  },
+                          { label: "Stores",          icon: Warehouse,       href: "/stores-dashboard",      color: "text-orange-500",  bg: "bg-orange-50"  },
+                          { label: "Email",           icon: Mail,            href: "/email",                 color: "text-sky-600",     bg: "bg-sky-50"     },
+                          { label: "Smart Inbox",     icon: Bot,             href: "/smart-inbox",           color: "text-sky-500",     bg: "bg-sky-50"     },
+                          { label: "FlowTalk",        icon: MessageSquare,   href: "/chat",                  color: "text-green-600",   bg: "bg-green-50"   },
+                          { label: "Sheets",          icon: Table2,          href: "/sheets",                color: "text-green-500",   bg: "bg-green-50"   },
+                          { label: "Marketing",       icon: Megaphone,       href: "/marketing",             color: "text-pink-600",    bg: "bg-pink-50"    },
+                          { label: "Leads",           icon: Target,          href: "/leads",                 color: "text-pink-500",    bg: "bg-pink-50"    },
+                          { label: "Campaigns",       icon: BarChart3,       href: "/campaigns",             color: "text-rose-500",    bg: "bg-rose-50"    },
+                          { label: "HRMS",            icon: UserCircle,      href: "/hrms",                  color: "text-emerald-600", bg: "bg-emerald-50" },
+                          { label: "Attendance",      icon: Clock,           href: "/hrms/checkin",          color: "text-emerald-500", bg: "bg-emerald-50" },
+                          { label: "Leave Request",   icon: Calendar,        href: "/hrms/leave-request",    color: "text-teal-600",    bg: "bg-teal-50"    },
+                          { label: "Claims",          icon: Receipt,         href: "/hrms/claims",           color: "text-teal-500",    bg: "bg-teal-50"    },
+                          { label: "Recruitment",     icon: UserPlus,        href: "/hrms/recruitment",      color: "text-cyan-600",    bg: "bg-cyan-50"    },
+                          { label: "Site Data",       icon: Activity,        href: "/site-data",             color: "text-lime-600",    bg: "bg-lime-50"    },
+                          { label: "Bill & Recharge", icon: IndianRupee,     href: "/payment-tracker",       color: "text-red-600",     bg: "bg-red-50"     },
+                          { label: "Settings",        icon: Settings,        href: "/settings",              color: "text-gray-600",    bg: "bg-gray-50"    },
+                        ].map((m, i) => (
+                          <Link key={i} href={m.href}
+                            className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl ${m.bg} hover:opacity-80 transition-opacity no-underline cursor-pointer`}>
+                            <m.icon className={`w-5 h-5 ${m.color}`} />
+                            <span className="text-[9px] font-semibold text-gray-600 text-center leading-tight">{m.label}</span>
+                          </Link>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 );
