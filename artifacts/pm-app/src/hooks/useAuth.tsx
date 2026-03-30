@@ -27,6 +27,7 @@ async function applyUserSettingsFromDb(email: string) {
     if (!settings) return;
 
     // Apply theme (light/dark/system → fm-dark-mode)
+    // Only apply if user hasn't already set a personal preference this session
     if (settings.theme === "light") {
       localStorage.setItem("fm-dark-mode", "false");
       document.documentElement.classList.remove("dark");
@@ -35,11 +36,16 @@ async function applyUserSettingsFromDb(email: string) {
       document.documentElement.classList.add("dark");
     }
 
-    // Apply navbarStyle (full/auto → expanded, mini → collapsed)
-    if (settings.navbarStyle === "mini") {
-      localStorage.setItem("fm_sidebar_collapsed", "true");
-    } else if (settings.navbarStyle === "full") {
-      localStorage.setItem("fm_sidebar_collapsed", "false");
+    // Sidebar collapsed state: apply DB navbarStyle ONLY if the user hasn't
+    // manually changed it (i.e. the key doesn't exist in localStorage yet).
+    // This way DB settings act as defaults without overriding manual choices.
+    const sidebarKey = "fm_sidebar_collapsed";
+    if (localStorage.getItem(sidebarKey) === null) {
+      if (settings.navbarStyle === "mini") {
+        localStorage.setItem(sidebarKey, "true");
+      } else if (settings.navbarStyle === "full" || settings.navbarStyle === "auto") {
+        localStorage.setItem(sidebarKey, "false");
+      }
     }
   } catch {
     // Ignore errors applying DB settings — fall back to localStorage values
