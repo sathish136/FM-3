@@ -133,6 +133,28 @@ export default function MisReport() {
       const r = await fetch(`${BASE}/api/admin/mis-report`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const json = await r.json();
+      // Normalise — guarantee all array fields exist regardless of API version
+      json.projects = json.projects ?? {};
+      json.projects.list = json.projects.list ?? [];
+      json.procurement = json.procurement ?? {};
+      json.procurement.purchase_orders = json.procurement.purchase_orders ?? {};
+      json.procurement.purchase_orders.list = json.procurement.purchase_orders.list ?? [];
+      json.procurement.material_requests = json.procurement.material_requests ?? {};
+      json.procurement.material_requests.list = json.procurement.material_requests.list ?? [];
+      json.sales = json.sales ?? {};
+      json.sales.orders = json.sales.orders ?? {};
+      json.sales.orders.list = json.sales.orders.list ?? [];
+      json.sales.quotations = json.sales.quotations ?? {};
+      json.sales.quotations.list = json.sales.quotations.list ?? [];
+      json.sales.receivables = json.sales.receivables ?? {};
+      json.sales.receivables.all_outstanding = json.sales.receivables.all_outstanding ?? [];
+      json.sales.receivables.overdue_list = json.sales.receivables.overdue_list ?? [];
+      json.payables = json.payables ?? {};
+      json.payables.all_outstanding = json.payables.all_outstanding ?? [];
+      json.payables.overdue_list = json.payables.overdue_list ?? [];
+      json.hr = json.hr ?? {};
+      json.hr.department_breakdown = json.hr.department_breakdown ?? [];
+      json.hr.leave_applications = json.hr.leave_applications ?? [];
       setData(json);
       setLastUpdated(new Date());
     } catch (e: any) {
