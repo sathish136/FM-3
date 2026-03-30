@@ -1351,9 +1351,9 @@ export default function MisReport() {
                     {/* ── Employee-wise table ── */}
                     <Card title="Employee-wise Task Allocation & Productivity" icon={UserCheck} iconColor="text-emerald-500" count={byEmp.length}>
                       {byEmp.length===0
-                        ? <p className="text-[10px] text-gray-400 text-center py-6">No employee task data found. Ensure tasks are assigned in ERPNext.</p>
+                        ? <p className="text-[10px] text-gray-400 text-center py-6">No task allocation data found. Ensure tasks are assigned in the Task Allocation doctype.</p>
                         : <MiniTable
-                            cols={["Employee","Department","Total Tasks","Completed","Open","Overdue","Completion Rate","Hours Logged"]}
+                            cols={["Employee","Department","Allocated","Completed","Open","Overdue","Done %","Alloc Hrs","Actual Hrs"]}
                             rows={byEmp.map((e:any)=>[
                               <span className="font-semibold text-gray-800 max-w-[130px] truncate block">{e.name}</span>,
                               <span className="text-gray-500 max-w-[100px] truncate block">{e.dept||"—"}</span>,
@@ -1362,46 +1362,52 @@ export default function MisReport() {
                               <span className="text-blue-700 font-bold">{e.open}</span>,
                               <span className={`font-bold ${e.overdue>0?"text-red-600":"text-gray-400"}`}>{e.overdue||0}</span>,
                               <div className="flex items-center gap-1.5">
-                                <div className="w-16 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                <div className="w-14 h-2 bg-gray-100 rounded-full overflow-hidden">
                                   <div className={`h-full rounded-full ${e.completion_rate>=75?"bg-emerald-400":e.completion_rate>=40?"bg-amber-400":"bg-red-400"}`} style={{width:`${e.completion_rate}%`}}/>
                                 </div>
                                 <span className={`text-[10px] font-black ${e.completion_rate>=75?"text-emerald-700":e.completion_rate>=40?"text-amber-700":"text-red-600"}`}>{e.completion_rate}%</span>
                               </div>,
-                              <span className="text-purple-700 font-bold">{e.hours_logged}h</span>,
+                              <span className="text-purple-700 font-bold">{e.allocated_hours>0?`${e.allocated_hours}h`:"—"}</span>,
+                              <span className="text-teal-700 font-bold">{e.actual_hours>0?`${e.actual_hours}h`:"—"}</span>,
                             ])}/>
                       }
                     </Card>
 
                     {/* ── Overdue Tasks + Recent Tasks ── */}
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-                      <Card title="Overdue Tasks" icon={AlertTriangle} iconColor="text-red-500" count={overdueTasks.length}
+                      <Card title="Overdue Task Allocations" icon={AlertTriangle} iconColor="text-red-500" count={overdueTasks.length}
                         right={overdueTasks.length>0?<Badge label="Needs Attention" variant="red"/>:undefined}>
                         {overdueTasks.length===0
                           ? <p className="text-[10px] text-gray-400 text-center py-4">No overdue tasks</p>
                           : <MiniTable
-                              cols={["Task","Project","Priority","Due","Assigned To"]}
+                              cols={["Task","Project","Employee","Dept","Priority","Due","Alloc Hrs"]}
                               rows={overdueTasks.map((t:any)=>[
-                                <span className="font-semibold text-gray-800 max-w-[150px] truncate block">{t.subject}</span>,
-                                <span className="text-gray-500 max-w-[100px] truncate block">{t.project||"—"}</span>,
+                                <span className="font-semibold text-gray-800 max-w-[120px] truncate block">{t.subject}</span>,
+                                <span className="text-gray-500 max-w-[80px] truncate block">{t.project||"—"}</span>,
+                                <span className="text-gray-700 font-semibold max-w-[90px] truncate block">{t.employee||"—"}</span>,
+                                <span className="text-gray-400 max-w-[70px] truncate block">{t.department||"—"}</span>,
                                 <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${priorityBg[t.priority]||"bg-gray-100 text-gray-600"}`}>{t.priority||"—"}</span>,
                                 <span className="text-red-600 font-bold">{fmtShort(t.due)}</span>,
-                                <span className="text-gray-500 max-w-[100px] truncate block">{(t.assignees||[]).join(", ")||"Unassigned"}</span>,
+                                <span className="text-purple-700 font-bold">{t.allocated_hours>0?`${t.allocated_hours}h`:"—"}</span>,
                               ])}/>
                         }
                       </Card>
 
-                      <Card title="Recent Tasks" icon={ClipboardList} iconColor="text-indigo-400" count={recentTasks.length}>
+                      <Card title="All Task Allocations" icon={ClipboardList} iconColor="text-indigo-400" count={recentTasks.length}>
                         {recentTasks.length===0
-                          ? <p className="text-[10px] text-gray-400 text-center py-4">No tasks found</p>
+                          ? <p className="text-[10px] text-gray-400 text-center py-4">No task allocations found</p>
                           : <MiniTable
-                              cols={["Task","Project","Priority","Due","Status","Hrs"]}
+                              cols={["Task","Employee","Dept","Project","Priority","Due","Alloc","Actual","Status"]}
                               rows={recentTasks.slice(0,30).map((t:any)=>[
-                                <span className="font-semibold text-gray-800 max-w-[140px] truncate block">{t.subject}</span>,
-                                <span className="text-gray-500 max-w-[90px] truncate block">{t.project||"—"}</span>,
+                                <span className="font-semibold text-gray-800 max-w-[120px] truncate block">{t.subject}</span>,
+                                <span className="text-gray-700 font-semibold max-w-[90px] truncate block">{t.employee||"—"}</span>,
+                                <span className="text-gray-400 max-w-[70px] truncate block">{t.department||"—"}</span>,
+                                <span className="text-gray-500 max-w-[80px] truncate block">{t.project||"—"}</span>,
                                 <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${priorityBg[t.priority]||"bg-gray-100 text-gray-600"}`}>{t.priority||"—"}</span>,
                                 <span className={t.due&&new Date(t.due)<new Date()&&t.status!=="Completed"?"text-red-600 font-bold":""}>{fmtShort(t.due)}</span>,
+                                <span className="text-purple-600 font-bold">{t.allocated_hours>0?`${t.allocated_hours}h`:"—"}</span>,
+                                <span className="text-teal-600 font-bold">{t.actual_hours>0?`${t.actual_hours}h`:"—"}</span>,
                                 <Badge label={t.status} variant={sv(t.status)}/>,
-                                <span className="text-purple-600 font-bold">{t.hours>0?`${t.hours}h`:"—"}</span>,
                               ])}/>
                         }
                       </Card>
