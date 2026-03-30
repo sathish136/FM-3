@@ -21,6 +21,7 @@ import marketingRouter from "./marketing";
 import purchaseDashboardRouter from "./purchase-dashboard";
 import storesDashboardRouter from "./stores-dashboard";
 import paymentTrackerRouter from "./payment-tracker";
+import misReportRouter from "./mis-report";
 
 const router: IRouter = Router();
 
@@ -46,5 +47,6 @@ router.use(marketingRouter);
 router.use(purchaseDashboardRouter);
 router.use(storesDashboardRouter);
 router.use(paymentTrackerRouter);
+router.use(misReportRouter);
 
 export default router;

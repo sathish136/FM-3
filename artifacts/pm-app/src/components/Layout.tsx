@@ -124,6 +124,12 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     ],
   },
   {
+    label: "Executive",
+    items: [
+      { path: "/mis-report", label: "MD Dashboard", icon: BarChart3, color: "text-violet-400", bgColor: "bg-violet-500/15" },
+    ],
+  },
+  {
     label: "Admin",
     items: [
       { path: "/payment-tracker", label: "Bill & Recharge", icon: Receipt,  color: "text-indigo-400", bgColor: "bg-indigo-500/15" },

@@ -50,6 +50,7 @@ import Marketing from "@/pages/Marketing";
 import PurchaseDashboard from "@/pages/PurchaseDashboard";
 import StoresDashboard from "@/pages/StoresDashboard";
 import PaymentTracker from "@/pages/PaymentTracker";
+import MisReport from "@/pages/MisReport";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -181,6 +182,7 @@ function ProtectedRoutes() {
       <Route path="/purchase-dashboard" component={PurchaseDashboard} />
       <Route path="/stores-dashboard" component={StoresDashboard} />
       <Route path="/payment-tracker" component={PaymentTracker} />
+      <Route path="/mis-report" component={MisReport} />
       <Route component={NotFound} />
     </Switch>
   );
