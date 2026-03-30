@@ -182,7 +182,7 @@ function PartyRows({ items, pk, ak = "outstanding", colorText }: { items: any[];
   );
 }
 
-const TABS = ["Overview", "Sales Invoice", "Proposals", "Leads", "Accounts", "Projects", "Procurement", "HR"] as const;
+const TABS = ["Overview", "Sales Invoice", "Proposals", "Leads", "Accounts", "Projects", "Procurement", "HR", "Productivity"] as const;
 type Tab = typeof TABS[number];
 
 export default function MisReport() {
@@ -1247,6 +1247,168 @@ export default function MisReport() {
                   </Card>
                 </div>
               )}
+
+              {/* ══ PRODUCTIVITY ══ */}
+              {tab === "Productivity" && (() => {
+                const prod = data?.productivity ?? { summary: { total_tasks:0,completed:0,overdue:0,open:0,completion_rate:0,total_hours_logged:0 }, status_breakdown:[], priority_breakdown:[], by_department:[], by_employee:[], overdue_tasks:[], recent_tasks:[] };
+                const byDept: any[] = prod.by_department ?? [];
+                const byEmp: any[]  = prod.by_employee ?? [];
+                const overdueTasks: any[] = prod.overdue_tasks ?? [];
+                const recentTasks: any[]  = prod.recent_tasks ?? [];
+                const priorityColor: Record<string,string> = { High:"text-red-600", Urgent:"text-red-700", Medium:"text-amber-600", Low:"text-gray-500" };
+                const priorityBg: Record<string,string>    = { High:"bg-red-100 text-red-700", Urgent:"bg-red-200 text-red-800", Medium:"bg-amber-100 text-amber-700", Low:"bg-gray-100 text-gray-600" };
+                return (
+                  <div className="space-y-3">
+                    {/* ── Summary KPIs ── */}
+                    <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+                      {[
+                        { label:"Total Tasks",    value:prod.summary.total_tasks,        color:"text-indigo-700", border:"border-indigo-200", icon:ClipboardList },
+                        { label:"Completed",      value:prod.summary.completed,          color:"text-emerald-700",border:"border-emerald-200",icon:UserCheck },
+                        { label:"Open / Active",  value:prod.summary.open,               color:"text-blue-700",   border:"border-blue-200",   icon:Briefcase },
+                        { label:"Overdue",        value:prod.summary.overdue,            color:"text-red-700",    border:"border-red-200",    icon:AlertTriangle },
+                        { label:"Completion Rate",value:`${prod.summary.completion_rate}%`,color:"text-teal-700", border:"border-teal-200",   icon:BarChart3 },
+                        { label:"Hours Logged",   value:`${prod.summary.total_hours_logged}h`,color:"text-purple-700",border:"border-purple-200",icon:Clock },
+                      ].map((k,i)=>(
+                        <div key={i} className={`rounded-2xl bg-white border ${k.border} p-4 shadow-sm flex items-center gap-3`}>
+                          <k.icon className={`w-6 h-6 ${k.color} shrink-0`}/>
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{k.label}</p>
+                            <p className={`text-xl font-black leading-tight ${k.color}`}>{k.value}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* ── Department Productivity + Status/Priority breakdown ── */}
+                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+                      {/* Department table */}
+                      <div className="xl:col-span-2">
+                        <Card title="Department-wise Productivity" icon={Users} iconColor="text-indigo-500" count={byDept.length}>
+                          {byDept.length===0
+                            ? <p className="text-[10px] text-gray-400 text-center py-6">No task data found</p>
+                            : <MiniTable
+                                cols={["Department","Employees","Total","Completed","Open","Overdue","Done%","Hours"]}
+                                rows={byDept.map((d:any)=>[
+                                  <span className="font-semibold text-gray-800 max-w-[120px] truncate block">{d.dept}</span>,
+                                  <span className="text-gray-600 font-bold">{d.employees||0}</span>,
+                                  <span className="font-bold">{d.total}</span>,
+                                  <span className="text-emerald-700 font-bold">{d.completed}</span>,
+                                  <span className="text-blue-700 font-bold">{d.open}</span>,
+                                  <span className={`font-bold ${d.overdue>0?"text-red-600":"text-gray-400"}`}>{d.overdue}</span>,
+                                  <div className="flex items-center gap-1">
+                                    <div className="w-12 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                      <div className="h-full bg-emerald-400 rounded-full" style={{width:`${d.completion_rate}%`}}/>
+                                    </div>
+                                    <span className="text-[10px] font-black text-emerald-700">{d.completion_rate}%</span>
+                                  </div>,
+                                  <span className="text-purple-700 font-bold">{d.hours_logged}h</span>,
+                                ])}/>
+                          }
+                        </Card>
+                      </div>
+
+                      {/* Status + Priority breakdowns */}
+                      <div className="space-y-3">
+                        <Card title="Tasks by Status" icon={ClipboardList} iconColor="text-blue-500">
+                          {prod.status_breakdown.length===0
+                            ? <p className="text-[10px] text-gray-400 text-center py-4">No data</p>
+                            : prod.status_breakdown.map((s:any,i:number)=>{
+                                const total = prod.summary.total_tasks||1;
+                                const colMap: Record<string,string> = { Completed:"bg-emerald-400", Open:"bg-blue-400", Working:"bg-sky-400", Overdue:"bg-red-400", Cancelled:"bg-gray-300" };
+                                return (
+                                  <div key={i} className="flex items-center gap-2 mb-1.5">
+                                    <span className="text-[10px] text-gray-600 w-28 truncate">{s.status}</span>
+                                    <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                      <div className={`h-full ${colMap[s.status]||"bg-indigo-400"} rounded-full`} style={{width:`${Math.round((s.count/total)*100)}%`}}/>
+                                    </div>
+                                    <span className="text-[10px] font-bold text-gray-700 w-6 text-right">{s.count}</span>
+                                  </div>
+                                );
+                              })
+                          }
+                        </Card>
+                        <Card title="Tasks by Priority" icon={AlertTriangle} iconColor="text-orange-500">
+                          {prod.priority_breakdown.length===0
+                            ? <p className="text-[10px] text-gray-400 text-center py-4">No data</p>
+                            : prod.priority_breakdown.map((p:any,i:number)=>{
+                                const total = prod.summary.total_tasks||1;
+                                const colMap: Record<string,string> = { Urgent:"bg-red-500", High:"bg-red-400", Medium:"bg-amber-400", Low:"bg-gray-300" };
+                                return (
+                                  <div key={i} className="flex items-center gap-2 mb-1.5">
+                                    <span className={`text-[10px] font-bold w-16 ${priorityColor[p.priority]||"text-gray-600"}`}>{p.priority}</span>
+                                    <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                      <div className={`h-full ${colMap[p.priority]||"bg-gray-300"} rounded-full`} style={{width:`${Math.round((p.count/total)*100)}%`}}/>
+                                    </div>
+                                    <span className="text-[10px] font-bold text-gray-700 w-6 text-right">{p.count}</span>
+                                  </div>
+                                );
+                              })
+                          }
+                        </Card>
+                      </div>
+                    </div>
+
+                    {/* ── Employee-wise table ── */}
+                    <Card title="Employee-wise Task Allocation & Productivity" icon={UserCheck} iconColor="text-emerald-500" count={byEmp.length}>
+                      {byEmp.length===0
+                        ? <p className="text-[10px] text-gray-400 text-center py-6">No employee task data found. Ensure tasks are assigned in ERPNext.</p>
+                        : <MiniTable
+                            cols={["Employee","Department","Total Tasks","Completed","Open","Overdue","Completion Rate","Hours Logged"]}
+                            rows={byEmp.map((e:any)=>[
+                              <span className="font-semibold text-gray-800 max-w-[130px] truncate block">{e.name}</span>,
+                              <span className="text-gray-500 max-w-[100px] truncate block">{e.dept||"—"}</span>,
+                              <span className="font-bold text-indigo-700">{e.total}</span>,
+                              <span className="font-bold text-emerald-700">{e.completed}</span>,
+                              <span className="text-blue-700 font-bold">{e.open}</span>,
+                              <span className={`font-bold ${e.overdue>0?"text-red-600":"text-gray-400"}`}>{e.overdue||0}</span>,
+                              <div className="flex items-center gap-1.5">
+                                <div className="w-16 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                  <div className={`h-full rounded-full ${e.completion_rate>=75?"bg-emerald-400":e.completion_rate>=40?"bg-amber-400":"bg-red-400"}`} style={{width:`${e.completion_rate}%`}}/>
+                                </div>
+                                <span className={`text-[10px] font-black ${e.completion_rate>=75?"text-emerald-700":e.completion_rate>=40?"text-amber-700":"text-red-600"}`}>{e.completion_rate}%</span>
+                              </div>,
+                              <span className="text-purple-700 font-bold">{e.hours_logged}h</span>,
+                            ])}/>
+                      }
+                    </Card>
+
+                    {/* ── Overdue Tasks + Recent Tasks ── */}
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                      <Card title="Overdue Tasks" icon={AlertTriangle} iconColor="text-red-500" count={overdueTasks.length}
+                        right={overdueTasks.length>0?<Badge label="Needs Attention" variant="red"/>:undefined}>
+                        {overdueTasks.length===0
+                          ? <p className="text-[10px] text-gray-400 text-center py-4">No overdue tasks</p>
+                          : <MiniTable
+                              cols={["Task","Project","Priority","Due","Assigned To"]}
+                              rows={overdueTasks.map((t:any)=>[
+                                <span className="font-semibold text-gray-800 max-w-[150px] truncate block">{t.subject}</span>,
+                                <span className="text-gray-500 max-w-[100px] truncate block">{t.project||"—"}</span>,
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${priorityBg[t.priority]||"bg-gray-100 text-gray-600"}`}>{t.priority||"—"}</span>,
+                                <span className="text-red-600 font-bold">{fmtShort(t.due)}</span>,
+                                <span className="text-gray-500 max-w-[100px] truncate block">{(t.assignees||[]).join(", ")||"Unassigned"}</span>,
+                              ])}/>
+                        }
+                      </Card>
+
+                      <Card title="Recent Tasks" icon={ClipboardList} iconColor="text-indigo-400" count={recentTasks.length}>
+                        {recentTasks.length===0
+                          ? <p className="text-[10px] text-gray-400 text-center py-4">No tasks found</p>
+                          : <MiniTable
+                              cols={["Task","Project","Priority","Due","Status","Hrs"]}
+                              rows={recentTasks.slice(0,30).map((t:any)=>[
+                                <span className="font-semibold text-gray-800 max-w-[140px] truncate block">{t.subject}</span>,
+                                <span className="text-gray-500 max-w-[90px] truncate block">{t.project||"—"}</span>,
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${priorityBg[t.priority]||"bg-gray-100 text-gray-600"}`}>{t.priority||"—"}</span>,
+                                <span className={t.due&&new Date(t.due)<new Date()&&t.status!=="Completed"?"text-red-600 font-bold":""}>{fmtShort(t.due)}</span>,
+                                <Badge label={t.status} variant={sv(t.status)}/>,
+                                <span className="text-purple-600 font-bold">{t.hours>0?`${t.hours}h`:"—"}</span>,
+                              ])}/>
+                        }
+                      </Card>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </>
         )}

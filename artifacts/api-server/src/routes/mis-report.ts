@@ -45,6 +45,8 @@ router.get("/admin/mis-report", async (req, res) => {
     expenseClaims,
     salarySlips,
     leads,
+    tasks,
+    timesheetDetails,
   ] = await Promise.all([
     erpGet("Project", {
       fields: JSON.stringify(["name", "project_name", "status", "percent_complete", "expected_end_date", "estimated_costing", "actual_expense", "customer", "modified", "project_type"]),
@@ -116,6 +118,16 @@ router.get("/admin/mis-report", async (req, res) => {
       fields: JSON.stringify(["name", "lead_name", "company_name", "status", "source", "email_id", "mobile_no", "lead_owner", "creation", "modified", "expected_revenue", "notes"]),
       limit_page_length: "300",
       order_by: "modified desc",
+    }),
+    erpGet("Task", {
+      fields: JSON.stringify(["name", "subject", "status", "priority", "project", "exp_start_date", "exp_end_date", "completed_on", "description", "_assign", "is_group", "actual_time"]),
+      limit_page_length: "1000",
+      order_by: "modified desc",
+    }),
+    erpGet("Timesheet Detail", {
+      fields: JSON.stringify(["name", "parent", "employee", "employee_name", "from_time", "to_time", "hours", "project", "task", "description"]),
+      limit_page_length: "2000",
+      order_by: "from_time desc",
     }),
   ]);
 
@@ -197,6 +209,112 @@ router.get("/admin/mis-report", async (req, res) => {
   const convertedLeads = leads.filter((l: any) => l.status === "Converted");
   const leadsThisMonth = leads.filter((l: any) => (l.creation || "").substring(0, 10) >= monthStart);
   const totalLeadRevenue = leads.reduce((a: number, l: any) => a + (l.expected_revenue || 0), 0);
+
+  // ── Task Allocation & Productivity ────────────────────────────────────────
+  // Build employee → department lookup
+  const empDeptMap: Record<string, string> = {};
+  const empNameMap: Record<string, string> = {};
+  for (const e of employees) {
+    empDeptMap[e.name] = e.department || "Other";
+    empNameMap[e.name] = e.employee_name || e.name;
+    // also map by email / full name patterns
+    if (e.employee_name) empDeptMap[e.employee_name] = e.department || "Other";
+  }
+
+  // Parse _assign JSON (ERPNext stores it as a JSON array string of emails)
+  function parseAssign(raw: any): string[] {
+    if (!raw) return [];
+    try { return JSON.parse(raw); } catch { return []; }
+  }
+
+  // Per-employee task stats
+  const empTaskMap: Record<string, { name: string; dept: string; total: number; completed: number; overdue: number; open: number; hours: number; tasks: any[] }> = {};
+  const deptTaskMap: Record<string, { total: number; completed: number; overdue: number; open: number; hours: number }> = {};
+
+  for (const t of tasks) {
+    if (t.is_group) continue;
+    const assignees = parseAssign(t._assign);
+    const isCompleted = t.status === "Completed" || t.status === "Closed";
+    const isOverdue = !isCompleted && t.exp_end_date && new Date(t.exp_end_date) < new Date();
+    const isOpen = !isCompleted;
+    const hours = t.actual_time || 0;
+
+    const targets = assignees.length > 0 ? assignees : ["unassigned"];
+    for (const assignee of targets) {
+      if (!empTaskMap[assignee]) {
+        const dept = empDeptMap[assignee] || "Other";
+        empTaskMap[assignee] = { name: empNameMap[assignee] || assignee, dept, total: 0, completed: 0, overdue: 0, open: 0, hours: 0, tasks: [] };
+      }
+      empTaskMap[assignee].total++;
+      if (isCompleted) empTaskMap[assignee].completed++;
+      if (isOverdue) empTaskMap[assignee].overdue++;
+      if (isOpen) empTaskMap[assignee].open++;
+      empTaskMap[assignee].hours += hours;
+      empTaskMap[assignee].tasks.push({ id: t.name, subject: t.subject, status: t.status, priority: t.priority, project: t.project, due: t.exp_end_date, completed_on: t.completed_on });
+    }
+
+    // Dept rollup (from project or assignee dept)
+    const dept = assignees.length > 0 ? (empDeptMap[assignees[0]] || "Other") : "Other";
+    if (!deptTaskMap[dept]) deptTaskMap[dept] = { total: 0, completed: 0, overdue: 0, open: 0, hours: 0 };
+    deptTaskMap[dept].total++;
+    if (isCompleted) deptTaskMap[dept].completed++;
+    if (isOverdue) deptTaskMap[dept].overdue++;
+    if (isOpen) deptTaskMap[dept].open++;
+    deptTaskMap[dept].hours += hours;
+  }
+
+  // Per-employee timesheet hours
+  const empHoursMap: Record<string, number> = {};
+  for (const td of timesheetDetails) {
+    const emp = td.employee_name || td.employee || "";
+    if (!emp) continue;
+    empHoursMap[emp] = (empHoursMap[emp] || 0) + (td.hours || 0);
+  }
+  // Per-dept timesheet hours
+  const deptHoursMap: Record<string, number> = {};
+  for (const td of timesheetDetails) {
+    const emp = td.employee_name || td.employee || "";
+    const dept = empDeptMap[emp] || empDeptMap[td.employee] || "Other";
+    deptHoursMap[dept] = (deptHoursMap[dept] || 0) + (td.hours || 0);
+  }
+
+  const employeeProductivity = Object.entries(empTaskMap)
+    .filter(([k]) => k !== "unassigned")
+    .map(([assignee, s]) => ({
+      assignee,
+      name: s.name,
+      dept: s.dept,
+      total: s.total,
+      completed: s.completed,
+      overdue: s.overdue,
+      open: s.open,
+      completion_rate: s.total > 0 ? Math.round((s.completed / s.total) * 100) : 0,
+      hours_logged: Math.round((empHoursMap[s.name] || empHoursMap[assignee] || 0) * 10) / 10,
+      tasks: s.tasks.slice(0, 20),
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  const deptProductivity = Object.entries(deptTaskMap).map(([dept, s]) => ({
+    dept,
+    employees: employees.filter((e: any) => e.department === dept).length,
+    total: s.total,
+    completed: s.completed,
+    overdue: s.overdue,
+    open: s.open,
+    completion_rate: s.total > 0 ? Math.round((s.completed / s.total) * 100) : 0,
+    hours_logged: Math.round((deptHoursMap[dept] || 0) * 10) / 10,
+  })).sort((a, b) => b.total - a.total);
+
+  // Task status breakdown
+  const taskStatusMap: Record<string, number> = {};
+  for (const t of tasks) { if (!t.is_group) taskStatusMap[t.status || "Unknown"] = (taskStatusMap[t.status || "Unknown"] || 0) + 1; }
+  const taskPriorityMap: Record<string, number> = {};
+  for (const t of tasks) { if (!t.is_group) taskPriorityMap[t.priority || "Medium"] = (taskPriorityMap[t.priority || "Medium"] || 0) + 1; }
+
+  const allTasks = tasks.filter((t: any) => !t.is_group);
+  const completedTasks = allTasks.filter((t: any) => t.status === "Completed");
+  const overdueTasks = allTasks.filter((t: any) => !["Completed","Closed"].includes(t.status) && t.exp_end_date && new Date(t.exp_end_date) < new Date());
+  const openTasks = allTasks.filter((t: any) => !["Completed","Closed","Cancelled"].includes(t.status));
 
   // ── All Sales Invoices ────────────────────────────────────────────────────
   const paidSalesInvoices = salesInvoices.filter((i: any) => i.status === "Paid");
@@ -524,6 +642,41 @@ router.get("/admin/mis-report", async (req, res) => {
         mode: p.mode_of_payment || "",
         ref: p.reference_no || "",
         project: p.project || "",
+      })),
+    },
+
+    productivity: {
+      summary: {
+        total_tasks: allTasks.length,
+        completed: completedTasks.length,
+        overdue: overdueTasks.length,
+        open: openTasks.length,
+        completion_rate: allTasks.length > 0 ? Math.round((completedTasks.length / allTasks.length) * 100) : 0,
+        total_hours_logged: Math.round(timesheetDetails.reduce((a: number, t: any) => a + (t.hours || 0), 0) * 10) / 10,
+      },
+      status_breakdown: Object.entries(taskStatusMap).map(([status, count]) => ({ status, count })).sort((a, b) => (b.count as number) - (a.count as number)),
+      priority_breakdown: Object.entries(taskPriorityMap).map(([priority, count]) => ({ priority, count })).sort((a, b) => (b.count as number) - (a.count as number)),
+      by_department: deptProductivity,
+      by_employee: employeeProductivity,
+      overdue_tasks: overdueTasks.slice(0, 30).map((t: any) => ({
+        id: t.name,
+        subject: t.subject,
+        status: t.status,
+        priority: t.priority,
+        project: t.project || "",
+        due: t.exp_end_date,
+        assignees: parseAssign(t._assign),
+      })),
+      recent_tasks: allTasks.slice(0, 50).map((t: any) => ({
+        id: t.name,
+        subject: t.subject,
+        status: t.status,
+        priority: t.priority,
+        project: t.project || "",
+        due: t.exp_end_date,
+        completed_on: t.completed_on,
+        assignees: parseAssign(t._assign),
+        hours: t.actual_time || 0,
       })),
     },
   });
