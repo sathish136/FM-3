@@ -880,134 +880,206 @@ export default function MisReport() {
                 </div>
               )}
 
-              {/* ══ SALES & FINANCE ══ */}
-              {tab === "Sales & Finance" && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
-                  {/* Receivables */}
-                  <Card title="Receivables" icon={Receipt} iconColor="text-sky-500" count={filtRec.length}
-                    right={<span className="text-xs font-black text-sky-700">{fmtCr(filtRec.reduce((a: number, i: any) => a + (i.outstanding || 0), 0))}</span>}>
-                    <AgingBar items={filtRec} />
-                    <div className="mt-3">
-                      <PartyRows items={filtRec} pk="customer" colorText="text-sky-700" />
+              {/* ══ SALES INVOICE ══ */}
+              {tab === "Sales Invoice" && (
+                <div className="space-y-3">
+                  {/* KPI row */}
+                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                    {[
+                      { label: "Total Invoices",    value: data.sales.invoices.total,           color: "text-gray-800",    border: "border-gray-200",    icon: Receipt },
+                      { label: "Paid",              value: data.sales.invoices.paid,            color: "text-emerald-700", border: "border-emerald-200",  icon: TrendingUp },
+                      { label: "Unpaid",            value: data.sales.invoices.unpaid,          color: "text-sky-700",     border: "border-sky-200",      icon: Wallet },
+                      { label: "Overdue",           value: filtSI.filter((i:any)=>i.overdue).length, color: "text-red-700", border: "border-red-200",    icon: AlertTriangle },
+                      { label: "This Month",        value: data.sales.invoices.this_month,      color: "text-indigo-700",  border: "border-indigo-200",   icon: Calendar },
+                    ].map((k,i)=>(
+                      <div key={i} className={`rounded-2xl bg-white border ${k.border} p-4 shadow-sm flex items-center gap-3`}>
+                        <k.icon className={`w-7 h-7 ${k.color} shrink-0`}/>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{k.label}</p>
+                          <p className={`text-2xl font-black leading-tight ${k.color}`}>{k.value}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Amount KPI row */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    {[
+                      { label: "Total Invoice Value",  value: fmtCr(data.sales.invoices.total_value),                                                                                   color: "text-gray-800",    border: "border-gray-200"    },
+                      { label: "Outstanding Amount",   value: fmtCr(filtSI.reduce((a:number,i:any)=>a+(i.outstanding||0),0)),                                                           color: "text-sky-700",     border: "border-sky-200"     },
+                      { label: "Overdue Amount",       value: fmtCr(filtSI.filter((i:any)=>i.overdue).reduce((a:number,i:any)=>a+(i.outstanding||0),0)),                                color: "text-red-700",     border: "border-red-200"     },
+                      { label: "This Month Value",     value: fmtCr(data.sales.invoices.this_month_value),                                                                              color: "text-indigo-700",  border: "border-indigo-200"  },
+                    ].map((k,i)=>(
+                      <div key={i} className={`rounded-2xl bg-white border ${k.border} p-4 shadow-sm`}>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">{k.label}</p>
+                        <p className={`text-xl font-black ${k.color}`}>{k.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Full invoice table + Sales Orders */}
+                  <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+                    <div className="xl:col-span-2">
+                      <Card title="All Sales Invoices" icon={Receipt} iconColor="text-sky-500" count={filtSI.length}>
+                        <MiniTable
+                          cols={["Invoice", "Customer", "Amount", "Outstanding", "Posted", "Due Date", "Status"]}
+                          rows={filtSI.map((i:any)=>[
+                            <span className="font-mono text-[9px] text-gray-400">{i.id}</span>,
+                            <span className="font-semibold text-gray-800 max-w-[130px] truncate block">{i.customer}</span>,
+                            <span className="font-bold">{fmtCr(i.amount)}</span>,
+                            <span className={`font-bold ${i.outstanding>0?(i.overdue?"text-red-600":"text-sky-700"):"text-emerald-600"}`}>{i.outstanding>0?fmtCr(i.outstanding):"Paid"}</span>,
+                            <span>{fmtShort(i.posted)}</span>,
+                            <span className={i.overdue?"text-red-600 font-bold":""}>{fmtShort(i.due)}</span>,
+                            <Badge label={i.status} variant={sv(i.status)}/>,
+                          ])}/>
+                      </Card>
                     </div>
-                  </Card>
+                    <div className="space-y-3">
+                      <Card title="Sales Orders" icon={Target} iconColor="text-violet-500" count={filtSO.length}
+                        right={<span className="text-xs font-black text-violet-700">{fmtCr(filtSO.reduce((a:number,s:any)=>a+(s.amount||0),0))}</span>}>
+                        <div className="grid grid-cols-3 gap-2 mb-3">
+                          <Stat label="Active"    value={filtSO.filter((s:any)=>["To Deliver and Bill","To Bill","To Deliver","Submitted"].includes(s.status)).length} color="text-violet-700"/>
+                          <Stat label="This Month" value={filtSO.filter((s:any)=>s.date>=data.period.month_start).length}/>
+                          <Stat label="Delivered"  value={filtSO.filter((s:any)=>s.delivered_pct===100).length} color="text-emerald-700"/>
+                        </div>
+                        <MiniTable
+                          cols={["ID","Customer","Amount","Del%","Status"]}
+                          rows={filtSO.slice(0,20).map((s:any)=>[
+                            <span className="font-mono text-[9px] text-gray-400">{s.id}</span>,
+                            <span className="font-semibold text-gray-800 max-w-[100px] truncate block">{s.customer}</span>,
+                            <span className="font-bold">{fmtCr(s.amount)}</span>,
+                            <Pbar val={s.delivered_pct} color="bg-emerald-400"/>,
+                            <Badge label={s.status} variant={sv(s.status)}/>,
+                          ])}/>
+                      </Card>
+                      <Card title="Receivables (Outstanding)" icon={TrendingUp} iconColor="text-sky-500" count={filtRec.length}
+                        right={<span className="text-xs font-black text-sky-700">{fmtCr(filtRec.reduce((a:number,i:any)=>a+(i.outstanding||0),0))}</span>}>
+                        <AgingBar items={filtRec}/>
+                        <div className="mt-2">
+                          <PartyRows items={filtRec} pk="customer" colorText="text-sky-700"/>
+                        </div>
+                      </Card>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-                  {/* Payables */}
-                  <Card title="Payables" icon={CreditCard} iconColor="text-orange-500" count={filtPay.length}
-                    right={<span className="text-xs font-black text-orange-700">{fmtCr(filtPay.reduce((a: number, i: any) => a + (i.outstanding || 0), 0))}</span>}>
-                    <AgingBar items={filtPay} />
-                    <div className="mt-3">
-                      <PartyRows items={filtPay} pk="supplier" colorText="text-orange-700" />
-                    </div>
-                  </Card>
-
-                  {/* Payments */}
-                  <Card title="Payment Entries" icon={Wallet} iconColor="text-green-600" count={filtPmt.length}>
-                    <div className="grid grid-cols-2 gap-2 mb-3">
-                      <Stat label="Total Received" value={fmtCr(filtPmt.filter((p: any) => p.type === "Receive").reduce((a: number, p: any) => a + (p.amount || 0), 0))} color="text-emerald-700" small />
-                      <Stat label="Total Paid" value={fmtCr(filtPmt.filter((p: any) => p.type === "Pay").reduce((a: number, p: any) => a + (p.amount || 0), 0))} color="text-orange-700" small />
-                    </div>
-                    <MiniTable
-                      cols={["Type", "Party", "Amount", "Mode", "Date"]}
-                      rows={filtPmt.slice(0, 30).map((p: any) => [
-                        <Badge label={p.type} variant={p.type === "Receive" ? "green" : p.type === "Pay" ? "red" : "blue"} />,
-                        <span className="max-w-[100px] truncate block font-semibold text-gray-700">{p.party || "—"}</span>,
-                        <span className={`font-bold ${p.type === "Receive" ? "text-emerald-700" : "text-orange-700"}`}>{fmtCr(p.amount)}</span>,
-                        <span className="text-gray-500">{p.mode || "—"}</span>,
-                        <span>{fmtShort(p.date)}</span>,
-                      ])} />
-                  </Card>
-
-                  {/* Sales Orders */}
-                  <Card title="Sales Orders" icon={Target} iconColor="text-violet-500" count={filtSO.length}
-                    right={<span className="text-xs font-black text-violet-700">{fmtCr(filtSO.reduce((a: number, s: any) => a + (s.amount || 0), 0))}</span>}
-                    span={2}>
-                    <div className="grid grid-cols-3 gap-2 mb-3">
-                      <Stat label="Active" value={filtSO.filter((s: any) => ["To Deliver and Bill", "To Bill", "To Deliver", "Submitted"].includes(s.status)).length} color="text-violet-700" />
-                      <Stat label="This Month" value={filtSO.filter((s: any) => s.date >= data.period.month_start).length} sub={fmtCr(filtSO.filter((s: any) => s.date >= data.period.month_start).reduce((a: number, s: any) => a + (s.amount || 0), 0))} />
-                      <Stat label="Fully Delivered" value={filtSO.filter((s: any) => s.delivered_pct === 100).length} color="text-emerald-700" />
-                    </div>
-                    <MiniTable
-                      cols={["ID", "Customer", "Amount", "Delivered", "Billed", "Delivery", "Status"]}
-                      rows={filtSO.slice(0, 30).map((s: any) => [
-                        <span className="font-mono text-[9px] text-gray-500">{s.id}</span>,
-                        <span className="font-semibold text-gray-800 max-w-[120px] truncate block">{s.customer}</span>,
-                        <span className="font-bold">{fmtCr(s.amount)}</span>,
-                        <Pbar val={s.delivered_pct} color="bg-emerald-400" />,
-                        <Pbar val={s.billed_pct} color="bg-blue-400" />,
-                        <span>{fmtShort(s.delivery)}</span>,
-                        <Badge label={s.status} variant={sv(s.status)} />,
-                      ])} />
-                  </Card>
-
-                  {/* Quotations / Proposals */}
-                  <Card title="Proposals / Quotations" icon={FileText} iconColor="text-indigo-500" count={data.sales.quotations.list.length}
-                    right={<span className="text-xs font-black text-indigo-700">{fmtCr(data.sales.quotations.total_value)}</span>}>
-                    <div className="grid grid-cols-3 gap-2 mb-3">
-                      <Stat label="Open" value={data.sales.quotations.open} color="text-indigo-700" />
-                      <Stat label="Total" value={data.sales.quotations.list.length} />
-                      <Stat label="Total Value" value={fmtCr(data.sales.quotations.total_value)} small color="text-indigo-700" />
-                    </div>
-                    <MiniTable
-                      cols={["ID", "Party", "Amount", "Date", "Valid Till", "Status"]}
-                      rows={data.sales.quotations.list.slice(0, 30).map((q: any) => [
-                        <span className="font-mono text-[9px] text-gray-400">{q.id}</span>,
-                        <span className="font-semibold text-gray-800 max-w-[120px] truncate block">{q.party || "—"}</span>,
-                        <span className="font-bold">{fmtCr(q.amount)}</span>,
-                        <span>{fmtShort(q.date)}</span>,
-                        <span className={q.valid_till && new Date(q.valid_till) < new Date() ? "text-red-600 font-bold" : ""}>{fmtShort(q.valid_till)}</span>,
-                        <Badge label={q.status} variant={sv(q.status)} />,
-                      ])} />
-                  </Card>
-
-                  {/* Sales Invoices */}
-                  <Card title="Sales Invoices" icon={Receipt} iconColor="text-sky-500" count={filtSI.length}
-                    right={<span className="text-xs font-black text-sky-700">{fmtCr(data.sales.invoices.total_value)}</span>}
-                    span={2}>
-                    <div className="grid grid-cols-4 gap-2 mb-3">
-                      <Stat label="Total" value={data.sales.invoices.total} />
-                      <Stat label="Paid" value={data.sales.invoices.paid} color="text-emerald-700" />
-                      <Stat label="Unpaid / Overdue" value={data.sales.invoices.unpaid} alert={data.sales.invoices.unpaid > 0} />
-                      <Stat label="This Month" value={data.sales.invoices.this_month} sub={fmtCr(data.sales.invoices.this_month_value)} />
-                    </div>
-                    <MiniTable
-                      cols={["Invoice", "Customer", "Amount", "Outstanding", "Posted", "Due", "Status"]}
-                      rows={filtSI.slice(0, 40).map((i: any) => [
-                        <span className="font-mono text-[9px] text-gray-400">{i.id}</span>,
-                        <span className="font-semibold text-gray-800 max-w-[120px] truncate block">{i.customer}</span>,
-                        <span className="font-bold">{fmtCr(i.amount)}</span>,
-                        <span className={`font-bold ${i.outstanding > 0 ? (i.overdue ? "text-red-600" : "text-sky-700") : "text-emerald-600"}`}>{i.outstanding > 0 ? fmtCr(i.outstanding) : "Paid"}</span>,
-                        <span>{fmtShort(i.posted)}</span>,
-                        <span className={i.overdue ? "text-red-600 font-bold" : ""}>{fmtShort(i.due)}</span>,
-                        <Badge label={i.status} variant={sv(i.status)} />,
-                      ])} />
-                  </Card>
-
-                  {/* Leads */}
-                  <Card title="Leads / Prospects" icon={FileText} iconColor="text-violet-500" count={filtLeads.length}
-                    right={<span className="text-xs font-black text-violet-700">{fmtCr(data.leads.total_expected_revenue)}</span>}
-                    span={2}>
-                    <div className="grid grid-cols-4 gap-2 mb-3">
-                      <Stat label="Total Leads" value={data.leads.total} />
-                      <Stat label="Open" value={data.leads.open} color="text-violet-700" />
-                      <Stat label="Converted" value={data.leads.converted} color="text-emerald-700" />
-                      <Stat label="This Month" value={data.leads.this_month} />
-                    </div>
-                    {filtLeads.length === 0
-                      ? <p className="text-[10px] text-gray-400 text-center py-4">No leads found</p>
+              {/* ══ PROPOSALS ══ */}
+              {tab === "Proposals" && (
+                <div className="space-y-3">
+                  {/* KPI row */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    {[
+                      { label: "Total Quotations", value: data.sales.quotations.list.length,                                                                       color: "text-indigo-700", border: "border-indigo-200", icon: FileText },
+                      { label: "Open",             value: data.sales.quotations.open,                                                                              color: "text-amber-700",  border: "border-amber-200",  icon: AlertTriangle },
+                      { label: "Total Value",      value: fmtCr(data.sales.quotations.total_value),                                                               color: "text-indigo-700", border: "border-indigo-200", icon: IndianRupee },
+                      { label: "Expired",          value: data.sales.quotations.list.filter((q:any)=>q.valid_till&&new Date(q.valid_till)<new Date()).length,       color: "text-red-700",    border: "border-red-200",    icon: Calendar },
+                    ].map((k,i)=>(
+                      <div key={i} className={`rounded-2xl bg-white border ${k.border} p-4 shadow-sm flex items-center gap-3`}>
+                        <k.icon className={`w-7 h-7 ${k.color} shrink-0`}/>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{k.label}</p>
+                          <p className={`text-2xl font-black leading-tight ${k.color}`}>{k.value}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Full table */}
+                  <Card title="All Proposals / Quotations" icon={FileText} iconColor="text-indigo-500" count={data.sales.quotations.list.length}
+                    right={<span className="text-sm font-black text-indigo-700">{fmtCr(data.sales.quotations.total_value)}</span>}>
+                    {data.sales.quotations.list.length === 0
+                      ? <p className="text-[10px] text-gray-400 text-center py-8">No quotations found</p>
                       : <MiniTable
-                          cols={["Lead", "Company", "Status", "Source", "Owner", "Revenue", "Date"]}
-                          rows={filtLeads.slice(0, 30).map((l: any) => [
-                            <span className="font-semibold text-gray-800 max-w-[120px] truncate block">{l.name}</span>,
-                            <span className="text-gray-500 max-w-[100px] truncate block">{l.company || "—"}</span>,
-                            <Badge label={l.status} variant={l.status === "Converted" ? "green" : l.status === "Do Not Contact" ? "red" : l.status === "Interested" ? "blue" : "amber"} />,
-                            <span className="text-gray-500">{l.source || "—"}</span>,
-                            <span className="text-gray-500 max-w-[80px] truncate block">{l.owner || "—"}</span>,
-                            l.revenue > 0 ? <span className="font-bold text-violet-700">{fmtCr(l.revenue)}</span> : <span className="text-gray-400">—</span>,
-                            <span>{fmtShort(l.modified)}</span>,
-                          ])} />
+                          cols={["Quotation ID","Party / Customer","Amount","Date","Valid Till","Status"]}
+                          rows={data.sales.quotations.list.map((q:any)=>[
+                            <span className="font-mono text-[9px] text-indigo-400">{q.id}</span>,
+                            <span className="font-semibold text-gray-800 max-w-[160px] truncate block">{q.party||"—"}</span>,
+                            <span className="font-bold text-indigo-700">{fmtCr(q.amount)}</span>,
+                            <span>{fmtDate(q.date)}</span>,
+                            <span className={q.valid_till&&new Date(q.valid_till)<new Date()?"text-red-600 font-bold":""}>{fmtDate(q.valid_till)}</span>,
+                            <Badge label={q.status} variant={sv(q.status)}/>,
+                          ])}/>
                     }
                   </Card>
+                </div>
+              )}
+
+              {/* ══ LEADS ══ */}
+              {tab === "Leads" && (
+                <div className="space-y-3">
+                  {/* KPI row */}
+                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                    {[
+                      { label: "Total Leads",      value: data.leads.total,                                                         color: "text-violet-700", border: "border-violet-200", icon: Target },
+                      { label: "Open",             value: data.leads.open,                                                          color: "text-amber-700",  border: "border-amber-200",  icon: AlertTriangle },
+                      { label: "Converted",        value: data.leads.converted,                                                     color: "text-emerald-700",border: "border-emerald-200",icon: UserCheck },
+                      { label: "This Month",       value: data.leads.this_month,                                                    color: "text-indigo-700", border: "border-indigo-200", icon: Calendar },
+                      { label: "Expected Revenue", value: fmtCr(data.leads.total_expected_revenue),                                 color: "text-violet-700", border: "border-violet-200", icon: IndianRupee },
+                    ].map((k,i)=>(
+                      <div key={i} className={`rounded-2xl bg-white border ${k.border} p-4 shadow-sm flex items-center gap-3`}>
+                        <k.icon className={`w-7 h-7 ${k.color} shrink-0`}/>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{k.label}</p>
+                          <p className={`text-2xl font-black leading-tight ${k.color}`}>{k.value}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Full leads table + source breakdown */}
+                  <div className="grid grid-cols-1 xl:grid-cols-4 gap-3">
+                    <div className="xl:col-span-3">
+                      <Card title="All Leads / Prospects" icon={Target} iconColor="text-violet-500" count={filtLeads.length}>
+                        {filtLeads.length===0
+                          ? <p className="text-[10px] text-gray-400 text-center py-8">No leads found</p>
+                          : <MiniTable
+                              cols={["Lead Name","Company","Status","Source","Owner","Exp. Revenue","Last Updated"]}
+                              rows={filtLeads.map((l:any)=>[
+                                <span className="font-semibold text-gray-800 max-w-[140px] truncate block">{l.name}</span>,
+                                <span className="text-gray-500 max-w-[110px] truncate block">{l.company||"—"}</span>,
+                                <Badge label={l.status} variant={l.status==="Converted"?"green":l.status==="Do Not Contact"?"red":l.status==="Interested"?"blue":"amber"}/>,
+                                <span className="text-gray-500">{l.source||"—"}</span>,
+                                <span className="text-gray-500 max-w-[90px] truncate block">{l.owner||"—"}</span>,
+                                l.revenue>0?<span className="font-bold text-violet-700">{fmtCr(l.revenue)}</span>:<span className="text-gray-400">—</span>,
+                                <span>{fmtShort(l.modified)}</span>,
+                              ])}/>
+                        }
+                      </Card>
+                    </div>
+                    <div className="space-y-3">
+                      {/* Lead source breakdown */}
+                      <Card title="By Lead Source" icon={BarChart3} iconColor="text-violet-400">
+                        {(() => {
+                          const src: Record<string,number> = {};
+                          filtLeads.forEach((l:any)=>{ const s=l.source||"Unknown"; src[s]=(src[s]||0)+1; });
+                          const total=filtLeads.length||1;
+                          return Object.entries(src).sort((a,b)=>b[1]-a[1]).map(([s,c],i)=>(
+                            <div key={i} className="flex items-center gap-2 mb-1.5">
+                              <span className="text-[10px] text-gray-600 w-28 truncate">{s}</span>
+                              <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                <div className="h-full bg-violet-400 rounded-full" style={{width:`${Math.round((c/total)*100)}%`}}/>
+                              </div>
+                              <span className="text-[10px] font-bold text-gray-700 w-5 text-right">{c}</span>
+                            </div>
+                          ));
+                        })()}
+                      </Card>
+                      {/* Lead status breakdown */}
+                      <Card title="By Status" icon={ClipboardList} iconColor="text-violet-400">
+                        {(() => {
+                          const st: Record<string,number> = {};
+                          filtLeads.forEach((l:any)=>{ const s=l.status||"Unknown"; st[s]=(st[s]||0)+1; });
+                          const total=filtLeads.length||1;
+                          return Object.entries(st).sort((a,b)=>b[1]-a[1]).map(([s,c],i)=>(
+                            <div key={i} className="flex items-center gap-2 mb-1.5">
+                              <span className="text-[10px] text-gray-600 w-28 truncate">{s}</span>
+                              <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                <div className={`h-full rounded-full ${s==="Converted"?"bg-emerald-400":s==="Do Not Contact"?"bg-red-400":s==="Interested"?"bg-blue-400":"bg-amber-400"}`} style={{width:`${Math.round((c/total)*100)}%`}}/>
+                              </div>
+                              <span className="text-[10px] font-bold text-gray-700 w-5 text-right">{c}</span>
+                            </div>
+                          ));
+                        })()}
+                      </Card>
+                    </div>
+                  </div>
                 </div>
               )}
 
