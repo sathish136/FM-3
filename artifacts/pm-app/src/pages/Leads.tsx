@@ -15,20 +15,20 @@ import { cn } from "@/lib/utils";
 import {
   Plus, Trash2, Edit2, Mail, Phone, Building, Search, X,
   Users, TrendingUp, CheckCircle2, XCircle, AlertCircle,
-  ChevronRight, Filter, MoreHorizontal, User, StickyNote,
+  ChevronRight, User, StickyNote,
 } from "lucide-react";
 
 // ── Types & constants ────────────────────────────────────────────────────────
 
 const STATUS_META: Record<string, { label: string; bg: string; text: string; border: string; dot: string; icon: any }> = {
   new:       { label: "New",       bg: "bg-blue-50",    text: "text-blue-700",    border: "border-blue-200",    dot: "bg-blue-500",    icon: AlertCircle },
-  qualified: { label: "Qualified", bg: "bg-violet-50",  text: "text-violet-700",  border: "border-violet-200",  dot: "bg-violet-500",  icon: TrendingUp },
+  qualified: { label: "Qualified", bg: "bg-primary/10", text: "text-primary",     border: "border-primary/20",  dot: "bg-primary",     icon: TrendingUp },
   converted: { label: "Converted", bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", dot: "bg-emerald-500", icon: CheckCircle2 },
   lost:      { label: "Lost",      bg: "bg-red-50",     text: "text-red-700",     border: "border-red-200",     dot: "bg-red-500",     icon: XCircle },
 };
 
 const AVATAR_COLORS = [
-  "bg-violet-500","bg-indigo-500","bg-blue-500","bg-cyan-500",
+  "bg-primary","bg-indigo-500","bg-blue-500","bg-cyan-500",
   "bg-teal-500","bg-emerald-500","bg-amber-500","bg-orange-500","bg-rose-500",
 ];
 function avatarColor(name: string) { return AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length]; }
@@ -50,13 +50,13 @@ function StatusBadge({ status }: { status: string }) {
 
 function KpiCard({ label, value, color, icon: Icon }: { label: string; value: number; color: string; icon: any }) {
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4">
+    <div className="bg-card rounded-2xl border border-border shadow-sm p-5 flex items-center gap-4">
       <div className={cn("w-11 h-11 rounded-xl flex items-center justify-center shrink-0", color)}>
         <Icon className="w-5 h-5 text-white" />
       </div>
       <div>
-        <p className="text-2xl font-bold text-gray-900">{value}</p>
-        <p className="text-xs text-gray-500 font-medium mt-0.5">{label}</p>
+        <p className="text-2xl font-bold text-card-foreground">{value}</p>
+        <p className="text-xs text-muted-foreground font-medium mt-0.5">{label}</p>
       </div>
     </div>
   );
@@ -74,52 +74,52 @@ function LeadForm({ onSubmit, onCancel, isPending, defaultValues }: {
     <form onSubmit={onSubmit} className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2">
-          <label className="block text-sm font-semibold text-gray-700 mb-1.5">Full Name *</label>
+          <label className="block text-sm font-semibold text-foreground mb-1.5">Full Name *</label>
           <input name="name" defaultValue={defaultValues?.name} required
-            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400 bg-white"
+            className="w-full px-3 py-2.5 rounded-xl border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-background text-foreground"
             placeholder="John Smith" />
         </div>
         <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1.5">Email *</label>
+          <label className="block text-sm font-semibold text-foreground mb-1.5">Email *</label>
           <input name="email" type="email" defaultValue={defaultValues?.email} required
-            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400 bg-white"
+            className="w-full px-3 py-2.5 rounded-xl border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-background text-foreground"
             placeholder="john@company.com" />
         </div>
         <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1.5">Phone</label>
+          <label className="block text-sm font-semibold text-foreground mb-1.5">Phone</label>
           <input name="phone" defaultValue={defaultValues?.phone ?? ""}
-            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400 bg-white"
+            className="w-full px-3 py-2.5 rounded-xl border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-background text-foreground"
             placeholder="+91 98765 43210" />
         </div>
         <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1.5">Company</label>
+          <label className="block text-sm font-semibold text-foreground mb-1.5">Company</label>
           <input name="company" defaultValue={defaultValues?.company ?? ""}
-            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400 bg-white"
+            className="w-full px-3 py-2.5 rounded-xl border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-background text-foreground"
             placeholder="Acme Corp" />
         </div>
         <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1.5">Status</label>
+          <label className="block text-sm font-semibold text-foreground mb-1.5">Status</label>
           <select name="status" defaultValue={defaultValues?.status ?? "new"}
-            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400 bg-white">
+            className="w-full px-3 py-2.5 rounded-xl border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-background text-foreground">
             {Object.values(LeadStatus).map(s => (
               <option key={s} value={s}>{STATUS_META[s]?.label ?? s}</option>
             ))}
           </select>
         </div>
         <div className="col-span-2">
-          <label className="block text-sm font-semibold text-gray-700 mb-1.5">Notes</label>
+          <label className="block text-sm font-semibold text-foreground mb-1.5">Notes</label>
           <textarea name="notes" defaultValue={defaultValues?.notes ?? ""} rows={3}
-            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400 bg-white resize-none"
+            className="w-full px-3 py-2.5 rounded-xl border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-background text-foreground resize-none"
             placeholder="Any additional info…" />
         </div>
       </div>
       <div className="flex justify-end gap-3 pt-2">
         <button type="button" onClick={onCancel}
-          className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+          className="px-4 py-2.5 rounded-xl border border-border text-sm font-semibold text-muted-foreground hover:bg-muted transition-colors">
           Cancel
         </button>
         <button type="submit" disabled={isPending}
-          className="px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold transition-colors disabled:opacity-50">
+          className="px-5 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold transition-colors disabled:opacity-50">
           {isPending ? "Saving…" : defaultValues ? "Save Changes" : "Add Lead"}
         </button>
       </div>
@@ -133,10 +133,10 @@ function LeadPanel({ lead, onEdit, onClose }: { lead: Lead; onEdit: () => void; 
   const m = STATUS_META[lead.status] ?? STATUS_META.new;
   const Icon = m.icon;
   return (
-    <div className="h-full flex flex-col bg-white border-l border-gray-100">
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-        <h3 className="font-bold text-gray-900 text-sm">Lead Details</h3>
-        <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+    <div className="h-full flex flex-col bg-card border-l border-border">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+        <h3 className="font-bold text-card-foreground text-sm">Lead Details</h3>
+        <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
           <X className="w-4 h-4" />
         </button>
       </div>
@@ -146,8 +146,8 @@ function LeadPanel({ lead, onEdit, onClose }: { lead: Lead; onEdit: () => void; 
             {initials(lead.name)}
           </div>
           <div>
-            <h2 className="text-lg font-bold text-gray-900 leading-tight">{lead.name}</h2>
-            {lead.company && <p className="text-sm text-gray-500 mt-0.5">{lead.company}</p>}
+            <h2 className="text-lg font-bold text-card-foreground leading-tight">{lead.name}</h2>
+            {lead.company && <p className="text-sm text-muted-foreground mt-0.5">{lead.company}</p>}
             <div className="mt-2">
               <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border", m.bg, m.text, m.border)}>
                 <Icon className="w-3 h-3" /> {m.label}
@@ -157,20 +157,20 @@ function LeadPanel({ lead, onEdit, onClose }: { lead: Lead; onEdit: () => void; 
         </div>
 
         <div className="space-y-3">
-          <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50">
-            <Mail className="w-4 h-4 text-gray-400 shrink-0" />
-            <span className="text-sm text-gray-700 truncate">{lead.email}</span>
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-muted">
+            <Mail className="w-4 h-4 text-muted-foreground shrink-0" />
+            <span className="text-sm text-foreground truncate">{lead.email}</span>
           </div>
           {lead.phone && (
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50">
-              <Phone className="w-4 h-4 text-gray-400 shrink-0" />
-              <span className="text-sm text-gray-700">{lead.phone}</span>
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-muted">
+              <Phone className="w-4 h-4 text-muted-foreground shrink-0" />
+              <span className="text-sm text-foreground">{lead.phone}</span>
             </div>
           )}
           {lead.company && (
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50">
-              <Building className="w-4 h-4 text-gray-400 shrink-0" />
-              <span className="text-sm text-gray-700">{lead.company}</span>
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-muted">
+              <Building className="w-4 h-4 text-muted-foreground shrink-0" />
+              <span className="text-sm text-foreground">{lead.company}</span>
             </div>
           )}
         </div>
@@ -178,20 +178,20 @@ function LeadPanel({ lead, onEdit, onClose }: { lead: Lead; onEdit: () => void; 
         {lead.notes && (
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <StickyNote className="w-3.5 h-3.5 text-gray-400" />
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Notes</span>
+              <StickyNote className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Notes</span>
             </div>
-            <p className="text-sm text-gray-600 leading-relaxed bg-amber-50 border border-amber-100 rounded-xl p-3">{lead.notes}</p>
+            <p className="text-sm text-foreground leading-relaxed bg-amber-50 border border-amber-100 rounded-xl p-3">{lead.notes}</p>
           </div>
         )}
 
-        <div className="text-xs text-gray-400">
+        <div className="text-xs text-muted-foreground">
           Added {formatDate(lead.createdAt)}
         </div>
       </div>
-      <div className="px-6 py-4 border-t border-gray-100">
+      <div className="px-6 py-4 border-t border-border">
         <button onClick={onEdit}
-          className="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2">
+          className="w-full py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold transition-colors flex items-center justify-center gap-2">
           <Edit2 className="w-4 h-4" /> Edit Lead
         </button>
       </div>
@@ -206,10 +206,10 @@ function Modal({ open, onClose, title, children }: { open: boolean; onClose: () 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 z-10">
+      <div className="relative bg-card rounded-2xl shadow-2xl w-full max-w-md p-6 z-10 border border-border">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-bold text-gray-900">{title}</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
+          <h2 className="text-lg font-bold text-card-foreground">{title}</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -308,42 +308,42 @@ export default function Leads() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6 shrink-0">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Lead Pipeline</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Manage and track your sales leads</p>
+            <h1 className="text-2xl font-bold text-foreground">Lead Pipeline</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">Manage and track your sales leads</p>
           </div>
           <button onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm shadow-violet-200">
+            className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-sm font-semibold transition-colors shadow-sm">
             <Plus className="w-4 h-4" /> Add Lead
           </button>
         </div>
 
         {/* KPI cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6 shrink-0">
-          <KpiCard label="Total Leads" value={counts.all ?? 0} color="bg-violet-500" icon={Users} />
+          <KpiCard label="Total Leads" value={counts.all ?? 0} color="bg-primary" icon={Users} />
           <KpiCard label="New" value={counts.new ?? 0} color="bg-blue-500" icon={AlertCircle} />
           <KpiCard label="Qualified" value={counts.qualified ?? 0} color="bg-amber-500" icon={TrendingUp} />
           <KpiCard label="Converted" value={counts.converted ?? 0} color="bg-emerald-500" icon={CheckCircle2} />
         </div>
 
         {/* Main panel */}
-        <div className="flex-1 min-h-0 flex gap-0 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="flex-1 min-h-0 flex gap-0 bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
           {/* Table column */}
           <div className={cn("flex flex-col min-h-0 transition-all", selected ? "w-[58%]" : "w-full")}>
             {/* Toolbar */}
-            <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 shrink-0">
+            <div className="flex items-center gap-3 px-5 py-4 border-b border-border shrink-0">
               <div className="relative flex-1 max-w-xs">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                 <input value={search} onChange={e => setSearch(e.target.value)}
                   placeholder="Search leads…"
-                  className="w-full pl-8 pr-3 py-2 text-sm rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400" />
+                  className="w-full pl-8 pr-3 py-2 text-sm rounded-xl border border-border bg-muted text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary" />
               </div>
-              <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+              <div className="flex items-center gap-1 bg-muted rounded-xl p-1">
                 {TABS.map(t => (
                   <button key={t.key} onClick={() => setTab(t.key)}
                     className={cn("px-3 py-1.5 rounded-lg text-xs font-semibold transition-all",
-                      tab === t.key ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700")}>
+                      tab === t.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
                     {t.label}
-                    <span className={cn("ml-1.5 text-[10px] font-bold", tab === t.key ? "text-violet-600" : "text-gray-400")}>
+                    <span className={cn("ml-1.5 text-[10px] font-bold", tab === t.key ? "text-primary" : "text-muted-foreground")}>
                       {counts[t.key] ?? 0}
                     </span>
                   </button>
@@ -356,11 +356,11 @@ export default function Leads() {
               {isLoading ? (
                 <div className="p-6 space-y-3">
                   {[1,2,3,4,5].map(i => (
-                    <div key={i} className="h-14 bg-gray-50 rounded-xl animate-pulse" />
+                    <div key={i} className="h-14 bg-muted rounded-xl animate-pulse" />
                   ))}
                 </div>
               ) : filtered.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full py-20 text-gray-400">
+                <div className="flex flex-col items-center justify-center h-full py-20 text-muted-foreground">
                   <User className="w-10 h-10 mb-3 opacity-30" />
                   <p className="font-medium">No leads found</p>
                   <p className="text-sm mt-1">Try changing your filter or add a new lead</p>
@@ -368,56 +368,56 @@ export default function Leads() {
               ) : (
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-100">
-                      <th className="text-left px-5 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">Lead</th>
-                      <th className="text-left px-5 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">Contact</th>
-                      <th className="text-left px-5 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">Company</th>
-                      <th className="text-left px-5 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">Status</th>
-                      <th className="text-left px-5 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">Added</th>
+                    <tr className="border-b border-border">
+                      <th className="text-left px-5 py-3 text-xs font-bold text-muted-foreground uppercase tracking-wider">Lead</th>
+                      <th className="text-left px-5 py-3 text-xs font-bold text-muted-foreground uppercase tracking-wider">Contact</th>
+                      <th className="text-left px-5 py-3 text-xs font-bold text-muted-foreground uppercase tracking-wider">Company</th>
+                      <th className="text-left px-5 py-3 text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</th>
+                      <th className="text-left px-5 py-3 text-xs font-bold text-muted-foreground uppercase tracking-wider">Added</th>
                       <th className="px-5 py-3" />
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody className="divide-y divide-border/50">
                     {filtered.map(lead => (
                       <tr key={lead.id}
                         onClick={() => setSelected(s => s?.id === lead.id ? null : lead)}
                         className={cn("group cursor-pointer transition-colors",
-                          selected?.id === lead.id ? "bg-violet-50" : "hover:bg-gray-50")}>
+                          selected?.id === lead.id ? "bg-accent" : "hover:bg-muted/50")}>
                         <td className="px-5 py-3.5">
                           <div className="flex items-center gap-3">
                             <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold shrink-0", avatarColor(lead.name))}>
                               {initials(lead.name)}
                             </div>
-                            <span className="font-semibold text-gray-900">{lead.name}</span>
+                            <span className="font-semibold text-foreground">{lead.name}</span>
                           </div>
                         </td>
                         <td className="px-5 py-3.5">
-                          <div className="text-xs text-gray-500 space-y-0.5">
+                          <div className="text-xs text-muted-foreground space-y-0.5">
                             <div className="flex items-center gap-1.5"><Mail className="w-3 h-3" /> {lead.email}</div>
                             {lead.phone && <div className="flex items-center gap-1.5"><Phone className="w-3 h-3" /> {lead.phone}</div>}
                           </div>
                         </td>
-                        <td className="px-5 py-3.5 text-sm text-gray-600">
-                          {lead.company ?? <span className="text-gray-300">—</span>}
+                        <td className="px-5 py-3.5 text-sm text-foreground/70">
+                          {lead.company ?? <span className="text-muted-foreground/40">—</span>}
                         </td>
                         <td className="px-5 py-3.5">
                           <StatusBadge status={lead.status} />
                         </td>
-                        <td className="px-5 py-3.5 text-xs text-gray-400">
+                        <td className="px-5 py-3.5 text-xs text-muted-foreground">
                           {formatDate(lead.createdAt)}
                         </td>
                         <td className="px-5 py-3.5">
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
                             onClick={e => e.stopPropagation()}>
                             <button onClick={() => setEditing(lead)}
-                              className="p-1.5 rounded-lg hover:bg-violet-100 text-gray-400 hover:text-violet-600 transition-colors">
+                              className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-primary transition-colors">
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
                             <button onClick={() => handleDelete(lead)}
-                              className="p-1.5 rounded-lg hover:bg-red-100 text-gray-400 hover:text-red-600 transition-colors">
+                              className="p-1.5 rounded-lg hover:bg-red-100 text-muted-foreground hover:text-red-600 transition-colors">
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
-                            <ChevronRight className="w-3.5 h-3.5 text-gray-300" />
+                            <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/40" />
                           </div>
                         </td>
                       </tr>
@@ -430,7 +430,7 @@ export default function Leads() {
 
           {/* Detail panel */}
           {selected && (
-            <div className="w-[42%] shrink-0 border-l border-gray-100">
+            <div className="w-[42%] shrink-0 border-l border-border">
               <LeadPanel
                 lead={selected}
                 onEdit={() => setEditing(selected)}
