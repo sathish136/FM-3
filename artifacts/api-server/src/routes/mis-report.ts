@@ -40,6 +40,9 @@ router.get("/admin/mis-report", async (req, res) => {
     salesInvoices,
     purchaseInvoices,
     quotations,
+    deliveryNotes,
+    paymentEntries,
+    expenseClaims,
   ] = await Promise.all([
     erpGet("Project", {
       fields: JSON.stringify(["name", "project_name", "status", "percent_complete", "expected_end_date", "estimated_costing", "actual_expense", "customer", "modified", "project_type"]),
@@ -85,6 +88,21 @@ router.get("/admin/mis-report", async (req, res) => {
       fields: JSON.stringify(["name", "status", "grand_total", "transaction_date", "quotation_to", "party_name", "valid_till"]),
       limit_page_length: "500",
       order_by: "transaction_date desc",
+    }),
+    erpGet("Delivery Note", {
+      fields: JSON.stringify(["name", "status", "posting_date", "customer", "project", "grand_total", "lr_no", "lr_date", "transporter_name"]),
+      limit_page_length: "300",
+      order_by: "posting_date desc",
+    }),
+    erpGet("Payment Entry", {
+      fields: JSON.stringify(["name", "payment_type", "posting_date", "party_type", "party", "paid_amount", "reference_no", "remarks", "mode_of_payment", "project"]),
+      limit_page_length: "200",
+      order_by: "posting_date desc",
+    }),
+    erpGet("Expense Claim", {
+      fields: JSON.stringify(["name", "employee_name", "expense_date", "total_claimed_amount", "total_sanctioned_amount", "status", "approval_status", "department"]),
+      limit_page_length: "200",
+      order_by: "expense_date desc",
     }),
   ]);
 
@@ -149,6 +167,24 @@ router.get("/admin/mis-report", async (req, res) => {
   const openQuotations = quotations.filter((q: any) => q.status === "Open" || q.status === "Draft");
   const totalQuotationValue = openQuotations.reduce((a: number, q: any) => a + (q.grand_total || 0), 0);
 
+  // ── Delivery Notes ────────────────────────────────────────────────────────
+  const pendingDNs = deliveryNotes.filter((d: any) => d.status === "Draft" || d.status === "To Bill");
+  const dnThisMonth = deliveryNotes.filter((d: any) => d.posting_date >= monthStart);
+  const totalDNValue = deliveryNotes.reduce((a: number, d: any) => a + (d.grand_total || 0), 0);
+
+  // ── Payment Entries ───────────────────────────────────────────────────────
+  const receivedPayments = paymentEntries.filter((p: any) => p.payment_type === "Receive");
+  const madePayments = paymentEntries.filter((p: any) => p.payment_type === "Pay");
+  const paymentsThisMonth = paymentEntries.filter((p: any) => p.posting_date >= monthStart);
+  const totalReceived = receivedPayments.reduce((a: number, p: any) => a + (p.paid_amount || 0), 0);
+  const totalPaid = madePayments.reduce((a: number, p: any) => a + (p.paid_amount || 0), 0);
+
+  // ── Expense Claims ────────────────────────────────────────────────────────
+  const pendingExpenses = expenseClaims.filter((e: any) => e.approval_status === "Draft" || e.approval_status === "Submitted");
+  const approvedExpenses = expenseClaims.filter((e: any) => e.approval_status === "Approved");
+  const totalClaimedPending = pendingExpenses.reduce((a: number, e: any) => a + (e.total_claimed_amount || 0), 0);
+  const totalApproved = approvedExpenses.reduce((a: number, e: any) => a + (e.total_sanctioned_amount || 0), 0);
+
   res.json({
     generated_at: new Date().toISOString(),
     period: { today, month_start: monthStart, year_start: yearStart },
@@ -182,7 +218,7 @@ router.get("/admin/mis-report", async (req, res) => {
         this_month: poThisMonth.length,
         total_value: totalPOValue,
         pending_value: pendingPOValue,
-        list: purchaseOrders.slice(0, 30).map((p: any) => ({
+        list: purchaseOrders.slice(0, 50).map((p: any) => ({
           id: p.name,
           supplier: p.supplier,
           amount: p.grand_total || 0,
@@ -198,7 +234,7 @@ router.get("/admin/mis-report", async (req, res) => {
         total: materialRequests.length,
         pending: pendingMRs.length,
         this_month: mrThisMonth.length,
-        list: materialRequests.slice(0, 20).map((m: any) => ({
+        list: materialRequests.slice(0, 30).map((m: any) => ({
           id: m.name,
           type: m.material_request_type,
           status: m.status,
@@ -208,6 +244,22 @@ router.get("/admin/mis-report", async (req, res) => {
           requested_by: m.requested_by || "",
         })),
       },
+      delivery_notes: {
+        total: deliveryNotes.length,
+        pending: pendingDNs.length,
+        this_month: dnThisMonth.length,
+        total_value: totalDNValue,
+        list: deliveryNotes.slice(0, 30).map((d: any) => ({
+          id: d.name,
+          customer: d.customer,
+          date: d.posting_date,
+          amount: d.grand_total || 0,
+          status: d.status,
+          project: d.project || "",
+          lr_no: d.lr_no || "",
+          transporter: d.transporter_name || "",
+        })),
+      },
     },
 
     hr: {
@@ -215,7 +267,7 @@ router.get("/admin/mis-report", async (req, res) => {
       on_leave_today: approvedLeavesToday.length,
       pending_leave_approvals: pendingLeaves.length,
       department_breakdown: deptBreakdown,
-      leave_applications: leaveApps.slice(0, 30).map((l: any) => ({
+      leave_applications: leaveApps.slice(0, 50).map((l: any) => ({
         id: l.name,
         employee: l.employee_name,
         emp_id: l.employee,
@@ -226,6 +278,21 @@ router.get("/admin/mis-report", async (req, res) => {
         status: l.status,
         note: l.description || "",
       })),
+      expense_claims: {
+        pending: pendingExpenses.length,
+        approved: approvedExpenses.length,
+        total_pending_amount: totalClaimedPending,
+        total_approved_amount: totalApproved,
+        list: expenseClaims.slice(0, 30).map((e: any) => ({
+          id: e.name,
+          employee: e.employee_name,
+          date: e.expense_date,
+          claimed: e.total_claimed_amount || 0,
+          sanctioned: e.total_sanctioned_amount || 0,
+          status: e.approval_status,
+          department: e.department || "",
+        })),
+      },
     },
 
     sales: {
@@ -235,7 +302,7 @@ router.get("/admin/mis-report", async (req, res) => {
         this_month: soThisMonth.length,
         total_value: totalSOValue,
         this_month_value: soThisMonthValue,
-        list: salesOrders.slice(0, 30).map((s: any) => ({
+        list: salesOrders.slice(0, 50).map((s: any) => ({
           id: s.name,
           customer: s.customer,
           amount: s.grand_total || 0,
@@ -250,7 +317,7 @@ router.get("/admin/mis-report", async (req, res) => {
       quotations: {
         open: openQuotations.length,
         total_value: totalQuotationValue,
-        list: openQuotations.slice(0, 20).map((q: any) => ({
+        list: openQuotations.slice(0, 30).map((q: any) => ({
           id: q.name,
           party: q.party_name,
           amount: q.grand_total || 0,
@@ -264,19 +331,7 @@ router.get("/admin/mis-report", async (req, res) => {
         overdue_invoices: overdueSalesInvoices.length,
         total_receivable: totalReceivable,
         overdue_receivable: overdueReceivable,
-        overdue_list: overdueSalesInvoices.slice(0, 30).map((i: any) => ({
-          id: i.name,
-          customer: i.customer,
-          amount: i.grand_total || 0,
-          outstanding: i.outstanding_amount || 0,
-          posted: i.posting_date,
-          due: i.due_date,
-          days_overdue: i.due_date
-            ? Math.floor((new Date().getTime() - new Date(i.due_date).getTime()) / 86400000)
-            : 0,
-          project: i.project || "",
-        })),
-        all_outstanding: outstandingSalesInvoices.slice(0, 30).map((i: any) => ({
+        all_outstanding: outstandingSalesInvoices.slice(0, 50).map((i: any) => ({
           id: i.name,
           customer: i.customer,
           amount: i.grand_total || 0,
@@ -293,19 +348,7 @@ router.get("/admin/mis-report", async (req, res) => {
       outstanding_invoices: outstandingPurchaseInvoices.length,
       overdue_invoices: overduePurchaseInvoices.length,
       total_payable: totalPayable,
-      overdue_list: overduePurchaseInvoices.slice(0, 30).map((i: any) => ({
-        id: i.name,
-        supplier: i.supplier,
-        amount: i.grand_total || 0,
-        outstanding: i.outstanding_amount || 0,
-        posted: i.posting_date,
-        due: i.due_date,
-        days_overdue: i.due_date
-          ? Math.floor((new Date().getTime() - new Date(i.due_date).getTime()) / 86400000)
-          : 0,
-        project: i.project || "",
-      })),
-      all_outstanding: outstandingPurchaseInvoices.slice(0, 30).map((i: any) => ({
+      all_outstanding: outstandingPurchaseInvoices.slice(0, 50).map((i: any) => ({
         id: i.name,
         supplier: i.supplier,
         amount: i.grand_total || 0,
@@ -314,6 +357,23 @@ router.get("/admin/mis-report", async (req, res) => {
         due: i.due_date,
         overdue: !!(i.due_date && new Date(i.due_date) < new Date()),
         project: i.project || "",
+      })),
+    },
+
+    payments: {
+      total_received: totalReceived,
+      total_paid: totalPaid,
+      this_month: paymentsThisMonth.length,
+      list: paymentEntries.slice(0, 50).map((p: any) => ({
+        id: p.name,
+        type: p.payment_type,
+        date: p.posting_date,
+        party_type: p.party_type,
+        party: p.party,
+        amount: p.paid_amount || 0,
+        mode: p.mode_of_payment || "",
+        ref: p.reference_no || "",
+        project: p.project || "",
       })),
     },
   });
