@@ -40,7 +40,7 @@ async function erpGetSingle(resource: string, name: string, fields: string[]): P
   }
 }
 
-router.get("/api/admin/mis-report", async (req, res) => {
+router.get("/admin/mis-report", async (req, res) => {
   const today = new Date().toISOString().split("T")[0];
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split("T")[0];
   const yearStart = `${new Date().getFullYear()}-01-01`;
