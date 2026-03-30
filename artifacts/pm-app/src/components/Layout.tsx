@@ -485,6 +485,16 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
     try { localStorage.setItem(COLLAPSED_KEY, String(value)); } catch {}
   };
 
+  // Sync with DB-applied sidebar preference (dispatched by applyUserSettingsFromDb)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ collapsed: boolean }>).detail;
+      setCollapsedState(detail.collapsed);
+    };
+    window.addEventListener("fm_sidebar_change", handler);
+    return () => window.removeEventListener("fm_sidebar_change", handler);
+  }, []);
+
   useEffect(() => {
     setMobileSidebarOpen(false);
     setLauncherOpen(false);

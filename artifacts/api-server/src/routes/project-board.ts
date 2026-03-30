@@ -4,6 +4,9 @@ import {
   fetchErpNextProjectList,
   fetchErpNextMrRemarks,
 } from "../lib/erpnext";
+import { db } from "@workspace/db";
+import { userPermissionsTable } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
 
 const router = Router();
 
@@ -59,8 +62,13 @@ router.get("/project-board", async (req, res) => {
 
 router.get("/project-board/projects", async (req, res) => {
   try {
-    const { refresh } = req.query as Record<string, string>;
-    const cacheKey = "projects";
+    const { refresh, email } = req.query as Record<string, string>;
+    let allowedProjects: string[] = [];
+    if (email) {
+      const [perm] = await db.select().from(userPermissionsTable).where(eq(userPermissionsTable.email, email));
+      if (perm) { try { allowedProjects = JSON.parse(perm.allowedProjects || "[]"); } catch {} }
+    }
+    const cacheKey = email ? `projects:${email}` : "projects";
 
     if (refresh !== "1") {
       const cached = getCached<unknown>(cacheKey);
@@ -70,7 +78,8 @@ router.get("/project-board/projects", async (req, res) => {
       }
     }
 
-    const data = await fetchErpNextProjectList();
+    let data = await fetchErpNextProjectList();
+    if (allowedProjects.length > 0) data = data.filter(p => allowedProjects.includes(p.name));
     setCached(cacheKey, data, PROJECTS_TTL_MS);
     res.setHeader("X-Cache", "MISS");
     res.json(data);

@@ -2486,7 +2486,8 @@ export default function ProjectTimeline() {
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   useEffect(() => {
-    fetch(`${API}/timeline/projects`)
+    const email = (() => { try { const s = localStorage.getItem("wtt_auth_user"); return s ? JSON.parse(s).email || "" : ""; } catch { return ""; } })();
+    fetch(`${API}/timeline/projects${email ? `?email=${encodeURIComponent(email)}` : ""}`)
       .then(r => r.json())
       .then(setProjects)
       .catch(console.error);

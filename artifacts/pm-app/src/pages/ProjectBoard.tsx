@@ -197,7 +197,8 @@ export default function ProjectBoard() {
   }, [project, remarks, toast]);
 
   useEffect(() => {
-    fetch(`${BASE}/api/project-board/projects`)
+    const email = (() => { try { const s = localStorage.getItem("wtt_auth_user"); return s ? JSON.parse(s).email || "" : ""; } catch { return ""; } })();
+    fetch(`${BASE}/api/project-board/projects${email ? `?email=${encodeURIComponent(email)}` : ""}`)
       .then(r => r.ok ? r.json() : []).then(setProjects).catch(() => {});
   }, []);
 

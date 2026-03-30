@@ -9,6 +9,9 @@ import {
   fetchErpNextTaskAllocations,
   isErpNextConfigured,
 } from "../lib/erpnext";
+import { db } from "@workspace/db";
+import { userPermissionsTable } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
 
 const router = Router();
 
@@ -24,13 +27,21 @@ function setCached(key: string, data: unknown) {
   cache.set(key, { data, expiresAt: Date.now() + TTL_MS });
 }
 
-router.get("/timeline/projects", async (_req, res) => {
+router.get("/timeline/projects", async (req, res) => {
   try {
     if (!isErpNextConfigured()) return res.json([]);
-    const cached = getCached<unknown>("tl:projects");
+    const { email } = req.query as { email?: string };
+    let allowedProjects: string[] = [];
+    if (email) {
+      const [perm] = await db.select().from(userPermissionsTable).where(eq(userPermissionsTable.email, email));
+      if (perm) { try { allowedProjects = JSON.parse(perm.allowedProjects || "[]"); } catch {} }
+    }
+    const cacheKey = email ? `tl:projects:${email}` : "tl:projects";
+    const cached = getCached<unknown>(cacheKey);
     if (cached) return res.json(cached);
-    const data = await fetchErpNextProjectList();
-    setCached("tl:projects", data);
+    let data = await fetchErpNextProjectList();
+    if (allowedProjects.length > 0) data = data.filter(p => allowedProjects.includes(p.name));
+    setCached(cacheKey, data);
     res.json(data);
   } catch (e) {
     res.status(500).json({ error: String(e) });

@@ -36,16 +36,15 @@ async function applyUserSettingsFromDb(email: string) {
       document.documentElement.classList.add("dark");
     }
 
-    // Sidebar collapsed state: apply DB navbarStyle ONLY if the user hasn't
-    // manually changed it (i.e. the key doesn't exist in localStorage yet).
-    // This way DB settings act as defaults without overriding manual choices.
+    // Always apply DB navbarStyle on login/session restore (admin-configured).
+    // Dispatch a custom event so Layout.tsx can update React state immediately.
     const sidebarKey = "fm_sidebar_collapsed";
-    if (localStorage.getItem(sidebarKey) === null) {
-      if (settings.navbarStyle === "mini") {
-        localStorage.setItem(sidebarKey, "true");
-      } else if (settings.navbarStyle === "full" || settings.navbarStyle === "auto") {
-        localStorage.setItem(sidebarKey, "false");
-      }
+    if (settings.navbarStyle === "mini") {
+      localStorage.setItem(sidebarKey, "true");
+      window.dispatchEvent(new CustomEvent("fm_sidebar_change", { detail: { collapsed: true } }));
+    } else if (settings.navbarStyle === "full" || settings.navbarStyle === "auto") {
+      localStorage.setItem(sidebarKey, "false");
+      window.dispatchEvent(new CustomEvent("fm_sidebar_change", { detail: { collapsed: false } }));
     }
   } catch {
     // Ignore errors applying DB settings — fall back to localStorage values

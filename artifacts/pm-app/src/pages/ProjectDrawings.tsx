@@ -1075,7 +1075,8 @@ function UploadModal({
   const projectRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch(`${BASE}/api/projects`)
+    const email = (() => { try { const s = localStorage.getItem("wtt_auth_user"); return s ? JSON.parse(s).email || "" : ""; } catch { return ""; } })();
+    fetch(`${BASE}/api/projects${email ? `?email=${encodeURIComponent(email)}` : ""}`)
       .then((r) => (r.ok ? r.json() : []))
       .then((data: ErpProject[]) => setErpProjects(data))
       .catch(() => {});
@@ -1786,7 +1787,8 @@ export default function ProjectDrawings() {
   const [erpProjectList, setErpProjectList] = useState<ErpProject[]>([]);
 
   useEffect(() => {
-    fetch(`${BASE}/api/projects`)
+    const email = (() => { try { const s = localStorage.getItem("wtt_auth_user"); return s ? JSON.parse(s).email || "" : ""; } catch { return ""; } })();
+    fetch(`${BASE}/api/projects${email ? `?email=${encodeURIComponent(email)}` : ""}`)
       .then((r) => (r.ok ? r.json() : []))
       .then((data: ErpProject[]) => setErpProjectList(data))
       .catch(() => {});

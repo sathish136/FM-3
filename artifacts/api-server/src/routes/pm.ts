@@ -80,17 +80,23 @@ const router = Router();
 
 // ─── Projects ───────────────────────────────────────────────────────────────
 
-router.get("/projects", async (_req, res) => {
+router.get("/projects", async (req, res) => {
   try {
+    const { email } = req.query as { email?: string };
+    let allowedProjects: string[] = [];
+    if (email) {
+      const [perm] = await db.select().from(userPermissionsTable).where(eq(userPermissionsTable.email, email));
+      if (perm) { try { allowedProjects = JSON.parse(perm.allowedProjects || "[]"); } catch {} }
+    }
     if (isErpNextConfigured()) {
-      const projects = await fetchErpNextProjects();
+      let projects = await fetchErpNextProjects();
+      if (allowedProjects.length > 0) projects = projects.filter(p => allowedProjects.includes(p.name));
       return res.json(projects);
     }
-    const rows = await db
-      .select()
-      .from(projectsTable)
-      .orderBy(projectsTable.createdAt);
-    res.json(rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })));
+    const rows = await db.select().from(projectsTable).orderBy(projectsTable.createdAt);
+    let all = rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
+    if (allowedProjects.length > 0) all = all.filter(p => allowedProjects.includes(p.name));
+    res.json(all);
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
