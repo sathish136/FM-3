@@ -113,7 +113,7 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
   return (
     <button
       onClick={() => onChange(!on)}
-      className={`relative inline-flex w-11 h-6 rounded-full transition-colors duration-200 shrink-0 ${on ? "bg-indigo-600" : "bg-gray-200"}`}
+      className={`relative inline-flex w-11 h-6 rounded-full transition-colors duration-200 shrink-0 ${on ? "bg-primary" : "bg-muted"}`}
     >
       <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${on ? "translate-x-5" : "translate-x-0"}`} />
     </button>
@@ -127,34 +127,34 @@ function RolePicker({ role, onChange }: { role: ModuleRole; onChange: (r: Module
       value: "none",
       label: "None",
       icon: <Ban className="w-2.5 h-2.5" />,
-      active: "bg-gray-500 text-white border-gray-500",
-      inactive: "text-gray-400 border-gray-200 hover:border-gray-300 hover:text-gray-600",
+      active: "bg-muted-foreground text-background border-muted-foreground",
+      inactive: "text-muted-foreground border-border hover:border-border/80 hover:text-foreground",
     },
     {
       value: "read",
       label: "Read",
       icon: <Eye className="w-2.5 h-2.5" />,
       active: "bg-blue-500 text-white border-blue-500",
-      inactive: "text-gray-400 border-gray-200 hover:border-blue-300 hover:text-blue-600",
+      inactive: "text-muted-foreground border-border hover:border-blue-300 hover:text-blue-600",
     },
     {
       value: "write",
       label: "Write",
       icon: <Pencil className="w-2.5 h-2.5" />,
       active: "bg-emerald-500 text-white border-emerald-500",
-      inactive: "text-gray-400 border-gray-200 hover:border-emerald-300 hover:text-emerald-600",
+      inactive: "text-muted-foreground border-border hover:border-emerald-300 hover:text-emerald-600",
     },
   ];
 
   return (
-    <div className="flex rounded-lg overflow-hidden border border-gray-200 shrink-0">
+    <div className="flex rounded-lg overflow-hidden border border-border shrink-0">
       {options.map((opt, i) => (
         <button
           key={opt.value}
           onClick={() => onChange(opt.value)}
           title={opt.label}
-          className={`flex items-center gap-1 px-2 py-1 text-[10px] font-semibold transition-all border-r last:border-r-0 border-gray-200 ${
-            role === opt.value ? opt.active : `bg-white ${opt.inactive}`
+          className={`flex items-center gap-1 px-2 py-1 text-[10px] font-semibold transition-all border-r last:border-r-0 border-border ${
+            role === opt.value ? opt.active : `bg-card ${opt.inactive}`
           }`}
         >
           {opt.icon}
@@ -333,20 +333,20 @@ export function UserManagementContent() {
     <div className="h-full flex flex-col overflow-hidden">
 
       {/* Header */}
-      <div className="bg-white border-b border-gray-100 px-6 py-3 flex items-center gap-4 shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+      <div className="bg-card border-b border-border px-6 py-3 flex items-center gap-4 shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <Users className="w-4 h-4 text-indigo-500 shrink-0" />
-          <h1 className="text-sm font-bold text-gray-900">User Management</h1>
-          <span className="text-xs text-gray-400 ml-1 hidden sm:inline">Control module access & roles per user</span>
+          <Users className="w-4 h-4 text-primary shrink-0" />
+          <h1 className="text-sm font-bold text-card-foreground">User Management</h1>
+          <span className="text-xs text-muted-foreground ml-1 hidden sm:inline">Control module access & roles per user</span>
         </div>
         {/* Legend */}
-        <div className="hidden md:flex items-center gap-3 text-[10px] font-semibold text-gray-500">
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-400 inline-block" /> None</span>
+        <div className="hidden md:flex items-center gap-3 text-[10px] font-semibold text-muted-foreground">
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-muted-foreground inline-block" /> None</span>
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" /> Read</span>
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Write</span>
         </div>
         <button onClick={fetchAll} disabled={loading}
-          className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors">
+          className="p-2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
           <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
         </button>
       </div>
@@ -354,14 +354,14 @@ export function UserManagementContent() {
       <div className="flex-1 flex min-h-0 overflow-hidden">
 
         {/* ── Left: user list ─────────────────────────────────────────────── */}
-        <div className="w-72 shrink-0 bg-white border-r border-gray-100 flex flex-col overflow-hidden">
-          <div className="p-3 border-b border-gray-50">
+        <div className="w-72 shrink-0 bg-card border-r border-border flex flex-col overflow-hidden">
+          <div className="p-3 border-b border-border">
             <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
               <input
                 value={search} onChange={e => setSearch(e.target.value)}
                 placeholder="Search users…"
-                className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400"
+                className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-border bg-muted text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
               />
             </div>
           </div>
@@ -369,10 +369,10 @@ export function UserManagementContent() {
           <div className="flex-1 overflow-y-auto">
             {loading ? (
               <div className="flex items-center justify-center py-16">
-                <Loader2 className="w-5 h-5 animate-spin text-indigo-400" />
+                <Loader2 className="w-5 h-5 animate-spin text-primary/60" />
               </div>
             ) : filtered.length === 0 ? (
-              <div className="text-center py-12 text-sm text-gray-400">No users found</div>
+              <div className="text-center py-12 text-sm text-muted-foreground">No users found</div>
             ) : filtered.map(u => {
               const summary = getAccessSummary(u.email);
               const isBlocked = summary === "blocked";
@@ -380,24 +380,24 @@ export function UserManagementContent() {
               const isSel = selected?.email === u.email;
               return (
                 <button key={u.email} onClick={() => selectUser(u)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 border-b border-gray-50 text-left transition-colors ${
-                    isSel ? "bg-indigo-50 border-indigo-100" : "hover:bg-gray-50"
+                  className={`w-full flex items-center gap-3 px-4 py-3 border-b border-border/50 text-left transition-colors ${
+                    isSel ? "bg-accent border-primary/10" : "hover:bg-muted/50"
                   }`}
                 >
                   <UserAvatar user={u} size="sm" />
                   <div className="flex-1 min-w-0">
-                    <p className={`text-xs font-semibold truncate ${isSel ? "text-indigo-700" : "text-gray-800"}`}>
+                    <p className={`text-xs font-semibold truncate ${isSel ? "text-primary" : "text-foreground"}`}>
                       {u.full_name}
                     </p>
-                    <p className="text-[10px] text-gray-400 truncate">{u.email}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{u.email}</p>
                   </div>
                   <div className="shrink-0 flex flex-col items-end gap-0.5">
                     {!summary ? (
-                      <span className="text-[9px] text-gray-300">Default</span>
+                      <span className="text-[9px] text-muted-foreground/40">Default</span>
                     ) : isBlocked ? (
                       <span className="text-[9px] font-semibold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">Blocked</span>
                     ) : isNoAccess ? (
-                      <span className="text-[9px] font-semibold bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">No access</span>
+                      <span className="text-[9px] font-semibold bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">No access</span>
                     ) : typeof summary === "object" ? (
                       <div className="flex items-center gap-1">
                         {summary.write > 0 && (
@@ -408,21 +408,21 @@ export function UserManagementContent() {
                         )}
                       </div>
                     ) : null}
-                    <ChevronRight className={`w-3 h-3 ${isSel ? "text-indigo-400" : "text-gray-300"}`} />
+                    <ChevronRight className={`w-3 h-3 ${isSel ? "text-primary/60" : "text-muted-foreground/30"}`} />
                   </div>
                 </button>
               );
             })}
           </div>
-          <div className="p-3 border-t border-gray-100">
-            <p className="text-[10px] text-gray-400 text-center">{users.length} users from ERPNext</p>
+          <div className="p-3 border-t border-border">
+            <p className="text-[10px] text-muted-foreground text-center">{users.length} users from ERPNext</p>
           </div>
         </div>
 
         {/* ── Right: permission editor ─────────────────────────────────────── */}
         {!selected ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400">
-            <Users className="w-10 h-10 opacity-30" />
+          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+            <Users className="w-10 h-10 opacity-20" />
             <p className="text-sm font-medium">Select a user to configure permissions</p>
             <p className="text-xs opacity-60">Users are loaded from ERPNext</p>
           </div>
@@ -430,11 +430,11 @@ export function UserManagementContent() {
           <div className="flex-1 flex flex-col overflow-hidden">
 
             {/* User info header */}
-            <div className="bg-white border-b border-gray-100 px-6 py-4 flex items-center gap-4 shrink-0 flex-wrap gap-y-2">
+            <div className="bg-card border-b border-border px-6 py-4 flex items-center gap-4 shrink-0 flex-wrap gap-y-2">
               <UserAvatar user={selected} size="lg" />
               <div className="flex-1 min-w-0">
-                <h2 className="text-base font-bold text-gray-900">{selected.full_name}</h2>
-                <p className="text-xs text-gray-400">{selected.email}</p>
+                <h2 className="text-base font-bold text-card-foreground">{selected.full_name}</h2>
+                <p className="text-xs text-muted-foreground">{selected.email}</p>
               </div>
 
               {/* Role stats */}
@@ -445,24 +445,24 @@ export function UserManagementContent() {
                 <span className="flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-1 rounded-lg border border-blue-200">
                   <Eye className="w-3 h-3" /> {readCount} Read
                 </span>
-                <span className="flex items-center gap-1 bg-gray-50 text-gray-500 px-2 py-1 rounded-lg border border-gray-200">
+                <span className="flex items-center gap-1 bg-muted text-muted-foreground px-2 py-1 rounded-lg border border-border">
                   <Ban className="w-3 h-3" /> {noneCount} None
                 </span>
               </div>
 
               {/* Access toggle */}
-              <div className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2">
+              <div className="flex items-center gap-3 bg-muted border border-border rounded-xl px-4 py-2">
                 {draftAccess
                   ? <Unlock className="w-4 h-4 text-emerald-500" />
                   : <Lock className="w-4 h-4 text-red-500" />}
-                <span className="text-xs font-semibold text-gray-700">
+                <span className="text-xs font-semibold text-foreground/80">
                   {draftAccess ? "Access Granted" : "Access Blocked"}
                 </span>
                 <Toggle on={draftAccess} onChange={setDraftAccess} />
               </div>
 
               <button onClick={save} disabled={saving}
-                className="flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm transition-colors disabled:opacity-60">
+                className="flex items-center gap-2 px-5 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold shadow-sm transition-colors disabled:opacity-60">
                 {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                 Save
               </button>
@@ -481,8 +481,8 @@ export function UserManagementContent() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <Shield className="w-4 h-4 text-indigo-500" />
-                    <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Module Permissions</h3>
+                    <Shield className="w-4 h-4 text-primary" />
+                    <h3 className="text-xs font-bold text-foreground/70 uppercase tracking-wider">Module Permissions</h3>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <button onClick={() => setDraftRoles(buildDefaultRoles("write"))}
@@ -494,7 +494,7 @@ export function UserManagementContent() {
                       <Eye className="w-2.5 h-2.5" /> All Read
                     </button>
                     <button onClick={() => setDraftRoles(buildDefaultRoles("none"))}
-                      className="flex items-center gap-1 text-[11px] font-semibold text-gray-500 hover:text-gray-700 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200">
+                      className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted transition-colors border border-border">
                       <Ban className="w-2.5 h-2.5" /> All None
                     </button>
                   </div>
@@ -502,8 +502,8 @@ export function UserManagementContent() {
 
                 {/* Column header */}
                 <div className="flex items-center gap-3 px-4 py-1.5 mb-1">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 flex-1">Module</span>
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 w-[138px] text-center">Permission</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex-1">Module</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground w-[138px] text-center">Permission</span>
                 </div>
 
                 <div className="space-y-4">
@@ -519,19 +519,19 @@ export function UserManagementContent() {
                       <div key={group}>
                         {/* Group header with bulk actions */}
                         <div className="flex items-center gap-2 mb-1.5">
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 flex-1">{group}</p>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex-1">{group}</p>
                           <div className="flex items-center gap-1">
                             <button onClick={() => setGroupRole(group, "write")}
                               className={`text-[9px] font-semibold px-1.5 py-0.5 rounded transition-colors ${
-                                groupSummary === "write" ? "bg-emerald-100 text-emerald-700" : "text-gray-400 hover:text-emerald-600 hover:bg-emerald-50"
+                                groupSummary === "write" ? "bg-emerald-100 text-emerald-700" : "text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50"
                               }`}>W</button>
                             <button onClick={() => setGroupRole(group, "read")}
                               className={`text-[9px] font-semibold px-1.5 py-0.5 rounded transition-colors ${
-                                groupSummary === "read" ? "bg-blue-100 text-blue-700" : "text-gray-400 hover:text-blue-600 hover:bg-blue-50"
+                                groupSummary === "read" ? "bg-blue-100 text-blue-700" : "text-muted-foreground hover:text-blue-600 hover:bg-blue-50"
                               }`}>R</button>
                             <button onClick={() => setGroupRole(group, "none")}
                               className={`text-[9px] font-semibold px-1.5 py-0.5 rounded transition-colors ${
-                                groupSummary === "none" ? "bg-gray-200 text-gray-600" : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                                groupSummary === "none" ? "bg-muted text-foreground/70" : "text-muted-foreground hover:text-foreground hover:bg-muted"
                               }`}>—</button>
                           </div>
                         </div>
@@ -546,15 +546,15 @@ export function UserManagementContent() {
                                     ? "bg-emerald-50 border-emerald-200"
                                     : role === "read"
                                     ? "bg-blue-50 border-blue-200"
-                                    : "bg-white border-gray-200"
+                                    : "bg-card border-border"
                                 }`}
                               >
                                 {/* Role indicator dot */}
                                 <span className={`w-2 h-2 rounded-full shrink-0 ${
-                                  role === "write" ? "bg-emerald-500" : role === "read" ? "bg-blue-500" : "bg-gray-300"
+                                  role === "write" ? "bg-emerald-500" : role === "read" ? "bg-blue-500" : "bg-muted-foreground/30"
                                 }`} />
                                 <span className={`text-xs font-medium flex-1 ${
-                                  role === "write" ? "text-emerald-800" : role === "read" ? "text-blue-800" : "text-gray-400"
+                                  role === "write" ? "text-emerald-800" : role === "read" ? "text-blue-800" : "text-muted-foreground"
                                 }`}>{mod.label}</span>
                                 <RolePicker role={role} onChange={r => setRole(mod.key, r)} />
                               </div>
@@ -574,16 +574,16 @@ export function UserManagementContent() {
                 <div>
                   <div className="flex items-center gap-2 mb-3">
                     <KeyRound className="w-4 h-4 text-amber-500" />
-                    <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Security</h3>
+                    <h3 className="text-xs font-bold text-foreground/70 uppercase tracking-wider">Security</h3>
                   </div>
                   <div className={`flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
-                    draftTwoFa ? "bg-amber-50 border-amber-200" : "bg-white border-gray-200"
+                    draftTwoFa ? "bg-amber-50 border-amber-200" : "bg-card border-border"
                   }`}>
                     <div className="min-w-0">
-                      <p className={`text-xs font-semibold ${draftTwoFa ? "text-amber-800" : "text-gray-700"}`}>
+                      <p className={`text-xs font-semibold ${draftTwoFa ? "text-amber-800" : "text-card-foreground"}`}>
                         Two-Factor Auth
                       </p>
-                      <p className="text-[10px] text-gray-400 mt-0.5">
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
                         {draftTwoFa ? "OTP required at login" : "OTP not required"}
                       </p>
                     </div>
@@ -595,17 +595,17 @@ export function UserManagementContent() {
                 <div>
                   <div className="flex items-center gap-2 mb-3">
                     <SunMedium className="w-4 h-4 text-orange-400" />
-                    <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Theme</h3>
+                    <h3 className="text-xs font-bold text-foreground/70 uppercase tracking-wider">Theme</h3>
                   </div>
                   <div className="space-y-1.5">
                     {([
                       { value: "light", label: "Light", icon: <SunMedium className="w-3.5 h-3.5" />, active: "bg-orange-50 border-orange-300 text-orange-700" },
-                      { value: "dark",  label: "Dark",  icon: <Moon className="w-3.5 h-3.5" />,      active: "bg-gray-800 border-gray-700 text-gray-100" },
-                      { value: "system",label: "System",icon: <Monitor className="w-3.5 h-3.5" />,   active: "bg-indigo-50 border-indigo-300 text-indigo-700" },
+                      { value: "dark",  label: "Dark",  icon: <Moon className="w-3.5 h-3.5" />,      active: "bg-zinc-800 border-zinc-700 text-zinc-100" },
+                      { value: "system",label: "System",icon: <Monitor className="w-3.5 h-3.5" />,   active: "bg-primary/10 border-primary/30 text-primary" },
                     ] as { value: ThemeOption; label: string; icon: React.ReactNode; active: string }[]).map(opt => (
                       <button key={opt.value} onClick={() => setDraftTheme(opt.value)}
                         className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl border text-left transition-all ${
-                          draftTheme === opt.value ? opt.active : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+                          draftTheme === opt.value ? opt.active : "bg-card border-border text-muted-foreground hover:border-border/60"
                         }`}
                       >
                         {opt.icon}
@@ -622,7 +622,7 @@ export function UserManagementContent() {
                 <div>
                   <div className="flex items-center gap-2 mb-3">
                     <LayoutDashboard className="w-4 h-4 text-teal-500" />
-                    <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Navbar Style</h3>
+                    <h3 className="text-xs font-bold text-foreground/70 uppercase tracking-wider">Navbar Style</h3>
                   </div>
                   <div className="space-y-1.5">
                     {([
@@ -632,7 +632,7 @@ export function UserManagementContent() {
                     ] as { value: NavbarStyleOption; label: string; desc: string; icon: React.ReactNode; active: string }[]).map(opt => (
                       <button key={opt.value} onClick={() => setDraftNavbarStyle(opt.value)}
                         className={`w-full flex items-start gap-2.5 px-3 py-2 rounded-xl border text-left transition-all ${
-                          draftNavbarStyle === opt.value ? opt.active : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+                          draftNavbarStyle === opt.value ? opt.active : "bg-card border-border text-muted-foreground hover:border-border/60"
                         }`}
                       >
                         <span className="mt-0.5">{opt.icon}</span>
@@ -653,22 +653,22 @@ export function UserManagementContent() {
               <div className="w-64 shrink-0">
                 <div className="flex items-center gap-2 mb-3">
                   <Shield className="w-4 h-4 text-violet-500" />
-                  <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Project Access</h3>
+                  <h3 className="text-xs font-bold text-foreground/70 uppercase tracking-wider">Project Access</h3>
                 </div>
 
 
 
                 <div className="relative mb-2">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
                   <input value={projSearch} onChange={e => setProjSearch(e.target.value)}
                     placeholder="Search projects…"
-                    className="w-full pl-7 pr-3 py-2 text-[11px] rounded-lg border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400"
+                    className="w-full pl-7 pr-3 py-2 text-[11px] rounded-lg border border-border bg-muted text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                   />
                 </div>
 
                 <div className="space-y-1 max-h-[420px] overflow-y-auto pr-1">
                   {filteredProjects.length === 0 ? (
-                    <p className="text-[11px] text-gray-400 text-center py-4">No projects found</p>
+                    <p className="text-[11px] text-muted-foreground text-center py-4">No projects found</p>
                   ) : filteredProjects.map(p => {
                     const name = p.erpnextName || p.name;
                     const on = draftProjects.includes(name);
@@ -677,11 +677,11 @@ export function UserManagementContent() {
                         className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl border text-left transition-all ${
                           on
                             ? "bg-violet-50 border-violet-200 text-violet-700"
-                            : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+                            : "bg-card border-border text-muted-foreground hover:border-border/60"
                         }`}
                       >
                         <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
-                          on ? "bg-violet-600 border-violet-600" : "border-gray-300"
+                          on ? "bg-violet-600 border-violet-600" : "border-border"
                         }`}>
                           {on && <span className="w-2 h-2 bg-white rounded-sm" />}
                         </div>
@@ -692,8 +692,8 @@ export function UserManagementContent() {
                 </div>
 
                 {draftProjects.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-gray-100">
-                    <p className="text-[10px] text-gray-500 font-semibold mb-1.5">
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <p className="text-[10px] text-muted-foreground font-semibold mb-1.5">
                       Restricted to {draftProjects.length} project{draftProjects.length !== 1 ? "s" : ""}:
                     </p>
                     <div className="flex flex-wrap gap-1">
