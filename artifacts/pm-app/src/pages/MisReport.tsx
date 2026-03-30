@@ -372,16 +372,16 @@ export default function MisReport() {
                     {/* ── Row 1: Financial headline ── */}
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                       {[
-                        {label:"Total Receivable",sub:`${filtRec.filter((i:any)=>i.overdue).length} overdue invoices`,value:fmtCr(totalRec),sub2:`Overdue: ${fmtCr(overdueRecAmt)}`,color:"from-sky-500 to-cyan-400",alert:filtRec.some((i:any)=>i.overdue)},
-                        {label:"Total Payable",sub:`${filtPay.filter((i:any)=>i.overdue).length} overdue invoices`,value:fmtCr(totalPay),sub2:`Overdue: ${fmtCr(overduePayAmt)}`,color:"from-orange-500 to-amber-400",alert:filtPay.some((i:any)=>i.overdue)},
-                        {label:"Net Position",sub:"Receivable − Payable",value:fmtCr(Math.abs(netPos)),sub2:netPos>=0?"Favourable (you are owed more)":"Unfavourable (you owe more)",color:netPos>=0?"from-emerald-500 to-green-400":"from-red-500 to-orange-400",alert:netPos<0},
-                        {label:"Cash Collected",sub:`Paid out: ${fmtCr(paidOut)}`,value:fmtCr(collected),sub2:`Net cash: ${fmtCr(collected-paidOut)}`,color:"from-violet-500 to-indigo-400",alert:false},
+                        {label:"Total Receivable",sub:`${filtRec.filter((i:any)=>i.overdue).length} overdue invoices`,value:fmtCr(totalRec),sub2:`Overdue: ${fmtCr(overdueRecAmt)}`,valueColor:"text-gray-900",alert:filtRec.some((i:any)=>i.overdue)},
+                        {label:"Total Payable",sub:`${filtPay.filter((i:any)=>i.overdue).length} overdue invoices`,value:fmtCr(totalPay),sub2:`Overdue: ${fmtCr(overduePayAmt)}`,valueColor:"text-gray-900",alert:filtPay.some((i:any)=>i.overdue)},
+                        {label:"Net Position",sub:"Receivable − Payable",value:fmtCr(Math.abs(netPos)),sub2:netPos>=0?"Favourable — you are owed more":"Unfavourable — you owe more",valueColor:netPos>=0?"text-emerald-700":"text-red-600",alert:netPos<0},
+                        {label:"Cash Collected",sub:`Paid out: ${fmtCr(paidOut)}`,value:fmtCr(collected),sub2:`Net cash: ${fmtCr(collected-paidOut)}`,valueColor:"text-gray-900",alert:false},
                       ].map((h,i)=>(
-                        <div key={i} className={`rounded-2xl bg-gradient-to-br ${h.color} p-4 text-white shadow-md`}>
-                          <p className="text-[10px] font-bold uppercase tracking-widest opacity-80 mb-1">{h.label}</p>
-                          <p className="text-2xl font-black leading-tight">{h.value}</p>
-                          <p className="text-[10px] opacity-75 mt-0.5">{h.sub}</p>
-                          <p className="text-[10px] font-semibold mt-1 opacity-90">{h.sub2}</p>
+                        <div key={i} className={`rounded-2xl bg-white border ${h.alert?"border-red-200":"border-gray-200"} p-4 shadow-sm`}>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">{h.label}</p>
+                          <p className={`text-2xl font-black leading-tight ${h.valueColor}`}>{h.value}</p>
+                          <p className="text-[10px] text-gray-400 mt-0.5">{h.sub}</p>
+                          <p className={`text-[10px] font-semibold mt-1 ${h.alert?"text-red-600":"text-gray-500"}`}>{h.sub2}</p>
                         </div>
                       ))}
                     </div>
