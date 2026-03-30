@@ -58,6 +58,11 @@ export default function Login() {
     setLoading(true);
     try {
       const result = await login(usr.trim(), pwd);
+      if (!result.twoFaRequired) {
+        // Direct login — no OTP needed, user is already set in context
+        clearOtpSession();
+        return;
+      }
       setOtpEmail(result.email);
       setMaskedEmail(result.maskedEmail);
       setOtpValue("");
@@ -102,7 +107,11 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      await login(usr.trim(), pwd);
+      const result = await login(usr.trim(), pwd);
+      if (!result.twoFaRequired) {
+        clearOtpSession();
+        return;
+      }
       setOtpValue("");
       setResendCooldown(60);
       setTimeout(() => otpInputRef.current?.focus(), 150);

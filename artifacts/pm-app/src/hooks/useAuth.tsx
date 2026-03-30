@@ -9,7 +9,7 @@ export interface AuthUser {
 interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
-  login: (usr: string, pwd: string) => Promise<{ twoFaRequired: true; email: string; maskedEmail: string }>;
+  login: (usr: string, pwd: string) => Promise<{ twoFaRequired: true; email: string; maskedEmail: string } | { twoFaRequired: false; user: AuthUser }>;
   verifyOtp: (email: string, otp: string) => Promise<void>;
   logout: () => void;
 }
@@ -18,6 +18,33 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 const STORAGE_KEY = "wtt_auth_user";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+async function applyUserSettingsFromDb(email: string) {
+  try {
+    const res = await fetch(`${BASE}/api/auth/user-settings?email=${encodeURIComponent(email)}`);
+    if (!res.ok) return;
+    const settings = await res.json();
+    if (!settings) return;
+
+    // Apply theme (light/dark/system → fm-dark-mode)
+    if (settings.theme === "light") {
+      localStorage.setItem("fm-dark-mode", "false");
+      document.documentElement.classList.remove("dark");
+    } else if (settings.theme === "dark") {
+      localStorage.setItem("fm-dark-mode", "true");
+      document.documentElement.classList.add("dark");
+    }
+
+    // Apply navbarStyle (full/auto → expanded, mini → collapsed)
+    if (settings.navbarStyle === "mini") {
+      localStorage.setItem("fm_sidebar_collapsed", "true");
+    } else if (settings.navbarStyle === "full") {
+      localStorage.setItem("fm_sidebar_collapsed", "false");
+    }
+  } catch {
+    // Ignore errors applying DB settings — fall back to localStorage values
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -49,6 +76,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               setUser(refreshed);
             }
           } catch { }
+          // Apply user settings from DB (theme, navbarStyle) on session restore
+          await applyUserSettingsFromDb(parsed.email);
         }
       } catch { }
       setLoading(false);
@@ -56,7 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     init();
   }, []);
 
-  const login = async (usr: string, pwd: string): Promise<{ twoFaRequired: true; email: string; maskedEmail: string }> => {
+  const login = async (usr: string, pwd: string): Promise<{ twoFaRequired: true; email: string; maskedEmail: string } | { twoFaRequired: false; user: AuthUser }> => {
     let res: Response;
     try {
       res = await fetch(`${BASE}/api/auth/login`, {
@@ -80,6 +109,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error((data.error as string) || "Invalid credentials");
     }
 
+    // Direct login — 2FA is disabled for this user
+    if (data.status === "success") {
+      const rawPhoto = (data.photo as string | null) ?? null;
+      const proxyPhoto = rawPhoto
+        ? `${BASE}/api/auth/photo?url=${encodeURIComponent(rawPhoto)}`
+        : null;
+      const authUser: AuthUser = {
+        email: (data.email as string),
+        full_name: (data.full_name as string) || (data.email as string),
+        photo: proxyPhoto,
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(authUser));
+      setUser(authUser);
+      await applyUserSettingsFromDb(authUser.email);
+      return { twoFaRequired: false, user: authUser };
+    }
+
+    // OTP required
     return { twoFaRequired: true, email: data.email as string, maskedEmail: data.maskedEmail as string };
   };
 
@@ -119,6 +166,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(authUser));
     setUser(authUser);
+    await applyUserSettingsFromDb(authUser.email);
   };
 
   const logout = () => {

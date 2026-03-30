@@ -5,6 +5,9 @@ import { writeFile, readFile, unlink, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import nodemailer from "nodemailer";
+import { db } from "@workspace/db";
+import { userPermissionsTable } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
 
 const execFileAsync = promisify(execFile);
 
@@ -272,6 +275,30 @@ authRouter.post("/auth/login", async (req, res) => {
       });
     }
 
+    // Check if 2FA is enabled for this user in the permissions table
+    let twoFaRequired = true;
+    try {
+      const perms = await db
+        .select()
+        .from(userPermissionsTable)
+        .where(eq(userPermissionsTable.email, email));
+      if (perms.length > 0) {
+        twoFaRequired = perms[0].twoFaEnabled ?? true;
+      }
+    } catch (dbErr) {
+      console.warn("Could not check 2FA setting from DB:", dbErr);
+    }
+
+    if (!twoFaRequired) {
+      // 2FA disabled for this user — return directly
+      return res.json({
+        status: "success",
+        email,
+        full_name: fullName,
+        photo,
+      });
+    }
+
     // Generate OTP and send to the user's email
     const otp = generateOtp();
     otpStore.set(email, {
@@ -333,6 +360,29 @@ authRouter.post("/auth/verify-otp", (req, res) => {
 
 authRouter.post("/auth/logout", (_req, res) => {
   res.json({ ok: true });
+});
+
+// Return persisted user settings (theme, navbarStyle) from DB
+authRouter.get("/auth/user-settings", async (req, res) => {
+  const email = req.query.email as string;
+  if (!email) return res.status(400).json({ error: "Missing email" });
+  try {
+    const rows = await db
+      .select()
+      .from(userPermissionsTable)
+      .where(eq(userPermissionsTable.email, email));
+    if (rows.length === 0) return res.json(null);
+    const row = rows[0];
+    return res.json({
+      theme: row.theme,
+      navbarStyle: row.navbarStyle,
+      hasAccess: row.hasAccess,
+      twoFaEnabled: row.twoFaEnabled,
+    });
+  } catch (err) {
+    console.error("user-settings error:", err);
+    return res.status(500).json({ error: String(err) });
+  }
 });
 
 // Refresh current user's profile (name + photo) from ERPNext

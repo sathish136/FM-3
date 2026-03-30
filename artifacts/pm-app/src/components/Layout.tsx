@@ -462,17 +462,28 @@ function MiniSidebar({ location, expandedItems, toggleExpand, setCollapsed, aiTr
   );
 }
 
+const COLLAPSED_KEY = "fm_sidebar_collapsed";
+
 export function Layout({ children, hideChrome }: { children: React.ReactNode; hideChrome?: boolean }) {
   const [location] = useLocation();
   const { navStyle } = useNavStyle();
   const [expandedItems, setExpandedItems] = useState<string[]>(["/drawings"]);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsedState] = useState(() => {
+    try {
+      return localStorage.getItem(COLLAPSED_KEY) === "true";
+    } catch { return false; }
+  });
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [launcherOpen, setLauncherOpen] = useState(false);
   const [aiTrigger, setAiTrigger] = useState(0);
   const { user, logout } = useAuth();
   const { theme, themeIndex, setTheme, darkMode, toggleDarkMode } = useTheme();
   const [showThemePicker, setShowThemePicker] = useState(false);
+
+  const setCollapsed = (value: boolean) => {
+    setCollapsedState(value);
+    try { localStorage.setItem(COLLAPSED_KEY, String(value)); } catch {}
+  };
 
   useEffect(() => {
     setMobileSidebarOpen(false);
