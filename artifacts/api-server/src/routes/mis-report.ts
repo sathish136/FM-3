@@ -43,6 +43,7 @@ router.get("/admin/mis-report", async (req, res) => {
     deliveryNotes,
     paymentEntries,
     expenseClaims,
+    salarySlips,
   ] = await Promise.all([
     erpGet("Project", {
       fields: JSON.stringify(["name", "project_name", "status", "percent_complete", "expected_end_date", "estimated_costing", "actual_expense", "customer", "modified", "project_type"]),
@@ -103,6 +104,12 @@ router.get("/admin/mis-report", async (req, res) => {
       fields: JSON.stringify(["name", "employee_name", "expense_date", "total_claimed_amount", "total_sanctioned_amount", "status", "approval_status", "department"]),
       limit_page_length: "200",
       order_by: "expense_date desc",
+    }),
+    erpGet("Salary Slip", {
+      fields: JSON.stringify(["name", "employee", "employee_name", "department", "posting_date", "gross_pay", "net_pay", "total_deduction", "status", "start_date", "end_date"]),
+      filters: JSON.stringify([["Salary Slip", "posting_date", ">=", yearStart]]),
+      limit_page_length: "500",
+      order_by: "posting_date desc",
     }),
   ]);
 
@@ -184,6 +191,38 @@ router.get("/admin/mis-report", async (req, res) => {
   const approvedExpenses = expenseClaims.filter((e: any) => e.approval_status === "Approved");
   const totalClaimedPending = pendingExpenses.reduce((a: number, e: any) => a + (e.total_claimed_amount || 0), 0);
   const totalApproved = approvedExpenses.reduce((a: number, e: any) => a + (e.total_sanctioned_amount || 0), 0);
+
+  // ── Salary Slips ──────────────────────────────────────────────────────────
+  const submittedSlips = salarySlips.filter((s: any) => s.status === "Submitted");
+  const slipsThisMonth = salarySlips.filter((s: any) => s.posting_date >= monthStart);
+  const totalGrossThisMonth = slipsThisMonth.reduce((a: number, s: any) => a + (s.gross_pay || 0), 0);
+  const totalNetThisMonth = slipsThisMonth.reduce((a: number, s: any) => a + (s.net_pay || 0), 0);
+  const totalDeductionThisMonth = slipsThisMonth.reduce((a: number, s: any) => a + (s.total_deduction || 0), 0);
+  const totalGrossYTD = submittedSlips.reduce((a: number, s: any) => a + (s.gross_pay || 0), 0);
+  const totalNetYTD = submittedSlips.reduce((a: number, s: any) => a + (s.net_pay || 0), 0);
+  // Monthly salary trend (last 6 months)
+  const monthlyPayroll: Record<string, { gross: number; net: number; count: number }> = {};
+  for (const s of submittedSlips) {
+    const m = (s.posting_date || "").substring(0, 7);
+    if (!m) continue;
+    if (!monthlyPayroll[m]) monthlyPayroll[m] = { gross: 0, net: 0, count: 0 };
+    monthlyPayroll[m].gross += s.gross_pay || 0;
+    monthlyPayroll[m].net += s.net_pay || 0;
+    monthlyPayroll[m].count++;
+  }
+  const payrollMonths = Object.entries(monthlyPayroll)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(-6)
+    .map(([month, v]) => ({ month, ...v }));
+  // Dept cost breakdown
+  const deptCostMap: Record<string, number> = {};
+  for (const s of submittedSlips) {
+    const d = s.department || "Other";
+    deptCostMap[d] = (deptCostMap[d] || 0) + (s.gross_pay || 0);
+  }
+  const deptCostBreakdown = Object.entries(deptCostMap)
+    .map(([dept, gross]) => ({ dept, gross }))
+    .sort((a, b) => b.gross - a.gross);
 
   res.json({
     generated_at: new Date().toISOString(),
@@ -291,6 +330,28 @@ router.get("/admin/mis-report", async (req, res) => {
           sanctioned: e.total_sanctioned_amount || 0,
           status: e.approval_status,
           department: e.department || "",
+        })),
+      },
+      salary: {
+        total_slips: salarySlips.length,
+        slips_this_month: slipsThisMonth.length,
+        gross_this_month: totalGrossThisMonth,
+        net_this_month: totalNetThisMonth,
+        deduction_this_month: totalDeductionThisMonth,
+        gross_ytd: totalGrossYTD,
+        net_ytd: totalNetYTD,
+        monthly_trend: payrollMonths,
+        dept_cost: deptCostBreakdown,
+        list: salarySlips.slice(0, 50).map((s: any) => ({
+          id: s.name,
+          employee: s.employee_name,
+          emp_id: s.employee,
+          department: s.department || "",
+          month: (s.posting_date || "").substring(0, 7),
+          gross: s.gross_pay || 0,
+          net: s.net_pay || 0,
+          deduction: s.total_deduction || 0,
+          status: s.status,
         })),
       },
     },

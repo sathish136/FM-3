@@ -177,7 +177,7 @@ function PartyRows({ items, pk, ak = "outstanding", colorText }: { items: any[];
   );
 }
 
-const TABS = ["Overview", "Projects", "Sales & Finance", "Procurement", "HR"] as const;
+const TABS = ["Overview", "Accounts", "Projects", "Sales & Finance", "Procurement", "HR"] as const;
 type Tab = typeof TABS[number];
 
 export default function MisReport() {
@@ -205,6 +205,7 @@ export default function MisReport() {
       j.hr = j.hr ?? {}; j.hr.department_breakdown = j.hr.department_breakdown ?? []; j.hr.leave_applications = j.hr.leave_applications ?? []; j.hr.total_employees = j.hr.total_employees ?? 0; j.hr.on_leave_today = j.hr.on_leave_today ?? 0; j.hr.pending_leave_approvals = j.hr.pending_leave_approvals ?? 0;
       j.hr.expense_claims = j.hr.expense_claims ?? {}; j.hr.expense_claims.list = j.hr.expense_claims.list ?? []; j.hr.expense_claims.pending = j.hr.expense_claims.pending ?? 0; j.hr.expense_claims.approved = j.hr.expense_claims.approved ?? 0; j.hr.expense_claims.total_pending_amount = j.hr.expense_claims.total_pending_amount ?? 0; j.hr.expense_claims.total_approved_amount = j.hr.expense_claims.total_approved_amount ?? 0;
       j.payments = j.payments ?? {}; j.payments.list = j.payments.list ?? []; j.payments.total_received = j.payments.total_received ?? 0; j.payments.total_paid = j.payments.total_paid ?? 0; j.payments.this_month = j.payments.this_month ?? 0;
+      j.hr.salary = j.hr.salary ?? {}; j.hr.salary.list = j.hr.salary.list ?? []; j.hr.salary.gross_this_month = j.hr.salary.gross_this_month ?? 0; j.hr.salary.net_this_month = j.hr.salary.net_this_month ?? 0; j.hr.salary.deduction_this_month = j.hr.salary.deduction_this_month ?? 0; j.hr.salary.gross_ytd = j.hr.salary.gross_ytd ?? 0; j.hr.salary.net_ytd = j.hr.salary.net_ytd ?? 0; j.hr.salary.monthly_trend = j.hr.salary.monthly_trend ?? []; j.hr.salary.dept_cost = j.hr.salary.dept_cost ?? []; j.hr.salary.slips_this_month = j.hr.salary.slips_this_month ?? 0;
       j.period = j.period ?? {}; j.period.month_start = j.period.month_start ?? new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split("T")[0];
       setData(j); setLastUpdated(new Date());
     } catch (e: any) { setError(e.message || "Failed to load"); }
@@ -429,6 +430,195 @@ export default function MisReport() {
                       <Stat label="Pending Claims" value={data.hr.expense_claims.pending} alert={data.hr.expense_claims.pending > 0} sub={fmtCr(data.hr.expense_claims.total_pending_amount)} />
                     </div>
                   </Card>
+                </div>
+              )}
+
+              {/* ══ ACCOUNTS ══ */}
+              {tab === "Accounts" && (
+                <div className="space-y-3">
+                  {/* Row 1: Our Side Pending (Receivables) + Accounts Side Pending (Payables) */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                    {/* OUR SIDE PENDING — Sales Invoice Outstanding */}
+                    <Card title="Our Side Pending — Sales Invoice Outstanding" icon={TrendingUp} iconColor="text-sky-500"
+                      count={filtRec.length}
+                      right={<span className="text-sm font-black text-sky-700">{fmtCr(filtRec.reduce((a: number, i: any) => a + (i.outstanding || 0), 0))}</span>}>
+                      <div className="grid grid-cols-3 gap-2 mb-3">
+                        <Stat label="Total Receivable" value={fmtCr(filtRec.reduce((a: number, i: any) => a + (i.outstanding || 0), 0))} color="text-sky-700" small />
+                        <Stat label="Overdue Amount" value={fmtCr(filtRec.filter((i: any) => i.overdue).reduce((a: number, i: any) => a + (i.outstanding || 0), 0))} alert={filtRec.some((i: any) => i.overdue)} small />
+                        <Stat label="Overdue Invoices" value={filtRec.filter((i: any) => i.overdue).length} alert={filtRec.some((i: any) => i.overdue)} />
+                      </div>
+                      <AgingBar items={filtRec} />
+                      <div className="mt-3">
+                        <MiniTable
+                          cols={["Customer", "Invoice", "Invoice Amt", "Outstanding", "Due Date", "Age"]}
+                          rows={filtRec.map((i: any) => [
+                            <span className="font-semibold text-gray-800 max-w-[130px] truncate block">{i.customer}</span>,
+                            <span className="font-mono text-[9px] text-gray-400">{i.id}</span>,
+                            <span>{fmtCr(i.amount)}</span>,
+                            <span className={`font-bold ${i.overdue ? "text-red-600" : "text-sky-700"}`}>{fmtCr(i.outstanding)}</span>,
+                            <span className={i.overdue ? "text-red-600 font-bold" : ""}>{fmtDate(i.due)}</span>,
+                            i.overdue
+                              ? <Badge label={`${ageDays(i.due)}d overdue`} variant="red" />
+                              : <Badge label="Current" variant="green" />,
+                          ])} />
+                      </div>
+                    </Card>
+
+                    {/* ACCOUNTS SIDE PENDING — Purchase Invoice Outstanding */}
+                    <Card title="Accounts Side Pending — Purchase Invoice Outstanding" icon={TrendingDown} iconColor="text-orange-500"
+                      count={filtPay.length}
+                      right={<span className="text-sm font-black text-orange-700">{fmtCr(filtPay.reduce((a: number, i: any) => a + (i.outstanding || 0), 0))}</span>}>
+                      <div className="grid grid-cols-3 gap-2 mb-3">
+                        <Stat label="Total Payable" value={fmtCr(filtPay.reduce((a: number, i: any) => a + (i.outstanding || 0), 0))} color="text-orange-700" small />
+                        <Stat label="Overdue Amount" value={fmtCr(filtPay.filter((i: any) => i.overdue).reduce((a: number, i: any) => a + (i.outstanding || 0), 0))} alert={filtPay.some((i: any) => i.overdue)} small />
+                        <Stat label="Overdue Invoices" value={filtPay.filter((i: any) => i.overdue).length} alert={filtPay.some((i: any) => i.overdue)} />
+                      </div>
+                      <AgingBar items={filtPay} />
+                      <div className="mt-3">
+                        <MiniTable
+                          cols={["Supplier", "Invoice", "Invoice Amt", "Outstanding", "Due Date", "Age"]}
+                          rows={filtPay.map((i: any) => [
+                            <span className="font-semibold text-gray-800 max-w-[130px] truncate block">{i.supplier}</span>,
+                            <span className="font-mono text-[9px] text-gray-400">{i.id}</span>,
+                            <span>{fmtCr(i.amount)}</span>,
+                            <span className={`font-bold ${i.overdue ? "text-red-600" : "text-orange-700"}`}>{fmtCr(i.outstanding)}</span>,
+                            <span className={i.overdue ? "text-red-600 font-bold" : ""}>{fmtDate(i.due)}</span>,
+                            i.overdue
+                              ? <Badge label={`${ageDays(i.due)}d overdue`} variant="red" />
+                              : <Badge label="Current" variant="green" />,
+                          ])} />
+                      </div>
+                    </Card>
+                  </div>
+
+                  {/* Row 2: Sales Invoice Payments + PO Pending */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                    {/* SALES INVOICE PAYMENTS — Money Collected */}
+                    <Card title="Sales Invoice Payments — Money Collected" icon={Wallet} iconColor="text-emerald-600"
+                      count={filtPmt.filter((p: any) => p.type === "Receive").length}
+                      right={<span className="text-sm font-black text-emerald-700">{fmtCr(filtPmt.filter((p: any) => p.type === "Receive").reduce((a: number, p: any) => a + (p.amount || 0), 0))}</span>}>
+                      <div className="grid grid-cols-3 gap-2 mb-3">
+                        <Stat label="Total Collected" value={fmtCr(filtPmt.filter((p: any) => p.type === "Receive").reduce((a: number, p: any) => a + (p.amount || 0), 0))} color="text-emerald-700" small />
+                        <Stat label="Total Paid Out" value={fmtCr(filtPmt.filter((p: any) => p.type === "Pay").reduce((a: number, p: any) => a + (p.amount || 0), 0))} color="text-orange-700" small />
+                        <Stat label="Net Cash Flow" value={fmtCr(
+                          filtPmt.filter((p: any) => p.type === "Receive").reduce((a: number, p: any) => a + (p.amount || 0), 0)
+                          - filtPmt.filter((p: any) => p.type === "Pay").reduce((a: number, p: any) => a + (p.amount || 0), 0)
+                        )} color={
+                          filtPmt.filter((p: any) => p.type === "Receive").reduce((a: number, p: any) => a + (p.amount || 0), 0)
+                          >= filtPmt.filter((p: any) => p.type === "Pay").reduce((a: number, p: any) => a + (p.amount || 0), 0)
+                          ? "text-emerald-700" : "text-red-600"
+                        } small />
+                      </div>
+                      <MiniTable
+                        cols={["Type", "Party", "Amount", "Mode", "Ref No", "Date"]}
+                        rows={filtPmt.slice(0, 30).map((p: any) => [
+                          <Badge label={p.type} variant={p.type === "Receive" ? "green" : p.type === "Pay" ? "red" : "blue"} />,
+                          <span className="font-semibold text-gray-800 max-w-[120px] truncate block">{p.party || "—"}</span>,
+                          <span className={`font-bold ${p.type === "Receive" ? "text-emerald-700" : "text-orange-700"}`}>{fmtCr(p.amount)}</span>,
+                          <span className="text-gray-500">{p.mode || "—"}</span>,
+                          <span className="text-gray-400 font-mono text-[9px]">{p.ref || "—"}</span>,
+                          <span>{fmtShort(p.date)}</span>,
+                        ])} />
+                    </Card>
+
+                    {/* PO PENDING */}
+                    <Card title="PO Pending — Goods / Services Not Yet Received" icon={ShoppingBag} iconColor="text-amber-500"
+                      count={filtPO.filter((p: any) => ["To Receive and Bill", "To Bill", "To Receive", "Draft"].includes(p.status)).length}
+                      right={<span className="text-sm font-black text-amber-700">{fmtCr(filtPO.filter((p: any) => ["To Receive and Bill", "To Bill", "To Receive", "Draft"].includes(p.status)).reduce((a: number, p: any) => a + (p.amount || 0), 0))}</span>}>
+                      <div className="grid grid-cols-3 gap-2 mb-3">
+                        <Stat label="Pending POs" value={filtPO.filter((p: any) => ["To Receive and Bill", "To Bill", "To Receive", "Draft"].includes(p.status)).length} alert />
+                        <Stat label="Pending Value" value={fmtCr(filtPO.filter((p: any) => ["To Receive and Bill", "To Bill", "To Receive", "Draft"].includes(p.status)).reduce((a: number, p: any) => a + (p.amount || 0), 0))} color="text-amber-700" small />
+                        <Stat label="Overdue POs" value={filtPO.filter((p: any) => p.due && new Date(p.due) < new Date() && !["Completed","Closed"].includes(p.status)).length} alert={filtPO.some((p: any) => p.due && new Date(p.due) < new Date() && !["Completed","Closed"].includes(p.status))} />
+                      </div>
+                      <MiniTable
+                        cols={["PO", "Supplier", "Amount", "Received%", "Due Date", "Status"]}
+                        rows={filtPO.filter((p: any) => ["To Receive and Bill", "To Bill", "To Receive", "Draft"].includes(p.status)).map((p: any) => [
+                          <span className="font-mono text-[9px] text-gray-400">{p.id}</span>,
+                          <span className="font-semibold text-gray-800 max-w-[130px] truncate block">{p.supplier}</span>,
+                          <span className="font-bold text-amber-700">{fmtCr(p.amount)}</span>,
+                          <Pbar val={p.received_pct} color="bg-emerald-400" />,
+                          <span className={p.due && new Date(p.due) < new Date() ? "text-red-600 font-bold" : ""}>{fmtDate(p.due)}</span>,
+                          <Badge label={p.status} variant={sv(p.status)} />,
+                        ])} />
+                    </Card>
+                  </div>
+
+                  {/* Row 3: Employee Cost */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                    {/* Salary summary */}
+                    <Card title="Employee Cost — Salary This Month" icon={Users} iconColor="text-purple-500">
+                      <div className="grid grid-cols-2 gap-2 mb-3">
+                        <Stat label="Gross This Month" value={fmtCr(data.hr.salary.gross_this_month)} color="text-purple-700" small />
+                        <Stat label="Net This Month" value={fmtCr(data.hr.salary.net_this_month)} color="text-indigo-700" small />
+                        <Stat label="Total Deductions" value={fmtCr(data.hr.salary.deduction_this_month)} color="text-gray-700" small />
+                        <Stat label="Slips Processed" value={data.hr.salary.slips_this_month} />
+                      </div>
+                      <div className="space-y-1 mb-2">
+                        <div className="flex justify-between text-[10px] font-semibold"><span className="text-gray-500">Gross YTD</span><span className="text-purple-700">{fmtCr(data.hr.salary.gross_ytd)}</span></div>
+                        <div className="flex justify-between text-[10px] font-semibold"><span className="text-gray-500">Net YTD</span><span className="text-indigo-700">{fmtCr(data.hr.salary.net_ytd)}</span></div>
+                        <div className="flex justify-between text-[10px] font-semibold"><span className="text-gray-500">Expense Claims Pending</span><span className="text-red-600">{fmtCr(data.hr.expense_claims.total_pending_amount)}</span></div>
+                      </div>
+                      {/* Mini payroll trend bar */}
+                      {data.hr.salary.monthly_trend.length > 0 && (
+                        <div>
+                          <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">6-Month Payroll Trend</p>
+                          <div className="flex items-end gap-1 h-12">
+                            {(() => {
+                              const max = Math.max(...data.hr.salary.monthly_trend.map((m: any) => m.gross), 1);
+                              return data.hr.salary.monthly_trend.map((m: any, i: number) => (
+                                <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
+                                  <div className="w-full bg-purple-200 rounded-sm" style={{ height: `${Math.round((m.gross / max) * 40)}px` }} title={`${m.month}: ${fmtCr(m.gross)}`} />
+                                  <span className="text-[7px] text-gray-400">{m.month.slice(5)}</span>
+                                </div>
+                              ));
+                            })()}
+                          </div>
+                        </div>
+                      )}
+                    </Card>
+
+                    {/* Dept cost breakdown */}
+                    <Card title="Salary Cost by Department" icon={UserCheck} iconColor="text-purple-400">
+                      {data.hr.salary.dept_cost.length === 0
+                        ? <p className="text-[10px] text-gray-400 text-center py-4">No salary data yet</p>
+                        : (
+                          <div className="overflow-auto max-h-52 space-y-1.5">
+                            {data.hr.salary.dept_cost.map((d: any, i: number) => {
+                              const total = data.hr.salary.dept_cost.reduce((a: number, x: any) => a + x.gross, 0);
+                              return (
+                                <div key={i} className="flex items-center gap-2">
+                                  <span className="text-[10px] text-gray-600 w-36 truncate">{d.dept}</span>
+                                  <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                    <div className="h-full bg-purple-400 rounded-full" style={{ width: `${Math.round((d.gross / Math.max(total, 1)) * 100)}%` }} />
+                                  </div>
+                                  <span className="text-[10px] font-bold text-gray-700 w-16 text-right">{fmtCr(d.gross)}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                    </Card>
+
+                    {/* Expense Claims pending */}
+                    <Card title="Expense Claims Pending" icon={IndianRupee} iconColor="text-rose-500"
+                      count={data.hr.expense_claims.pending}
+                      right={data.hr.expense_claims.pending > 0 ? <Badge label="Action Needed" variant="red" /> : undefined}>
+                      <div className="grid grid-cols-2 gap-2 mb-3">
+                        <Stat label="Pending" value={data.hr.expense_claims.pending} alert={data.hr.expense_claims.pending > 0}
+                          sub={fmtCr(data.hr.expense_claims.total_pending_amount)} />
+                        <Stat label="Approved" value={data.hr.expense_claims.approved} color="text-emerald-700"
+                          sub={fmtCr(data.hr.expense_claims.total_approved_amount)} />
+                      </div>
+                      <MiniTable
+                        cols={["Employee", "Claimed", "Status", "Date"]}
+                        rows={data.hr.expense_claims.list.filter((e: any) => e.status === "Draft" || e.status === "Submitted").map((e: any) => [
+                          <span className="font-semibold text-gray-800 max-w-[100px] truncate block">{e.employee}</span>,
+                          <span className="font-bold text-rose-600">{fmtCr(e.claimed)}</span>,
+                          <Badge label={e.status} variant={e.status === "Approved" ? "green" : "amber"} />,
+                          <span>{fmtShort(e.date)}</span>,
+                        ])} />
+                    </Card>
+                  </div>
                 </div>
               )}
 
