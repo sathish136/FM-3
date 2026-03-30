@@ -206,8 +206,11 @@ export default function MisReport() {
       j.procurement.delivery_notes = j.procurement.delivery_notes ?? {}; j.procurement.delivery_notes.list = j.procurement.delivery_notes.list ?? []; j.procurement.delivery_notes.pending = j.procurement.delivery_notes.pending ?? 0; j.procurement.delivery_notes.this_month = j.procurement.delivery_notes.this_month ?? 0; j.procurement.delivery_notes.total_value = j.procurement.delivery_notes.total_value ?? 0;
       j.sales = j.sales ?? {}; j.sales.orders = j.sales.orders ?? {}; j.sales.orders.list = j.sales.orders.list ?? []; j.sales.orders.active = j.sales.orders.active ?? 0; j.sales.orders.this_month = j.sales.orders.this_month ?? 0; j.sales.orders.this_month_value = j.sales.orders.this_month_value ?? 0; j.sales.orders.total_value = j.sales.orders.total_value ?? 0;
       j.sales.quotations = j.sales.quotations ?? {}; j.sales.quotations.list = j.sales.quotations.list ?? []; j.sales.quotations.open = j.sales.quotations.open ?? 0; j.sales.quotations.total_value = j.sales.quotations.total_value ?? 0;
+      j.sales.invoices = j.sales.invoices ?? {}; j.sales.invoices.list = j.sales.invoices.list ?? []; j.sales.invoices.total = j.sales.invoices.total ?? 0; j.sales.invoices.paid = j.sales.invoices.paid ?? 0; j.sales.invoices.unpaid = j.sales.invoices.unpaid ?? 0; j.sales.invoices.this_month = j.sales.invoices.this_month ?? 0; j.sales.invoices.total_value = j.sales.invoices.total_value ?? 0; j.sales.invoices.this_month_value = j.sales.invoices.this_month_value ?? 0;
       j.sales.receivables = j.sales.receivables ?? {}; j.sales.receivables.all_outstanding = j.sales.receivables.all_outstanding ?? []; j.sales.receivables.total_receivable = j.sales.receivables.total_receivable ?? 0; j.sales.receivables.overdue_invoices = j.sales.receivables.overdue_invoices ?? 0; j.sales.receivables.overdue_receivable = j.sales.receivables.overdue_receivable ?? 0; j.sales.receivables.outstanding_invoices = j.sales.receivables.outstanding_invoices ?? 0;
       j.payables = j.payables ?? {}; j.payables.all_outstanding = j.payables.all_outstanding ?? []; j.payables.total_payable = j.payables.total_payable ?? 0; j.payables.overdue_invoices = j.payables.overdue_invoices ?? 0; j.payables.outstanding_invoices = j.payables.outstanding_invoices ?? 0;
+      j.leads = j.leads ?? {}; j.leads.list = j.leads.list ?? []; j.leads.total = j.leads.total ?? 0; j.leads.open = j.leads.open ?? 0; j.leads.converted = j.leads.converted ?? 0; j.leads.this_month = j.leads.this_month ?? 0; j.leads.total_expected_revenue = j.leads.total_expected_revenue ?? 0;
+      j.accounting = j.accounting ?? {}; j.accounting.total_incoming_bills = j.accounting.total_incoming_bills ?? 0; j.accounting.total_outgoing_bills = j.accounting.total_outgoing_bills ?? 0; j.accounting.total_incoming_payment = j.accounting.total_incoming_payment ?? 0; j.accounting.total_outgoing_payment = j.accounting.total_outgoing_payment ?? 0; j.accounting.this_month_incoming_bills = j.accounting.this_month_incoming_bills ?? 0; j.accounting.this_month_outgoing_bills = j.accounting.this_month_outgoing_bills ?? 0; j.accounting.purchase_invoices = j.accounting.purchase_invoices ?? {}; j.accounting.purchase_invoices.list = j.accounting.purchase_invoices.list ?? []; j.accounting.purchase_invoices.total = j.accounting.purchase_invoices.total ?? 0; j.accounting.purchase_invoices.total_value = j.accounting.purchase_invoices.total_value ?? 0;
       j.hr = j.hr ?? {}; j.hr.department_breakdown = j.hr.department_breakdown ?? []; j.hr.leave_applications = j.hr.leave_applications ?? []; j.hr.total_employees = j.hr.total_employees ?? 0; j.hr.on_leave_today = j.hr.on_leave_today ?? 0; j.hr.pending_leave_approvals = j.hr.pending_leave_approvals ?? 0;
       j.hr.expense_claims = j.hr.expense_claims ?? {}; j.hr.expense_claims.list = j.hr.expense_claims.list ?? []; j.hr.expense_claims.pending = j.hr.expense_claims.pending ?? 0; j.hr.expense_claims.approved = j.hr.expense_claims.approved ?? 0; j.hr.expense_claims.total_pending_amount = j.hr.expense_claims.total_pending_amount ?? 0; j.hr.expense_claims.total_approved_amount = j.hr.expense_claims.total_approved_amount ?? 0;
       j.payments = j.payments ?? {}; j.payments.list = j.payments.list ?? []; j.payments.total_received = j.payments.total_received ?? 0; j.payments.total_paid = j.payments.total_paid ?? 0; j.payments.this_month = j.payments.this_month ?? 0;
@@ -243,6 +246,9 @@ export default function MisReport() {
   const filtRec = useMemo(() => filt(data?.sales.receivables.all_outstanding ?? []), [data, fp]);
   const filtPay = useMemo(() => filt(data?.payables.all_outstanding ?? []), [data, fp]);
   const filtPmt = useMemo(() => filt(data?.payments.list ?? []), [data, fp]);
+  const filtSI  = useMemo(() => filt(data?.sales.invoices.list ?? []), [data, fp]);
+  const filtPI  = useMemo(() => filt(data?.accounting.purchase_invoices.list ?? []), [data, fp]);
+  const filtLeads = useMemo(() => data?.leads.list ?? [], [data]);
 
   const monthName = new Date().toLocaleString("en-IN", { month: "long", year: "numeric" });
 
@@ -254,7 +260,7 @@ export default function MisReport() {
     { icon: TrendingUp, color: "text-sky-600", bg: "bg-sky-100", label: "Receivable", value: fmtCr(data.sales.receivables.total_receivable), sub: `${data.sales.receivables.overdue_invoices} overdue`, alert: data.sales.receivables.overdue_invoices > 0 },
     { icon: TrendingDown, color: "text-orange-600", bg: "bg-orange-100", label: "Payable", value: fmtCr(data.payables.total_payable), sub: `${data.payables.overdue_invoices} overdue`, alert: data.payables.overdue_invoices > 0 },
     { icon: ShoppingBag, color: "text-amber-600", bg: "bg-amber-100", label: "Pending POs", value: data.procurement.purchase_orders.pending, sub: fmtCr(data.procurement.purchase_orders.pending_value) },
-    { icon: ClipboardList, color: "text-rose-600", bg: "bg-rose-100", label: "Pending MRs", value: data.procurement.material_requests.pending, sub: `${data.procurement.material_requests.this_month} this mo` },
+    { icon: FileText, color: "text-indigo-600", bg: "bg-indigo-100", label: "Open Leads", value: data.leads.open, sub: `${data.leads.converted} converted` },
     { icon: Wallet, color: "text-green-600", bg: "bg-green-100", label: "Collected", value: fmtCr(filtPmt.filter((p: any) => p.type === "Receive").reduce((a: number, p: any) => a + (p.amount || 0), 0)), sub: `${filtPmt.filter((p: any) => p.type === "Receive").length} entries` },
   ] : [];
 
@@ -578,6 +584,26 @@ export default function MisReport() {
               {/* ══ ACCOUNTS ══ */}
               {tab === "Accounts" && (
                 <div className="space-y-3">
+                  {/* Accounting Summary KPI Cards — like ERP Profit & Loss overview */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    {[
+                      { label: "Total Outgoing Bills", sub: "Purchase Invoices", value: fmtCr(data.accounting.total_outgoing_bills), sub2: `This month: ${fmtCr(data.accounting.this_month_outgoing_bills)}`, color: "text-red-700", border: "border-red-200", icon: TrendingDown },
+                      { label: "Total Incoming Bills", sub: "Sales Invoices", value: fmtCr(data.accounting.total_incoming_bills), sub2: `This month: ${fmtCr(data.accounting.this_month_incoming_bills)}`, color: "text-sky-700", border: "border-sky-200", icon: TrendingUp },
+                      { label: "Total Incoming Payment", sub: "Cash Received", value: fmtCr(data.accounting.total_incoming_payment), sub2: `${filtPmt.filter((p:any)=>p.type==="Receive").length} payment entries`, color: "text-emerald-700", border: "border-emerald-200", icon: Wallet },
+                      { label: "Total Outgoing Payment", sub: "Cash Paid Out", value: fmtCr(data.accounting.total_outgoing_payment), sub2: `${filtPmt.filter((p:any)=>p.type==="Pay").length} payment entries`, color: "text-orange-700", border: "border-orange-200", icon: CreditCard },
+                    ].map((h, i) => (
+                      <div key={i} className={`rounded-2xl bg-white border ${h.border} p-4 shadow-sm`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <h.icon className={`w-4 h-4 ${h.color}`} />
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{h.label}</p>
+                        </div>
+                        <p className={`text-xl font-black leading-tight ${h.color}`}>{h.value}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">{h.sub}</p>
+                        <p className={`text-[10px] font-semibold mt-1 ${h.color} opacity-80`}>{h.sub2}</p>
+                      </div>
+                    ))}
+                  </div>
+
                   {/* Row 1: Our Side Pending (Receivables) + Accounts Side Pending (Payables) */}
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                     {/* OUR SIDE PENDING — Sales Invoice Outstanding */}
@@ -865,17 +891,73 @@ export default function MisReport() {
                       ])} />
                   </Card>
 
-                  {/* Quotations */}
-                  <Card title="Open Quotations" icon={FileText} iconColor="text-indigo-500" count={data.sales.quotations.list.length}
+                  {/* Quotations / Proposals */}
+                  <Card title="Proposals / Quotations" icon={FileText} iconColor="text-indigo-500" count={data.sales.quotations.list.length}
                     right={<span className="text-xs font-black text-indigo-700">{fmtCr(data.sales.quotations.total_value)}</span>}>
+                    <div className="grid grid-cols-3 gap-2 mb-3">
+                      <Stat label="Open" value={data.sales.quotations.open} color="text-indigo-700" />
+                      <Stat label="Total" value={data.sales.quotations.list.length} />
+                      <Stat label="Total Value" value={fmtCr(data.sales.quotations.total_value)} small color="text-indigo-700" />
+                    </div>
                     <MiniTable
-                      cols={["Party", "Amount", "Valid Till", "Status"]}
-                      rows={data.sales.quotations.list.map((q: any) => [
+                      cols={["ID", "Party", "Amount", "Date", "Valid Till", "Status"]}
+                      rows={data.sales.quotations.list.slice(0, 30).map((q: any) => [
+                        <span className="font-mono text-[9px] text-gray-400">{q.id}</span>,
                         <span className="font-semibold text-gray-800 max-w-[120px] truncate block">{q.party || "—"}</span>,
                         <span className="font-bold">{fmtCr(q.amount)}</span>,
+                        <span>{fmtShort(q.date)}</span>,
                         <span className={q.valid_till && new Date(q.valid_till) < new Date() ? "text-red-600 font-bold" : ""}>{fmtShort(q.valid_till)}</span>,
                         <Badge label={q.status} variant={sv(q.status)} />,
                       ])} />
+                  </Card>
+
+                  {/* Sales Invoices */}
+                  <Card title="Sales Invoices" icon={Receipt} iconColor="text-sky-500" count={filtSI.length}
+                    right={<span className="text-xs font-black text-sky-700">{fmtCr(data.sales.invoices.total_value)}</span>}
+                    span={2}>
+                    <div className="grid grid-cols-4 gap-2 mb-3">
+                      <Stat label="Total" value={data.sales.invoices.total} />
+                      <Stat label="Paid" value={data.sales.invoices.paid} color="text-emerald-700" />
+                      <Stat label="Unpaid / Overdue" value={data.sales.invoices.unpaid} alert={data.sales.invoices.unpaid > 0} />
+                      <Stat label="This Month" value={data.sales.invoices.this_month} sub={fmtCr(data.sales.invoices.this_month_value)} />
+                    </div>
+                    <MiniTable
+                      cols={["Invoice", "Customer", "Amount", "Outstanding", "Posted", "Due", "Status"]}
+                      rows={filtSI.slice(0, 40).map((i: any) => [
+                        <span className="font-mono text-[9px] text-gray-400">{i.id}</span>,
+                        <span className="font-semibold text-gray-800 max-w-[120px] truncate block">{i.customer}</span>,
+                        <span className="font-bold">{fmtCr(i.amount)}</span>,
+                        <span className={`font-bold ${i.outstanding > 0 ? (i.overdue ? "text-red-600" : "text-sky-700") : "text-emerald-600"}`}>{i.outstanding > 0 ? fmtCr(i.outstanding) : "Paid"}</span>,
+                        <span>{fmtShort(i.posted)}</span>,
+                        <span className={i.overdue ? "text-red-600 font-bold" : ""}>{fmtShort(i.due)}</span>,
+                        <Badge label={i.status} variant={sv(i.status)} />,
+                      ])} />
+                  </Card>
+
+                  {/* Leads */}
+                  <Card title="Leads / Prospects" icon={FileText} iconColor="text-violet-500" count={filtLeads.length}
+                    right={<span className="text-xs font-black text-violet-700">{fmtCr(data.leads.total_expected_revenue)}</span>}
+                    span={2}>
+                    <div className="grid grid-cols-4 gap-2 mb-3">
+                      <Stat label="Total Leads" value={data.leads.total} />
+                      <Stat label="Open" value={data.leads.open} color="text-violet-700" />
+                      <Stat label="Converted" value={data.leads.converted} color="text-emerald-700" />
+                      <Stat label="This Month" value={data.leads.this_month} />
+                    </div>
+                    {filtLeads.length === 0
+                      ? <p className="text-[10px] text-gray-400 text-center py-4">No leads found</p>
+                      : <MiniTable
+                          cols={["Lead", "Company", "Status", "Source", "Owner", "Revenue", "Date"]}
+                          rows={filtLeads.slice(0, 30).map((l: any) => [
+                            <span className="font-semibold text-gray-800 max-w-[120px] truncate block">{l.name}</span>,
+                            <span className="text-gray-500 max-w-[100px] truncate block">{l.company || "—"}</span>,
+                            <Badge label={l.status} variant={l.status === "Converted" ? "green" : l.status === "Do Not Contact" ? "red" : l.status === "Interested" ? "blue" : "amber"} />,
+                            <span className="text-gray-500">{l.source || "—"}</span>,
+                            <span className="text-gray-500 max-w-[80px] truncate block">{l.owner || "—"}</span>,
+                            l.revenue > 0 ? <span className="font-bold text-violet-700">{fmtCr(l.revenue)}</span> : <span className="text-gray-400">—</span>,
+                            <span>{fmtShort(l.modified)}</span>,
+                          ])} />
+                    }
                   </Card>
                 </div>
               )}

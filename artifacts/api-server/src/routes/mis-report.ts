@@ -44,6 +44,7 @@ router.get("/admin/mis-report", async (req, res) => {
     paymentEntries,
     expenseClaims,
     salarySlips,
+    leads,
   ] = await Promise.all([
     erpGet("Project", {
       fields: JSON.stringify(["name", "project_name", "status", "percent_complete", "expected_end_date", "estimated_costing", "actual_expense", "customer", "modified", "project_type"]),
@@ -110,6 +111,11 @@ router.get("/admin/mis-report", async (req, res) => {
       filters: JSON.stringify([["Salary Slip", "posting_date", ">=", yearStart]]),
       limit_page_length: "500",
       order_by: "posting_date desc",
+    }),
+    erpGet("Lead", {
+      fields: JSON.stringify(["name", "lead_name", "company_name", "status", "source", "email_id", "mobile_no", "lead_owner", "creation", "modified", "expected_revenue", "notes"]),
+      limit_page_length: "300",
+      order_by: "modified desc",
     }),
   ]);
 
@@ -185,6 +191,24 @@ router.get("/admin/mis-report", async (req, res) => {
   const paymentsThisMonth = paymentEntries.filter((p: any) => p.posting_date >= monthStart);
   const totalReceived = receivedPayments.reduce((a: number, p: any) => a + (p.paid_amount || 0), 0);
   const totalPaid = madePayments.reduce((a: number, p: any) => a + (p.paid_amount || 0), 0);
+
+  // ── Leads ─────────────────────────────────────────────────────────────────
+  const openLeads = leads.filter((l: any) => !["Converted", "Do Not Contact"].includes(l.status));
+  const convertedLeads = leads.filter((l: any) => l.status === "Converted");
+  const leadsThisMonth = leads.filter((l: any) => (l.creation || "").substring(0, 10) >= monthStart);
+  const totalLeadRevenue = leads.reduce((a: number, l: any) => a + (l.expected_revenue || 0), 0);
+
+  // ── All Sales Invoices ────────────────────────────────────────────────────
+  const paidSalesInvoices = salesInvoices.filter((i: any) => i.status === "Paid");
+  const unpaidSalesInvoices = salesInvoices.filter((i: any) => i.status === "Unpaid" || i.status === "Overdue" || i.outstanding_amount > 0);
+  const siThisMonth = salesInvoices.filter((i: any) => (i.posting_date || "") >= monthStart);
+  const totalSIValue = salesInvoices.reduce((a: number, i: any) => a + (i.grand_total || 0), 0);
+  const totalSIThisMonth = siThisMonth.reduce((a: number, i: any) => a + (i.grand_total || 0), 0);
+
+  // ── All Purchase Invoices (Outgoing Bills) ────────────────────────────────
+  const piThisMonth = purchaseInvoices.filter((i: any) => (i.posting_date || "") >= monthStart);
+  const totalPIValue = purchaseInvoices.reduce((a: number, i: any) => a + (i.grand_total || 0), 0);
+  const totalPIThisMonth = piThisMonth.reduce((a: number, i: any) => a + (i.grand_total || 0), 0);
 
   // ── Expense Claims ────────────────────────────────────────────────────────
   const pendingExpenses = expenseClaims.filter((e: any) => e.approval_status === "Draft" || e.approval_status === "Submitted");
@@ -378,13 +402,32 @@ router.get("/admin/mis-report", async (req, res) => {
       quotations: {
         open: openQuotations.length,
         total_value: totalQuotationValue,
-        list: openQuotations.slice(0, 30).map((q: any) => ({
+        list: quotations.slice(0, 50).map((q: any) => ({
           id: q.name,
           party: q.party_name,
           amount: q.grand_total || 0,
           status: q.status,
           date: q.transaction_date,
           valid_till: q.valid_till,
+        })),
+      },
+      invoices: {
+        total: salesInvoices.length,
+        paid: paidSalesInvoices.length,
+        unpaid: unpaidSalesInvoices.length,
+        this_month: siThisMonth.length,
+        total_value: totalSIValue,
+        this_month_value: totalSIThisMonth,
+        list: salesInvoices.slice(0, 100).map((i: any) => ({
+          id: i.name,
+          customer: i.customer,
+          amount: i.grand_total || 0,
+          outstanding: i.outstanding_amount || 0,
+          status: i.status,
+          posted: i.posting_date,
+          due: i.due_date,
+          overdue: !!(i.due_date && new Date(i.due_date) < new Date() && i.outstanding_amount > 0),
+          project: i.project || "",
         })),
       },
       receivables: {
@@ -400,6 +443,52 @@ router.get("/admin/mis-report", async (req, res) => {
           posted: i.posting_date,
           due: i.due_date,
           overdue: !!(i.due_date && new Date(i.due_date) < new Date()),
+          project: i.project || "",
+        })),
+      },
+    },
+
+    leads: {
+      total: leads.length,
+      open: openLeads.length,
+      converted: convertedLeads.length,
+      this_month: leadsThisMonth.length,
+      total_expected_revenue: totalLeadRevenue,
+      list: leads.slice(0, 100).map((l: any) => ({
+        id: l.name,
+        name: l.lead_name || l.name,
+        company: l.company_name || "",
+        status: l.status || "Open",
+        source: l.source || "",
+        email: l.email_id || "",
+        mobile: l.mobile_no || "",
+        owner: l.lead_owner || "",
+        revenue: l.expected_revenue || 0,
+        created: (l.creation || "").substring(0, 10),
+        modified: (l.modified || "").substring(0, 10),
+      })),
+    },
+
+    accounting: {
+      total_incoming_bills: totalSIValue,
+      total_outgoing_bills: totalPIValue,
+      total_incoming_payment: totalReceived,
+      total_outgoing_payment: totalPaid,
+      this_month_incoming_bills: totalSIThisMonth,
+      this_month_outgoing_bills: totalPIThisMonth,
+      purchase_invoices: {
+        total: purchaseInvoices.length,
+        this_month: piThisMonth.length,
+        total_value: totalPIValue,
+        list: purchaseInvoices.slice(0, 100).map((i: any) => ({
+          id: i.name,
+          supplier: i.supplier,
+          amount: i.grand_total || 0,
+          outstanding: i.outstanding_amount || 0,
+          status: i.status,
+          posted: i.posting_date,
+          due: i.due_date,
+          overdue: !!(i.due_date && new Date(i.due_date) < new Date() && i.outstanding_amount > 0),
           project: i.project || "",
         })),
       },
