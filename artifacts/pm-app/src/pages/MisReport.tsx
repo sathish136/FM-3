@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Layout } from "@/components/Layout";
+import { Link } from "wouter";
 import {
   RefreshCw, Briefcase, Users, Target, ShoppingBag, FileText,
   AlertTriangle, TrendingUp, TrendingDown, Calendar, Printer,
   BarChart3, ClipboardList, Receipt, CreditCard, UserCheck,
-  Truck, Wallet, Filter, X, IndianRupee, ChevronRight,
+  Truck, Wallet, Filter, X, IndianRupee, ChevronRight, ShoppingCart,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -281,6 +282,11 @@ export default function MisReport() {
             <div className="flex-1" />
             {lastUpdated && <span className="text-[9px] text-gray-400 hidden sm:block">Updated {lastUpdated.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>}
             <button onClick={() => window.print()} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hidden sm:block"><Printer className="w-3.5 h-3.5" /></button>
+            <Link href="/purchase-dashboard">
+              <a className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold bg-[#1e3a5f] text-white rounded-lg hover:bg-[#163050] no-underline">
+                <ShoppingCart className="w-3 h-3" />Purchase Overview
+              </a>
+            </Link>
             <button onClick={load} disabled={loading}
               className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
               <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />Refresh

@@ -1,10 +1,11 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Layout } from "@/components/Layout";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 import {
   CheckCircle, ClipboardCheck, FileClock, FileQuestion,
   ShoppingCart, CreditCard, AlertTriangle, Truck,
-  RefreshCw, Download, ChevronDown, Search, X, Clock, Package, ArrowLeft,
+  RefreshCw, Download, ChevronDown, Search, X, Clock, Package, ArrowLeft, BarChart2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as XLSX from "xlsx";
@@ -499,6 +500,11 @@ export default function PurchaseDashboard() {
           </div>
           <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
             <ProjectSelector value={project} onChange={setProject} />
+            <Link href="/mis-report">
+              <a style={{ display:"flex", alignItems:"center", gap:6, background:"#1e3a5f", border:"none", borderRadius:8, padding:"7px 14px", fontSize:13, fontWeight:600, color:"#fff", cursor:"pointer", textDecoration:"none" }}>
+                <BarChart2 style={{ width:14, height:14 }} /> MD Dashboard
+              </a>
+            </Link>
             <button onClick={refetchAll}
               style={{ display:"flex", alignItems:"center", gap:6, background:"#fff", border:"1px solid #d1d5db", borderRadius:8, padding:"7px 14px", fontSize:13, fontWeight:600, color:"#374151", cursor:"pointer" }}>
               <RefreshCw className={cn("w-3.5 h-3.5", counts.isFetching && "animate-spin")} /> Refresh
