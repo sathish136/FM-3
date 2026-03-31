@@ -11,7 +11,7 @@ export function useNavStyle() {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved === "sidebar" || saved === "launcher") return saved;
     } catch {}
-    return "launcher";
+    return "sidebar";
   });
 
   useEffect(() => {
