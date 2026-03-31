@@ -366,78 +366,76 @@ export default function CalendarPage() {
   return (
     <Layout>
       <div className="flex flex-col h-full bg-gray-50 min-h-screen">
-        {/* Top bar */}
-        <div className="bg-white border-b px-4 py-3 flex items-center gap-3 flex-wrap shadow-sm">
-          <div className="flex items-center gap-2">
+        {/* Top bar — row 1: title + view tabs + new event */}
+        <div className="bg-white border-b px-4 py-2.5 flex items-center gap-3 shadow-sm">
+          <div className="flex items-center gap-2 shrink-0">
             <CalIcon className="w-5 h-5 text-blue-600" />
-            <span className="font-bold text-gray-800 text-sm">Calendar</span>
+            <span className="font-bold text-gray-800 text-sm hidden sm:block">Calendar</span>
           </div>
-
-          {/* Search */}
-          <div className="flex items-center gap-2 flex-1 min-w-[160px] max-w-xs">
-            <div className="relative flex-1">
-              <Search className="w-3.5 h-3.5 text-gray-300 absolute left-2.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Search events..."
-                className="w-full border border-gray-200 rounded-lg pl-8 pr-3 py-1.5 text-xs text-gray-700 focus:outline-none focus:border-blue-400"
-              />
-              {searchQuery && <button onClick={() => setSearchQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X className="w-3 h-3" /></button>}
-            </div>
-
-            {/* Type filter */}
-            <div className="relative">
-              <button onClick={() => setShowFilterMenu(v => !v)}
-                className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${filterType !== "all" ? "bg-blue-50 border-blue-200 text-blue-700" : "border-gray-200 text-gray-500 hover:border-gray-300"}`}>
-                <Filter className="w-3 h-3" />
-                {filterType === "all" ? "All" : getEventMeta(filterType).label}
-              </button>
-              {showFilterMenu && (
-                <div className="absolute top-8 left-0 z-30 bg-white border border-gray-200 rounded-xl shadow-lg py-1 min-w-[150px]">
-                  <button onClick={() => { setFilterType("all"); setShowFilterMenu(false); }}
-                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 ${filterType === "all" ? "font-bold text-blue-600" : "text-gray-700"}`}>All Types</button>
-                  {EVENT_TYPES.map(t => (
-                    <button key={t.id} onClick={() => { setFilterType(t.id); setShowFilterMenu(false); }}
-                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 flex items-center gap-2 ${filterType === t.id ? "font-bold text-blue-600" : "text-gray-700"}`}>
-                      <span className="w-2 h-2 rounded-full" style={{ background: t.color }} />{t.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {notifPerm !== "granted" ? (
-            <button onClick={requestNotifPerm}
-              className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg hover:bg-amber-100 transition-colors">
-              <Bell className="w-3.5 h-3.5" /> Enable Reminders
-            </button>
-          ) : (
-            <span className="flex items-center gap-1 text-[10px] text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">
-              <Bell className="w-3 h-3" /> Reminders On
-            </span>
-          )}
 
           {/* View mode tabs */}
-          <div className="flex bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
+          <div className="flex bg-gray-100 rounded-lg overflow-hidden border border-gray-200 shrink-0">
             {([
-              { id: "month" as ViewMode, label: "Month" },
-              { id: "week"  as ViewMode, label: "Week"  },
-              { id: "day"   as ViewMode, label: "Day"   },
-              { id: "agenda"as ViewMode, label: "Agenda"},
+              { id: "month"  as ViewMode, label: "Month" },
+              { id: "week"   as ViewMode, label: "Week"  },
+              { id: "day"    as ViewMode, label: "Day"   },
+              { id: "agenda" as ViewMode, label: "List"  },
             ]).map(v => (
               <button key={v.id} onClick={() => setViewMode(v.id)}
-                className={`px-3 py-1.5 text-xs font-medium transition-colors ${viewMode === v.id ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-200"}`}>
+                className={`px-3 py-1.5 text-xs font-semibold transition-colors ${viewMode === v.id ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-200"}`}>
                 {v.label}
               </button>
             ))}
           </div>
 
+          {/* Search */}
+          <div className="relative flex-1 min-w-0">
+            <Search className="w-3.5 h-3.5 text-gray-300 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search events..."
+              className="w-full border border-gray-200 rounded-lg pl-8 pr-7 py-1.5 text-xs text-gray-700 focus:outline-none focus:border-blue-400"
+            />
+            {searchQuery && <button onClick={() => setSearchQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X className="w-3 h-3" /></button>}
+          </div>
+
+          {/* Type filter */}
+          <div className="relative shrink-0">
+            <button onClick={() => setShowFilterMenu(v => !v)}
+              className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${filterType !== "all" ? "bg-blue-50 border-blue-200 text-blue-700" : "border-gray-200 text-gray-500 hover:border-gray-300"}`}>
+              <Filter className="w-3 h-3" />
+              <span className="hidden sm:inline">{filterType === "all" ? "Filter" : getEventMeta(filterType).label}</span>
+            </button>
+            {showFilterMenu && (
+              <div className="absolute top-8 right-0 z-30 bg-white border border-gray-200 rounded-xl shadow-lg py-1 min-w-[150px]">
+                <button onClick={() => { setFilterType("all"); setShowFilterMenu(false); }}
+                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 ${filterType === "all" ? "font-bold text-blue-600" : "text-gray-700"}`}>All Types</button>
+                {EVENT_TYPES.map(t => (
+                  <button key={t.id} onClick={() => { setFilterType(t.id); setShowFilterMenu(false); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 flex items-center gap-2 ${filterType === t.id ? "font-bold text-blue-600" : "text-gray-700"}`}>
+                    <span className="w-2 h-2 rounded-full" style={{ background: t.color }} />{t.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {notifPerm !== "granted" ? (
+            <button onClick={requestNotifPerm}
+              className="shrink-0 flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-lg hover:bg-amber-100 transition-colors">
+              <Bell className="w-3.5 h-3.5" /><span className="hidden md:inline">Enable Reminders</span>
+            </button>
+          ) : (
+            <span className="shrink-0 flex items-center gap-1 text-[10px] text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">
+              <Bell className="w-3 h-3" /><span className="hidden md:inline">Reminders On</span>
+            </span>
+          )}
+
           <button onClick={() => openCreate()}
-            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors shadow-sm">
-            <Plus className="w-3.5 h-3.5" /> New Event
+            className="shrink-0 flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors shadow-sm">
+            <Plus className="w-3.5 h-3.5" /><span className="hidden sm:inline">New Event</span>
           </button>
         </div>
 
