@@ -546,7 +546,7 @@ function FullSidebar({ location, expandedItems, toggleExpand, setCollapsed, setM
 
 function MiniSidebar({ location, expandedItems, toggleExpand, setCollapsed, aiTrigger, setAiTrigger, logout, theme, user, darkMode, toggleDarkMode, setShowThemePicker }: any) {
   return (
-    <div className="flex flex-col h-full items-center relative overflow-hidden">
+    <div className="flex flex-col h-full items-center relative overflow-x-hidden">
       <div className="absolute inset-0 bg-gradient-to-b from-slate-900 via-[#0f172a] to-slate-950 pointer-events-none" />
       <div className="relative w-full flex justify-center py-3.5 border-b border-white/[0.07]">
         <span className="text-xs font-black tracking-tight flex items-baseline">
@@ -554,7 +554,7 @@ function MiniSidebar({ location, expandedItems, toggleExpand, setCollapsed, aiTr
           <span style={{ color: "#22d3ee", textShadow: "0 0 8px rgba(34,211,238,0.8)" }}>M</span>
         </span>
       </div>
-      <nav className="relative flex flex-col items-center gap-0.5 w-full px-2 flex-1 py-3 overflow-hidden">
+      <nav className="relative flex flex-col items-center gap-0.5 w-full px-2 flex-1 py-3 overflow-y-auto overflow-x-hidden scrollbar-none">
         {allNavItems.map((item) => {
           const isActive = location === item.path || item.children?.some((c: any) => c.path === location);
           const Icon = item.icon;
@@ -677,7 +677,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
           {mobileSidebarOpen && (
             <div className="fixed inset-0 bg-black/60 z-20 md:hidden backdrop-blur-sm" onClick={() => setMobileSidebarOpen(false)} />
           )}
-          <aside className={cn("hidden md:flex flex-col flex-shrink-0 transition-all duration-300 h-screen sticky top-0 overflow-hidden", collapsed ? "w-[60px]" : "w-[220px]")}>
+          <aside className={cn("hidden md:flex flex-col flex-shrink-0 transition-all duration-300 h-screen sticky top-0 overflow-x-hidden", collapsed ? "w-[60px]" : "w-[220px]")}>
             {collapsed
               ? <MiniSidebar {...sidebarProps} />
               : <FullSidebar {...sidebarProps} />}
