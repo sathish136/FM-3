@@ -43,7 +43,9 @@ import {
   createErpNextExpenseClaim,
   fetchErpNextRecruitmentTrackers,
   fetchErpNextRecruitmentTracker,
+  fetchErpNextGrievances,
 } from "../lib/erpnext";
+import { chatPool } from "../chat-ws";
 
 const ERPNEXT_URL = process.env.ERPNEXT_URL?.replace(/\/$/, "");
 const ERPNEXT_API_KEY = process.env.ERPNEXT_API_KEY;
@@ -850,6 +852,148 @@ Return ONLY valid JSON with this schema:
     res.json(parseJsonResponse(raw));
   } catch (e) {
     console.error("recruitment-insights error:", e);
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ── HR Analytics ─────────────────────────────────────────────────────────────
+router.get("/hrms/analytics", async (req, res) => {
+  try {
+    const now = new Date();
+    const todayStr     = now.toISOString().split("T")[0];
+    const yest = new Date(now); yest.setDate(now.getDate() - 1);
+    const yesterdayStr = yest.toISOString().split("T")[0];
+    const year = now.getFullYear();
+    const yearStart    = `${year}-01-01`;
+    const monthStart   = `${year}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+    const prevMonth    = new Date(year, now.getMonth() - 1, 1);
+    const prevMonthStart = `${prevMonth.getFullYear()}-${String(prevMonth.getMonth() + 1).padStart(2, "0")}-01`;
+    const prevMonthEnd   = new Date(year, now.getMonth(), 0);
+    const prevMonthEndStr = `${prevMonthEnd.getFullYear()}-${String(prevMonthEnd.getMonth() + 1).padStart(2, "0")}-${String(prevMonthEnd.getDate()).padStart(2, "0")}`;
+
+    // Parallel fetches
+    const [
+      allEmps,
+      absentToday,
+      absentYest,
+      absentMonth,
+      recruiters,
+      grievYTD,
+      grievMonth,
+      grievPrevMonth,
+      incidentStats,
+    ] = await Promise.all([
+      fetchErpNextEmployees(),
+      fetchErpNextAttendance({ status: "Absent", from_date: todayStr, to_date: todayStr }),
+      fetchErpNextAttendance({ status: "Absent", from_date: yesterdayStr, to_date: yesterdayStr }),
+      fetchErpNextAttendance({ status: "Absent", from_date: monthStart, to_date: todayStr }),
+      fetchErpNextRecruitmentTrackers(),
+      fetchErpNextGrievances({ from_date: yearStart, to_date: todayStr }),
+      fetchErpNextGrievances({ from_date: monthStart, to_date: todayStr }),
+      fetchErpNextGrievances({ from_date: prevMonthStart, to_date: prevMonthEndStr }),
+      chatPool.query(`
+        SELECT
+          COUNT(*) FILTER (WHERE true) AS total,
+          COUNT(*) FILTER (WHERE created_at >= $1) AS year,
+          COUNT(*) FILTER (WHERE created_at >= $2) AS month,
+          COUNT(*) FILTER (WHERE created_at >= $3) AS prev_month_count,
+          COUNT(*) FILTER (WHERE created_at < $2) AS prev_month_end_count
+        FROM hr_incidents
+      `, [yearStart, monthStart, prevMonthStart]).catch(() => null),
+    ]);
+
+    // Employee counts
+    const active = allEmps.filter(e => e.status === "Active");
+    const joinersYear  = allEmps.filter(e => e.date_of_joining && e.date_of_joining >= yearStart);
+    const joinersMonth = allEmps.filter(e => e.date_of_joining && e.date_of_joining >= monthStart);
+    const attritionYear  = allEmps.filter(e => e.status === "Left" && e.date_of_joining && e.date_of_joining >= yearStart);
+
+    // Department headcount
+    const deptMap: Record<string, number> = {};
+    for (const e of active) {
+      const d = e.department || "Unknown";
+      deptMap[d] = (deptMap[d] || 0) + 1;
+    }
+    const deptHeadcount = Object.entries(deptMap).map(([dept, count]) => ({ dept, count })).sort((a, b) => b.count - a.count);
+
+    // Recruitment stats
+    const statusCount = (status: string) => recruiters.filter(r => r.status === status).length;
+    const interviewsYear  = recruiters.filter(r => r.rt_telephonic_interview && r.rt_telephonic_interview >= yearStart).length;
+    const interviewsMonth = recruiters.filter(r => r.rt_telephonic_interview && r.rt_telephonic_interview >= monthStart).length;
+    const interviewsToday = recruiters.filter(r => r.rt_telephonic_interview === todayStr).length;
+    const interviewsYest  = recruiters.filter(r => r.rt_telephonic_interview === yesterdayStr).length;
+
+    const followupsYear  = recruiters.filter(r => r.rt_last_convo && r.rt_last_convo >= yearStart).length;
+    const followupsMonth = recruiters.filter(r => r.rt_last_convo && r.rt_last_convo >= monthStart).length;
+    const followupsToday = recruiters.filter(r => r.rt_last_convo === todayStr).length;
+    const followupsYest  = recruiters.filter(r => r.rt_last_convo === yesterdayStr).length;
+
+    // Absent list formatting
+    const fmtAbsent = (list: typeof absentToday) => list.map(a => ({
+      name: a.employee_name,
+      employee: a.employee,
+      department: a.department || "—",
+      date: a.attendance_date,
+    }));
+
+    const incRow = incidentStats?.rows?.[0] ?? {};
+
+    // Monthly trend from recruiters (12 months)
+    const monthlyTrend = Array.from({ length: 12 }, (_, i) => {
+      const d = new Date(year, i, 1);
+      const mStart = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+      const mEnd   = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split("T")[0];
+      return {
+        month: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][i],
+        joiners: allEmps.filter(e => e.date_of_joining && e.date_of_joining >= mStart && e.date_of_joining <= mEnd).length,
+        attrition: allEmps.filter(e => e.status === "Left" && e.date_of_joining && e.date_of_joining >= mStart && e.date_of_joining <= mEnd).length,
+        interviews: recruiters.filter(r => r.rt_telephonic_interview && r.rt_telephonic_interview >= mStart && r.rt_telephonic_interview <= mEnd).length,
+        followups: recruiters.filter(r => r.rt_last_convo && r.rt_last_convo >= mStart && r.rt_last_convo <= mEnd).length,
+      };
+    });
+
+    res.json({
+      employees: {
+        total: allEmps.length,
+        active: active.length,
+        absentToday: absentToday.length,
+        absentYesterday: absentYest.length,
+        presentToday: Math.max(0, active.length - absentToday.length),
+        joiners: { year: joinersYear.length, month: joinersMonth.length },
+        attrition: { year: attritionYear.length, month: 0 },
+        deptHeadcount,
+      },
+      recruitment: {
+        openings: statusCount("Open"),
+        shortlisted: statusCount("Shortlisted"),
+        hired: statusCount("Hired"),
+        processing: statusCount("Processing"),
+        rejected: statusCount("Rejected"),
+        notInterested: statusCount("Not Interested"),
+        interviews: { year: interviewsYear, month: interviewsMonth, today: interviewsToday, yesterday: interviewsYest },
+        followups: { year: followupsYear, month: followupsMonth, today: followupsToday, yesterday: followupsYest },
+      },
+      attendance: {
+        absentToday: fmtAbsent(absentToday),
+        absentYesterday: fmtAbsent(absentYest),
+        absentMonth: fmtAbsent(absentMonth),
+      },
+      grievances: {
+        year: grievYTD.length,
+        month: grievMonth.length,
+        prevMonth: grievPrevMonth.length,
+        list: grievYTD.slice(0, 50).map(g => ({ name: g.employee_name, dept: g.department || "—", date: g.date, type: g.grievance_type || "—", status: g.status })),
+      },
+      incidents: {
+        year: Number(incRow.year ?? 0),
+        month: Number(incRow.month ?? 0),
+        prevMonth: Math.max(0, Number(incRow.prev_month_count ?? 0)),
+        total: Number(incRow.total ?? 0),
+      },
+      monthlyTrend,
+    });
+  } catch (e) {
+    console.error("hr analytics error:", e);
     res.status(500).json({ error: String(e) });
   }
 });

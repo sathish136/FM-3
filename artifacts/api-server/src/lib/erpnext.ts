@@ -655,7 +655,7 @@ export async function fetchErpNextLeaveApplications(filters?: { status?: string;
   return data.data ?? [];
 }
 
-export async function fetchErpNextAttendance(filters?: { status?: string; department?: string; employee?: string }): Promise<ErpAttendance[]> {
+export async function fetchErpNextAttendance(filters?: { status?: string; department?: string; employee?: string; from_date?: string; to_date?: string; limit?: number }): Promise<ErpAttendance[]> {
   if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
   const fields = JSON.stringify([
     "name", "employee", "employee_name", "attendance_date", "status", "department",
@@ -664,13 +664,43 @@ export async function fetchErpNextAttendance(filters?: { status?: string; depart
   if (filters?.status)     fArr.push(["Attendance", "status", "=", filters.status]);
   if (filters?.department) fArr.push(["Attendance", "department", "like", `%${filters.department}%`]);
   if (filters?.employee)   fArr.push(["Attendance", "employee", "=", filters.employee]);
-  const params = new URLSearchParams({ fields, limit_page_length: "200", order_by: "attendance_date desc" });
+  if (filters?.from_date)  fArr.push(["Attendance", "attendance_date", ">=", filters.from_date]);
+  if (filters?.to_date)    fArr.push(["Attendance", "attendance_date", "<=", filters.to_date]);
+  const limit = String(filters?.limit ?? 500);
+  const params = new URLSearchParams({ fields, limit_page_length: limit, order_by: "attendance_date desc" });
   if (fArr.length) params.set("filters", JSON.stringify(fArr));
   const url = `${ERPNEXT_URL}/api/resource/Attendance?${params}`;
   const res = await fetch(url, { headers: { Authorization: authHeader() } });
   if (!res.ok) throw new Error(`ERPNext attendance: ${res.status}`);
   const data = await res.json();
   return data.data ?? [];
+}
+
+export interface ErpGrievance {
+  name: string;
+  employee: string;
+  employee_name: string;
+  grievance_type: string | null;
+  date: string;
+  status: string;
+  department: string | null;
+}
+
+export async function fetchErpNextGrievances(filters?: { from_date?: string; to_date?: string }): Promise<ErpGrievance[]> {
+  if (!ERPNEXT_URL) return [];
+  try {
+    const fields = JSON.stringify(["name", "employee", "employee_name", "grievance_type", "date", "status", "department"]);
+    const fArr: any[] = [];
+    if (filters?.from_date) fArr.push(["Employee Grievance", "date", ">=", filters.from_date]);
+    if (filters?.to_date)   fArr.push(["Employee Grievance", "date", "<=", filters.to_date]);
+    const params = new URLSearchParams({ fields, limit_page_length: "500", order_by: "date desc" });
+    if (fArr.length) params.set("filters", JSON.stringify(fArr));
+    const url = `${ERPNEXT_URL}/api/resource/Employee Grievance?${params}`;
+    const res = await fetch(url, { headers: { Authorization: authHeader() } });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.data ?? []) as ErpGrievance[];
+  } catch { return []; }
 }
 
 export async function fetchErpNextUserRoles(email: string): Promise<string[]> {
