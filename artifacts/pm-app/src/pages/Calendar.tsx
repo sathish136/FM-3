@@ -174,6 +174,9 @@ export default function CalendarPage() {
   const [saving, setSaving] = useState(false);
   const [notifPerm, setNotifPerm] = useState<NotificationPermission>("default");
   const [showReminderModal, setShowReminderModal] = useState(false);
+  const [waEnabled, setWaEnabled] = useState<boolean>(() => localStorage.getItem("cal_wa_enabled") !== "false");
+  const [browserEnabled, setBrowserEnabled] = useState<boolean>(() => localStorage.getItem("cal_browser_enabled") !== "false");
+  const [defaultReminderMins, setDefaultReminderMins] = useState<number>(() => parseInt(localStorage.getItem("cal_default_reminder") ?? "15"));
   const [attendeeInput, setAttendeeInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
@@ -331,7 +334,7 @@ export default function CalendarPage() {
     const h = hour !== undefined ? hour : new Date().getHours();
     const startStr = `${ds}T${pad(h)}:00`;
     const endStr   = `${ds}T${pad(h+1 > 23 ? 23 : h+1)}:00`;
-    setForm(blankForm({ start_datetime: startStr, end_datetime: endStr }));
+    setForm(blankForm({ start_datetime: startStr, end_datetime: endStr, reminder_minutes: defaultReminderMins }));
     setEditingEvent(null); setShowModal(true);
   };
 
@@ -1115,119 +1118,167 @@ export default function CalendarPage() {
               </button>
             </div>
 
-            <div className="px-6 py-5 space-y-5">
+            <div className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
 
-              {/* Browser Notifications Section */}
-              <div className="space-y-3">
+              {/* ── Default Reminder Time ── */}
+              <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3.5 space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-base">🔔</span>
-                  <h3 className="text-sm font-semibold text-gray-800">Browser Notifications</h3>
-                  <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    notifPerm === "granted" ? "bg-emerald-100 text-emerald-700" :
-                    notifPerm === "denied"  ? "bg-red-100 text-red-700" :
-                    "bg-amber-100 text-amber-700"
-                  }`}>
-                    {notifPerm === "granted" ? "✓ Active" : notifPerm === "denied" ? "✗ Blocked" : "Not enabled"}
-                  </span>
+                  <Clock className="w-4 h-4 text-blue-500 shrink-0" />
+                  <span className="text-sm font-semibold text-gray-800">Default Reminder Time</span>
                 </div>
+                <p className="text-[11px] text-gray-500">Applied automatically when creating new events.</p>
+                <div className="grid grid-cols-4 gap-1.5 pt-1">
+                  {[
+                    { value: 0, label: "At time" },
+                    { value: 5, label: "5 min" },
+                    { value: 10, label: "10 min" },
+                    { value: 15, label: "15 min" },
+                    { value: 30, label: "30 min" },
+                    { value: 60, label: "1 hour" },
+                    { value: 120, label: "2 hours" },
+                    { value: 1440, label: "1 day" },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => { setDefaultReminderMins(opt.value); localStorage.setItem("cal_default_reminder", String(opt.value)); }}
+                      className={`text-[11px] font-semibold px-2 py-1.5 rounded-lg border transition-colors ${
+                        defaultReminderMins === opt.value
+                          ? "bg-blue-600 text-white border-blue-600"
+                          : "bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-600"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-                {notifPerm === "granted" && (
-                  <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
-                    <Check className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
-                    <p className="text-xs text-emerald-700">Browser notifications are enabled. You'll receive pop-up alerts for events when this tab is open.</p>
-                  </div>
-                )}
+              {/* ── Channel Toggles ── */}
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider px-1">Notification Channels</p>
 
-                {notifPerm === "denied" && (
-                  <div className="space-y-2">
-                    <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-                      <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
-                      <p className="text-xs text-red-700">Notifications are blocked in your browser. To enable them:</p>
+                {/* Browser toggle */}
+                <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 space-y-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                      <Bell className="w-4 h-4 text-amber-600" />
                     </div>
-                    <ol className="text-xs text-gray-600 space-y-1.5 pl-4">
-                      <li className="flex items-start gap-2"><span className="shrink-0 w-4 h-4 rounded-full bg-gray-200 text-gray-600 text-[10px] font-bold flex items-center justify-center">1</span>Click the <strong>lock icon</strong> in your browser address bar</li>
-                      <li className="flex items-start gap-2"><span className="shrink-0 w-4 h-4 rounded-full bg-gray-200 text-gray-600 text-[10px] font-bold flex items-center justify-center">2</span>Find <strong>Notifications</strong> and set it to <strong>Allow</strong></li>
-                      <li className="flex items-start gap-2"><span className="shrink-0 w-4 h-4 rounded-full bg-gray-200 text-gray-600 text-[10px] font-bold flex items-center justify-center">3</span>Reload the page and click Enable Reminders again</li>
-                    </ol>
-                  </div>
-                )}
-
-                {notifPerm === "default" && (
-                  <div className="space-y-2">
-                    <p className="text-xs text-gray-500">Allow browser pop-up alerts for events — works when this tab is open.</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-800">Browser Notifications</p>
+                      <p className="text-[10px] text-gray-500">Pop-up alerts when this tab is open</p>
+                    </div>
                     <button
                       onClick={async () => {
-                        const perm = await Notification.requestPermission();
-                        setNotifPerm(perm);
+                        if (notifPerm === "denied") return;
+                        if (notifPerm === "default") {
+                          const perm = await Notification.requestPermission();
+                          setNotifPerm(perm);
+                          if (perm === "granted") { setBrowserEnabled(true); localStorage.setItem("cal_browser_enabled", "true"); }
+                          return;
+                        }
+                        const next = !browserEnabled;
+                        setBrowserEnabled(next);
+                        localStorage.setItem("cal_browser_enabled", String(next));
                       }}
-                      className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition-colors shadow-sm"
+                      className={`relative shrink-0 w-11 h-6 rounded-full transition-colors focus:outline-none ${
+                        notifPerm === "granted" && browserEnabled ? "bg-blue-600" : "bg-gray-300"
+                      } ${notifPerm === "denied" ? "opacity-50 cursor-not-allowed" : ""}`}
                     >
-                      <Bell className="w-3.5 h-3.5" />
-                      Enable Browser Notifications
+                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                        notifPerm === "granted" && browserEnabled ? "translate-x-5" : "translate-x-0"
+                      }`} />
                     </button>
                   </div>
-                )}
-              </div>
 
-              <div className="border-t border-dashed border-gray-200" />
-
-              {/* WhatsApp Section */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-base">📲</span>
-                  <h3 className="text-sm font-semibold text-gray-800">WhatsApp Reminders</h3>
-                  <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    userPhone ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
-                  }`}>
-                    {userPhone ? "✓ Active" : "Not configured"}
-                  </span>
+                  {notifPerm === "denied" && (
+                    <div className="bg-red-50 border border-red-100 rounded-lg px-3 py-2 space-y-1.5">
+                      <p className="text-[10px] text-red-700 font-semibold">Blocked by browser — to unblock:</p>
+                      <ol className="text-[10px] text-red-700 space-y-1 pl-1">
+                        <li>1. Click the <strong>lock/info icon</strong> in the address bar</li>
+                        <li>2. Set <strong>Notifications → Allow</strong></li>
+                        <li>3. Reload the page</li>
+                      </ol>
+                    </div>
+                  )}
+                  {notifPerm === "default" && (
+                    <button
+                      onClick={async () => { const p = await Notification.requestPermission(); setNotifPerm(p); if (p === "granted") { setBrowserEnabled(true); localStorage.setItem("cal_browser_enabled", "true"); } }}
+                      className="w-full text-[11px] font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-lg py-1.5 hover:bg-blue-100 transition-colors"
+                    >
+                      Click to request permission →
+                    </button>
+                  )}
+                  {notifPerm === "granted" && (
+                    <p className="text-[10px] text-emerald-600">✓ Permission granted — toggle above to enable/disable alerts</p>
+                  )}
                 </div>
 
-                {userPhone ? (
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <p className="text-xs text-emerald-700 font-medium">Active — reminders sent to:</p>
+                {/* WhatsApp toggle */}
+                <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 space-y-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
+                      <span className="text-base">📲</span>
                     </div>
-                    <p className="text-sm font-mono font-bold text-emerald-800 pl-6">{userPhone}</p>
-                    <p className="text-[10px] text-emerald-600 pl-6">
-                      Source: {phoneSource === "erpnext" ? "ERPNext employee profile" : "Notification settings"}
-                    </p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-800">WhatsApp Reminders</p>
+                      <p className="text-[10px] text-gray-500 truncate">
+                        {userPhone ? `Sent to ${userPhone}` : "No phone configured"}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (!userPhone) return;
+                        const next = !waEnabled;
+                        setWaEnabled(next);
+                        localStorage.setItem("cal_wa_enabled", String(next));
+                      }}
+                      className={`relative shrink-0 w-11 h-6 rounded-full transition-colors focus:outline-none ${
+                        userPhone && waEnabled ? "bg-emerald-500" : "bg-gray-300"
+                      } ${!userPhone ? "opacity-50 cursor-not-allowed" : ""}`}
+                    >
+                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                        userPhone && waEnabled ? "translate-x-5" : "translate-x-0"
+                      }`} />
+                    </button>
                   </div>
-                ) : (
-                  <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
-                    <p className="text-xs text-gray-600">No phone number configured. Add your number in <strong>Settings → Notifications</strong> or via your ERPNext employee profile.</p>
-                  </div>
-                )}
 
-                {userPhone && (
-                  <button
-                    onClick={() => { sendTestReminder(); setShowReminderModal(false); }}
-                    disabled={testReminderStatus === "sending"}
-                    className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition-colors"
-                  >
-                    {testReminderStatus === "sending" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bell className="w-3.5 h-3.5" />}
-                    Send Test WhatsApp Message
-                  </button>
-                )}
+                  {userPhone ? (
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] text-emerald-700">
+                        ✓ {phoneSource === "erpnext" ? "From ERPNext profile" : "From notification settings"}
+                      </p>
+                      <button
+                        onClick={() => { sendTestReminder(); }}
+                        disabled={testReminderStatus === "sending" || !waEnabled}
+                        className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+                      >
+                        {testReminderStatus === "sending" && <Loader2 className="w-3 h-3 animate-spin" />}
+                        {testReminderStatus === "ok" && <Check className="w-3 h-3 text-emerald-600" />}
+                        {testReminderStatus === "fail" && <AlertCircle className="w-3 h-3 text-red-500" />}
+                        {testReminderStatus === "idle" || testReminderStatus === "fail" ? "Send Test" : testReminderStatus === "ok" ? "Sent!" : "Sending…"}
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-gray-500">Add your number in <strong>Settings → Notifications</strong> or via ERPNext employee profile.</p>
+                  )}
+                </div>
               </div>
 
-              <div className="border-t border-dashed border-gray-200" />
-
-              {/* How it works */}
-              <div className="space-y-2">
-                <h3 className="text-xs font-semibold text-gray-700">How reminders work</h3>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { icon: "🔔", title: "Browser alert", desc: "Popup when tab is open, at the set time before event" },
-                    { icon: "📲", title: "WhatsApp", desc: "Message sent automatically, even when app is closed" },
-                  ].map(item => (
-                    <div key={item.title} className="bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100">
-                      <p className="text-base mb-1">{item.icon}</p>
-                      <p className="text-[11px] font-semibold text-gray-700">{item.title}</p>
-                      <p className="text-[10px] text-gray-500 leading-snug mt-0.5">{item.desc}</p>
-                    </div>
-                  ))}
+              {/* ── Summary ── */}
+              <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+                <p className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide mb-1.5">Active Channels</p>
+                <div className="flex gap-2 flex-wrap">
+                  {notifPerm === "granted" && browserEnabled
+                    ? <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">🔔 Browser</span>
+                    : <span className="text-[10px] bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full font-semibold line-through">🔔 Browser</span>
+                  }
+                  {userPhone && waEnabled
+                    ? <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-semibold">📲 WhatsApp</span>
+                    : <span className="text-[10px] bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full font-semibold line-through">📲 WhatsApp</span>
+                  }
+                  {!((notifPerm === "granted" && browserEnabled) || (userPhone && waEnabled)) && (
+                    <span className="text-[10px] text-amber-600 font-medium">⚠ No channels active — reminders won't be sent</span>
+                  )}
                 </div>
               </div>
             </div>
@@ -1235,7 +1286,7 @@ export default function CalendarPage() {
             <div className="px-6 py-4 border-t bg-gray-50 flex justify-end">
               <button onClick={() => setShowReminderModal(false)}
                 className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-6 py-2 rounded-xl transition-colors">
-                Done
+                Save & Close
               </button>
             </div>
           </div>
