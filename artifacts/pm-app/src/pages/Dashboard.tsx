@@ -77,7 +77,7 @@ export default function Dashboard() {
     if (h < 17) return "Good afternoon";
     return "Good evening";
   })();
-  const firstName = user?.full_name?.split(" ")[0] ?? "there";
+  const firstName = user?.full_name ?? "there";
   const dateStr = now.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const timeStr = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
 
