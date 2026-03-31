@@ -293,6 +293,15 @@
 * { resize: none !important; }
 textarea { resize: vertical !important; }
 
+/* ─── Hidden scrollbar (scrollable but invisible) ────────────────────────── */
+.scrollbar-none {
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* IE / Edge */
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;                /* Chrome / Safari / Opera */
+}
+
 /* ─── Dark mode: full CSS variable overrides ─────────────────────────────── */
 html.dark {
   color-scheme: dark;
