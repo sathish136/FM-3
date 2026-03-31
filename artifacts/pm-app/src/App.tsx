@@ -41,6 +41,7 @@ import Email from "@/pages/Email";
 import EmailSettings from "@/pages/EmailSettings";
 import Chat from "@/pages/Chat";
 import HRIncidents from "@/pages/HRIncidents";
+import HrAnalytics from "@/pages/HrAnalytics";
 import Nesting from "@/pages/Nesting";
 import ProjectDrawings from "@/pages/ProjectDrawings";
 import ProjectTimeline from "@/pages/ProjectTimeline";
@@ -175,6 +176,7 @@ function ProtectedRoutes() {
       <Route path="/email-settings" component={EmailSettings} />
       <Route path="/chat" component={Chat} />
       <Route path="/hrms/incidents" component={HRIncidents} />
+      <Route path="/hrms/analytics" component={HrAnalytics} />
       <Route path="/nesting" component={Nesting} />
       <Route path="/project-drawings" component={ProjectDrawings} />
       <Route path="/project-timeline" component={ProjectTimeline} />
