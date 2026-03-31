@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/pm-app-mobile/"
+title = "FlowMatriX Mobile"
+version = "1.0.0"
+id = "artifacts/pm-app-mobile"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/pm-app-mobile/" ]
+localPort = 22919
+
+[services.development]
+run = "pnpm --filter @workspace/pm-app-mobile run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/pm-app-mobile", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/pm-app-mobile", "run", "serve" ]
+
+[services.env]
+PORT = "22919"
+BASE_PATH = "/pm-app-mobile/"

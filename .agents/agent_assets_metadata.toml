@@ -1,0 +1,14 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "VE-BsFxjVWs8oXlqDmSd7"
+uri = "file://artifacts/pm-app-mobile/assets/images/icon.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "wzX16o5tCU0rn72D4ebK0"
+uri = "file://artifacts/pm-app-mobile/assets/images/splash-icon.png"
+type = "image"
+title = "generated_image"
