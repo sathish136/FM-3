@@ -182,7 +182,7 @@ export default function Login() {
                     type={showPwd ? "text" : "password"}
                     value={pwd}
                     onChange={e => setPwd(e.target.value)}
-                    placeholder="••••••••"
+                    placeholder="Enter your password"
                     required
                     autoComplete="current-password"
                     className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-800 placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all"
