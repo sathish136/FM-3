@@ -121,6 +121,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     label: "Monitoring",
     items: [
       { path: "/site-data", label: "Site Data", icon: Activity, color: "text-cyan-400", bgColor: "bg-cyan-500/15" },
+      { path: "/cctv", label: "CCTV", icon: MonitorPlay, color: "text-sky-400", bgColor: "bg-sky-500/15" },
     ],
   },
   {

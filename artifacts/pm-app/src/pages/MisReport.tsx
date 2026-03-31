@@ -615,6 +615,7 @@ export default function MisReport() {
                           { label: "Claims",          icon: Receipt,         href: "/hrms/claims",           color: "text-teal-500",    bg: "bg-teal-50"    },
                           { label: "Recruitment",     icon: UserPlus,        href: "/hrms/recruitment",      color: "text-cyan-600",    bg: "bg-cyan-50"    },
                           { label: "Site Data",       icon: Activity,        href: "/site-data",             color: "text-lime-600",    bg: "bg-lime-50"    },
+                          { label: "CCTV",            icon: MonitorPlay,     href: "/cctv",                  color: "text-sky-600",     bg: "bg-sky-50"     },
                           { label: "Bill & Recharge", icon: IndianRupee,     href: "/payment-tracker",       color: "text-red-600",     bg: "bg-red-50"     },
                           { label: "Settings",        icon: Settings,        href: "/settings",              color: "text-gray-600",    bg: "bg-gray-50"    },
                         ].map((m, i) => (

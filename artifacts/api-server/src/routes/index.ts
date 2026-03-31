@@ -22,6 +22,7 @@ import purchaseDashboardRouter from "./purchase-dashboard";
 import storesDashboardRouter from "./stores-dashboard";
 import paymentTrackerRouter from "./payment-tracker";
 import misReportRouter from "./mis-report";
+import cctvRouter from "./cctv";
 
 const router: IRouter = Router();
 
@@ -48,5 +49,6 @@ router.use(purchaseDashboardRouter);
 router.use(storesDashboardRouter);
 router.use(paymentTrackerRouter);
 router.use(misReportRouter);
+router.use("/cctv", cctvRouter);
 
 export default router;
