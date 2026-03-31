@@ -356,4 +356,45 @@ router.get("/calendar/user-phone", async (req, res) => {
   }
 });
 
+// Test endpoint: send a WhatsApp reminder message immediately
+router.post("/calendar/test-reminder", async (req, res) => {
+  try {
+    const { phone, email } = req.body as { phone?: string; email?: string };
+
+    let targetPhone = phone || null;
+
+    // If no phone supplied directly, look it up by email
+    if (!targetPhone && email) {
+      targetPhone = await getPhoneForEmail(email);
+    }
+
+    if (!targetPhone) {
+      return res.status(400).json({ error: "No phone number found. Provide 'phone' or a valid 'email' with a phone on file." });
+    }
+
+    const now = new Date();
+    const testEvent = {
+      title: "Test Reminder",
+      start_datetime: new Date(now.getTime() + 15 * 60 * 1000).toISOString(),
+      reminder_minutes: 15,
+      location: null,
+      description: "This is a test calendar reminder from FlowMatriX.",
+      event_type: "meeting",
+    };
+
+    const msg = formatReminderMessage(testEvent);
+    const sent = await sendWhatsApp(targetPhone, msg);
+
+    if (sent) {
+      console.log(`📲 Test reminder sent to ${targetPhone}`);
+      res.json({ ok: true, phone: targetPhone, message: "Test reminder sent successfully." });
+    } else {
+      console.warn(`⚠️  Test reminder failed for ${targetPhone}`);
+      res.status(502).json({ ok: false, phone: targetPhone, error: "WhatsApp API returned failure. Check phone number and UltraMsg configuration." });
+    }
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;

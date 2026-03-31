@@ -180,6 +180,7 @@ export default function CalendarPage() {
   const [overflowDay, setOverflowDay] = useState<{ date: Date; events: CalEvent[] } | null>(null);
   const [userPhone, setUserPhone] = useState<string | null>(null);
   const [phoneSource, setPhoneSource] = useState<string | null>(null);
+  const [testReminderStatus, setTestReminderStatus] = useState<"idle" | "sending" | "ok" | "fail">("idle");
   const reminderTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeGridRef = useRef<HTMLDivElement>(null);
 
@@ -197,6 +198,22 @@ export default function CalendarPage() {
 
   const requestNotifPerm = async () => {
     if ("Notification" in window) { const perm = await Notification.requestPermission(); setNotifPerm(perm); }
+  };
+
+  const sendTestReminder = async () => {
+    if (!user?.email) return;
+    setTestReminderStatus("sending");
+    try {
+      const res = await fetch(`${API}/calendar/test-reminder`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: user.email }),
+      });
+      setTestReminderStatus(res.ok ? "ok" : "fail");
+    } catch {
+      setTestReminderStatus("fail");
+    }
+    setTimeout(() => setTestReminderStatus("idle"), 4000);
   };
 
   const loadEvents = useCallback(async () => {
@@ -458,6 +475,18 @@ export default function CalendarPage() {
             {phoneSource === "erpnext" && <span className="text-green-500 bg-green-100 px-1.5 py-0.5 rounded-full text-[10px] font-semibold">ERPNext</span>}
             {phoneSource === "settings" && <span className="text-green-500 bg-green-100 px-1.5 py-0.5 rounded-full text-[10px] font-semibold">Settings</span>}
             <span className="text-green-500 ml-1">— All event reminders will be sent to this number</span>
+            <button
+              onClick={sendTestReminder}
+              disabled={testReminderStatus === "sending"}
+              className="ml-auto shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold border transition-colors
+                bg-white border-green-300 text-green-700 hover:bg-green-100 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {testReminderStatus === "sending" && <Loader2 className="w-3 h-3 animate-spin" />}
+              {testReminderStatus === "ok" && <Check className="w-3 h-3 text-green-600" />}
+              {testReminderStatus === "fail" && <AlertCircle className="w-3 h-3 text-red-500" />}
+              {testReminderStatus === "idle" && <Bell className="w-3 h-3" />}
+              {testReminderStatus === "sending" ? "Sending…" : testReminderStatus === "ok" ? "Sent!" : testReminderStatus === "fail" ? "Failed" : "Send Test"}
+            </button>
           </div>
         ) : (
           <div className="flex items-center gap-2 px-4 py-1.5 bg-amber-50 border-b border-amber-100 text-xs text-amber-700">
