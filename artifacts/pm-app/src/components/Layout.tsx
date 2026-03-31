@@ -3,9 +3,9 @@ import {
   LayoutDashboard, Box, PenTool, GitBranch,
   Briefcase, FileText,
   LogOut, ChevronDown, ChevronRight as ChevronRightIcon, Menu, MoreHorizontal,
-  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search,
+  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2,
 } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth, type AuthUser } from "@/hooks/useAuth";
 import { AISearch } from "@/components/AISearch";
@@ -13,6 +13,143 @@ import { GlobalSearch } from "@/components/GlobalSearch";
 import { WaterDropAnimation } from "@/components/WaterAnimation";
 import { useTheme, THEME_PRESETS } from "@/hooks/useTheme";
 import { useNavStyle } from "@/hooks/useNavStyle";
+
+interface InAppNotification {
+  id: number;
+  userEmail: string;
+  title: string;
+  message: string;
+  type: string;
+  read: boolean;
+  createdAt: string;
+}
+
+function NotificationBell({ email }: { email: string | undefined }) {
+  const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const [open, setOpen] = useState(false);
+  const [notifications, setNotifications] = useState<InAppNotification[]>([]);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const load = useCallback(async () => {
+    if (!email) return;
+    try {
+      const res = await fetch(`${BASE}/api/notifications?email=${encodeURIComponent(email)}`);
+      if (res.ok) setNotifications(await res.json());
+    } catch {}
+  }, [email, BASE]);
+
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 30000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const unread = notifications.filter(n => !n.read).length;
+
+  const markAllRead = async () => {
+    if (!email) return;
+    await fetch(`${BASE}/api/notifications/read`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  };
+
+  const deleteNotif = async (id: number) => {
+    if (!email) return;
+    await fetch(`${BASE}/api/notifications/${id}?email=${encodeURIComponent(email)}`, { method: "DELETE" });
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  };
+
+  const markRead = async (id: number) => {
+    if (!email) return;
+    await fetch(`${BASE}/api/notifications/read`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, id }),
+    });
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+  };
+
+  const typeColor = (type: string) => {
+    switch (type) {
+      case "success": return "text-green-500 bg-green-50";
+      case "warning": return "text-amber-500 bg-amber-50";
+      case "error": return "text-red-500 bg-red-50";
+      default: return "text-blue-500 bg-blue-50";
+    }
+  };
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => { setOpen(v => !v); if (!open) load(); }}
+        className="relative p-2 rounded-xl text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-all"
+        title="Notifications"
+      >
+        <Bell className="w-4 h-4" />
+        {unread > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+            {unread > 9 ? "9+" : unread}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-12 z-50 w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-gray-100 dark:border-slate-700 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-slate-700">
+            <span className="font-semibold text-sm text-gray-800 dark:text-gray-100">Notifications</span>
+            {unread > 0 && (
+              <button onClick={markAllRead} className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 transition-colors">
+                <CheckCheck className="w-3 h-3" /> Mark all read
+              </button>
+            )}
+          </div>
+          <div className="max-h-96 overflow-y-auto">
+            {notifications.length === 0 ? (
+              <div className="py-12 text-center text-muted-foreground">
+                <Bell className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No notifications yet</p>
+              </div>
+            ) : (
+              notifications.map(n => (
+                <div
+                  key={n.id}
+                  onClick={() => markRead(n.id)}
+                  className={cn("flex items-start gap-3 px-4 py-3 border-b border-gray-50 dark:border-slate-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors", !n.read && "bg-blue-50/50 dark:bg-blue-900/10")}
+                >
+                  <span className={cn("w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5 text-xs", typeColor(n.type))}>
+                    <Bell className="w-3.5 h-3.5" />
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className={cn("text-sm font-medium leading-tight", n.read ? "text-gray-600 dark:text-gray-400" : "text-gray-900 dark:text-gray-100")}>{n.title}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-500 mt-0.5 line-clamp-2">{n.message}</p>
+                    <p className="text-[10px] text-gray-400 mt-1">{new Date(n.createdAt).toLocaleString()}</p>
+                  </div>
+                  <button
+                    onClick={e => { e.stopPropagation(); deleteNotif(n.id); }}
+                    className="p-1 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors shrink-0"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function UserAvatar({ user, size = "sm" }: { user: AuthUser | null; size?: "sm" | "md" | "lg" }) {
   const [imgError, setImgError] = useState(false);
@@ -623,6 +760,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
             <button className="md:hidden p-2 rounded-xl text-gray-500 hover:bg-gray-100 transition-colors" onClick={() => setAiTrigger(t => t + 1)} title="Ask AI">
               <Sparkles className="w-4 h-4 text-indigo-500" />
             </button>
+            <NotificationBell email={user?.email} />
             <button onClick={toggleDarkMode} className="hidden sm:flex p-2 rounded-xl text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-all" title={darkMode ? "Light mode" : "Dark mode"}>
               {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>

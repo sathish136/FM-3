@@ -1,10 +1,12 @@
 import { Layout } from "@/components/Layout";
-import { useState } from "react";
-import { Shield, Bell, Palette, Globe, Key, Plus, Trash2, Sun, Moon, Check, PanelLeft, Grid3x3 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Shield, Bell, Palette, Globe, Key, Plus, Trash2, Sun, Moon, Check, PanelLeft, Grid3x3, MessageSquare, Mail, MonitorCheck, Loader2, Send, ChevronRight } from "lucide-react";
 import { motion } from "framer-motion";
 import { useTheme, THEME_PRESETS } from "@/hooks/useTheme";
 import { useNavStyle } from "@/hooks/useNavStyle";
 import { UserManagementContent } from "@/pages/UserManagement";
+import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
 
 const settingsSections = [
   { id: "users", label: "User Management", icon: Shield },
@@ -14,40 +16,230 @@ const settingsSections = [
   { id: "api", label: "API Keys", icon: Key },
 ];
 
+const EVENT_TYPES = [
+  { key: "task_assigned", label: "Task Assigned", desc: "When a task is assigned to you" },
+  { key: "project_update", label: "Project Updates", desc: "When project status changes" },
+  { key: "new_lead", label: "New Leads", desc: "When a new lead comes in" },
+  { key: "new_message", label: "New Messages", desc: "When you receive a chat message" },
+  { key: "campaign_report", label: "Campaign Reports", desc: "Weekly campaign performance" },
+  { key: "purchase_order", label: "Purchase Orders", desc: "New or updated purchase orders" },
+] as const;
+
+function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+  return (
+    <button onClick={onChange} className={`w-11 h-6 rounded-full transition-all relative flex-shrink-0 ${checked ? "bg-primary" : "bg-border"}`}>
+      <span className={`w-4 h-4 rounded-full bg-white shadow absolute top-1 transition-all ${checked ? "left-6" : "left-1"}`} />
+    </button>
+  );
+}
+
 function NotificationsSettings() {
-  const [settings, setSettings] = useState({
-    emailAlerts: true, pushNotifications: true, projectUpdates: true,
-    taskAssignments: true, campaignReports: false, weeklyDigest: true,
-    mentionsOnly: false, newLeads: true,
-  });
+  const { user } = useAuth();
+  const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-  const toggle = (key: keyof typeof settings) => setSettings(p => ({ ...p, [key]: !p[key] }));
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState<string | null>(null);
 
-  const items = [
-    { key: "emailAlerts", label: "Email Alerts", desc: "Receive alerts via email" },
-    { key: "pushNotifications", label: "Push Notifications", desc: "Browser push notifications" },
-    { key: "projectUpdates", label: "Project Updates", desc: "When projects change status" },
-    { key: "taskAssignments", label: "Task Assignments", desc: "When tasks are assigned to you" },
-    { key: "campaignReports", label: "Campaign Reports", desc: "Weekly campaign performance" },
-    { key: "weeklyDigest", label: "Weekly Digest", desc: "Summary every Monday morning" },
-    { key: "newLeads", label: "New Leads", desc: "When new leads come in" },
-  ] as const;
+  const [notifWhatsapp, setNotifWhatsapp] = useState(false);
+  const [notifWhatsappPhone, setNotifWhatsappPhone] = useState("");
+  const [notifEmail, setNotifEmail] = useState(true);
+  const [notifSystem, setNotifSystem] = useState(true);
+  const [notifEvents, setNotifEvents] = useState<string[]>(["task_assigned", "project_update", "new_lead", "new_message"]);
+
+  useEffect(() => {
+    if (!user?.email) return;
+    fetch(`${BASE}/api/notifications/settings?email=${encodeURIComponent(user.email)}`)
+      .then(r => r.json())
+      .then(d => {
+        setNotifWhatsapp(d.notifWhatsapp ?? false);
+        setNotifWhatsappPhone(d.notifWhatsappPhone ?? "");
+        setNotifEmail(d.notifEmail ?? true);
+        setNotifSystem(d.notifSystem ?? true);
+        setNotifEvents(d.notifEvents ?? ["task_assigned", "project_update", "new_lead", "new_message"]);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [user?.email, BASE]);
+
+  const save = async () => {
+    if (!user?.email) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`${BASE}/api/notifications/settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: user.email, notifWhatsapp, notifWhatsappPhone, notifEmail, notifSystem, notifEvents }),
+      });
+      if (res.ok) toast.success("Notification settings saved");
+      else toast.error("Failed to save settings");
+    } catch {
+      toast.error("Failed to save settings");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const testChannel = async (channel: string) => {
+    if (!user?.email) return;
+    if (channel === "whatsapp" && !notifWhatsappPhone) {
+      toast.error("Enter a WhatsApp phone number first");
+      return;
+    }
+    setTesting(channel);
+    try {
+      const res = await fetch(`${BASE}/api/notifications/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: user.email, channel, phone: notifWhatsappPhone }),
+      });
+      const data = await res.json();
+      if (data.success) toast.success(`Test ${channel} notification sent!`);
+      else toast.error(`Test failed: ${data.error || "Unknown error"}`);
+    } catch {
+      toast.error("Test failed");
+    } finally {
+      setTesting(null);
+    }
+  };
+
+  const toggleEvent = (key: string) => {
+    setNotifEvents(prev => prev.includes(key) ? prev.filter(e => e !== key) : [...prev, key]);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-48 text-muted-foreground">
+        <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading settings…
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-foreground">Notification Preferences</h2>
-      <div className="bg-card border border-border rounded-2xl shadow-sm divide-y divide-border">
-        {items.map(({ key, label, desc }) => (
-          <div key={key} className="flex items-center justify-between px-5 py-4">
-            <div>
-              <p className="font-medium text-foreground text-sm">{label}</p>
-              <p className="text-xs text-muted-foreground">{desc}</p>
+    <div className="space-y-6 max-w-2xl">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">Notification Channels</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Choose how you want to be notified</p>
+        </div>
+        <button onClick={save} disabled={saving} className="btn-primary flex items-center gap-2 text-sm">
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+          {saving ? "Saving…" : "Save Settings"}
+        </button>
+      </div>
+
+      {/* WhatsApp Channel */}
+      <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-green-500/10 flex items-center justify-center">
+              <MessageSquare className="w-4 h-4 text-green-500" />
             </div>
-            <button onClick={() => toggle(key)} className={`w-11 h-6 rounded-full transition-all relative ${settings[key] ? "bg-primary" : "bg-border"}`}>
-              <span className={`w-4 h-4 rounded-full bg-white shadow absolute top-1 transition-all ${settings[key] ? "left-6" : "left-1"}`} />
-            </button>
+            <div>
+              <p className="font-semibold text-foreground text-sm">WhatsApp</p>
+              <p className="text-xs text-muted-foreground">Send notifications via WhatsApp</p>
+            </div>
           </div>
-        ))}
+          <div className="flex items-center gap-3">
+            {notifWhatsapp && (
+              <button
+                onClick={() => testChannel("whatsapp")}
+                disabled={testing === "whatsapp"}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg px-2.5 py-1.5 transition-colors"
+              >
+                {testing === "whatsapp" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                Test
+              </button>
+            )}
+            <Toggle checked={notifWhatsapp} onChange={() => setNotifWhatsapp(p => !p)} />
+          </div>
+        </div>
+        {notifWhatsapp && (
+          <div className="px-5 py-4">
+            <label className="text-xs font-medium text-muted-foreground block mb-2">WhatsApp Phone Number</label>
+            <input
+              type="tel"
+              value={notifWhatsappPhone}
+              onChange={e => setNotifWhatsappPhone(e.target.value)}
+              placeholder="+91 9876543210"
+              className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+            <p className="text-xs text-muted-foreground mt-1.5">Include country code (e.g. +91 for India)</p>
+          </div>
+        )}
+      </div>
+
+      {/* Email Channel */}
+      <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-500/10 flex items-center justify-center">
+              <Mail className="w-4 h-4 text-blue-500" />
+            </div>
+            <div>
+              <p className="font-semibold text-foreground text-sm">Email</p>
+              <p className="text-xs text-muted-foreground">Send to {user?.email || "your email address"}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {notifEmail && (
+              <button
+                onClick={() => testChannel("email")}
+                disabled={testing === "email"}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg px-2.5 py-1.5 transition-colors"
+              >
+                {testing === "email" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                Test
+              </button>
+            )}
+            <Toggle checked={notifEmail} onChange={() => setNotifEmail(p => !p)} />
+          </div>
+        </div>
+      </div>
+
+      {/* System / In-App Channel */}
+      <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-violet-500/10 flex items-center justify-center">
+              <MonitorCheck className="w-4 h-4 text-violet-500" />
+            </div>
+            <div>
+              <p className="font-semibold text-foreground text-sm">In-App Notifications</p>
+              <p className="text-xs text-muted-foreground">Show alerts inside the application</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {notifSystem && (
+              <button
+                onClick={() => testChannel("system")}
+                disabled={testing === "system"}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg px-2.5 py-1.5 transition-colors"
+              >
+                {testing === "system" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                Test
+              </button>
+            )}
+            <Toggle checked={notifSystem} onChange={() => setNotifSystem(p => !p)} />
+          </div>
+        </div>
+      </div>
+
+      {/* Event Types */}
+      <div>
+        <h2 className="text-lg font-semibold text-foreground mb-1">Notification Events</h2>
+        <p className="text-xs text-muted-foreground mb-3">Choose which events trigger notifications across all channels</p>
+        <div className="bg-card border border-border rounded-2xl shadow-sm divide-y divide-border">
+          {EVENT_TYPES.map(({ key, label, desc }) => (
+            <div key={key} className="flex items-center justify-between px-5 py-4">
+              <div>
+                <p className="font-medium text-foreground text-sm">{label}</p>
+                <p className="text-xs text-muted-foreground">{desc}</p>
+              </div>
+              <Toggle checked={notifEvents.includes(key)} onChange={() => toggleEvent(key)} />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

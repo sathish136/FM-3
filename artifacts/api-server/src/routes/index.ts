@@ -24,6 +24,7 @@ import paymentTrackerRouter from "./payment-tracker";
 import misReportRouter from "./mis-report";
 import cctvRouter from "./cctv";
 import calendarRouter from "./calendar";
+import notificationsRouter from "./notifications";
 
 const router: IRouter = Router();
 
@@ -52,5 +53,6 @@ router.use(paymentTrackerRouter);
 router.use(misReportRouter);
 router.use("/cctv", cctvRouter);
 router.use(calendarRouter);
+router.use(notificationsRouter);
 
 export default router;

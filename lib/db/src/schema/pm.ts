@@ -124,9 +124,25 @@ export const userPermissionsTable = pgTable("user_permissions", {
   twoFaEnabled: boolean("two_fa_enabled").notNull().default(false),
   theme: text("theme").notNull().default("system"),
   navbarStyle: text("navbar_style").notNull().default("full"),
+  notifWhatsapp: boolean("notif_whatsapp").notNull().default(false),
+  notifWhatsappPhone: text("notif_whatsapp_phone"),
+  notifEmail: boolean("notif_email").notNull().default(true),
+  notifSystem: boolean("notif_system").notNull().default(true),
+  notifEvents: text("notif_events").notNull().default('["task_assigned","project_update","new_lead","new_message"]'),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 export type UserPermission = typeof userPermissionsTable.$inferSelect;
+
+export const inAppNotificationsTable = pgTable("in_app_notifications", {
+  id: serial("id").primaryKey(),
+  userEmail: text("user_email").notNull(),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  type: text("type").notNull().default("info"),
+  read: boolean("read").notNull().default(false),
+  data: jsonb("data"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
 
 export const emailAccountsTable = pgTable("email_accounts", {
   id: serial("id").primaryKey(),
