@@ -424,7 +424,7 @@ function AppItem({ item, location, theme, onClose }: { item: any; location: stri
   );
 }
 
-function FullSidebar({ location, expandedItems, toggleExpand, setCollapsed, setMobileSidebarOpen, aiTrigger, setAiTrigger, logout, theme, user }: any) {
+function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, toggleGroup, setCollapsed, setMobileSidebarOpen, aiTrigger, setAiTrigger, logout, theme, user }: any) {
   return (
     <div className="flex flex-col h-full relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-b from-slate-900 via-[#0f172a] to-slate-950 pointer-events-none" />
@@ -450,73 +450,101 @@ function FullSidebar({ location, expandedItems, toggleExpand, setCollapsed, setM
         </button>
       </div>
 
-      <nav className="relative flex-1 overflow-y-auto py-3 px-2 space-y-4 custom-scrollbar">
-        {navGroups.map((group, gi) => (
-          <div key={gi}>
-            {group.label && group.label !== "Main" && (
-              <p className="px-3 mb-1.5 text-[9px] font-bold uppercase tracking-[0.12em] text-slate-600 select-none">{group.label}</p>
-            )}
-            <div className="space-y-0.5">
-              {group.items.map((item) => {
-                const isActive = location === item.path;
-                const isChildActive = item.children?.some((c: any) => c.path === location);
-                const isExpanded = expandedItems.includes(item.path);
-                const Icon = item.icon;
-                const hasChildren = item.children && item.children.length > 0;
-                const iconColor = item.color ?? "text-slate-400";
+      <nav className="relative flex-1 overflow-y-auto py-3 px-2 space-y-0.5 custom-scrollbar">
+        {navGroups.map((group, gi) => {
+          const isGroupExpanded = expandedGroups.includes(group.label);
+          const groupHasActive = group.items.some(
+            item => item.path === location || item.children?.some((c: any) => c.path === location)
+          );
 
-                return (
-                  <div key={`${item.path}-${item.label}`}>
-                    <div
-                      className={cn(
-                        "group flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-all duration-150 text-sm relative",
-                        (isActive || isChildActive) ? "bg-white/10 text-white shadow-sm" : "text-slate-400 hover:bg-white/[0.07] hover:text-white"
-                      )}
-                      onClick={() => { if (hasChildren) toggleExpand(item.path); }}
-                    >
-                      {(isActive || isChildActive) && (
-                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full" style={{ backgroundColor: theme.accent }} />
-                      )}
-                      <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all", (isActive || isChildActive) ? "bg-white/10" : "bg-white/[0.04] group-hover:bg-white/[0.08]")}>
-                        {!hasChildren ? (
-                          <Link href={item.path}>
-                            <Icon className={cn("w-3.5 h-3.5 transition-colors", (isActive || isChildActive) ? iconColor : "text-slate-500 group-hover:text-slate-300")} style={{ width: 14, height: 14 }} />
-                          </Link>
-                        ) : (
-                          <Icon className={cn("w-3.5 h-3.5 transition-colors", (isActive || isChildActive) ? iconColor : "text-slate-500 group-hover:text-slate-300")} style={{ width: 14, height: 14 }} />
+          return (
+            <div key={gi}>
+              <button
+                onClick={() => toggleGroup(group.label)}
+                className={cn(
+                  "w-full flex items-center justify-between px-3 py-1.5 rounded-lg transition-all duration-150 select-none",
+                  groupHasActive
+                    ? "text-white/70"
+                    : "text-slate-600 hover:text-slate-400 hover:bg-white/[0.04]"
+                )}
+              >
+                <span className={cn(
+                  "text-[9px] font-bold uppercase tracking-[0.14em]",
+                  groupHasActive ? "text-white/50" : "text-slate-600"
+                )}>
+                  {group.label === "Main" ? "Home" : group.label}
+                </span>
+                <ChevronDown className={cn(
+                  "w-3 h-3 shrink-0 transition-transform duration-200",
+                  groupHasActive ? "text-white/30" : "text-slate-700",
+                  isGroupExpanded ? "rotate-0" : "-rotate-90"
+                )} />
+              </button>
+
+              {isGroupExpanded && (
+                <div className="mt-0.5 mb-2 space-y-0.5">
+                  {group.items.map((item) => {
+                    const isActive = location === item.path;
+                    const isChildActive = item.children?.some((c: any) => c.path === location);
+                    const isExpanded = expandedItems.includes(item.path);
+                    const Icon = item.icon;
+                    const hasChildren = item.children && item.children.length > 0;
+                    const iconColor = item.color ?? "text-slate-400";
+
+                    return (
+                      <div key={`${item.path}-${item.label}`}>
+                        <div
+                          className={cn(
+                            "group flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-all duration-150 text-sm relative",
+                            (isActive || isChildActive) ? "bg-white/10 text-white shadow-sm" : "text-slate-400 hover:bg-white/[0.07] hover:text-white"
+                          )}
+                          onClick={() => { if (hasChildren) toggleExpand(item.path); }}
+                        >
+                          {(isActive || isChildActive) && (
+                            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full" style={{ backgroundColor: theme.accent }} />
+                          )}
+                          <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all", (isActive || isChildActive) ? "bg-white/10" : "bg-white/[0.04] group-hover:bg-white/[0.08]")}>
+                            {!hasChildren ? (
+                              <Link href={item.path}>
+                                <Icon className={cn("w-3.5 h-3.5 transition-colors", (isActive || isChildActive) ? iconColor : "text-slate-500 group-hover:text-slate-300")} style={{ width: 14, height: 14 }} />
+                              </Link>
+                            ) : (
+                              <Icon className={cn("w-3.5 h-3.5 transition-colors", (isActive || isChildActive) ? iconColor : "text-slate-500 group-hover:text-slate-300")} style={{ width: 14, height: 14 }} />
+                            )}
+                          </div>
+                          {!hasChildren ? (
+                            <Link href={item.path} className="flex-1 truncate font-medium text-[13px]">{item.label}</Link>
+                          ) : (
+                            <span className="flex-1 truncate font-medium text-[13px]">{item.label}</span>
+                          )}
+                          {hasChildren && (
+                            <ChevronDown className={cn("w-3.5 h-3.5 shrink-0 text-slate-600 transition-transform duration-200", isExpanded ? "rotate-0" : "-rotate-90")} />
+                          )}
+                        </div>
+
+                        {hasChildren && isExpanded && (
+                          <div className="mt-0.5 ml-3 pl-7 border-l border-white/[0.07] space-y-0.5 mb-1">
+                            {item.children!.map((child: any) => (
+                              <Link
+                                key={child.path + child.label}
+                                href={child.path}
+                                className={cn("flex items-center gap-2 py-1.5 px-2 text-[12px] rounded-lg transition-all", location === child.path ? "font-semibold bg-white/10" : "text-slate-500 hover:text-slate-200 hover:bg-white/[0.05]")}
+                                style={location === child.path ? { color: theme.accent } : {}}
+                              >
+                                <span className="w-1 h-1 rounded-full shrink-0" style={{ backgroundColor: location === child.path ? theme.accent : "#475569" }} />
+                                {child.label}
+                              </Link>
+                            ))}
+                          </div>
                         )}
                       </div>
-                      {!hasChildren ? (
-                        <Link href={item.path} className="flex-1 truncate font-medium text-[13px]">{item.label}</Link>
-                      ) : (
-                        <span className="flex-1 truncate font-medium text-[13px]">{item.label}</span>
-                      )}
-                      {hasChildren && (
-                        <ChevronDown className={cn("w-3.5 h-3.5 shrink-0 text-slate-600 transition-transform duration-200", isExpanded ? "rotate-0" : "-rotate-90")} />
-                      )}
-                    </div>
-
-                    {hasChildren && isExpanded && (
-                      <div className="mt-0.5 ml-3 pl-7 border-l border-white/[0.07] space-y-0.5 mb-1">
-                        {item.children!.map((child: any) => (
-                          <Link
-                            key={child.path + child.label}
-                            href={child.path}
-                            className={cn("flex items-center gap-2 py-1.5 px-2 text-[12px] rounded-lg transition-all", location === child.path ? "font-semibold bg-white/10" : "text-slate-500 hover:text-slate-200 hover:bg-white/[0.05]")}
-                            style={location === child.path ? { color: theme.accent } : {}}
-                          >
-                            <span className="w-1 h-1 rounded-full shrink-0" style={{ backgroundColor: location === child.path ? theme.accent : "#475569" }} />
-                            {child.label}
-                          </Link>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </nav>
 
       <div className="relative border-t border-white/[0.07] p-3 space-y-1">
@@ -608,10 +636,31 @@ function MiniSidebar({ location, expandedItems, toggleExpand, setCollapsed, aiTr
 
 const COLLAPSED_KEY = "fm_sidebar_collapsed";
 
+const EXPANDED_GROUPS_KEY = "fm_sidebar_expanded_groups";
+
+function getActiveGroupLabel(loc: string): string | null {
+  for (const group of navGroups) {
+    for (const item of group.items) {
+      if (item.path === loc || item.children?.some((c: any) => c.path === loc)) {
+        return group.label;
+      }
+    }
+  }
+  return null;
+}
+
 export function Layout({ children, hideChrome }: { children: React.ReactNode; hideChrome?: boolean }) {
   const [location] = useLocation();
   const { navStyle } = useNavStyle();
   const [expandedItems, setExpandedItems] = useState<string[]>(["/drawings"]);
+  const [expandedGroups, setExpandedGroups] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem(EXPANDED_GROUPS_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    const active = getActiveGroupLabel(location);
+    return active ? [active] : ["Main"];
+  });
   const [collapsed, setCollapsedState] = useState(() => {
     try {
       return localStorage.getItem(COLLAPSED_KEY) === "true";
@@ -642,6 +691,15 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   useEffect(() => {
     setMobileSidebarOpen(false);
     setLauncherOpen(false);
+    const activeGroup = getActiveGroupLabel(location);
+    if (activeGroup) {
+      setExpandedGroups(prev => {
+        if (prev.includes(activeGroup)) return prev;
+        const next = [...prev, activeGroup];
+        try { localStorage.setItem(EXPANDED_GROUPS_KEY, JSON.stringify(next)); } catch {}
+        return next;
+      });
+    }
   }, [location]);
 
   useEffect(() => {
@@ -654,11 +712,19 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
     setExpandedItems(prev => prev.includes(path) ? prev.filter(p => p !== path) : [...prev, path]);
   };
 
+  const toggleGroup = (label: string) => {
+    setExpandedGroups(prev => {
+      const next = prev.includes(label) ? prev.filter(l => l !== label) : [...prev, label];
+      try { localStorage.setItem(EXPANDED_GROUPS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+
   const currentPage = allNavItems.find(i => i.path === location || i.children?.some(c => c.path === location));
   const pageTitle = currentPage?.label ?? "Dashboard";
   const CurrentIcon = currentPage?.icon;
 
-  const sidebarProps = { location, expandedItems, toggleExpand, setCollapsed, setMobileSidebarOpen, aiTrigger, setAiTrigger, logout, theme, user, darkMode, toggleDarkMode, setShowThemePicker };
+  const sidebarProps = { location, expandedItems, toggleExpand, expandedGroups, toggleGroup, setCollapsed, setMobileSidebarOpen, aiTrigger, setAiTrigger, logout, theme, user, darkMode, toggleDarkMode, setShowThemePicker };
 
   if (hideChrome) {
     return <div className="min-h-screen bg-slate-100">{children}</div>;
