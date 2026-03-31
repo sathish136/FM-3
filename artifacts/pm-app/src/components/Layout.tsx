@@ -47,6 +47,12 @@ interface NavItem {
 
 const navGroups: { label: string; items: NavItem[] }[] = [
   {
+    label: "Work",
+    items: [
+      { path: "/calendar", label: "Calendar", icon: Calendar, color: "text-blue-400", bgColor: "bg-blue-500/15" },
+    ],
+  },
+  {
     label: "Main",
     items: [
       { path: "/", label: "Dashboard", icon: LayoutDashboard, color: "text-sky-400", bgColor: "bg-sky-500/15" },

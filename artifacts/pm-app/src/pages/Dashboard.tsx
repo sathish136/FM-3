@@ -9,7 +9,7 @@ import {
   Briefcase, ArrowRight, Sparkles, Clock, PauseCircle,
   UserCircle, BarChart3, Zap, Bot, Target, Megaphone,
   Receipt, Wifi, Activity, GanttChartSquare, Mail, Warehouse,
-  ShoppingBag, PenLine, AlertTriangle, TrendingUp, Star, MonitorPlay,
+  ShoppingBag, PenLine, AlertTriangle, TrendingUp, Star, MonitorPlay, CalendarDays,
 } from "lucide-react";
 import { useTheme } from "@/hooks/useTheme";
 
@@ -38,6 +38,7 @@ const QUICK_LAUNCH = [
   { label: "Stores",        icon: Warehouse,           path: "/stores-dashboard", color: "#78716c", desc: "Inventory" },
   { label: "Design 2D",     icon: PenLine,             path: "/design-2d",        color: "#10b981", desc: "CAD" },
   { label: "CCTV",          icon: MonitorPlay,         path: "/cctv",             color: "#0ea5e9", desc: "Live View" },
+  { label: "Calendar",      icon: CalendarDays,         path: "/calendar",         color: "#3b82f6", desc: "Meetings" },
 ];
 
 function useNow() {

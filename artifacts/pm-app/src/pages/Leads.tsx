@@ -12,10 +12,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/Layout";
 import { formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { useLocation } from "wouter";
 import {
   Plus, Trash2, Edit2, Mail, Phone, Building, Search, X,
   Users, TrendingUp, CheckCircle2, XCircle, AlertCircle,
-  ChevronRight, User, StickyNote,
+  ChevronRight, User, StickyNote, CalendarPlus,
 } from "lucide-react";
 
 // ── Types & constants ────────────────────────────────────────────────────────
@@ -232,6 +233,7 @@ const TABS = [
 type TabKey = typeof TABS[number]["key"];
 
 export default function Leads() {
+  const [, navigate] = useLocation();
   const qc = useQueryClient();
   const { data: leads = [], isLoading } = useListLeads();
   const createLead = useCreateLead();
@@ -416,6 +418,12 @@ export default function Leads() {
                             <button onClick={() => handleDelete(lead)}
                               className="p-1.5 rounded-lg hover:bg-red-100 text-muted-foreground hover:text-red-600 transition-colors">
                               <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => navigate(`/calendar?title=${encodeURIComponent("Follow-up: " + lead.name)}&type=followup&related=Lead&relatedId=${lead.id}`)}
+                              title="Add Follow-up to Calendar"
+                              className="p-1.5 rounded-lg hover:bg-blue-50 text-muted-foreground hover:text-blue-600 transition-colors">
+                              <CalendarPlus className="w-3.5 h-3.5" />
                             </button>
                             <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/40" />
                           </div>
