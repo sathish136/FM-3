@@ -48,6 +48,157 @@ const DAYS_SHORT = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
+// ─── Holiday Data ────────────────────────────────────────────────────────────
+type HolidayType = "national" | "religious" | "international";
+type Holiday = { name: string; type: HolidayType; emoji: string };
+type HolidayMap = Map<string, Holiday[]>;
+
+const MOVING_HOLIDAYS: Record<number, Array<[number, number, Holiday]>> = {
+  2024: [
+    [3, 25, { name: "Holi", type: "religious", emoji: "🌈" }],
+    [3, 29, { name: "Good Friday", type: "religious", emoji: "✝️" }],
+    [4, 10, { name: "Eid al-Fitr", type: "religious", emoji: "🌙" }],
+    [6, 17, { name: "Eid al-Adha", type: "religious", emoji: "🌙" }],
+    [10, 12, { name: "Dussehra", type: "religious", emoji: "🎉" }],
+    [11, 1, { name: "Diwali", type: "religious", emoji: "🪔" }],
+    [11, 15, { name: "Guru Nanak Jayanti", type: "religious", emoji: "☬" }],
+  ],
+  2025: [
+    [3, 14, { name: "Holi", type: "religious", emoji: "🌈" }],
+    [3, 31, { name: "Eid al-Fitr", type: "religious", emoji: "🌙" }],
+    [4, 18, { name: "Good Friday", type: "religious", emoji: "✝️" }],
+    [4, 2, { name: "Ugadi", type: "religious", emoji: "🌿" }],
+    [6, 7, { name: "Eid al-Adha", type: "religious", emoji: "🌙" }],
+    [10, 2, { name: "Dussehra", type: "religious", emoji: "🎉" }],
+    [10, 20, { name: "Diwali", type: "religious", emoji: "🪔" }],
+    [11, 5, { name: "Guru Nanak Jayanti", type: "religious", emoji: "☬" }],
+  ],
+  2026: [
+    [3, 3, { name: "Holi", type: "religious", emoji: "🌈" }],
+    [3, 20, { name: "Eid al-Fitr", type: "religious", emoji: "🌙" }],
+    [4, 3, { name: "Good Friday", type: "religious", emoji: "✝️" }],
+    [3, 22, { name: "Ugadi", type: "religious", emoji: "🌿" }],
+    [5, 27, { name: "Eid al-Adha", type: "religious", emoji: "🌙" }],
+    [10, 20, { name: "Dussehra", type: "religious", emoji: "🎉" }],
+    [11, 8, { name: "Diwali", type: "religious", emoji: "🪔" }],
+    [11, 25, { name: "Guru Nanak Jayanti", type: "religious", emoji: "☬" }],
+  ],
+  2027: [
+    [3, 22, { name: "Holi", type: "religious", emoji: "🌈" }],
+    [3, 9, { name: "Eid al-Fitr", type: "religious", emoji: "🌙" }],
+    [3, 26, { name: "Good Friday", type: "religious", emoji: "✝️" }],
+    [5, 17, { name: "Eid al-Adha", type: "religious", emoji: "🌙" }],
+    [10, 9, { name: "Dussehra", type: "religious", emoji: "🎉" }],
+    [10, 29, { name: "Diwali", type: "religious", emoji: "🪔" }],
+    [11, 14, { name: "Guru Nanak Jayanti", type: "religious", emoji: "☬" }],
+  ],
+  2028: [
+    [3, 11, { name: "Holi", type: "religious", emoji: "🌈" }],
+    [3, 14, { name: "Good Friday", type: "religious", emoji: "✝️" }],
+    [5, 5, { name: "Eid al-Adha", type: "religious", emoji: "🌙" }],
+    [10, 17, { name: "Diwali", type: "religious", emoji: "🪔" }],
+    [11, 2, { name: "Guru Nanak Jayanti", type: "religious", emoji: "☬" }],
+  ],
+};
+
+function getHolidays(year: number): HolidayMap {
+  const map: HolidayMap = new Map();
+  const add = (m: number, d: number, h: Holiday) => {
+    const key = `${year}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(h);
+  };
+  // Fixed national holidays
+  add(1, 26, { name: "Republic Day", type: "national", emoji: "🇮🇳" });
+  add(8, 15, { name: "Independence Day", type: "national", emoji: "🇮🇳" });
+  add(10, 2, { name: "Gandhi Jayanti", type: "national", emoji: "🇮🇳" });
+  add(4, 14, { name: "Ambedkar Jayanti", type: "national", emoji: "🇮🇳" });
+  add(11, 14, { name: "Children's Day", type: "national", emoji: "🎒" });
+  // Fixed religious
+  add(1, 14, { name: "Makar Sankranti", type: "religious", emoji: "🪁" });
+  add(1, 15, { name: "Pongal", type: "religious", emoji: "🍚" });
+  add(4, 9, { name: "Ram Navami", type: "religious", emoji: "🪷" });
+  add(8, 19, { name: "Janmashtami", type: "religious", emoji: "🪷" });
+  add(9, 5, { name: "Teachers' Day", type: "national", emoji: "📚" });
+  add(12, 25, { name: "Christmas", type: "religious", emoji: "🎄" });
+  // International fixed
+  add(1, 1, { name: "New Year's Day", type: "international", emoji: "🎊" });
+  add(2, 14, { name: "Valentine's Day", type: "international", emoji: "💝" });
+  add(3, 8, { name: "Women's Day", type: "international", emoji: "👩" });
+  add(4, 22, { name: "Earth Day", type: "international", emoji: "🌍" });
+  add(5, 1, { name: "Labour Day", type: "international", emoji: "⚒️" });
+  add(6, 5, { name: "Environment Day", type: "international", emoji: "🌿" });
+  add(6, 21, { name: "Yoga Day", type: "international", emoji: "🧘" });
+  add(9, 21, { name: "Peace Day", type: "international", emoji: "☮️" });
+  add(10, 31, { name: "Halloween", type: "international", emoji: "🎃" });
+  add(12, 31, { name: "New Year's Eve", type: "international", emoji: "🎆" });
+  // Moving holidays
+  (MOVING_HOLIDAYS[year] || []).forEach(([m, d, h]) => add(m, d, h));
+  return map;
+}
+
+const HOLIDAY_COLORS: Record<HolidayType, string> = {
+  national: "bg-orange-100 text-orange-700",
+  religious: "bg-violet-100 text-violet-700",
+  international: "bg-teal-100 text-teal-700",
+};
+const HOLIDAY_DOT: Record<HolidayType, string> = {
+  national: "bg-orange-500",
+  religious: "bg-violet-500",
+  international: "bg-teal-500",
+};
+
+// ─── Mini Calendar ────────────────────────────────────────────────────────────
+function MiniCalendar({ year, month, todayDate, holidays, selectedDate, onDayClick }: {
+  year: number; month: number; todayDate: Date; holidays: HolidayMap;
+  selectedDate: Date | null; onDayClick: (d: Date) => void;
+}) {
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  return (
+    <div className="px-3 py-3">
+      <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 text-center">
+        {MONTHS[month].slice(0, 3)} {year}
+      </p>
+      <div className="grid grid-cols-7 mb-1">
+        {["S","M","T","W","T","F","S"].map((d, i) => (
+          <div key={i} className="text-center text-[8px] font-bold text-gray-400 py-0.5">{d}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-y-0.5">
+        {Array.from({ length: firstDay }).map((_, i) => <div key={`p${i}`} className="h-6" />)}
+        {Array.from({ length: daysInMonth }).map((_, i) => {
+          const d = new Date(year, month, i + 1);
+          const ds = `${year}-${String(month+1).padStart(2,"0")}-${String(i+1).padStart(2,"0")}`;
+          const isToday = isSameDay(d, todayDate);
+          const isSel = !!selectedDate && isSameDay(d, selectedDate);
+          const hols = holidays.get(ds) || [];
+          const nat = hols.some(h => h.type === "national");
+          const rel = hols.some(h => h.type === "religious");
+          const intl = hols.some(h => h.type === "international");
+          return (
+            <button key={i} onClick={() => onDayClick(d)}
+              className={`relative flex items-center justify-center w-6 h-6 mx-auto text-[9px] font-semibold rounded-full transition-colors
+                ${isToday ? "bg-blue-600 text-white" : isSel ? "bg-blue-100 text-blue-700 ring-1 ring-blue-300" : "text-gray-600 hover:bg-gray-100"}`}>
+              {i + 1}
+              {(nat || rel || intl) && (
+                <span className={`absolute bottom-0 right-0 w-1.5 h-1.5 rounded-full border border-white
+                  ${nat ? "bg-orange-500" : rel ? "bg-violet-500" : "bg-teal-500"}`} />
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {/* Legend */}
+      <div className="flex items-center gap-3 mt-2 justify-center">
+        <span className="flex items-center gap-1 text-[8px] text-gray-400"><span className="w-1.5 h-1.5 rounded-full bg-orange-500" />National</span>
+        <span className="flex items-center gap-1 text-[8px] text-gray-400"><span className="w-1.5 h-1.5 rounded-full bg-violet-500" />Festival</span>
+        <span className="flex items-center gap-1 text-[8px] text-gray-400"><span className="w-1.5 h-1.5 rounded-full bg-teal-500" />World Day</span>
+      </div>
+    </div>
+  );
+}
+
 interface CalEvent {
   id: number;
   title: string;
@@ -165,7 +316,6 @@ export default function CalendarPage() {
 
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<ViewMode>("month");
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   const [showModal, setShowModal] = useState(false);
@@ -261,18 +411,17 @@ export default function CalendarPage() {
     }
   }, []);
 
-  useEffect(() => {
-    if ((viewMode === "week" || viewMode === "day") && timeGridRef.current) {
-      const h = new Date().getHours();
-      timeGridRef.current.scrollTop = Math.max(0, (h - 1)) * 56;
-    }
-  }, [viewMode]);
+  const viewMode = "month" as ViewMode;
 
   const year  = currentDate.getFullYear();
   const month = currentDate.getMonth();
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const today = new Date();
+  const holidays = getHolidays(year);
+  const nextMonthYear = month === 11 ? year + 1 : year;
+  const nextMonth = month === 11 ? 0 : month + 1;
+  const nextHolidays = nextMonthYear !== year ? getHolidays(nextMonthYear) : holidays;
 
   const rangeStart = new Date(year, month - 1, 1);
   const rangeEnd   = new Date(year, month + 2, 0, 23, 59, 59);
@@ -304,28 +453,8 @@ export default function CalendarPage() {
 
   const weekDays = getWeekDays(currentDate);
 
-  function navigatePrev() {
-    if (viewMode === "month") setCurrentDate(new Date(year, month - 1, 1));
-    else if (viewMode === "week") setCurrentDate(prev => { const d = new Date(prev); d.setDate(d.getDate() - 7); return d; });
-    else if (viewMode === "day") setCurrentDate(prev => { const d = new Date(prev); d.setDate(d.getDate() - 1); return d; });
-    else setCurrentDate(prev => { const d = new Date(prev); d.setDate(d.getDate() - 30); return d; });
-  }
-  function navigateNext() {
-    if (viewMode === "month") setCurrentDate(new Date(year, month + 1, 1));
-    else if (viewMode === "week") setCurrentDate(prev => { const d = new Date(prev); d.setDate(d.getDate() + 7); return d; });
-    else if (viewMode === "day") setCurrentDate(prev => { const d = new Date(prev); d.setDate(d.getDate() + 1); return d; });
-    else setCurrentDate(prev => { const d = new Date(prev); d.setDate(d.getDate() + 30); return d; });
-  }
-
-  function getNavLabel(): string {
-    if (viewMode === "month") return `${MONTHS[month]} ${year}`;
-    if (viewMode === "week") {
-      const start = weekDays[0]; const end = weekDays[6];
-      return start.getMonth() === end.getMonth() ? `${MONTHS[start.getMonth()]} ${start.getFullYear()}` : `${MONTHS[start.getMonth()].slice(0,3)} – ${MONTHS[end.getMonth()].slice(0,3)} ${end.getFullYear()}`;
-    }
-    if (viewMode === "day") return fmtDate(currentDate.toISOString());
-    return "Next 60 Days";
-  }
+  function navigatePrev() { setCurrentDate(new Date(year, month - 1, 1)); }
+  function navigateNext() { setCurrentDate(new Date(year, month + 1, 1)); }
 
   const openCreate = (d?: Date, hour?: number) => {
     const base = d || selectedDate || new Date();
@@ -397,26 +526,11 @@ export default function CalendarPage() {
   return (
     <Layout>
       <div className="flex flex-col h-full bg-gray-50 min-h-screen">
-        {/* Top bar — row 1: title + view tabs + new event */}
+        {/* Top bar */}
         <div className="bg-white border-b px-4 py-2.5 flex items-center gap-3 shadow-sm">
           <div className="flex items-center gap-2 shrink-0">
             <CalIcon className="w-5 h-5 text-blue-600" />
             <span className="font-bold text-gray-800 text-sm hidden sm:block">Calendar</span>
-          </div>
-
-          {/* View mode tabs */}
-          <div className="flex bg-gray-100 rounded-lg overflow-hidden border border-gray-200 shrink-0">
-            {([
-              { id: "month"  as ViewMode, label: "Month" },
-              { id: "week"   as ViewMode, label: "Week"  },
-              { id: "day"    as ViewMode, label: "Day"   },
-              { id: "agenda" as ViewMode, label: "List"  },
-            ]).map(v => (
-              <button key={v.id} onClick={() => setViewMode(v.id)}
-                className={`px-3 py-1.5 text-xs font-semibold transition-colors ${viewMode === v.id ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-200"}`}>
-                {v.label}
-              </button>
-            ))}
           </div>
 
           {/* Search */}
@@ -500,14 +614,25 @@ export default function CalendarPage() {
           </div>
         )}
 
-        {/* Nav bar */}
-        <div className="flex items-center gap-3 px-4 py-2.5 bg-white border-b">
+        {/* Nav bar — month + year navigation */}
+        <div className="flex items-center gap-2 px-4 py-2 bg-white border-b">
+          {/* Month nav */}
           <button onClick={navigatePrev} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-600"><ChevronLeft className="w-4 h-4" /></button>
-          <h2 className="font-bold text-gray-800 text-sm flex-1 text-center">{getNavLabel()}</h2>
+          <h2 className="font-bold text-gray-800 text-sm w-28 text-center">{MONTHS[month]}</h2>
           <button onClick={navigateNext} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-600"><ChevronRight className="w-4 h-4" /></button>
+
+          <div className="w-px h-5 bg-gray-200 mx-1" />
+
+          {/* Year filter */}
+          <button onClick={() => setCurrentDate(new Date(year - 1, month, 1))}
+            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"><ChevronLeft className="w-3.5 h-3.5" /></button>
+          <span className="font-bold text-blue-700 text-sm w-12 text-center tabular-nums">{year}</span>
+          <button onClick={() => setCurrentDate(new Date(year + 1, month, 1))}
+            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"><ChevronRight className="w-3.5 h-3.5" /></button>
+
           <button onClick={() => { setCurrentDate(new Date()); setSelectedDate(new Date()); }}
-            className="text-xs text-blue-600 font-medium hover:underline px-2">Today</button>
-          {loading && <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />}
+            className="ml-1 text-xs text-blue-600 font-medium hover:underline px-2 py-1 rounded hover:bg-blue-50 transition-colors">Today</button>
+          {loading && <Loader2 className="w-4 h-4 text-blue-400 animate-spin ml-auto" />}
         </div>
 
         {/* ── Main content area: views + right sidebar ── */}
@@ -528,18 +653,21 @@ export default function CalendarPage() {
               ))}
               {Array.from({ length: daysInMonth }).map((_, i) => {
                 const d = new Date(year, month, i + 1);
+                const ds = `${year}-${String(month+1).padStart(2,"0")}-${String(i+1).padStart(2,"0")}`;
                 const dayEvs = eventsOnDate(d);
                 const todayCell = isToday(d);
                 const selCell   = isSelected(d);
+                const dayHols = holidays.get(ds) || [];
+                const isWeekend = d.getDay() === 0 || d.getDay() === 6;
                 return (
-                  <div key={i} onClick={() => { setSelectedDate(d); if (viewMode === "month") {} }}
+                  <div key={i} onClick={() => { setSelectedDate(d); }}
                     onDoubleClick={() => openCreate(d)}
                     className={`border-b border-r min-h-[90px] p-1 cursor-pointer transition-colors
-                      ${todayCell ? "bg-blue-50" : "bg-white hover:bg-gray-50"}
+                      ${todayCell ? "bg-blue-50" : isWeekend ? "bg-gray-50/70" : "bg-white hover:bg-gray-50"}
                       ${selCell ? "ring-2 ring-inset ring-blue-400" : ""}`}>
-                    <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center justify-between mb-0.5">
                       <span className={`text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full
-                        ${todayCell ? "bg-blue-600 text-white" : "text-gray-700"}`}>{i + 1}</span>
+                        ${todayCell ? "bg-blue-600 text-white" : isWeekend ? "text-gray-500" : "text-gray-700"}`}>{i + 1}</span>
                       {selCell && (
                         <button onClick={e => { e.stopPropagation(); openCreate(d); }}
                           className="w-4 h-4 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center hover:bg-blue-600 hover:text-white transition-colors">
@@ -547,8 +675,21 @@ export default function CalendarPage() {
                         </button>
                       )}
                     </div>
+                    {/* Holidays */}
+                    {dayHols.length > 0 && (
+                      <div className="space-y-0.5 mb-0.5">
+                        {dayHols.slice(0, 2).map((h, hi) => (
+                          <div key={hi} className={`flex items-center gap-0.5 rounded px-1 py-px text-[8px] font-semibold truncate ${HOLIDAY_COLORS[h.type]}`}>
+                            <span className="shrink-0">{h.emoji}</span>
+                            <span className="truncate">{h.name}</span>
+                          </div>
+                        ))}
+                        {dayHols.length > 2 && <div className="text-[7px] text-gray-400 pl-1">+{dayHols.length - 2} more</div>}
+                      </div>
+                    )}
+                    {/* Events */}
                     <div className="space-y-0.5">
-                      {dayEvs.slice(0, 3).map((ev, ei) => (
+                      {dayEvs.slice(0, 2).map((ev, ei) => (
                         <div key={ei} onClick={e => { e.stopPropagation(); openEdit(ev); }}
                           className="flex items-center gap-1 rounded px-1 py-0.5 text-[9px] font-semibold truncate cursor-pointer hover:opacity-80"
                           style={{ background: `${ev.color}20`, color: ev.color }}>
@@ -557,10 +698,10 @@ export default function CalendarPage() {
                           {ev.recurrence !== "none" && <Repeat className="w-2 h-2 shrink-0" />}
                         </div>
                       ))}
-                      {dayEvs.length > 3 && (
+                      {dayEvs.length > 2 && (
                         <button onClick={e => { e.stopPropagation(); setOverflowDay({ date: d, events: dayEvs }); }}
                           className="text-[9px] text-blue-600 font-medium pl-1 hover:underline">
-                          +{dayEvs.length - 3} more
+                          +{dayEvs.length - 2} more
                         </button>
                       )}
                     </div>
@@ -786,17 +927,28 @@ export default function CalendarPage() {
 
           </div>{/* end inner views column */}
 
-          {/* ── Right Sidebar: Event List ── */}
-          <div className="w-72 border-l bg-white flex flex-col shrink-0">
-            {/* Header */}
-            <div className="px-4 py-3 border-b flex items-center justify-between">
+          {/* ── Right Sidebar ── */}
+          <div className="w-64 border-l bg-white flex flex-col shrink-0">
+
+            {/* Mini next-month calendar */}
+            <div className="border-b bg-gray-50">
+              <MiniCalendar
+                year={nextMonthYear}
+                month={nextMonth}
+                todayDate={today}
+                holidays={nextHolidays}
+                selectedDate={selectedDate}
+                onDayClick={d => { setSelectedDate(d); setCurrentDate(new Date(d.getFullYear(), d.getMonth(), 1)); }}
+              />
+            </div>
+
+            {/* Selected date events header */}
+            <div className="px-3 py-2 border-b flex items-center justify-between">
               <div>
                 <p className="font-bold text-gray-700 text-xs uppercase tracking-wider">
-                  {viewMode === "month" && selectedDate
-                    ? isToday(selectedDate) ? "Today's Events" : fmtDate(selectedDate.toISOString())
-                    : "Upcoming Events"}
+                  {selectedDate ? (isToday(selectedDate) ? "Today's Events" : fmtDate(selectedDate.toISOString())) : "Select a Day"}
                 </p>
-                {viewMode === "month" && selectedDate && !isToday(selectedDate) && (
+                {selectedDate && !isToday(selectedDate) && (
                   <p className="text-[10px] text-gray-400 mt-0.5">{DAYS_SHORT[selectedDate.getDay()]}, {MONTHS[selectedDate.getMonth()].slice(0,3)} {selectedDate.getDate()}</p>
                 )}
               </div>
@@ -805,72 +957,72 @@ export default function CalendarPage() {
               </button>
             </div>
 
+            {/* Holidays for selected date */}
+            {selectedDate && (() => {
+              const ds = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth()+1).padStart(2,"0")}-${String(selectedDate.getDate()).padStart(2,"0")}`;
+              const selHols = (selectedDate.getFullYear() === year ? holidays : getHolidays(selectedDate.getFullYear())).get(ds) || [];
+              if (selHols.length === 0) return null;
+              return (
+                <div className="px-3 py-2 border-b bg-gray-50 space-y-1">
+                  {selHols.map((h, i) => (
+                    <div key={i} className={`flex items-center gap-1.5 text-[10px] font-semibold px-2 py-1 rounded-lg ${HOLIDAY_COLORS[h.type]}`}>
+                      <span>{h.emoji}</span><span>{h.name}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
             {/* Event list */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            <div className="flex-1 overflow-y-auto p-2.5 space-y-2">
               {(() => {
-                const listEvs = viewMode === "month" && selectedDate
-                  ? eventsOnDate(selectedDate)
-                  : agendaEvents();
+                const listEvs = selectedDate ? eventsOnDate(selectedDate) : [];
                 if (loading) return (
                   <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-blue-400 animate-spin" /></div>
                 );
                 if (listEvs.length === 0) return (
-                  <div className="text-center py-8">
-                    <CalIcon className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+                  <div className="text-center py-6">
+                    <CalIcon className="w-7 h-7 text-gray-200 mx-auto mb-2" />
                     <p className="text-xs text-gray-400">No events</p>
-                    <button onClick={() => openCreate(viewMode === "month" && selectedDate ? selectedDate : undefined)}
+                    <button onClick={() => openCreate(selectedDate || undefined)}
                       className="mt-2 text-blue-600 text-xs hover:underline">+ Add event</button>
                   </div>
                 );
-                let lastDay = "";
                 return listEvs.map((ev, i) => {
                   const meta = getEventMeta(ev.event_type);
-                  const dayLabel = viewMode !== "month" ? fmtDate(ev.start_datetime) : "";
-                  const showDay = viewMode !== "month" && dayLabel !== lastDay;
-                  if (showDay) lastDay = dayLabel;
                   return (
-                    <div key={i}>
-                      {showDay && (
-                        <div className="flex items-center gap-2 mt-3 mb-1 first:mt-0">
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isToday(new Date(ev.start_datetime)) ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600"}`}>{dayLabel}</span>
-                        </div>
-                      )}
-                      <div onClick={() => openEdit(ev)}
-                        className="rounded-xl border border-gray-100 p-2.5 cursor-pointer hover:shadow-sm transition-all"
-                        style={{ borderLeft: `3px solid ${ev.color}` }}>
-                        <div className="flex items-start justify-between gap-1 mb-1">
-                          <p className="font-semibold text-gray-800 text-xs leading-tight truncate">{ev.title}</p>
-                          <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${meta.bg} ${meta.text}`}>{meta.label}</span>
-                        </div>
-                        {!ev.all_day && (
-                          <p className="text-[10px] text-gray-500 flex items-center gap-1">
-                            <Clock className="w-2.5 h-2.5 shrink-0" />
-                            {fmtTime(ev.start_datetime)}{ev.end_datetime ? ` – ${fmtTime(ev.end_datetime)}` : ""}
-                          </p>
-                        )}
-                        {ev.location && (
-                          <p className="text-[10px] text-gray-400 flex items-center gap-1 truncate mt-0.5">
-                            <MapPin className="w-2.5 h-2.5 shrink-0" />{ev.location}
-                          </p>
-                        )}
-                        {ev.description && (
-                          <p className="text-[10px] text-gray-300 mt-0.5 line-clamp-1">{ev.description}</p>
-                        )}
-                        {ev.recurrence !== "none" && (
-                          <p className="text-[10px] text-blue-400 flex items-center gap-1 mt-0.5">
-                            <Repeat className="w-2.5 h-2.5" />{RECURRENCES.find(r => r.id === ev.recurrence)?.label}
-                          </p>
-                        )}
+                    <div key={i} onClick={() => openEdit(ev)}
+                      className="rounded-xl border border-gray-100 p-2.5 cursor-pointer hover:shadow-sm transition-all"
+                      style={{ borderLeft: `3px solid ${ev.color}` }}>
+                      <div className="flex items-start justify-between gap-1 mb-1">
+                        <p className="font-semibold text-gray-800 text-xs leading-tight truncate">{ev.title}</p>
+                        <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${meta.bg} ${meta.text}`}>{meta.label}</span>
                       </div>
+                      {!ev.all_day && (
+                        <p className="text-[10px] text-gray-500 flex items-center gap-1">
+                          <Clock className="w-2.5 h-2.5 shrink-0" />
+                          {fmtTime(ev.start_datetime)}{ev.end_datetime ? ` – ${fmtTime(ev.end_datetime)}` : ""}
+                        </p>
+                      )}
+                      {ev.location && (
+                        <p className="text-[10px] text-gray-400 flex items-center gap-1 truncate mt-0.5">
+                          <MapPin className="w-2.5 h-2.5 shrink-0" />{ev.location}
+                        </p>
+                      )}
+                      {ev.recurrence !== "none" && (
+                        <p className="text-[10px] text-blue-400 flex items-center gap-1 mt-0.5">
+                          <Repeat className="w-2.5 h-2.5" />{RECURRENCES.find(r => r.id === ev.recurrence)?.label}
+                        </p>
+                      )}
                     </div>
                   );
                 });
               })()}
             </div>
 
-            {/* Footer: add event button */}
+            {/* Footer */}
             <div className="px-3 py-2.5 border-t">
-              <button onClick={() => openCreate(viewMode === "month" && selectedDate ? selectedDate : undefined)}
+              <button onClick={() => openCreate(selectedDate || undefined)}
                 className="w-full flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2 rounded-lg transition-colors">
                 <Plus className="w-3.5 h-3.5" /> Add Event
               </button>
