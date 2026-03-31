@@ -764,19 +764,6 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
             <button onClick={toggleDarkMode} className="hidden sm:flex p-2 rounded-xl text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-all" title={darkMode ? "Light mode" : "Dark mode"}>
               {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
-            <button onClick={() => setShowThemePicker(v => !v)} className="hidden sm:flex p-2 rounded-xl hover:bg-gray-100 transition-all" title="Theme color">
-              <span className="w-4 h-4 rounded-full border-2 border-white shadow-sm" style={{ backgroundColor: theme.accent }} />
-            </button>
-            {showThemePicker && (
-              <div className="absolute top-14 right-4 z-50 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-gray-100 p-4 w-64">
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Theme Color</p>
-                <div className="grid grid-cols-5 gap-2">
-                  {THEME_PRESETS.map((p, idx) => (
-                    <button key={p.accent} onClick={() => { setTheme(idx); setShowThemePicker(false); }} className="w-9 h-9 rounded-xl border-2 transition-all hover:scale-110" style={{ backgroundColor: p.accent, borderColor: themeIndex === idx ? p.accent : "transparent" }} title={p.name} />
-                  ))}
-                </div>
-              </div>
-            )}
             <div className="w-px h-5 bg-gray-100 hidden sm:block" />
             <div className="hidden sm:flex items-center gap-2">
               <UserAvatar user={user} size="sm" />
