@@ -449,6 +449,10 @@ export default function CalendarPage() {
           {loading && <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />}
         </div>
 
+        {/* ── Main content area: views + right sidebar ── */}
+        <div className="flex flex-1 overflow-hidden">
+          <div className="flex-1 overflow-hidden flex flex-col">
+
         {/* ── Month View ── */}
         {viewMode === "month" && (
           <div className="flex-1 flex flex-col overflow-hidden">
@@ -718,7 +722,102 @@ export default function CalendarPage() {
             )}
           </div>
         )}
-      </div>
+
+          </div>{/* end inner views column */}
+
+          {/* ── Right Sidebar: Event List ── */}
+          <div className="w-72 border-l bg-white flex flex-col shrink-0">
+            {/* Header */}
+            <div className="px-4 py-3 border-b flex items-center justify-between">
+              <div>
+                <p className="font-bold text-gray-700 text-xs uppercase tracking-wider">
+                  {viewMode === "month" && selectedDate
+                    ? isToday(selectedDate) ? "Today's Events" : fmtDate(selectedDate.toISOString())
+                    : "Upcoming Events"}
+                </p>
+                {viewMode === "month" && selectedDate && !isToday(selectedDate) && (
+                  <p className="text-[10px] text-gray-400 mt-0.5">{DAYS_SHORT[selectedDate.getDay()]}, {MONTHS[selectedDate.getMonth()].slice(0,3)} {selectedDate.getDate()}</p>
+                )}
+              </div>
+              <button onClick={loadEvents} className="p-1 rounded hover:bg-gray-100 text-gray-400">
+                <RefreshCw className="w-3 h-3" />
+              </button>
+            </div>
+
+            {/* Event list */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              {(() => {
+                const listEvs = viewMode === "month" && selectedDate
+                  ? eventsOnDate(selectedDate)
+                  : agendaEvents();
+                if (loading) return (
+                  <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-blue-400 animate-spin" /></div>
+                );
+                if (listEvs.length === 0) return (
+                  <div className="text-center py-8">
+                    <CalIcon className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+                    <p className="text-xs text-gray-400">No events</p>
+                    <button onClick={() => openCreate(viewMode === "month" && selectedDate ? selectedDate : undefined)}
+                      className="mt-2 text-blue-600 text-xs hover:underline">+ Add event</button>
+                  </div>
+                );
+                let lastDay = "";
+                return listEvs.map((ev, i) => {
+                  const meta = getEventMeta(ev.event_type);
+                  const dayLabel = viewMode !== "month" ? fmtDate(ev.start_datetime) : "";
+                  const showDay = viewMode !== "month" && dayLabel !== lastDay;
+                  if (showDay) lastDay = dayLabel;
+                  return (
+                    <div key={i}>
+                      {showDay && (
+                        <div className="flex items-center gap-2 mt-3 mb-1 first:mt-0">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isToday(new Date(ev.start_datetime)) ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600"}`}>{dayLabel}</span>
+                        </div>
+                      )}
+                      <div onClick={() => openEdit(ev)}
+                        className="rounded-xl border border-gray-100 p-2.5 cursor-pointer hover:shadow-sm transition-all"
+                        style={{ borderLeft: `3px solid ${ev.color}` }}>
+                        <div className="flex items-start justify-between gap-1 mb-1">
+                          <p className="font-semibold text-gray-800 text-xs leading-tight truncate">{ev.title}</p>
+                          <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${meta.bg} ${meta.text}`}>{meta.label}</span>
+                        </div>
+                        {!ev.all_day && (
+                          <p className="text-[10px] text-gray-500 flex items-center gap-1">
+                            <Clock className="w-2.5 h-2.5 shrink-0" />
+                            {fmtTime(ev.start_datetime)}{ev.end_datetime ? ` – ${fmtTime(ev.end_datetime)}` : ""}
+                          </p>
+                        )}
+                        {ev.location && (
+                          <p className="text-[10px] text-gray-400 flex items-center gap-1 truncate mt-0.5">
+                            <MapPin className="w-2.5 h-2.5 shrink-0" />{ev.location}
+                          </p>
+                        )}
+                        {ev.description && (
+                          <p className="text-[10px] text-gray-300 mt-0.5 line-clamp-1">{ev.description}</p>
+                        )}
+                        {ev.recurrence !== "none" && (
+                          <p className="text-[10px] text-blue-400 flex items-center gap-1 mt-0.5">
+                            <Repeat className="w-2.5 h-2.5" />{RECURRENCES.find(r => r.id === ev.recurrence)?.label}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            {/* Footer: add event button */}
+            <div className="px-3 py-2.5 border-t">
+              <button onClick={() => openCreate(viewMode === "month" && selectedDate ? selectedDate : undefined)}
+                className="w-full flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2 rounded-lg transition-colors">
+                <Plus className="w-3.5 h-3.5" /> Add Event
+              </button>
+            </div>
+          </div>
+
+        </div>{/* end flex flex-1 overflow-hidden */}
+      </div>{/* end outer flex-col */}
 
       {/* ── Overflow day popup ── */}
       {overflowDay && (
