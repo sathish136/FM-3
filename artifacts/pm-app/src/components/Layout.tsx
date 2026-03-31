@@ -462,21 +462,21 @@ function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, to
               <button
                 onClick={() => toggleGroup(group.label)}
                 className={cn(
-                  "w-full flex items-center justify-between px-3 py-1.5 rounded-lg transition-all duration-150 select-none",
+                  "w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all duration-150 select-none",
                   groupHasActive
                     ? "text-white/70"
-                    : "text-slate-600 hover:text-slate-400 hover:bg-white/[0.04]"
+                    : "text-slate-500 hover:text-slate-300 hover:bg-white/[0.04]"
                 )}
               >
                 <span className={cn(
-                  "text-[9px] font-bold uppercase tracking-[0.14em]",
-                  groupHasActive ? "text-white/50" : "text-slate-600"
+                  "text-[11px] font-semibold uppercase tracking-[0.08em]",
+                  groupHasActive ? "text-white/60" : "text-slate-500"
                 )}>
                   {group.label === "Main" ? "Home" : group.label}
                 </span>
                 <ChevronDown className={cn(
-                  "w-3 h-3 shrink-0 transition-transform duration-200",
-                  groupHasActive ? "text-white/30" : "text-slate-700",
+                  "w-3.5 h-3.5 shrink-0 transition-transform duration-200",
+                  groupHasActive ? "text-white/30" : "text-slate-600",
                   isGroupExpanded ? "rotate-0" : "-rotate-90"
                 )} />
               </button>
@@ -513,9 +513,9 @@ function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, to
                             )}
                           </div>
                           {!hasChildren ? (
-                            <Link href={item.path} className="flex-1 truncate font-medium text-[13px]">{item.label}</Link>
+                            <Link href={item.path} className="flex-1 truncate font-medium text-[14px]">{item.label}</Link>
                           ) : (
-                            <span className="flex-1 truncate font-medium text-[13px]">{item.label}</span>
+                            <span className="flex-1 truncate font-medium text-[14px]">{item.label}</span>
                           )}
                           {hasChildren && (
                             <ChevronDown className={cn("w-3.5 h-3.5 shrink-0 text-slate-600 transition-transform duration-200", isExpanded ? "rotate-0" : "-rotate-90")} />
@@ -528,7 +528,7 @@ function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, to
                               <Link
                                 key={child.path + child.label}
                                 href={child.path}
-                                className={cn("flex items-center gap-2 py-1.5 px-2 text-[12px] rounded-lg transition-all", location === child.path ? "font-semibold bg-white/10" : "text-slate-500 hover:text-slate-200 hover:bg-white/[0.05]")}
+                                className={cn("flex items-center gap-2 py-1.5 px-2 text-[13px] rounded-lg transition-all", location === child.path ? "font-semibold bg-white/10" : "text-slate-500 hover:text-slate-200 hover:bg-white/[0.05]")}
                                 style={location === child.path ? { color: theme.accent } : {}}
                               >
                                 <span className="w-1 h-1 rounded-full shrink-0" style={{ backgroundColor: location === child.path ? theme.accent : "#475569" }} />
