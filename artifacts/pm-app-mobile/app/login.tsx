@@ -19,38 +19,55 @@ import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { apiFetch } from "@/utils/api";
 
-type Step = "email" | "otp";
+type Step = "credentials" | "otp";
 
 export default function LoginScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { login } = useAuth();
-  const [step, setStep] = useState<Step>("email");
-  const [email, setEmail] = useState("");
+  const [step, setStep] = useState<Step>("credentials");
+  const [usr, setUsr] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [otpEmail, setOtpEmail] = useState("");
+  const [maskedEmail, setMaskedEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [maskedEmail, setMaskedEmail] = useState("");
   const passwordRef = useRef<TextInput>(null);
   const otpRef = useRef<TextInput>(null);
 
-  async function sendOtp() {
-    if (!email.trim()) { setError("Please enter your email"); return; }
+  async function handleSignIn() {
+    if (!usr.trim()) { setError("Please enter your username or email"); return; }
     if (!password.trim()) { setError("Please enter your password"); return; }
     setLoading(true); setError("");
     try {
-      const res = await apiFetch<{ maskedEmail?: string; masked_email?: string }>("/api/auth/login", {
+      const res = await apiFetch<{
+        status?: string;
+        email?: string;
+        full_name?: string;
+        photo?: string | null;
+        maskedEmail?: string;
+      }>("/api/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email: email.trim() }),
+        body: JSON.stringify({ usr: usr.trim(), pwd: password }),
       });
-      setMaskedEmail(res.maskedEmail || res.masked_email || email);
-      setStep("otp");
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setTimeout(() => otpRef.current?.focus(), 300);
+
+      if (res.status === "success") {
+        // Direct login — no OTP required
+        await login({ email: res.email!, full_name: res.full_name || res.email!, photo: res.photo ?? null });
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        // OTP required
+        setOtpEmail(res.email!);
+        setMaskedEmail(res.maskedEmail || res.email!);
+        setOtp("");
+        setStep("otp");
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setTimeout(() => otpRef.current?.focus(), 300);
+      }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to send OTP");
+      setError(e instanceof Error ? e.message : "Invalid credentials. Please try again.");
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setLoading(false);
@@ -63,12 +80,13 @@ export default function LoginScreen() {
     try {
       const res = await apiFetch<{ email: string; full_name: string; photo?: string | null }>("/api/auth/verify-otp", {
         method: "POST",
-        body: JSON.stringify({ email: email.trim(), otp: otp.trim() }),
+        body: JSON.stringify({ email: otpEmail, otp: otp.trim() }),
       });
       await login({ email: res.email, full_name: res.full_name, photo: res.photo ?? null });
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Invalid OTP");
+      setOtp("");
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setLoading(false);
@@ -99,27 +117,26 @@ export default function LoginScreen() {
 
           <View style={s.card}>
             <Text style={s.title}>
-              {step === "email" ? "Sign In" : "Verify OTP"}
+              {step === "credentials" ? "Sign In" : "Verify OTP"}
             </Text>
             <Text style={s.subtitle}>
-              {step === "email"
-                ? "Enter your work email to continue"
+              {step === "credentials"
+                ? "Enter your credentials to continue"
                 : `Code sent to ${maskedEmail}`}
             </Text>
 
-            {step === "email" ? (
+            {step === "credentials" ? (
               <View style={s.inputGroup}>
                 <View style={s.inputWrapper}>
-                  <Feather name="mail" size={18} color={colors.mutedForeground} style={s.inputIcon} />
+                  <Feather name="user" size={18} color={colors.mutedForeground} style={s.inputIcon} />
                   <TextInput
                     style={s.input}
-                    placeholder="your@email.com"
+                    placeholder="Username or Email"
                     placeholderTextColor={colors.mutedForeground}
-                    value={email}
-                    onChangeText={(t) => { setEmail(t); setError(""); }}
-                    keyboardType="email-address"
+                    value={usr}
+                    onChangeText={(t) => { setUsr(t); setError(""); }}
                     autoCapitalize="none"
-                    autoComplete="email"
+                    autoComplete="username"
                     returnKeyType="next"
                     onSubmitEditing={() => passwordRef.current?.focus()}
                   />
@@ -137,7 +154,7 @@ export default function LoginScreen() {
                     autoCapitalize="none"
                     autoComplete="password"
                     returnKeyType="done"
-                    onSubmitEditing={sendOtp}
+                    onSubmitEditing={handleSignIn}
                   />
                   <Pressable onPress={() => setShowPassword(v => !v)} hitSlop={8}>
                     <Feather
@@ -177,20 +194,20 @@ export default function LoginScreen() {
 
             <Pressable
               style={({ pressed }) => [s.btn, pressed && { opacity: 0.85 }, loading && { opacity: 0.7 }]}
-              onPress={step === "email" ? sendOtp : verifyOtp}
+              onPress={step === "credentials" ? handleSignIn : verifyOtp}
               disabled={loading}
             >
               {loading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={s.btnText}>
-                  {step === "email" ? "Send Code" : "Verify & Sign In"}
+                  {step === "credentials" ? "Sign In" : "Verify & Sign In"}
                 </Text>
               )}
             </Pressable>
 
             {step === "otp" && (
-              <Pressable style={s.backBtn} onPress={() => { setStep("email"); setOtp(""); setPassword(""); setError(""); }}>
+              <Pressable style={s.backBtn} onPress={() => { setStep("credentials"); setOtp(""); setPassword(""); setError(""); }}>
                 <Text style={s.backText}>Back to email</Text>
               </Pressable>
             )}
