@@ -160,33 +160,49 @@ router.post("/meeting-minutes/:id/generate", async (req, res) => {
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
-    const prompt = `You are a professional meeting secretary. Given the following meeting notes/transcript, generate a structured meeting summary.
+    const prompt = `You are an expert corporate meeting secretary at WTT International India. Your task is to produce clear, professional, and comprehensive Minutes of Meeting from the transcript or notes provided.
 
-Meeting Title: ${meeting.title}
-Date: ${meeting.date}
-Attendees: ${meeting.attendees || "Not specified"}
+Meeting Details:
+- Title: ${meeting.title}
+- Date: ${meeting.date}
+- Attendees: ${meeting.attendees || "Not specified"}
+- Venue: ${(meeting as any).venue || "Not specified"}
 
-Notes/Transcript:
+Transcript / Notes:
+"""
 ${meeting.rawNotes || "No notes provided"}
+"""
 
-Format your response as:
+Instructions:
+1. Read the full transcript carefully to understand context, speakers, and topics.
+2. If the transcript contains speech from multiple people, identify and attribute statements where possible.
+3. Write in formal, concise professional English.
+4. Produce the following sections — include ALL sections even if brief:
+
 ## Summary
-[2-4 sentence executive summary]
+A 3–5 sentence executive overview covering the purpose, key outcomes, and overall tone of the meeting.
+
+## Agenda Items Discussed
+List each main topic or agenda item discussed as a bullet.
 
 ## Key Discussion Points
-- [point 1]
-- [point 2]
+For each topic, summarise the key points raised, concerns expressed, and information shared. Use sub-bullets where helpful.
 
 ## Decisions Made
-- [decision 1]
+List every decision agreed upon. If no decisions were made, write "No formal decisions recorded."
 
 ## Action Items
-- [ ] [action 1] — Owner: [name if mentioned]
-- [ ] [action 2] — Owner: [name if mentioned]`;
+List every follow-up task. Format each as:
+- [ ] [Task description] — Owner: [Name or "TBD"] | Due: [Date or "TBD"]
+
+## Next Steps
+Summarise what happens next — follow-up meetings, milestones, or deadlines mentioned.
+
+Be thorough and accurate. Do not invent information not present in the transcript. Use professional language throughout.`;
 
     const stream = await getOpenAI().chat.completions.create({
       model: "gpt-4o",
-      max_completion_tokens: 2048,
+      max_completion_tokens: 4096,
       messages: [{ role: "user", content: prompt }],
       stream: true,
     });

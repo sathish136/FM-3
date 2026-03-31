@@ -87,50 +87,28 @@ async function streamGenerate(
   }
 }
 
-// ─── Live Recording Mode ────────────────────────────────────────────────────
+// ─── Recording Mode ─────────────────────────────────────────────────────────
+type RecordPhase = "idle" | "recording" | "transcribing" | "generating" | "done" | "error";
+
 function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: Meeting) => void }) {
-  const [recording, setRecording] = useState(false);
-  const [transcribing, setTranscribing] = useState(false);
-  const [micError, setMicError] = useState("");
+  const [phase, setPhase] = useState<RecordPhase>(meeting.aiSummary ? "done" : "idle");
   const [duration, setDuration] = useState(0);
-  const [generating, setGenerating] = useState(false);
+  const [micError, setMicError] = useState("");
   const [streamText, setStreamText] = useState("");
   const [transcript, setTranscript] = useState(meeting.rawNotes || "");
+
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const chunkTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const activeRef = useRef(false);
+  const allChunksRef = useRef<Blob[]>([]);
   const mimeRef = useRef("audio/webm");
-  const transcriptRef = useRef(transcript);
-  const transcriptBoxRef = useRef<HTMLDivElement>(null);
-  transcriptRef.current = transcript;
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => { setTranscript(meeting.rawNotes || ""); }, [meeting.id]);
   useEffect(() => {
-    if (transcriptBoxRef.current) transcriptBoxRef.current.scrollTop = transcriptBoxRef.current.scrollHeight;
-  }, [transcript]);
+    setTranscript(meeting.rawNotes || "");
+    setPhase(meeting.aiSummary ? "done" : "idle");
+  }, [meeting.id]);
 
-  const sendChunk = async () => {
-    if (chunksRef.current.length === 0) return;
-    const blob = new Blob(chunksRef.current, { type: mimeRef.current });
-    chunksRef.current = [];
-    if (blob.size < 3000) return;
-    setTranscribing(true);
-    try {
-      const fd = new FormData();
-      fd.append("audio", blob, `chunk.${mimeRef.current.includes("ogg") ? "ogg" : "webm"}`);
-      const res = await fetch(`${BASE}/transcribe`, { method: "POST", body: fd });
-      const data = await res.json();
-      if (data.transcript?.trim()) {
-        setTranscript(prev => prev ? `${prev} ${data.transcript.trim()}` : data.transcript.trim());
-      }
-    } catch (e) {
-      console.error("Transcription error:", e);
-    }
-    setTranscribing(false);
-  };
+  const fmt = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
   const startRecording = async () => {
     setMicError("");
@@ -138,24 +116,25 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm"
-        : MediaRecorder.isTypeSupported("audio/ogg") ? "audio/ogg" : "";
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm"
+        : MediaRecorder.isTypeSupported("audio/ogg;codecs=opus") ? "audio/ogg;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/ogg") ? "audio/ogg"
+        : "";
       mimeRef.current = mime || "audio/webm";
 
       const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       recorderRef.current = recorder;
-      chunksRef.current = [];
+      allChunksRef.current = [];
 
       recorder.ondataavailable = (e) => {
-        if (e.data?.size > 0) chunksRef.current.push(e.data);
+        if (e.data?.size > 0) allChunksRef.current.push(e.data);
       };
 
-      recorder.start(500);
-      activeRef.current = true;
-      setRecording(true);
+      recorder.start(250);
+      setPhase("recording");
       setDuration(0);
       timerRef.current = setInterval(() => setDuration(d => d + 1), 1000);
-      chunkTimerRef.current = setInterval(sendChunk, 4000);
     } catch (err: any) {
       setMicError(err?.name === "NotAllowedError"
         ? "Microphone access denied. Please allow microphone access in your browser."
@@ -163,112 +142,182 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
     }
   };
 
-  const stopRecording = async () => {
-    activeRef.current = false;
-    if (chunkTimerRef.current) { clearInterval(chunkTimerRef.current); chunkTimerRef.current = null; }
+  const stopAndProcess = async () => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-    if (recorderRef.current?.state !== "inactive") recorderRef.current?.stop();
+
+    // Stop recorder and collect final chunks
+    await new Promise<void>(resolve => {
+      const rec = recorderRef.current;
+      if (!rec || rec.state === "inactive") { resolve(); return; }
+      rec.onstop = () => resolve();
+      rec.stop();
+    });
+
     if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
-    setRecording(false);
 
-    await new Promise(r => setTimeout(r, 400));
-    await sendChunk();
+    const allChunks = allChunksRef.current;
+    if (allChunks.length === 0 || allChunks.reduce((sum, b) => sum + b.size, 0) < 3000) {
+      setMicError("Recording was too short. Please record for at least a few seconds.");
+      setPhase("idle");
+      return;
+    }
 
-    const text = transcriptRef.current.trim();
-    if (!text) return;
-    const updated = await apiFetch(`/meeting-minutes/${meeting.id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rawNotes: text }),
-    }).then(r => r.json());
-    onUpdate(updated);
+    // Step 1: Transcribe full audio
+    setPhase("transcribing");
+    try {
+      const baseMime = mimeRef.current.split(";")[0].trim();
+      const ext = baseMime.includes("ogg") ? "ogg" : "webm";
+      const blob = new Blob(allChunks, { type: mimeRef.current });
+      const fd = new FormData();
+      fd.append("audio", blob, `meeting.${ext}`);
+
+      const tRes = await fetch(`${BASE}/meeting-minutes/${meeting.id}/transcribe`, { method: "POST", body: fd });
+      if (!tRes.ok) throw new Error(await tRes.text());
+      const tData = await tRes.json();
+      const text = tData.transcript?.trim() || "";
+      setTranscript(text);
+      if (tData.meeting) onUpdate(tData.meeting);
+
+      if (!text) {
+        setMicError("No speech detected in the recording. Please try again.");
+        setPhase("idle");
+        return;
+      }
+
+      // Step 2: Auto-generate meeting minutes
+      setPhase("generating");
+      setStreamText("");
+      await streamGenerate(
+        tData.meeting?.id ?? meeting.id,
+        setStreamText,
+        m => { onUpdate(m); setPhase("done"); },
+      );
+    } catch (e) {
+      console.error(e);
+      setMicError(`Processing failed: ${e instanceof Error ? e.message : String(e)}`);
+      setPhase("error");
+    }
   };
 
-  const handleGenerate = async () => {
-    setGenerating(true); setStreamText("");
-    await streamGenerate(meeting.id, setStreamText, m => { onUpdate(m); setGenerating(false); });
-    setGenerating(false);
+  const handleReRecord = () => {
+    setPhase("idle");
+    setMicError("");
+    setStreamText("");
   };
 
-  const fmt = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+  const handleRegenerate = async () => {
+    setPhase("generating");
+    setStreamText("");
+    await streamGenerate(meeting.id, setStreamText, m => { onUpdate(m); setPhase("done"); });
+  };
+
+  const isProcessing = phase === "transcribing" || phase === "generating";
 
   return (
     <div className="space-y-4">
-      {/* Controls */}
-      <div className={`rounded-2xl border-2 p-5 flex flex-col items-center gap-3 transition-all ${recording ? "border-red-300 bg-red-50" : micError ? "border-orange-200 bg-orange-50" : "border-gray-200 bg-white"}`}>
-        {recording ? (
-          <div className="flex items-center gap-2 text-red-600 font-semibold text-sm">
-            <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
-            Recording — {fmt(duration)}
-          </div>
-        ) : micError ? (
-          <p className="text-sm text-orange-600 text-center max-w-xs">{micError}</p>
-        ) : (
-          <p className="text-sm text-gray-400">Press the button to start recording your meeting</p>
-        )}
+      {/* Main Recording Card */}
+      <div className={`rounded-2xl border-2 p-6 flex flex-col items-center gap-4 transition-all duration-300
+        ${phase === "recording" ? "border-red-300 bg-red-50"
+        : phase === "transcribing" ? "border-violet-200 bg-violet-50"
+        : phase === "generating" ? "border-blue-200 bg-blue-50"
+        : phase === "done" ? "border-green-200 bg-green-50"
+        : micError ? "border-orange-200 bg-orange-50"
+        : "border-gray-200 bg-white"}`}>
 
-        {recording && (
-          <div className="relative flex items-center justify-center w-16 h-16">
-            <span className="absolute w-16 h-16 rounded-full bg-red-200 animate-ping opacity-50" />
-            <div className="relative w-12 h-12 rounded-full bg-red-500 flex items-center justify-center shadow-md">
-              <Mic className="w-5 h-5 text-white" />
+        {/* Status label */}
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          {phase === "idle" && !micError && <><Mic className="w-4 h-4 text-gray-400" /><span className="text-gray-400">Ready to record your meeting</span></>}
+          {phase === "recording" && <><span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" /><span className="text-red-600">Recording — {fmt(duration)}</span></>}
+          {phase === "transcribing" && <><Loader2 className="w-4 h-4 text-violet-600 animate-spin" /><span className="text-violet-700">Transcribing your audio…</span></>}
+          {phase === "generating" && <><Loader2 className="w-4 h-4 text-blue-600 animate-spin" /><span className="text-blue-700">Generating meeting minutes…</span></>}
+          {phase === "done" && <><CheckCircle className="w-4 h-4 text-green-600" /><span className="text-green-700">Meeting minutes ready</span></>}
+          {(phase === "error" || micError) && <><span className="text-orange-600 text-center max-w-xs">{micError}</span></>}
+        </div>
+
+        {/* Mic animation */}
+        {phase === "recording" && (
+          <div className="relative flex items-center justify-center w-20 h-20">
+            <span className="absolute w-20 h-20 rounded-full bg-red-200 animate-ping opacity-40" />
+            <span className="absolute w-14 h-14 rounded-full bg-red-300 animate-ping opacity-30 animation-delay-150" />
+            <div className="relative w-14 h-14 rounded-full bg-red-500 flex items-center justify-center shadow-lg">
+              <Mic className="w-6 h-6 text-white" />
             </div>
           </div>
         )}
 
+        {/* Processing steps */}
+        {isProcessing && (
+          <div className="flex items-center gap-4 text-xs">
+            <div className={`flex items-center gap-1.5 ${phase === "transcribing" ? "text-violet-700 font-semibold" : "text-gray-400"}`}>
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${phase === "transcribing" ? "bg-violet-600 text-white" : "bg-green-500 text-white"}`}>
+                {phase === "transcribing" ? "1" : "✓"}
+              </div>
+              Transcribe
+            </div>
+            <div className="w-6 h-px bg-gray-200" />
+            <div className={`flex items-center gap-1.5 ${phase === "generating" ? "text-blue-700 font-semibold" : "text-gray-400"}`}>
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${phase === "generating" ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-400"}`}>2</div>
+              Analyse
+            </div>
+            <div className="w-6 h-px bg-gray-200" />
+            <div className="flex items-center gap-1.5 text-gray-400">
+              <div className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center text-[9px] font-bold text-gray-400">3</div>
+              Minutes
+            </div>
+          </div>
+        )}
+
+        {/* Action buttons */}
         <div className="flex items-center gap-2.5">
-          {!recording ? (
+          {phase === "idle" || phase === "error" ? (
             <button onClick={startRecording}
-              className="flex items-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold shadow-sm text-sm transition-colors">
+              className="flex items-center gap-2 px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold shadow-sm text-sm transition-colors">
               <Mic className="w-4 h-4" /> Start Recording
             </button>
-          ) : (
-            <button onClick={stopRecording}
-              className="flex items-center gap-2 px-5 py-2.5 bg-gray-800 hover:bg-gray-900 text-white rounded-xl font-semibold shadow-sm text-sm transition-colors">
-              <Square className="w-3.5 h-3.5" /> Stop
+          ) : phase === "recording" ? (
+            <button onClick={stopAndProcess}
+              className="flex items-center gap-2 px-6 py-2.5 bg-gray-800 hover:bg-gray-900 text-white rounded-xl font-semibold shadow-sm text-sm transition-colors">
+              <Square className="w-3.5 h-3.5" /> Stop & Process
             </button>
-          )}
-          {!recording && transcript.trim() && (
-            <button onClick={handleGenerate} disabled={generating}
-              className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-600 to-blue-600 hover:opacity-90 disabled:opacity-60 text-white rounded-xl font-semibold shadow-sm text-sm transition-all">
-              {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              Analyse
-            </button>
-          )}
+          ) : phase === "done" ? (
+            <>
+              <button onClick={handleReRecord}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors border border-gray-200">
+                <Mic className="w-3.5 h-3.5" /> Record Again
+              </button>
+              <button onClick={handleRegenerate}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-600 to-blue-600 hover:opacity-90 text-white rounded-xl font-semibold text-sm transition-all shadow-sm">
+                <Sparkles className="w-3.5 h-3.5" /> Re-analyse
+              </button>
+            </>
+          ) : null}
         </div>
       </div>
 
-      {/* Live transcript box */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2">
-          <Radio className={`w-3 h-3 ${recording ? "text-red-500" : "text-blue-500"}`} />
-          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Live Transcript</span>
-          {transcribing
-            ? <span className="ml-auto flex items-center gap-1 text-[10px] text-violet-500 font-semibold"><Loader2 className="w-2.5 h-2.5 animate-spin" />Transcribing…</span>
-            : recording
-            ? <span className="ml-auto flex items-center gap-1 text-[10px] text-red-500 font-semibold"><span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />Listening…</span>
-            : !transcript && <span className="ml-auto text-[10px] text-gray-400">Press Start Recording to begin</span>
-          }
+      {/* Transcript box — shown after transcribing */}
+      {transcript && (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2">
+            <Radio className="w-3 h-3 text-blue-500" />
+            <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Full Transcript</span>
+            <span className="ml-auto text-[10px] text-gray-400">{transcript.split(/\s+/).filter(Boolean).length} words</span>
+          </div>
+          <div className="px-4 py-3 max-h-48 overflow-y-auto text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+            {transcript}
+          </div>
         </div>
-        <div ref={transcriptBoxRef} className="px-4 py-3 min-h-[120px] max-h-64 overflow-y-auto text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-          {!transcript && (
-            <span className="text-gray-300 italic">
-              {recording ? "Speak now — text will appear every few seconds…" : "Your transcribed speech will appear here as you speak…"}
-            </span>
-          )}
-          {transcript}
-        </div>
-      </div>
+      )}
 
-      {/* AI Summary */}
-      {(generating || meeting.aiSummary) && (
+      {/* AI Minutes — streaming + done */}
+      {(phase === "generating" || phase === "done") && (meeting.aiSummary || streamText) && (
         <div className="bg-white rounded-2xl border border-violet-200 shadow-sm overflow-hidden">
           <div className="px-4 py-2.5 border-b border-violet-100 bg-gradient-to-r from-violet-50 to-blue-50 flex items-center gap-2">
             <Sparkles className="w-3.5 h-3.5 text-violet-600" />
-            <span className="text-xs font-semibold text-violet-800 uppercase tracking-wide">AI Summary</span>
-            {generating && <Loader2 className="w-3 h-3 text-violet-400 animate-spin ml-auto" />}
+            <span className="text-xs font-semibold text-violet-800 uppercase tracking-wide">AI Meeting Minutes</span>
+            {phase === "generating" && <Loader2 className="w-3 h-3 text-violet-400 animate-spin ml-auto" />}
           </div>
           <div className="px-4 py-4">
-            <MarkdownBlock text={generating ? streamText : `${meeting.aiSummary || ""}${meeting.actionItems ? "\n## Action Items\n" + meeting.actionItems : ""}`} />
+            <MarkdownBlock text={phase === "generating" ? streamText : `${meeting.aiSummary || ""}${meeting.actionItems ? "\n## Action Items\n" + meeting.actionItems : ""}`} />
           </div>
         </div>
       )}
