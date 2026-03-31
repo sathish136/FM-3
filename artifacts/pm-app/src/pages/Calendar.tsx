@@ -8,7 +8,7 @@ import {
   RefreshCw, Calendar as CalIcon, List, Loader2, Search, Filter,
 } from "lucide-react";
 
-const API = import.meta.env.BASE_URL.replace(/\/$/, "").replace(/\/pm-app$/, "") + "/api-server/api";
+const API = "/api";
 
 const EVENT_TYPES = [
   { id: "meeting",  label: "Meeting",       color: "#3b82f6", bg: "bg-blue-100",    text: "text-blue-800"    },
