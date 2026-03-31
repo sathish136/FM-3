@@ -173,6 +173,7 @@ export default function CalendarPage() {
   const [form, setForm] = useState(blankForm());
   const [saving, setSaving] = useState(false);
   const [notifPerm, setNotifPerm] = useState<NotificationPermission>("default");
+  const [showReminderModal, setShowReminderModal] = useState(false);
   const [attendeeInput, setAttendeeInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
@@ -450,14 +451,15 @@ export default function CalendarPage() {
           </div>
 
           {notifPerm !== "granted" ? (
-            <button onClick={requestNotifPerm}
+            <button onClick={() => setShowReminderModal(true)}
               className="shrink-0 flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-lg hover:bg-amber-100 transition-colors">
               <Bell className="w-3.5 h-3.5" /><span className="hidden md:inline">Enable Reminders</span>
             </button>
           ) : (
-            <span className="shrink-0 flex items-center gap-1 text-[10px] text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">
+            <button onClick={() => setShowReminderModal(true)}
+              className="shrink-0 flex items-center gap-1 text-[10px] text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100 hover:bg-emerald-100 transition-colors">
               <Bell className="w-3 h-3" /><span className="hidden md:inline">Reminders On</span>
-            </span>
+            </button>
           )}
 
           <button onClick={() => openCreate()}
@@ -1086,6 +1088,154 @@ export default function CalendarPage() {
                 className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-semibold px-5 py-2 rounded-lg transition-colors shadow-sm">
                 {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                 {editingEvent ? "Update" : "Save Event"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Reminder Settings Modal ── */}
+      {showReminderModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-100">
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b bg-gradient-to-r from-blue-600 to-indigo-600">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
+                  <Bell className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-white font-bold text-sm">Reminder Settings</h2>
+                  <p className="text-blue-100 text-[11px]">Configure how you receive event alerts</p>
+                </div>
+              </div>
+              <button onClick={() => setShowReminderModal(false)} className="text-white/70 hover:text-white transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-5">
+
+              {/* Browser Notifications Section */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">🔔</span>
+                  <h3 className="text-sm font-semibold text-gray-800">Browser Notifications</h3>
+                  <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    notifPerm === "granted" ? "bg-emerald-100 text-emerald-700" :
+                    notifPerm === "denied"  ? "bg-red-100 text-red-700" :
+                    "bg-amber-100 text-amber-700"
+                  }`}>
+                    {notifPerm === "granted" ? "✓ Active" : notifPerm === "denied" ? "✗ Blocked" : "Not enabled"}
+                  </span>
+                </div>
+
+                {notifPerm === "granted" && (
+                  <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
+                    <Check className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                    <p className="text-xs text-emerald-700">Browser notifications are enabled. You'll receive pop-up alerts for events when this tab is open.</p>
+                  </div>
+                )}
+
+                {notifPerm === "denied" && (
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                      <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+                      <p className="text-xs text-red-700">Notifications are blocked in your browser. To enable them:</p>
+                    </div>
+                    <ol className="text-xs text-gray-600 space-y-1.5 pl-4">
+                      <li className="flex items-start gap-2"><span className="shrink-0 w-4 h-4 rounded-full bg-gray-200 text-gray-600 text-[10px] font-bold flex items-center justify-center">1</span>Click the <strong>lock icon</strong> in your browser address bar</li>
+                      <li className="flex items-start gap-2"><span className="shrink-0 w-4 h-4 rounded-full bg-gray-200 text-gray-600 text-[10px] font-bold flex items-center justify-center">2</span>Find <strong>Notifications</strong> and set it to <strong>Allow</strong></li>
+                      <li className="flex items-start gap-2"><span className="shrink-0 w-4 h-4 rounded-full bg-gray-200 text-gray-600 text-[10px] font-bold flex items-center justify-center">3</span>Reload the page and click Enable Reminders again</li>
+                    </ol>
+                  </div>
+                )}
+
+                {notifPerm === "default" && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-gray-500">Allow browser pop-up alerts for events — works when this tab is open.</p>
+                    <button
+                      onClick={async () => {
+                        const perm = await Notification.requestPermission();
+                        setNotifPerm(perm);
+                      }}
+                      className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition-colors shadow-sm"
+                    >
+                      <Bell className="w-3.5 h-3.5" />
+                      Enable Browser Notifications
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-dashed border-gray-200" />
+
+              {/* WhatsApp Section */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">📲</span>
+                  <h3 className="text-sm font-semibold text-gray-800">WhatsApp Reminders</h3>
+                  <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    userPhone ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
+                  }`}>
+                    {userPhone ? "✓ Active" : "Not configured"}
+                  </span>
+                </div>
+
+                {userPhone ? (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <p className="text-xs text-emerald-700 font-medium">Active — reminders sent to:</p>
+                    </div>
+                    <p className="text-sm font-mono font-bold text-emerald-800 pl-6">{userPhone}</p>
+                    <p className="text-[10px] text-emerald-600 pl-6">
+                      Source: {phoneSource === "erpnext" ? "ERPNext employee profile" : "Notification settings"}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
+                    <p className="text-xs text-gray-600">No phone number configured. Add your number in <strong>Settings → Notifications</strong> or via your ERPNext employee profile.</p>
+                  </div>
+                )}
+
+                {userPhone && (
+                  <button
+                    onClick={() => { sendTestReminder(); setShowReminderModal(false); }}
+                    disabled={testReminderStatus === "sending"}
+                    className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition-colors"
+                  >
+                    {testReminderStatus === "sending" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bell className="w-3.5 h-3.5" />}
+                    Send Test WhatsApp Message
+                  </button>
+                )}
+              </div>
+
+              <div className="border-t border-dashed border-gray-200" />
+
+              {/* How it works */}
+              <div className="space-y-2">
+                <h3 className="text-xs font-semibold text-gray-700">How reminders work</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { icon: "🔔", title: "Browser alert", desc: "Popup when tab is open, at the set time before event" },
+                    { icon: "📲", title: "WhatsApp", desc: "Message sent automatically, even when app is closed" },
+                  ].map(item => (
+                    <div key={item.title} className="bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100">
+                      <p className="text-base mb-1">{item.icon}</p>
+                      <p className="text-[11px] font-semibold text-gray-700">{item.title}</p>
+                      <p className="text-[10px] text-gray-500 leading-snug mt-0.5">{item.desc}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end">
+              <button onClick={() => setShowReminderModal(false)}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-6 py-2 rounded-xl transition-colors">
+                Done
               </button>
             </div>
           </div>
