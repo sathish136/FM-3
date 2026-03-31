@@ -94,6 +94,16 @@ async function sendWhatsApp(to: string, message: string): Promise<boolean> {
   }
 }
 
+const EVENT_TYPE_LABELS: Record<string, string> = {
+  meeting:  "📋 Meeting",
+  followup: "🔁 Follow-up",
+  standup:  "🧍 Daily Standup",
+  reminder: "🔔 Reminder",
+  task:     "✅ Task Deadline",
+  call:     "📞 Call",
+  personal: "👤 Personal",
+};
+
 function formatReminderMessage(ev: {
   title: string;
   start_datetime: string;
@@ -103,20 +113,40 @@ function formatReminderMessage(ev: {
   event_type?: string;
 }): string {
   const start = new Date(ev.start_datetime);
-  const timeStr = start.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
-  const dateStr = start.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  const timeStr = start.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }).toUpperCase();
+  const dateStr = start.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const mins = ev.reminder_minutes ?? 0;
+  const countdown = mins === 0
+    ? "🟢 *Starting now*"
+    : `⏳ Starts in *${mins < 60 ? `${mins} min` : mins === 60 ? "1 hour" : `${mins / 60} hrs`}*`;
 
-  const lines = [
-    `⏰ *Calendar Reminder*`,
+  const typeLabel = EVENT_TYPE_LABELS[ev.event_type ?? ""] ?? "📌 Event";
+  const divider = "─────────────────────";
+
+  const lines: string[] = [
+    `${divider}`,
+    `🔔 *UPCOMING EVENT ALERT*`,
+    `${divider}`,
     ``,
-    `📌 *${ev.title}*`,
-    mins > 0 ? `🕐 Starts in *${mins < 60 ? `${mins} minutes` : mins === 60 ? "1 hour" : `${mins / 60} hours`}*` : `🕐 Starting *now*`,
-    `📅 ${dateStr} at ${timeStr}`,
+    `*${ev.title}*`,
+    ``,
+    `${typeLabel}`,
+    `📅  ${dateStr}`,
+    `🕐  ${timeStr}`,
+    `${countdown}`,
   ];
-  if (ev.location) lines.push(`📍 ${ev.location}`);
-  if (ev.description) lines.push(`📝 ${ev.description}`);
-  lines.push(``, `_FlowMatriX Calendar_`);
+
+  if (ev.location) lines.push(`📍  ${ev.location}`);
+
+  if (ev.description) {
+    lines.push(``, `*Details:*`, `${ev.description}`);
+  }
+
+  lines.push(
+    ``,
+    `${divider}`,
+    `_Sent by FlowMatriX · Calendar Alerts_`,
+  );
 
   return lines.join("\n");
 }
