@@ -13,8 +13,10 @@ export async function apiFetch<T = unknown>(
   const url = apiUrl(path);
   const res = await fetch(url, {
     ...options,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
+      Accept: "application/json",
       ...(options?.headers || {}),
     },
   });

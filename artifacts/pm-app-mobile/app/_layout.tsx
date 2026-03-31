@@ -15,6 +15,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { useColors } from "@/hooks/useColors";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -41,12 +42,38 @@ function AuthGate() {
 }
 
 function RootLayoutNav() {
+  const colors = useColors();
   return (
     <>
       <AuthGate />
-      <Stack screenOptions={{ headerBackTitle: "Back" }}>
+      <Stack
+        screenOptions={{
+          headerBackTitle: "Back",
+          headerStyle: { backgroundColor: colors.card },
+          headerTintColor: colors.foreground,
+          headerTitleStyle: { fontFamily: "Inter_600SemiBold", fontSize: 17 },
+          headerShadowVisible: false,
+        }}
+      >
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="profile" options={{ title: "My Profile", headerBackTitle: "Back" }} />
+        <Stack.Screen name="notifications" options={{ title: "Notifications" }} />
+        <Stack.Screen name="hrms" options={{ title: "HRMS" }} />
+        <Stack.Screen name="leave" options={{ title: "Leave Requests" }} />
+        <Stack.Screen name="attendance" options={{ title: "Attendance" }} />
+        <Stack.Screen name="claims" options={{ title: "Expense Claims" }} />
+        <Stack.Screen name="team" options={{ title: "Team" }} />
+        <Stack.Screen name="leads" options={{ title: "Leads" }} />
+        <Stack.Screen name="campaigns" options={{ title: "Campaigns" }} />
+        <Stack.Screen name="reports" options={{ title: "MIS Reports" }} />
+        <Stack.Screen name="purchase" options={{ title: "Purchase Orders" }} />
+        <Stack.Screen name="payments" options={{ title: "Payment Tracker" }} />
+        <Stack.Screen name="kanban" options={{ title: "Project Board" }} />
+        <Stack.Screen name="chat" options={{ title: "FlowTalk" }} />
+        <Stack.Screen name="stores" options={{ title: "Stores" }} />
+        <Stack.Screen name="site-data" options={{ title: "Site Data" }} />
+        <Stack.Screen name="settings" options={{ title: "Settings" }} />
       </Stack>
     </>
   );
