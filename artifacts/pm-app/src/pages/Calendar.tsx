@@ -178,12 +178,22 @@ export default function CalendarPage() {
   const [filterType, setFilterType] = useState<string>("all");
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [overflowDay, setOverflowDay] = useState<{ date: Date; events: CalEvent[] } | null>(null);
+  const [userPhone, setUserPhone] = useState<string | null>(null);
+  const [phoneSource, setPhoneSource] = useState<string | null>(null);
   const reminderTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeGridRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if ("Notification" in window) setNotifPerm(Notification.permission);
   }, []);
+
+  useEffect(() => {
+    if (!user?.email) return;
+    fetch(`${API}/calendar/user-phone?email=${encodeURIComponent(user.email)}`)
+      .then(r => r.json())
+      .then(d => { setUserPhone(d.phone || null); setPhoneSource(d.source || null); })
+      .catch(() => {});
+  }, [user?.email]);
 
   const requestNotifPerm = async () => {
     if ("Notification" in window) { const perm = await Notification.requestPermission(); setNotifPerm(perm); }
@@ -438,6 +448,23 @@ export default function CalendarPage() {
             <Plus className="w-3.5 h-3.5" /><span className="hidden sm:inline">New Event</span>
           </button>
         </div>
+
+        {/* WhatsApp reminder status bar */}
+        {userPhone ? (
+          <div className="flex items-center gap-2 px-4 py-1.5 bg-green-50 border-b border-green-100 text-xs text-green-700">
+            <span className="text-green-500 text-base leading-none">📲</span>
+            <span className="font-medium">WhatsApp reminders active</span>
+            <span className="text-green-600 font-mono">{userPhone}</span>
+            {phoneSource === "erpnext" && <span className="text-green-500 bg-green-100 px-1.5 py-0.5 rounded-full text-[10px] font-semibold">ERPNext</span>}
+            {phoneSource === "settings" && <span className="text-green-500 bg-green-100 px-1.5 py-0.5 rounded-full text-[10px] font-semibold">Settings</span>}
+            <span className="text-green-500 ml-1">— All event reminders will be sent to this number</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 px-4 py-1.5 bg-amber-50 border-b border-amber-100 text-xs text-amber-700">
+            <span className="text-base leading-none">⚠️</span>
+            <span>No WhatsApp phone configured — add your number in <strong>Settings → Notifications</strong> or via ERPNext employee profile to enable WhatsApp reminders</span>
+          </div>
+        )}
 
         {/* Nav bar */}
         <div className="flex items-center gap-3 px-4 py-2.5 bg-white border-b">
