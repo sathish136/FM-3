@@ -190,17 +190,17 @@ export default function CalendarPage() {
   };
 
   const loadEvents = useCallback(async () => {
-    if (!user?.email) return;
     setLoading(true);
     try {
       const start = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1).toISOString();
-      const end   = new Date(currentDate.getFullYear(), currentDate.getMonth() + 2, 0, 23, 59, 59).toISOString();
+      const end   = new Date(currentDate.getFullYear(), currentDate.getMonth() + 2, 1, 23, 59, 59).toISOString();
       const r = await fetch(`${API}/calendar/events?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+      if (!r.ok) { setEvents([]); return; }
       const data: CalEvent[] = await r.json();
       setEvents(Array.isArray(data) ? data : []);
     } catch { setEvents([]); }
     finally { setLoading(false); }
-  }, [currentDate, user?.email]);
+  }, [currentDate]);
 
   useEffect(() => { loadEvents(); }, [loadEvents]);
 
