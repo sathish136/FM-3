@@ -27,14 +27,18 @@ export default function LoginScreen() {
   const { login } = useAuth();
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [maskedEmail, setMaskedEmail] = useState("");
+  const passwordRef = useRef<TextInput>(null);
   const otpRef = useRef<TextInput>(null);
 
   async function sendOtp() {
     if (!email.trim()) { setError("Please enter your email"); return; }
+    if (!password.trim()) { setError("Please enter your password"); return; }
     setLoading(true); setError("");
     try {
       const res = await apiFetch<{ maskedEmail?: string; masked_email?: string }>("/api/auth/login", {
@@ -116,9 +120,32 @@ export default function LoginScreen() {
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoComplete="email"
+                    returnKeyType="next"
+                    onSubmitEditing={() => passwordRef.current?.focus()}
+                  />
+                </View>
+                <View style={s.inputWrapper}>
+                  <Feather name="lock" size={18} color={colors.mutedForeground} style={s.inputIcon} />
+                  <TextInput
+                    ref={passwordRef}
+                    style={s.input}
+                    placeholder="Enter your password"
+                    placeholderTextColor={colors.mutedForeground}
+                    value={password}
+                    onChangeText={(t) => { setPassword(t); setError(""); }}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    autoComplete="password"
                     returnKeyType="done"
                     onSubmitEditing={sendOtp}
                   />
+                  <Pressable onPress={() => setShowPassword(v => !v)} hitSlop={8}>
+                    <Feather
+                      name={showPassword ? "eye-off" : "eye"}
+                      size={18}
+                      color={colors.mutedForeground}
+                    />
+                  </Pressable>
                 </View>
               </View>
             ) : (
@@ -163,7 +190,7 @@ export default function LoginScreen() {
             </Pressable>
 
             {step === "otp" && (
-              <Pressable style={s.backBtn} onPress={() => { setStep("email"); setOtp(""); setError(""); }}>
+              <Pressable style={s.backBtn} onPress={() => { setStep("email"); setOtp(""); setPassword(""); setError(""); }}>
                 <Text style={s.backText}>Back to email</Text>
               </Pressable>
             )}
