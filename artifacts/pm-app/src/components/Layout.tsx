@@ -465,19 +465,19 @@ function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, to
                 className={cn(
                   "w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all duration-150 select-none",
                   groupHasActive
-                    ? "text-white/70"
-                    : "text-slate-500 hover:text-slate-300 hover:bg-white/[0.04]"
+                    ? "text-white"
+                    : "text-slate-300 hover:text-white hover:bg-white/[0.04]"
                 )}
               >
                 <span className={cn(
                   "text-[11px] font-semibold uppercase tracking-[0.08em]",
-                  groupHasActive ? "text-white/60" : "text-slate-500"
+                  groupHasActive ? "text-white/90" : "text-slate-300"
                 )}>
                   {group.label === "Main" ? "Home" : group.label}
                 </span>
                 <ChevronDown className={cn(
                   "w-3.5 h-3.5 shrink-0 transition-transform duration-200",
-                  groupHasActive ? "text-white/30" : "text-slate-600",
+                  groupHasActive ? "text-white/50" : "text-slate-400",
                   isGroupExpanded ? "rotate-0" : "-rotate-90"
                 )} />
               </button>
@@ -497,7 +497,7 @@ function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, to
                         <div
                           className={cn(
                             "group flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-all duration-150 text-sm relative",
-                            (isActive || isChildActive) ? "bg-white/10 text-white shadow-sm" : "text-slate-400 hover:bg-white/[0.07] hover:text-white"
+                            (isActive || isChildActive) ? "bg-white/10 text-white shadow-sm" : "text-slate-200 hover:bg-white/[0.07] hover:text-white"
                           )}
                           onClick={() => { if (hasChildren) toggleExpand(item.path); }}
                         >
@@ -507,10 +507,10 @@ function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, to
                           <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all", (isActive || isChildActive) ? "bg-white/10" : "bg-white/[0.04] group-hover:bg-white/[0.08]")}>
                             {!hasChildren ? (
                               <Link href={item.path}>
-                                <Icon className={cn("w-3.5 h-3.5 transition-colors", (isActive || isChildActive) ? iconColor : "text-slate-500 group-hover:text-slate-300")} style={{ width: 14, height: 14 }} />
+                                <Icon className={cn("w-3.5 h-3.5 transition-colors", (isActive || isChildActive) ? iconColor : "text-slate-300 group-hover:text-white")} style={{ width: 14, height: 14 }} />
                               </Link>
                             ) : (
-                              <Icon className={cn("w-3.5 h-3.5 transition-colors", (isActive || isChildActive) ? iconColor : "text-slate-500 group-hover:text-slate-300")} style={{ width: 14, height: 14 }} />
+                              <Icon className={cn("w-3.5 h-3.5 transition-colors", (isActive || isChildActive) ? iconColor : "text-slate-300 group-hover:text-white")} style={{ width: 14, height: 14 }} />
                             )}
                           </div>
                           {!hasChildren ? (
@@ -519,7 +519,7 @@ function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, to
                             <span className="flex-1 truncate font-medium text-[14px]">{item.label}</span>
                           )}
                           {hasChildren && (
-                            <ChevronDown className={cn("w-3.5 h-3.5 shrink-0 text-slate-600 transition-transform duration-200", isExpanded ? "rotate-0" : "-rotate-90")} />
+                            <ChevronDown className={cn("w-3.5 h-3.5 shrink-0 text-slate-400 transition-transform duration-200", isExpanded ? "rotate-0" : "-rotate-90")} />
                           )}
                         </div>
 
@@ -529,10 +529,10 @@ function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, to
                               <Link
                                 key={child.path + child.label}
                                 href={child.path}
-                                className={cn("flex items-center gap-2 py-1.5 px-2 text-[13px] rounded-lg transition-all", location === child.path ? "font-semibold bg-white/10" : "text-slate-500 hover:text-slate-200 hover:bg-white/[0.05]")}
+                                className={cn("flex items-center gap-2 py-1.5 px-2 text-[13px] rounded-lg transition-all", location === child.path ? "font-semibold bg-white/10" : "text-slate-200 hover:text-white hover:bg-white/[0.05]")}
                                 style={location === child.path ? { color: theme.accent } : {}}
                               >
-                                <span className="w-1 h-1 rounded-full shrink-0" style={{ backgroundColor: location === child.path ? theme.accent : "#475569" }} />
+                                <span className="w-1 h-1 rounded-full shrink-0" style={{ backgroundColor: location === child.path ? theme.accent : "#94a3b8" }} />
                                 {child.label}
                               </Link>
                             ))}
