@@ -1029,7 +1029,7 @@ async function callErpMethod(method: string, params: Record<string, string>): Pr
   if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
   const qs = new URLSearchParams(params).toString();
   const url = `${ERPNEXT_URL}/api/method/${method}${qs ? "?" + qs : ""}`;
-  const res = await fetch(url, { headers: { Authorization: authHeader() } });
+  const res = await fetch(url, { headers: { Authorization: erpAuthHeader() } });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`ERPNext method ${method} error ${res.status}: ${body}`);
