@@ -320,8 +320,8 @@ export default function HrAnalytics() {
           {/* ── KPI Row ─────────────────────────────────────── */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
             <KpiCard
-              label="Total Employees"
-              value={d.employees.total}
+              label="Active Employees"
+              value={d.employees.active}
               icon={Users}
               color="from-indigo-500 to-blue-500"
               chips={[
