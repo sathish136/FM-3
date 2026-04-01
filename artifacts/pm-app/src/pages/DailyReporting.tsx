@@ -119,6 +119,9 @@ function ReportDetailModal({ name, onClose }: { name: string; onClose: () => voi
   const [report, setReport] = useState<ReportDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [waSending, setWaSending] = useState(false);
+  const [waStatus, setWaStatus] = useState<"idle" | "sent" | "error">("idle");
+  const [waError, setWaError] = useState("");
 
   useEffect(() => {
     setLoading(true); setError(""); setReport(null);
@@ -139,10 +142,28 @@ function ReportDetailModal({ name, onClose }: { name: string; onClose: () => voi
   const childTables = report ? Object.entries(report).filter(([, v]) => Array.isArray(v) && (v as any[]).length > 0) : [];
   const scalarFields = report ? Object.entries(report).filter(([k, v]) => !SKIP.has(k) && !Array.isArray(v) && v !== null && v !== "" && v !== 0) : [];
 
-  function handleWhatsApp() {
+  async function handleWhatsApp() {
     if (!report) return;
-    const text = buildWhatsAppText(report);
-    window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`, "_blank");
+    setWaSending(true); setWaStatus("idle"); setWaError("");
+    try {
+      const r = await fetch(`${API_BASE}/daily-reporting/${encodeURIComponent(name)}/send-whatsapp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await r.json();
+      if (r.ok && data.success) {
+        setWaStatus("sent");
+      } else {
+        setWaStatus("error");
+        setWaError(data.error || "Failed to send");
+      }
+    } catch (e: any) {
+      setWaStatus("error");
+      setWaError(e.message || "Network error");
+    } finally {
+      setWaSending(false);
+    }
   }
 
   return (
@@ -256,13 +277,26 @@ function ReportDetailModal({ name, onClose }: { name: string; onClose: () => voi
           <div className="flex items-center gap-3 px-5 py-3 border-t border-gray-100 bg-gray-50/50 shrink-0 flex-wrap">
             <p className="text-[10px] text-gray-400">Created: <span className="font-medium">{fmtDateTime(report.creation)}</span></p>
             <p className="text-[10px] text-gray-400">Modified: <span className="font-medium">{fmtDateTime(report.modified)}</span></p>
-            <button
-              onClick={handleWhatsApp}
-              className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500 hover:bg-green-600 text-white text-xs font-bold transition-colors shadow-sm"
-            >
-              <MessageCircle className="w-3.5 h-3.5" />
-              Send to WhatsApp
-            </button>
+            <div className="ml-auto flex items-center gap-2">
+              {waStatus === "sent" && (
+                <span className="flex items-center gap-1 text-[10px] text-green-600 font-semibold">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Sent to WhatsApp!
+                </span>
+              )}
+              {waStatus === "error" && (
+                <span className="flex items-center gap-1 text-[10px] text-red-500 font-semibold">
+                  <AlertCircle className="w-3.5 h-3.5" /> {waError || "Send failed"}
+                </span>
+              )}
+              <button
+                onClick={handleWhatsApp}
+                disabled={waSending || waStatus === "sent"}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold transition-colors shadow-sm"
+              >
+                {waSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MessageCircle className="w-3.5 h-3.5" />}
+                {waSending ? "Sending…" : waStatus === "sent" ? "Sent ✓" : "Send to WhatsApp"}
+              </button>
+            </div>
           </div>
         )}
       </div>

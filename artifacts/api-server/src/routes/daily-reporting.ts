@@ -6,6 +6,59 @@ const ERP_URL = process.env.ERPNEXT_URL?.replace(/\/$/, "");
 const auth = () => `token ${process.env.ERPNEXT_API_KEY}:${process.env.ERPNEXT_API_SECRET}`;
 function isConfigured() { return !!(ERP_URL && process.env.ERPNEXT_API_KEY && process.env.ERPNEXT_API_SECRET); }
 
+const ULTRAMSG_INSTANCE = "instance149987";
+const ULTRAMSG_TOKEN = "6baxh4iuxajibxez";
+const REPORT_WHATSAPP_TO = "919698109426";
+
+async function sendWhatsApp(to: string, message: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const params = new URLSearchParams({ token: ULTRAMSG_TOKEN, to, body: message, priority: "10" });
+    const res = await fetch(`https://api.ultramsg.com/${ULTRAMSG_INSTANCE}/messages/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params.toString(),
+    });
+    const data = await res.json() as Record<string, unknown>;
+    if (data.sent === "true" || data.sent === true) return { success: true };
+    return { success: false, error: JSON.stringify(data) };
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+}
+
+function formatReportMessage(report: any): string {
+  const SKIP = new Set(["doctype","idx","docstatus","__islocal","__unsaved","owner","__last_sync_on","name","employee","employee_name","department","date","status","modified","modified_by","creation","amended_from"]);
+  const dept = (report.department || "").replace(/ - WTT$/i, "");
+  const dateStr = report.date ? new Date(report.date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "";
+
+  const lines: string[] = [
+    `📋 *Daily Report*`,
+    `👤 *${report.employee_name || report.employee || ""}*`,
+  ];
+  if (dept) lines.push(`🏢 ${dept}`);
+  if (dateStr) lines.push(`📅 ${dateStr}`);
+  lines.push(`📌 Status: ${report.status || "Draft"}`);
+  lines.push("");
+
+  // Scalar fields
+  Object.entries(report).filter(([k, v]) => !SKIP.has(k) && !Array.isArray(v) && v !== null && v !== "" && v !== 0)
+    .forEach(([k, v]) => lines.push(`*${k.replace(/_/g, " ")}:* ${v}`));
+
+  // Child tables
+  Object.entries(report).filter(([, v]) => Array.isArray(v) && (v as any[]).length > 0).forEach(([key, rows]) => {
+    lines.push(""); lines.push(`*${key.replace(/_/g, " ").toUpperCase()}*`);
+    (rows as any[]).forEach((row, i) => {
+      lines.push(`${i + 1}.`);
+      Object.entries(row)
+        .filter(([k, v]) => !SKIP.has(k) && v !== null && v !== "" && v !== 0 && !["name","parent","parenttype","parentfield","doctype","idx"].includes(k))
+        .forEach(([k, v]) => lines.push(`  • ${k.replace(/_/g, " ")}: ${v}`));
+    });
+  });
+
+  lines.push(""); lines.push(`_Sent from FlowMatriX_`);
+  return lines.join("\n");
+}
+
 // Map Frappe docstatus integer to a human-readable label
 function mapDocStatus(docstatus: number): string {
   if (docstatus === 1) return "Submitted";
@@ -118,6 +171,35 @@ router.post("/daily-reporting", async (req, res) => {
     if (!r.ok) return res.status(r.status).json({ error: json.exception || json.message || "Failed to create" });
 
     res.json({ name: json.data?.name, success: true });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── Send Report via WhatsApp (UltraMsg) ─────────────────────────────────────
+router.post("/daily-reporting/:name/send-whatsapp", async (req, res) => {
+  if (!isConfigured()) return res.status(503).json({ error: "ERPNext not configured" });
+
+  const { name } = req.params;
+  const to = req.body.to || REPORT_WHATSAPP_TO;
+
+  try {
+    // Fetch full document from ERPNext
+    const r = await fetch(`${ERP_URL}/api/resource/Daily Reporting/${encodeURIComponent(name)}`, {
+      headers: { Authorization: auth() },
+    });
+    if (!r.ok) return res.status(r.status).json({ error: "Report not found" });
+    const json = await r.json() as { data: any };
+    const report = json.data;
+
+    const message = formatReportMessage(report);
+    const result = await sendWhatsApp(to, message);
+
+    if (result.success) {
+      res.json({ success: true, to });
+    } else {
+      res.status(502).json({ success: false, error: result.error || "WhatsApp send failed" });
+    }
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
