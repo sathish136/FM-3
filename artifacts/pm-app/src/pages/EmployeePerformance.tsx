@@ -686,34 +686,95 @@ function AgentTab() {
             <Monitor className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-base font-bold">FlowTask Agent</h3>
-            <p className="text-blue-200 text-xs">Python-based desktop activity tracker</p>
+            <h3 className="text-base font-bold">FlowTask Agent v2.0</h3>
+            <p className="text-blue-200 text-xs">System-aware employee activity tracker — zero manual config</p>
           </div>
         </div>
-        <p className="text-sm text-blue-100 leading-relaxed">
-          Install this lightweight Python script on employee computers. It runs in the background,
-          tracks active application usage and idle time, and automatically logs timesheet entries
-          to the platform every 5 minutes.
-        </p>
+        <ul className="text-sm text-blue-100 space-y-1 mb-4 leading-relaxed">
+          <li>✓ Auto-detects your OS login username (= ERPNext Employee ID)</li>
+          <li>✓ Fetches your allocated tasks directly from FlowMatriX</li>
+          <li>✓ Tracks active application + idle time separately</li>
+          <li>✓ Reports active hours, idle hours, and top apps used every 5 min</li>
+          <li>✓ Identifies each machine by hostname — no manual input needed</li>
+        </ul>
         <a
           href={downloadUrl}
           download="flowtask_agent.py"
-          className="mt-4 inline-flex items-center gap-2 bg-white text-blue-700 text-sm font-bold px-4 py-2 rounded-lg hover:bg-blue-50 transition-colors"
+          className="inline-flex items-center gap-2 bg-white text-blue-700 text-sm font-bold px-4 py-2 rounded-lg hover:bg-blue-50 transition-colors"
         >
           <Download className="w-4 h-4" />
           Download flowtask_agent.py
         </a>
       </div>
 
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+        <h3 className="text-sm font-semibold text-amber-800 mb-2">Before you run</h3>
+        <p className="text-xs text-amber-700 leading-relaxed">
+          The agent uses your <strong>OS login username</strong> as the ERPNext Employee ID to match your tasks.
+          Make sure your manager has assigned tasks to you via <strong>HR → Performance → Task Allocation</strong>
+          using your system username. No email or name is required unless you want to override.
+        </p>
+      </div>
+
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-        <h3 className="text-sm font-semibold text-gray-800 mb-3">Requirements</h3>
+        <h3 className="text-sm font-semibold text-gray-800 mb-3">Quick Start</h3>
+        <div className="space-y-3">
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-1.5">Zero-config (recommended) — uses your OS username as Employee ID:</p>
+            <pre className="bg-gray-900 text-green-400 text-xs rounded-lg p-3 overflow-x-auto font-mono">
+{`python flowtask_agent.py`}
+            </pre>
+          </div>
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-1.5">With department & custom report interval:</p>
+            <pre className="bg-gray-900 text-green-400 text-xs rounded-lg p-3 overflow-x-auto font-mono">
+{`python flowtask_agent.py --dept "Engineering" --interval 300`}
+            </pre>
+          </div>
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-1.5">Full override (if your username differs from ERPNext ID):</p>
+            <pre className="bg-gray-900 text-green-400 text-xs rounded-lg p-3 overflow-x-auto font-mono">
+{`python flowtask_agent.py \\
+  --name "John Smith" \\
+  --email john@wtt.com \\
+  --dept "Engineering" \\
+  --idle-threshold 180`}
+            </pre>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+        <h3 className="text-sm font-semibold text-gray-800 mb-3">What happens when you run it</h3>
+        <div className="space-y-2.5">
+          {[
+            { step: "1", label: "Identifies your machine", desc: "Reads OS username + hostname automatically" },
+            { step: "2", label: "Fetches your tasks", desc: "Pulls all open tasks assigned to your Employee ID from FlowMatriX" },
+            { step: "3", label: "You select a task", desc: "Terminal menu shows your tasks sorted by priority — pick one, or type manually" },
+            { step: "4", label: "Tracking begins", desc: "Samples your active window every 5 seconds; detects idle time > 2 minutes" },
+            { step: "5", label: "Auto-reports every 5 min", desc: "Sends active hours, idle hours, top apps used, machine name to the timesheet" },
+            { step: "6", label: "Ctrl+C to stop", desc: "Flushes remaining tracked time before exiting" },
+          ].map(({ step, label, desc }) => (
+            <div key={step} className="flex items-start gap-3">
+              <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">{step}</span>
+              <div>
+                <p className="text-xs font-semibold text-gray-800">{label}</p>
+                <p className="text-xs text-gray-500">{desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+        <h3 className="text-sm font-semibold text-gray-800 mb-3">Platform Requirements</h3>
         <ul className="space-y-1.5 text-xs text-gray-600">
           {[
-            "Python 3.7 or higher installed on the employee's computer",
-            "Network access to the FlowMatriX server",
-            "For Windows: no additional packages needed (uses built-in ctypes)",
-            "For Linux: install xdotool (sudo apt install xdotool) and xprintidle",
-            "For macOS: osascript is built-in (no extras needed)",
+            "Python 3.7+ — uses only built-in standard library, no pip installs needed",
+            "Windows: ctypes built-in (reads active window via WinAPI)",
+            "macOS: osascript built-in (reads active app via AppleScript)",
+            "Linux: install xdotool for window detection (sudo apt install xdotool)",
+            "Network access to the FlowMatriX API server",
           ].map((r) => (
             <li key={r} className="flex items-start gap-2">
               <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0 mt-0.5" />
@@ -724,49 +785,14 @@ function AgentTab() {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-        <h3 className="text-sm font-semibold text-gray-800 mb-3">Usage</h3>
-        <div className="space-y-3">
-          <div>
-            <p className="text-xs font-medium text-gray-600 mb-1.5">Basic usage:</p>
-            <pre className="bg-gray-900 text-green-400 text-xs rounded-lg p-3 overflow-x-auto font-mono">
-{`python flowtask_agent.py \\
-  --email john@company.com \\
-  --name "John Smith" \\
-  --dept "Engineering"`}
-            </pre>
-          </div>
-          <div>
-            <p className="text-xs font-medium text-gray-600 mb-1.5">With task & project:</p>
-            <pre className="bg-gray-900 text-green-400 text-xs rounded-lg p-3 overflow-x-auto font-mono">
-{`python flowtask_agent.py \\
-  --email john@company.com \\
-  --name "John Smith" \\
-  --dept "Engineering" \\
-  --task "P&ID Design Review" \\
-  --project "WTP Phase 2" \\
-  --interval 300`}
-            </pre>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-        <h3 className="text-sm font-semibold text-gray-800 mb-3">How it works</h3>
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            { icon: Monitor, label: "Tracks Active Window", desc: "Records which application is in focus every 5 seconds" },
-            { icon: Timer, label: "Detects Idle Time", desc: "Skips logging when no keyboard/mouse activity for 2 minutes" },
-            { icon: Clock, label: "Reports Every 5 Min", desc: "Sends accumulated work time to the platform automatically" },
-            { icon: AlertCircle, label: "Privacy Safe", desc: "Only tracks application names and time — no screenshots or keystrokes" },
-          ].map(({ icon: Icon, label, desc }) => (
-            <div key={label} className="flex items-start gap-2.5 p-3 bg-gray-50 rounded-lg">
-              <Icon className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs font-semibold text-gray-800">{label}</p>
-                <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{desc}</p>
-              </div>
-            </div>
-          ))}
+        <h3 className="text-sm font-semibold text-gray-800 mb-3">Privacy</h3>
+        <div className="flex items-start gap-2.5">
+          <AlertCircle className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+          <p className="text-xs text-gray-600 leading-relaxed">
+            The agent only records <strong>application names</strong> and <strong>time spent</strong>.
+            It does not take screenshots, log keystrokes, read clipboard content, or access file contents.
+            All data is sent only to your company's FlowMatriX server.
+          </p>
         </div>
       </div>
     </div>
