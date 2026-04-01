@@ -113,124 +113,123 @@ router.get("/process-proposal/counts", async (_req, res) => {
 });
 
 // ── PROCESS: Today's pending ──────────────────────────────────────────────────
-// ERP: wtt_module.customization.custom.process_proposal.get_process_today
-// Fields: company_name, plant_capacity_m3day, plant_requirement, age_days, recent_process_date
+// ERP: wtt_module.customization.custom.rfq.get_process_details_table
+// Fields: proposal_request, company_name, plant_capacity_m3day, plant_requirement, recent_process_date, age_days
 
 router.get("/process-proposal/proc-today", async (_req, res) => {
   try {
-    const data = await erpFetch("wtt_module.customization.custom.process_proposal.get_process_today");
+    const data = await erpFetch("wtt_module.customization.custom.rfq.get_process_details_table");
     if (Array.isArray(data?.message)) return ok(res, data.message.map((r: any) => normaliseStd(r, "recent_process_date", "date")));
     throw new Error("no array");
   } catch (e: any) { return fallback(res, S_PROC_TODAY, e); }
 });
 
 // ── PROCESS: Yesterday's elevated ────────────────────────────────────────────
-// ERP: wtt_module.customization.custom.process_proposal.get_process_yesterday
-// Fields: company_name, plant_capacity_m3day, plant_requirement (no date/age)
+// ERP: wtt_module.customization.custom.rfq.get_yesterday_elevated_details
+// Fields: proposal_request, company_name, plant_capacity_m3day, plant_requirement
 
 router.get("/process-proposal/proc-yest", async (_req, res) => {
   try {
-    const data = await erpFetch("wtt_module.customization.custom.process_proposal.get_process_yesterday");
+    const data = await erpFetch("wtt_module.customization.custom.rfq.get_yesterday_elevated_details");
     if (Array.isArray(data?.message)) return ok(res, data.message.map((r: any) => normaliseYest(r)));
     throw new Error("no array");
   } catch (e: any) { return fallback(res, S_PROC_YEST, e); }
 });
 
 // ── PROCESS: Clarification (Marketing) ───────────────────────────────────────
-// ERP: wtt_module.customization.custom.process_proposal.get_process_marketing
+// ERP: wtt_module.customization.custom.rfq.get_process_clarification_details_table
 
 router.get("/process-proposal/proc-mkt", async (_req, res) => {
   try {
-    const data = await erpFetch("wtt_module.customization.custom.process_proposal.get_process_marketing");
+    const data = await erpFetch("wtt_module.customization.custom.rfq.get_process_clarification_details_table");
     if (Array.isArray(data?.message)) return ok(res, data.message.map((r: any) => normaliseStd(r, "recent_clarification_date", "date")));
     throw new Error("no array");
   } catch (e: any) { return fallback(res, S_PROC_MKT, e); }
 });
 
 // ── PROCESS: R&D ─────────────────────────────────────────────────────────────
-// ERP: wtt_module.customization.custom.process_proposal.get_process_rd
+// ERP: wtt_module.customization.custom.rfq.get_rd_details_table
 
 router.get("/process-proposal/proc-rd", async (_req, res) => {
   try {
-    const data = await erpFetch("wtt_module.customization.custom.process_proposal.get_process_rd");
+    const data = await erpFetch("wtt_module.customization.custom.rfq.get_rd_details_table");
     if (Array.isArray(data?.message)) return ok(res, data.message.map((r: any) => normaliseStd(r, "recent_rd_date", "date")));
     throw new Error("no array");
   } catch (e: any) { return fallback(res, S_PROC_RD, e); }
 });
 
 // ── PROCESS: CIVIL ────────────────────────────────────────────────────────────
-// ERP: wtt_module.customization.custom.process_proposal.get_process_civil
+// ERP: wtt_module.customization.custom.rfq.get_civil_details_table
 
 router.get("/process-proposal/proc-civil", async (_req, res) => {
   try {
-    const data = await erpFetch("wtt_module.customization.custom.process_proposal.get_process_civil");
+    const data = await erpFetch("wtt_module.customization.custom.rfq.get_civil_details_table");
     if (Array.isArray(data?.message)) return ok(res, data.message.map((r: any) => normaliseStd(r, "recent_civil_date", "date")));
     throw new Error("no array");
   } catch (e: any) { return fallback(res, S_PROC_CIVIL, e); }
 });
 
 // ── PROPOSAL: Today's pending ─────────────────────────────────────────────────
-// ERP: wtt_module.customization.custom.process_proposal.get_proposal_today
+// ERP: wtt_module.customization.custom.rfq.get_proposal_details_table
 
 router.get("/process-proposal/prop-today", async (_req, res) => {
   try {
-    const data = await erpFetch("wtt_module.customization.custom.process_proposal.get_proposal_today");
+    const data = await erpFetch("wtt_module.customization.custom.rfq.get_proposal_details_table");
     if (Array.isArray(data?.message)) return ok(res, data.message.map((r: any) => normaliseStd(r, "recent_process_date", "date")));
     throw new Error("no array");
   } catch (e: any) { return fallback(res, S_PROP_TODAY, e); }
 });
 
-// ── PROPOSAL: Yesterday's pending ────────────────────────────────────────────
-// ERP: wtt_module.customization.custom.process_proposal.get_proposal_yesterday
+// ── PROPOSAL: Yesterday's elevated ───────────────────────────────────────────
+// ERP: wtt_module.customization.custom.rfq.get_yesterday_elevated_details
 
 router.get("/process-proposal/prop-yest", async (_req, res) => {
   try {
-    const data = await erpFetch("wtt_module.customization.custom.process_proposal.get_proposal_yesterday");
+    const data = await erpFetch("wtt_module.customization.custom.rfq.get_yesterday_elevated_details");
     if (Array.isArray(data?.message)) return ok(res, data.message.map((r: any) => normaliseYest(r)));
     throw new Error("no array");
   } catch (e: any) { return fallback(res, S_PROP_YEST, e); }
 });
 
 // ── PROPOSAL: Last Week ───────────────────────────────────────────────────────
-// ERP: wtt_module.customization.custom.process_proposal.get_proposal_last_week
-// Fields: proposal_request, company_name, plant_capacity_m3day
+// ERP: wtt_module.customization.custom.rfq.get_last_week_elevated_details
 
 router.get("/process-proposal/prop-last-week", async (_req, res) => {
   try {
-    const data = await erpFetch("wtt_module.customization.custom.process_proposal.get_proposal_last_week");
+    const data = await erpFetch("wtt_module.customization.custom.rfq.get_last_week_elevated_details");
     if (Array.isArray(data?.message)) return ok(res, data.message.map((r: any) => normalisePropProject(r)));
     throw new Error("no array");
   } catch (e: any) { return fallback(res, S_PROP_LW, e); }
 });
 
 // ── PROPOSAL: This Week ───────────────────────────────────────────────────────
-// ERP: wtt_module.customization.custom.process_proposal.get_proposal_this_week
+// ERP: wtt_module.customization.custom.rfq.get_this_week_elevated_details
 
 router.get("/process-proposal/prop-this-week", async (_req, res) => {
   try {
-    const data = await erpFetch("wtt_module.customization.custom.process_proposal.get_proposal_this_week");
+    const data = await erpFetch("wtt_module.customization.custom.rfq.get_this_week_elevated_details");
     if (Array.isArray(data?.message)) return ok(res, data.message.map((r: any) => normalisePropProject(r)));
     throw new Error("no array");
   } catch (e: any) { return fallback(res, S_PROP_TW, e); }
 });
 
 // ── PROPOSAL: Last Month ──────────────────────────────────────────────────────
-// ERP: wtt_module.customization.custom.process_proposal.get_proposal_last_month
+// ERP: wtt_module.customization.custom.rfq.get_last_month_elevated_details
 
 router.get("/process-proposal/prop-last-month", async (_req, res) => {
   try {
-    const data = await erpFetch("wtt_module.customization.custom.process_proposal.get_proposal_last_month");
+    const data = await erpFetch("wtt_module.customization.custom.rfq.get_last_month_elevated_details");
     if (Array.isArray(data?.message)) return ok(res, data.message.map((r: any) => normalisePropProject(r)));
     throw new Error("no array");
   } catch (e: any) { return fallback(res, S_PROP_LM, e); }
 });
 
 // ── PROPOSAL: This Month ──────────────────────────────────────────────────────
-// ERP: wtt_module.customization.custom.process_proposal.get_proposal_this_month
+// ERP: wtt_module.customization.custom.rfq.get_this_month_elevated_details
 
 router.get("/process-proposal/prop-this-month", async (_req, res) => {
   try {
-    const data = await erpFetch("wtt_module.customization.custom.process_proposal.get_proposal_this_month");
+    const data = await erpFetch("wtt_module.customization.custom.rfq.get_this_month_elevated_details");
     if (Array.isArray(data?.message)) return ok(res, data.message.map((r: any) => normalisePropProject(r)));
     throw new Error("no array");
   } catch (e: any) { return fallback(res, S_PROP_TM, e); }

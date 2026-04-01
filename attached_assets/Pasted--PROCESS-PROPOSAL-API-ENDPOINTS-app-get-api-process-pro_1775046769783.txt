@@ -1,0 +1,344 @@
+# ===== PROCESS & PROPOSAL API ENDPOINTS =====
+
+@app.get("/api/process_proposal/proc_today")
+async def get_process_today():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.process_proposal.get_process_today"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching process today: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/process_proposal/proc_yest")
+async def get_process_yesterday():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.process_proposal.get_process_yesterday"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching process yesterday: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/process_proposal/proc_mkt")
+async def get_process_marketing():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.process_proposal.get_process_marketing"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching process marketing: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/process_proposal/proc_rd")
+async def get_process_rd():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.process_proposal.get_process_rd"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching process R&D: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/process_proposal/proc_civil")
+async def get_process_civil():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.process_proposal.get_process_civil"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching process civil: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/process_proposal/prop_today")
+async def get_proposal_today():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.process_proposal.get_proposal_today"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching proposal today: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/process_proposal/prop_yest")
+async def get_proposal_yesterday():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.process_proposal.get_proposal_yesterday"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching proposal yesterday: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/process_proposal/prop_last_week")
+async def get_proposal_last_week():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.process_proposal.get_proposal_last_week"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching proposal last week: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/process_proposal/prop_this_week")
+async def get_proposal_this_week():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.process_proposal.get_proposal_this_week"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching proposal this week: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/process_proposal/prop_last_month")
+async def get_proposal_last_month():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.process_proposal.get_proposal_last_month"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching proposal last month: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/process_proposal/prop_this_month")
+async def get_proposal_this_month():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.process_proposal.get_proposal_this_month"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching proposal this month: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/process_proposal/process_details_table")
+async def get_process_details_table():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_process_details_table"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching process details table: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/process_proposal/process_details")
+async def get_process_details():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_process_details"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            print(f"API Response Status: {response.status_code}")  # Debug log
+            if response.status_code != 200:
+                print(f"API Error: {response.text}")  # Debug log
+                return {"message": [{"pending": 0, "yesterday_elevated": 0, "clarification": 0, "r_and_d": 0, "civil": 0}]}
+            data = response.json()
+            print(f"API Response Data: {data}")  # Debug log
+            return data
+    except Exception as e:
+        print(f"Error fetching process details: {str(e)}")
+        return {"message": [{"pending": 0, "yesterday_elevated": 0, "clarification": 0, "r_and_d": 0, "civil": 0}]}
+
+@app.get("/api/process_proposal/yesterday_elevated_details")
+async def get_yesterday_elevated_details():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_yesterday_elevated_details"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching yesterday elevated details: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/process_proposal/clarification_details")
+async def get_clarification_details():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_process_clarification_details_table"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching clarification details: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/process_proposal/rd_details")
+async def get_rd_details():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_rd_details_table"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching R&D details: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/process_proposal/civil_details")
+async def get_civil_details():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_civil_details_table"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching CIVIL details: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/process_proposal/proposal_details")
+async def get_proposal_details():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_proposal_details"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": [{"pending": 0, "yesterday_elevated": 0, "this_week_completed": 0, "last_week_completed": 0, "this_month_completed": 0, "last_month_completed": 0}]}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching proposal details: {str(e)}")
+        return {"message": [{"pending": 0, "yesterday_elevated": 0, "this_week_completed": 0, "last_week_completed": 0, "this_month_completed": 0, "last_month_completed": 0}]}
+
+@app.get("/api/process_proposal/proposal_details_table")
+async def get_proposal_details_table():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_proposal_details_table"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching proposal details table: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/process_proposal/proposal_yesterday_elevated")
+async def get_proposal_yesterday_elevated():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_yesterday_elevated_details"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching proposal yesterday elevated: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/process_proposal/proposal_this_week_elevated")
+async def get_proposal_this_week_elevated():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_this_week_elevated_details"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching proposal this week elevated: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/process_proposal/proposal_last_week_elevated")
+async def get_proposal_last_week_elevated():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_last_week_elevated_details"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching proposal last week elevated: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/process_proposal/proposal_this_month_elevated")
+async def get_proposal_this_month_elevated():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_this_month_elevated_details"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching proposal this month elevated: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/process_proposal/proposal_last_month_elevated")
+async def get_proposal_last_month_elevated():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_last_month_elevated_details"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching proposal last month elevated: {str(e)}")
+        return {"message": []}
+
+if __name__ == '__main__':
+    uvicorn.run(app, host='0.0.0.0', port=5001)
