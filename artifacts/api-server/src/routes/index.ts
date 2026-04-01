@@ -25,6 +25,7 @@ import misReportRouter from "./mis-report";
 import cctvRouter from "./cctv";
 import calendarRouter from "./calendar";
 import notificationsRouter from "./notifications";
+import performanceRouter from "./performance";
 
 const router: IRouter = Router();
 
@@ -54,5 +55,6 @@ router.use(misReportRouter);
 router.use("/cctv", cctvRouter);
 router.use(calendarRouter);
 router.use(notificationsRouter);
+router.use(performanceRouter);
 
 export default router;
