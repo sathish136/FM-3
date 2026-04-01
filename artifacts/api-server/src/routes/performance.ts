@@ -5,47 +5,54 @@ const router = Router();
 
 // ─── DB Setup ─────────────────────────────────────────────────────────────────
 
-pool.query(`
-  CREATE TABLE IF NOT EXISTS timesheet_entries (
-    id SERIAL PRIMARY KEY,
-    employee_name TEXT NOT NULL,
-    employee_email TEXT NOT NULL DEFAULT '',
-    department TEXT NOT NULL DEFAULT '',
-    task_title TEXT NOT NULL DEFAULT '',
-    task_id INTEGER,
-    project TEXT NOT NULL DEFAULT '',
-    date TEXT NOT NULL,
-    hours NUMERIC(4,1) NOT NULL DEFAULT 0,
-    idle_hours NUMERIC(4,1) NOT NULL DEFAULT 0,
-    active_hours NUMERIC(4,1) NOT NULL DEFAULT 0,
-    description TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT 'pending',
-    system_user TEXT NOT NULL DEFAULT '',
-    hostname TEXT NOT NULL DEFAULT '',
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
-  );
-  CREATE TABLE IF NOT EXISTS task_allocations (
-    id SERIAL PRIMARY KEY,
-    task_title TEXT NOT NULL,
-    task_id INTEGER,
-    project TEXT NOT NULL DEFAULT '',
-    employee_name TEXT NOT NULL,
-    employee_email TEXT NOT NULL DEFAULT '',
-    department TEXT NOT NULL DEFAULT '',
-    estimated_hours NUMERIC(5,1) DEFAULT 0,
-    deadline TEXT NOT NULL DEFAULT '',
-    priority TEXT NOT NULL DEFAULT 'medium',
-    status TEXT NOT NULL DEFAULT 'assigned',
-    notes TEXT NOT NULL DEFAULT '',
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
-  );
-  ALTER TABLE timesheet_entries ADD COLUMN IF NOT EXISTS department TEXT NOT NULL DEFAULT '';
-  ALTER TABLE timesheet_entries ADD COLUMN IF NOT EXISTS idle_hours NUMERIC(4,1) NOT NULL DEFAULT 0;
-  ALTER TABLE timesheet_entries ADD COLUMN IF NOT EXISTS active_hours NUMERIC(4,1) NOT NULL DEFAULT 0;
-  ALTER TABLE timesheet_entries ADD COLUMN IF NOT EXISTS system_user TEXT NOT NULL DEFAULT '';
-  ALTER TABLE timesheet_entries ADD COLUMN IF NOT EXISTS hostname TEXT NOT NULL DEFAULT '';
-  ALTER TABLE task_allocations ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';
-`).then(() => console.log("Performance tables ready")).catch((e: any) => console.error("Performance table error:", e.message));
+Promise.all([
+  pool.query(`
+    CREATE TABLE IF NOT EXISTS timesheet_entries (
+      id SERIAL PRIMARY KEY,
+      employee_name TEXT NOT NULL,
+      employee_email TEXT NOT NULL DEFAULT '',
+      department TEXT NOT NULL DEFAULT '',
+      task_title TEXT NOT NULL DEFAULT '',
+      task_id INTEGER,
+      project TEXT NOT NULL DEFAULT '',
+      date TEXT NOT NULL,
+      hours NUMERIC(4,1) NOT NULL DEFAULT 0,
+      description TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `),
+  pool.query(`
+    CREATE TABLE IF NOT EXISTS task_allocations (
+      id SERIAL PRIMARY KEY,
+      task_title TEXT NOT NULL,
+      task_id INTEGER,
+      project TEXT NOT NULL DEFAULT '',
+      employee_name TEXT NOT NULL,
+      employee_email TEXT NOT NULL DEFAULT '',
+      department TEXT NOT NULL DEFAULT '',
+      estimated_hours NUMERIC(5,1) DEFAULT 0,
+      deadline TEXT NOT NULL DEFAULT '',
+      priority TEXT NOT NULL DEFAULT 'medium',
+      status TEXT NOT NULL DEFAULT 'assigned',
+      notes TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `),
+]).then(async () => {
+  const alters = [
+    `ALTER TABLE timesheet_entries ADD COLUMN IF NOT EXISTS department TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE timesheet_entries ADD COLUMN IF NOT EXISTS idle_hours NUMERIC(4,1) NOT NULL DEFAULT 0`,
+    `ALTER TABLE timesheet_entries ADD COLUMN IF NOT EXISTS active_hours NUMERIC(4,1) NOT NULL DEFAULT 0`,
+    `ALTER TABLE timesheet_entries ADD COLUMN IF NOT EXISTS "system_user" TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE timesheet_entries ADD COLUMN IF NOT EXISTS hostname TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE task_allocations ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT ''`,
+  ];
+  for (const sql of alters) {
+    await pool.query(sql).catch((e: any) => console.warn("Migration skipped:", e.message));
+  }
+  console.log("Performance tables ready");
+}).catch((e: any) => console.error("Performance table error:", e.message));
 
 // ─── Timesheets ───────────────────────────────────────────────────────────────
 
@@ -272,11 +279,18 @@ router.get("/performance/team-dashboard", async (req, res) => {
     const deptCondition = department ? `AND department ILIKE $1` : "";
     const deptParams: unknown[] = department ? [`%${department}%`] : [];
 
+    // Check if idle_hours column exists
+    const { rows: colCheck } = await pool.query(`
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name='timesheet_entries' AND column_name='idle_hours' LIMIT 1
+    `);
+    const hasIdleHours = colCheck.length > 0;
+
     // Today's hours per employee
     const { rows: todayRows } = await pool.query(`
       SELECT employee_name, employee_email, department,
              SUM(hours::numeric) AS today_hours,
-             SUM(idle_hours::numeric) AS today_idle,
+             ${hasIdleHours ? "SUM(idle_hours::numeric)" : "0"} AS today_idle,
              COUNT(DISTINCT task_title) AS today_tasks,
              STRING_AGG(DISTINCT task_title, ', ') AS today_task_names
       FROM timesheet_entries
@@ -288,7 +302,7 @@ router.get("/performance/team-dashboard", async (req, res) => {
     const { rows: weekRows } = await pool.query(`
       SELECT employee_name,
              SUM(hours::numeric) AS week_hours,
-             SUM(idle_hours::numeric) AS week_idle,
+             ${hasIdleHours ? "SUM(idle_hours::numeric)" : "0"} AS week_idle,
              COUNT(DISTINCT date) AS working_days,
              COUNT(DISTINCT task_title) AS unique_tasks
       FROM timesheet_entries

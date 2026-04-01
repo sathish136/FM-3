@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { Layout } from "@/components/Layout";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import {
-  Users, Clock, TrendingUp, RefreshCw, Building2, CheckCircle2,
-  Activity, Timer, Briefcase, ChevronDown, BarChart3,
+  Users, RefreshCw, Building2,
+  Activity, ChevronDown, BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -380,6 +381,7 @@ export default function TeamPerformanceDashboard() {
   const departments = data?.departments || [];
 
   return (
+    <Layout>
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-6">
 
@@ -463,5 +465,6 @@ export default function TeamPerformanceDashboard() {
         <div className="fixed inset-0 z-10" onClick={() => setDeptOpen(false)} />
       )}
     </div>
+    </Layout>
   );
 }
