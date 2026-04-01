@@ -35,7 +35,7 @@ router.get("/finance-dashboard/kpis", async (req, res) => {
       project_budget:  0,
       po_cost:         num(m.po_cost),
       pr_cost:         num(m.pr_cost),
-      other_expenses:  num(m.cash_request) + num(m.request_for_payment) + num(m.ticket_booking) + num(m.operational_loss),
+      other_expenses:  num(m.cash_request) + num(m.request_for_payment) + num(m.ticket_booking),
       extra_expenses:  num(m.operational_loss),
       salary:          num(m.salary),
       cash_request:    num(m.cash_request),
