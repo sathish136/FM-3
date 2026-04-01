@@ -534,7 +534,7 @@ router.post("/daily-reporting/send-combined", async (req, res) => {
     const result = await sendWhatsAppDocument(to, pdfUrl, filename, caption);
 
     if (result.success) {
-      res.json({ success: true, to, filename, reported: detailed.length, notReported: notReported.length });
+      res.json({ success: true, to, filename, reported: dateRows.length, notReported: notReported.length });
     } else {
       res.status(502).json({ success: false, error: result.error || "WhatsApp send failed" });
     }
