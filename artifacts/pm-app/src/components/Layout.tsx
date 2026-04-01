@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Box, PenTool, GitBranch,
   Briefcase, FileText,
   LogOut, ChevronDown, ChevronRight as ChevronRightIcon, Menu, MoreHorizontal,
-  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp,
+  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp, ListChecks,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -261,6 +261,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { path: "/hrms/analytics",    label: "HR Analytics",   icon: BarChart3,     color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
       { path: "/hrms/performance",       label: "Performance",     icon: TrendingUp,  color: "text-cyan-400",    bgColor: "bg-cyan-500/15" },
       { path: "/hrms/team-performance",  label: "Team Dashboard",  icon: Activity,    color: "text-pink-400",    bgColor: "bg-pink-500/15" },
+      { path: "/hrms/task-summary",      label: "Task Summary",    icon: ListChecks,  color: "text-lime-400",    bgColor: "bg-lime-500/15" },
     ],
   },
   {

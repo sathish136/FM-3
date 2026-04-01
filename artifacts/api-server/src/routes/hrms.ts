@@ -1022,4 +1022,70 @@ router.get("/users/mention", async (req, res) => {
   }
 });
 
+// ── Task Summary (proxy to ERPNext wtt_module methods) ──────────────────────
+const TS_BASE = "wtt_module.wtt_module.page.task_summary.task_summary";
+
+async function callErpMethod(method: string, params: Record<string, string>): Promise<any> {
+  if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
+  const qs = new URLSearchParams(params).toString();
+  const url = `${ERPNEXT_URL}/api/method/${method}${qs ? "?" + qs : ""}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader() } });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`ERPNext method ${method} error ${res.status}: ${body}`);
+  }
+  const json = await res.json();
+  return json.message ?? json;
+}
+
+router.get("/hrms/task-summary/stats", async (req, res) => {
+  try {
+    const { from_date = "", to_date = "" } = req.query as Record<string, string>;
+    const data = await callErpMethod(`${TS_BASE}.get_dashboard_stats`, { from_date, to_date });
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get("/hrms/task-summary/departments", async (req, res) => {
+  try {
+    const { from_date = "", to_date = "" } = req.query as Record<string, string>;
+    const data = await callErpMethod(`${TS_BASE}.get_department_performance_report`, { from_date, to_date });
+    res.json(Array.isArray(data) ? data : []);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get("/hrms/task-summary/employees", async (req, res) => {
+  try {
+    const { from_date = "", to_date = "" } = req.query as Record<string, string>;
+    const data = await callErpMethod(`${TS_BASE}.get_employee_task_performance_with_dept`, { from_date, to_date });
+    res.json(Array.isArray(data) ? data : []);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get("/hrms/task-summary/idle-departments", async (req, res) => {
+  try {
+    const { from_date = "", to_date = "" } = req.query as Record<string, string>;
+    const data = await callErpMethod(`${TS_BASE}.get_departments_with_no_task_employees`, { from_date, to_date });
+    res.json(Array.isArray(data) ? data : []);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get("/hrms/task-summary/idle-employees", async (req, res) => {
+  try {
+    const { from_date = "", to_date = "" } = req.query as Record<string, string>;
+    const data = await callErpMethod(`${TS_BASE}.get_employees_with_no_tasks`, { from_date, to_date });
+    res.json(Array.isArray(data) ? data : []);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 export default router;
