@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Box, PenTool, GitBranch,
   Briefcase, FileText,
   LogOut, ChevronDown, ChevronRight as ChevronRightIcon, Menu, MoreHorizontal,
-  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp, ListChecks, ClipboardList,
+  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp, ListChecks, ClipboardList, Truck,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -228,8 +228,9 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     items: [
       { path: "/material-request",   label: "Material Request",   icon: ShoppingCart, color: "text-amber-400",  bgColor: "bg-amber-500/15" },
       { path: "/purchase-order",     label: "Purchase Order",     icon: ShoppingBag,  color: "text-orange-400", bgColor: "bg-orange-500/15" },
-      { path: "/purchase-dashboard", label: "Purchase Dashboard", icon: BarChart3,    color: "text-blue-400",   bgColor: "bg-blue-500/15" },
-      { path: "/stores-dashboard",   label: "Stores Dashboard",   icon: Warehouse,    color: "text-teal-400",   bgColor: "bg-teal-500/15" },
+      { path: "/purchase-dashboard",   label: "Purchase Dashboard",   icon: BarChart3,    color: "text-blue-400",   bgColor: "bg-blue-500/15" },
+      { path: "/stores-dashboard",     label: "Stores Dashboard",     icon: Warehouse,    color: "text-teal-400",   bgColor: "bg-teal-500/15" },
+      { path: "/logistics-dashboard",  label: "Logistics Dashboard",  icon: Truck,        color: "text-cyan-400",   bgColor: "bg-cyan-500/15" },
     ],
   },
   {

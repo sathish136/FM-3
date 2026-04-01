@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Logistics Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/logistics.css') }}"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.453.0/dist/umd/lucide.min.js"></script>
+</head>
+<body>
+
+  <!-- ═══════ FULLSCREEN DETAIL OVERLAY ═══════ -->
+  <div id="detailOverlay" class="detail-overlay" style="display:none;">
+    <div id="detailAccentBar" class="detail-accent-bar"></div>
+    <div class="detail-header">
+      <div class="detail-header-left">
+        <button class="btn-back" onclick="closeDetail()">
+          <i data-lucide="arrow-left" style="width:14px;height:14px;"></i>
+          Back to Dashboard
+        </button>
+        <div class="detail-title-block">
+          <span class="detail-panel-title" id="detailTitle">—</span>
+          <span class="detail-badge" id="detailBadge">0</span>
+        </div>
+      </div>
+      <div class="detail-header-right">
+        <img src="{{ url_for('static', filename='wtt_logo.png') }}" alt="WTT International" class="header-logo"/>
+        <div>
+          <div class="header-title">Logistics Dashboard</div>
+          <div class="header-sub">EXECUTIVE OVERVIEW</div>
+        </div>
+        <button class="btn-close-overlay" onclick="closeDetail()" title="Close (Esc)">
+          <i data-lucide="x" style="width:16px;height:16px;"></i>
+        </button>
+      </div>
+    </div>
+    <div class="detail-body">
+      <div class="detail-table-wrap">
+        <table id="detailTable">
+          <thead id="detailThead"></thead>
+          <tbody id="detailTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ HEADER ═══════ -->
+  <header>
+    <div class="header-left">
+      <img src="{{ url_for('static', filename='wtt_logo.png') }}" alt="WTT International" class="header-logo"/>
+      <div>
+        <div class="header-title">Logistics Dashboard</div>
+        <div class="header-sub">EXECUTIVE OVERVIEW</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <span id="errorMsg" class="error-msg" style="display:none;">
+        <i data-lucide="wifi-off" style="width:12px;height:12px;"></i>
+        API not connected
+      </span>
+      <button class="btn-refresh" onclick="loadDashboard()">
+        <i data-lucide="refresh-cw" style="width:12px;height:12px;"></i>
+        Refresh
+      </button>
+      <div class="clock">
+        <i data-lucide="clock" style="width:13px;height:13px;"></i>
+        <span id="datetime"></span>
+      </div>
+      <button class="btn-logout">
+        <i data-lucide="log-out" style="width:13px;height:13px;"></i>
+        Logout
+      </button>
+    </div>
+  </header>
+
+  <!-- ═══════ KPI ROW ═══════ -->
+  <div class="kpi-row">
+
+    <div class="kpi-card" style="background:#48c9b0;" onclick="openDetail('po_pending')">
+      <div class="kpi-top">
+        <span class="kpi-label">PO MADE LOGISTICS ENTRY PENDING</span>
+        <i data-lucide="package" style="width:22px;height:22px;opacity:0.75;"></i>
+      </div>
+      <div class="kpi-value" id="kpi_po_pending">0</div>
+    </div>
+
+    <div class="kpi-card" style="background:#e74c3c;" onclick="openDetail('supplier_delay')">
+      <div class="kpi-top">
+        <span class="kpi-label">SUPPLIER DELAY</span>
+        <i data-lucide="alert-triangle" style="width:22px;height:22px;opacity:0.75;"></i>
+      </div>
+      <div class="kpi-value" id="kpi_supplier_delay">0</div>
+    </div>
+
+    <div class="kpi-card" style="background:#f5b041;" onclick="openDetail('material_delay')">
+      <div class="kpi-top">
+        <span class="kpi-label">MATERIAL DELAY</span>
+        <i data-lucide="truck" style="width:22px;height:22px;opacity:0.75;"></i>
+      </div>
+      <div class="kpi-value" id="kpi_material_delay">0</div>
+    </div>
+
+    <div class="kpi-card" style="background:#5dade2;" onclick="openDetail('on_time')">
+      <div class="kpi-top">
+        <span class="kpi-label">ON-TIME DELIVERIES</span>
+        <i data-lucide="circle-check" style="width:22px;height:22px;opacity:0.75;"></i>
+      </div>
+      <div class="kpi-value" id="kpi_on_time">0</div>
+    </div>
+
+    <div class="kpi-card" style="background:#af7ac5;" onclick="openDetail('gprs_pending')">
+      <div class="kpi-top">
+        <span class="kpi-label">GPRS TRACKING NOT ENTERED</span>
+        <i data-lucide="map-pin-off" style="width:22px;height:22px;opacity:0.75;"></i>
+      </div>
+      <div class="kpi-value" id="kpi_gprs_pending">0</div>
+    </div>
+
+  </div>
+
+  <!-- ═══════ MAIN TABLES ═══════ -->
+  <div class="main">
+
+    <!-- ROW 1 -->
+    <div class="grid-2">
+
+      <div class="panel">
+        <div class="panel-header" style="border-left-color:#48c9b0;">
+          <span class="panel-title">Po Made Logistics Entry Pending</span>
+          <span class="badge" style="background:#48c9b0;" id="badge_po_pending">0</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>S.NO</th><th>PO NO.</th><th>SUPPLIER</th><th>DELIVERY DATE</th><th>RECEIVED DATE</th><th>LOGISTIC TRACKING</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_po_pending"><tr><td colspan="6" class="empty">No records</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header" style="border-left-color:#e74c3c;">
+          <span class="panel-title">Supplier Delay</span>
+          <span class="badge" style="background:#e74c3c;" id="badge_supplier_delay">0</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>S.NO</th><th>SUPPLIER NAME</th><th>PO NO.</th><th>DELAY DAYS</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_supplier_delay"><tr><td colspan="4" class="empty">No records</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ROW 2 -->
+    <div class="grid-2">
+
+      <div class="panel">
+        <div class="panel-header" style="border-left-color:#f5b041;">
+          <span class="panel-title">Material Delay</span>
+          <span class="badge" style="background:#f5b041;" id="badge_material_delay">0</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>S.NO</th><th>DESCRIPTION</th><th>PO NO.</th><th>SUPPLIER</th><th>DELAY DAYS</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_material_delay"><tr><td colspan="5" class="empty">No records</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header" style="border-left-color:#5dade2;">
+          <span class="panel-title">On-Time Deliveries</span>
+          <span class="badge" style="background:#5dade2;" id="badge_on_time">0</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>S.NO</th><th>PO NO.</th><th>LOGISTICS TRACKING</th><th>EXPECTED DELIVERY</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_on_time"><tr><td colspan="4" class="empty">No records</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ROW 3 — full width -->
+    <div class="grid-1">
+      <div class="panel">
+        <div class="panel-header" style="border-left-color:#af7ac5;">
+          <span class="panel-title">Gprs Tracking Not Entered</span>
+          <span class="badge" style="background:#af7ac5;" id="badge_gprs_pending">0</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>S.NO</th><th>PO NO.</th><th>LOGISTICS TRACKING</th><th>EXPECTED DELIVERY</th></tr>
+              <tr class="filter-row">
+                <td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td>
+                <td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td>
+              </tr>
+            </thead>
+            <tbody id="tb_gprs_pending"><tr><td colspan="4" class="empty">No records</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+
+  <script src="{{ url_for('static', filename='js/logistics.js') }}"></script>
+  <script>lucide.createIcons();</script>
+</body>
+</html>

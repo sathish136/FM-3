@@ -27,6 +27,7 @@ import calendarRouter from "./calendar";
 import notificationsRouter from "./notifications";
 import performanceRouter from "./performance";
 import dailyReportingRouter from "./daily-reporting";
+import logisticsDashboardRouter from "./logistics-dashboard";
 
 const router: IRouter = Router();
 
@@ -58,5 +59,6 @@ router.use(calendarRouter);
 router.use(notificationsRouter);
 router.use(performanceRouter);
 router.use(dailyReportingRouter);
+router.use(logisticsDashboardRouter);
 
 export default router;

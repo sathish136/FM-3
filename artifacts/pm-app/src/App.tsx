@@ -58,6 +58,7 @@ import EmployeePerformance from "@/pages/EmployeePerformance";
 import TeamPerformanceDashboard from "@/pages/TeamPerformanceDashboard";
 import TaskSummary from "@/pages/TaskSummary";
 import DailyReporting from "@/pages/DailyReporting";
+import LogisticsDashboard from "@/pages/LogisticsDashboard";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -197,6 +198,7 @@ function ProtectedRoutes() {
       <Route path="/hrms/team-performance" component={TeamPerformanceDashboard} />
       <Route path="/hrms/task-summary" component={TaskSummary} />
       <Route path="/hrms/daily-reporting" component={DailyReporting} />
+      <Route path="/logistics-dashboard" component={LogisticsDashboard} />
       <Route component={NotFound} />
     </Switch>
   );
