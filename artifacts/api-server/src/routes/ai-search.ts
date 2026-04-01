@@ -1,113 +1,238 @@
 import { Router } from "express";
 import OpenAI from "openai";
+import { db } from "@workspace/db";
+import {
+  projectsTable,
+  tasksTable,
+  campaignsTable,
+  leadsTable,
+  teamMembersTable,
+} from "@workspace/db/schema";
+import { sql } from "drizzle-orm";
+import {
+  isErpNextConfigured,
+  fetchErpNextProjects,
+  fetchErpNextMaterialRequests,
+  fetchErpNextPurchaseOrders,
+} from "../lib/erpnext";
 
 const router = Router();
 
 let _openai: OpenAI | null = null;
 function getOpenAI(): OpenAI {
-  if (!_openai) {
-    _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  }
+  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   return _openai;
 }
 
-const MODULE_DESCRIPTIONS: Record<string, string> = {
-  "Dashboard":               "The Dashboard shows high-level KPIs, project summaries, recent activity, and key metrics across the system.",
-  "Tasks":                   "The Tasks module is a kanban board with four columns: To Do, In Progress, In Review, and Done. Users can create, edit, assign, prioritize, and drag tasks between columns.",
-  "Projects":                "The Projects module lists all ongoing projects with status, deadlines, and team assignments. Users can view project details, update status, and track progress.",
-  "Project Board":           "The Project Board is a kanban-style view scoped to a specific project, showing tasks by workflow stage.",
-  "Project Timeline":        "The Project Timeline is a Gantt-style scheduler for tracking project milestones and deadlines.",
-  "Kanban":                  "The Kanban board organizes tasks visually by status columns for workflow management.",
-  "P&ID Process":            "The P&ID module is a piping and instrumentation diagram viewer. It supports PDF uploads, page navigation, and AI-powered analysis that generates a Bill of Materials (BOM) from the diagram.",
-  "Drawings":                "The Drawings module stores and displays engineering drawings across three categories: Mechanical, Electrical, and Civil. Drawings can be uploaded as PDFs.",
-  "Design 2D":               "The Design 2D module is a 2D CAD drawing viewer and annotator supporting DWG and DXF files.",
-  "Design 3D":               "The Design 3D module renders 3D STEP/IGES mechanical models with orbit, pan, and zoom controls.",
-  "Viewer Options":          "The Viewer Options module is the 3D system selector. It lists engineering systems (ETP, STP, WTP/RO, AHU, HVAC, Fire, Thermic, Process, Electrical, Instrumentation) and allows users to open their 3D STEP models.",
-  "Mechanical Viewer":       "The Mechanical Viewer is a full 3D STEP file viewer with a mesh panel for toggling component visibility, view modes (solid, wireframe), and background color controls.",
-  "Presentation":            "The Presentation module displays slide decks. It supports PPTX file uploads and renders slides with navigation controls.",
-  "Meeting Minutes":         "The Meeting Minutes module lets users record, transcribe (via Whisper AI), and summarize meetings. It generates structured summaries with key points, decisions, and action items.",
-  "Sheets":                  "The Sheets module is a collaborative spreadsheet editor supporting formulas, multiple sheets, and data import.",
-  "Material Request":        "The Material Request module manages procurement workflows. Users can submit, review, and approve material requests.",
-  "Purchase Order":          "The Purchase Order module manages and tracks purchase orders, vendor payments, and order approvals.",
-  "HRMS":                    "The HRMS module connects to ERPNext to display employee directories, attendance records, and leave management data.",
-  "User Management":         "The User Management module is an admin panel for managing user accounts, assigning roles (Admin, Editor, Viewer), and controlling module-level permissions.",
-  "Settings":                "The Settings module covers application-level configuration: user management, roles & permissions, notification preferences, appearance/theme, external integrations, and API key management.",
-  "Profile":                 "The Profile module lets users update their personal information, profile picture, and account credentials.",
-  "Campaigns":               "The Campaigns module tracks marketing campaigns including status, budget, performance metrics, and scheduling.",
-  "Leads":                   "The Leads module is a CRM tool for tracking sales leads, pipeline stages, follow-up tasks, and lead assignments.",
-  "Team":                    "The Team module is a directory of all team members with their contact information and department.",
-  "Gallery":                 "The Gallery module is a media asset library. Users can upload, search, filter, tag, download, and delete files including images, documents, and videos.",
-  "Smart Inbox":             "The Smart Inbox uses AI to classify, summarize, and draft replies for incoming emails automatically.",
-  "FlowTalk":                "FlowTalk is the real-time team messaging platform with public/private channels, reactions, and file sharing.",
-  "Site Data":               "The Site Data module provides live monitoring and data from field sites and equipment.",
-  "Nesting":                 "The Nesting module optimizes material layout for cutting and sheet metal using algorithms.",
-};
+// ─── Live data fetcher ────────────────────────────────────────────────────────
 
-function buildSystemPrompt(module?: string): string {
-  const today = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+type FetchedContext = { label: string; data: unknown }[];
 
-  const base = `You are FlowAI — an intelligent, versatile AI assistant integrated into WTT FlowMatriX, a comprehensive project management and engineering platform. Today is ${today}.
+function queryMatches(q: string, ...keywords: string[]): boolean {
+  const lower = q.toLowerCase();
+  return keywords.some((k) => lower.includes(k));
+}
 
-## Your capabilities
-You can help with ANYTHING the user asks, including:
-- **General knowledge**: Science, history, math, technology, business, engineering, coding, writing, language, etc.
-- **Platform help**: How to use any module in the FlowMatriX platform
-- **Document generation**: Write reports, proposals, meeting summaries, project briefs, technical docs
-- **Data analysis**: Interpret data, suggest insights, answer analytical questions
-- **Timeline generation**: Create project timelines, schedules, Gantt-style breakdowns — output as structured markdown
-- **PDF-ready reports**: Generate well-structured reports that can be exported as PDFs
+async function fetchLiveData(query: string, module?: string): Promise<FetchedContext> {
+  const ctx: FetchedContext = [];
+  const q = query.toLowerCase();
+  const mod = (module || "").toLowerCase();
 
-## Platform modules available
-- **Dashboard** – KPIs, project overview, recent activity
-- **Tasks** – Kanban board (To Do, In Progress, In Review, Done)
-- **Projects** – Project list, status, deadlines, team assignments
-- **Project Board** – Per-project kanban task board
-- **Project Timeline** – Gantt-style milestone and schedule tracking
-- **P&ID Process** – Piping & instrumentation diagrams with AI BOM generation
-- **Drawings** – Engineering drawings (Mechanical, Electrical, Civil)
-- **Design 2D** – 2D CAD viewer and annotator (DWG/DXF)
-- **Design 3D** – 3D STEP/IGES model viewer
-- **Viewer Options** – 3D system selector (ETP, STP, WTP/RO, AHU, HVAC, Fire, Thermic, etc.)
-- **Presentation** – PPTX slide deck viewer
-- **Meeting Minutes** – Meeting recording, Whisper AI transcription, AI summarization
-- **Sheets** – Collaborative spreadsheet editor
-- **Material Request** – Procurement and material request workflow
-- **Purchase Order** – PO management and vendor tracking
-- **Smart Inbox** – AI-powered email inbox (classify, summarize, draft replies)
-- **FlowTalk** – Real-time team messaging and channels
-- **HRMS** – Employee directory, attendance, leave management (ERPNext)
-- **Site Data** – Live field monitoring and equipment data
-- **Nesting** – Material layout optimization for cutting/sheet metal
-- **Campaigns** – Marketing campaign tracking
-- **Leads** – CRM lead and pipeline management
-- **Team** – Team member directory
-- **Gallery** – Media asset library
-- **User Management** – Admin panel for users, roles, permissions
-- **Settings** – App configuration
+  const wantsProjects =
+    queryMatches(q, "project", "active project", "overdue project", "project status", "how many project") ||
+    mod.includes("project") || mod.includes("dashboard");
 
-## Response formatting
-- Use **Markdown** for all responses: headers (##, ###), bullet lists, numbered lists, bold, tables, code blocks
-- For timelines: use a structured format with dates and milestones as a numbered or table format
-- For reports: use clear sections with ## headings, summaries, and structured content
-- For code: use fenced code blocks with the correct language tag
-- Be thorough, detailed, and accurate — prefer rich, complete answers over brief ones
-- If asked to generate a PDF report or document, produce a well-structured, professional markdown document with a clear title, sections, and content
+  const wantsTasks =
+    queryMatches(q, "task", "todo", "in progress", "pending task", "done", "kanban", "board", "assignee") ||
+    mod.includes("task") || mod.includes("board");
 
-## Special output hints
-- When generating a timeline, include a line at the very end: <!-- TYPE:TIMELINE -->
-- When generating a report/PDF, include a line at the very end: <!-- TYPE:REPORT -->`;
+  const wantsCampaigns =
+    queryMatches(q, "campaign", "marketing") ||
+    mod.includes("campaign") || mod.includes("marketing");
 
-  if (module) {
-    const moduleKey = module.split("–")[0]?.trim();
-    const description = moduleKey ? MODULE_DESCRIPTIONS[moduleKey] : null;
-    if (description) {
-      return `${base}\n\n## Current context\nThe user is currently on the **${moduleKey}** module. ${description}\n\nPrioritize helping with this module, but answer any question the user asks.`;
+  const wantsLeads =
+    queryMatches(q, "lead", "crm", "pipeline", "prospect", "conversion") ||
+    mod.includes("lead");
+
+  const wantsTeam =
+    queryMatches(q, "team", "member", "staff", "colleague", "who is") ||
+    mod.includes("team");
+
+  const wantsMR =
+    queryMatches(q, "material request", "material", "mr", "procurement", "request") ||
+    mod.includes("material");
+
+  const wantsPO =
+    queryMatches(q, "purchase order", "purchase", "po", "vendor", "supplier", "order") ||
+    mod.includes("purchase");
+
+  const wantsSummary =
+    queryMatches(q, "summary", "overview", "how many", "total", "count", "all", "dashboard", "status", "report", "analytics") ||
+    mod.includes("dashboard");
+
+  try {
+    if (wantsProjects || wantsSummary) {
+      let projects: unknown[];
+      if (isErpNextConfigured()) {
+        projects = await fetchErpNextProjects();
+      } else {
+        const rows = await db.select().from(projectsTable).orderBy(projectsTable.createdAt);
+        projects = rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
+      }
+      ctx.push({ label: "Projects", data: projects });
     }
-    return `${base}\n\n## Current context\nThe user is currently viewing: ${module}.`;
+
+    if (wantsTasks || wantsSummary) {
+      const rows = await db.select().from(tasksTable).orderBy(tasksTable.createdAt);
+      ctx.push({ label: "Tasks", data: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })) });
+    }
+
+    if (wantsCampaigns || wantsSummary) {
+      const rows = await db.select().from(campaignsTable).orderBy(campaignsTable.createdAt);
+      ctx.push({ label: "Campaigns", data: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })) });
+    }
+
+    if (wantsLeads || wantsSummary) {
+      const rows = await db.select().from(leadsTable).orderBy(leadsTable.createdAt);
+      ctx.push({ label: "Leads", data: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })) });
+    }
+
+    if (wantsTeam) {
+      const rows = await db.select().from(teamMembersTable).orderBy(teamMembersTable.createdAt);
+      ctx.push({ label: "Team Members", data: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })) });
+    }
+
+    if (wantsMR && isErpNextConfigured()) {
+      const mrs = await fetchErpNextMaterialRequests();
+      ctx.push({ label: "Material Requests", data: mrs });
+    }
+
+    if (wantsPO && isErpNextConfigured()) {
+      const pos = await fetchErpNextPurchaseOrders();
+      ctx.push({ label: "Purchase Orders", data: pos });
+    }
+
+    if (wantsSummary) {
+      const [ls] = await db.select({
+        totalLeads: sql<number>`count(*)::int`,
+        converted: sql<number>`sum(case when status='converted' then 1 else 0 end)::int`,
+      }).from(leadsTable);
+      const [cs] = await db.select({
+        activeCampaigns: sql<number>`sum(case when status='active' then 1 else 0 end)::int`,
+        totalBudget: sql<number>`coalesce(sum(budget::numeric),0)::float`,
+        totalSpent: sql<number>`coalesce(sum(spent::numeric),0)::float`,
+      }).from(campaignsTable);
+      const [ps] = await db.select({
+        total: sql<number>`count(*)::int`,
+        active: sql<number>`sum(case when status='active' then 1 else 0 end)::int`,
+        completed: sql<number>`sum(case when status='completed' then 1 else 0 end)::int`,
+        planning: sql<number>`sum(case when status='planning' then 1 else 0 end)::int`,
+        onHold: sql<number>`sum(case when status='on-hold' then 1 else 0 end)::int`,
+      }).from(projectsTable);
+      const [ts] = await db.select({
+        total: sql<number>`count(*)::int`,
+        todo: sql<number>`sum(case when status='todo' then 1 else 0 end)::int`,
+        inProgress: sql<number>`sum(case when status='in-progress' then 1 else 0 end)::int`,
+        inReview: sql<number>`sum(case when status='in-review' then 1 else 0 end)::int`,
+        done: sql<number>`sum(case when status='done' then 1 else 0 end)::int`,
+      }).from(tasksTable);
+      ctx.push({
+        label: "Summary Statistics",
+        data: {
+          projects: ps,
+          tasks: ts,
+          leads: { total: ls?.totalLeads, converted: ls?.converted },
+          campaigns: cs,
+        },
+      });
+    }
+  } catch (e) {
+    console.error("AI data fetch error:", e);
   }
 
-  return base;
+  return ctx;
 }
+
+function formatContextForPrompt(ctx: FetchedContext): string {
+  if (!ctx.length) return "";
+  const parts = ctx.map(({ label, data }) => {
+    const json = JSON.stringify(data, null, 2);
+    return `### ${label}\n\`\`\`json\n${json}\n\`\`\``;
+  });
+  return `\n\n## LIVE DATA FROM THE SYSTEM (use this to answer directly)\n${parts.join("\n\n")}`;
+}
+
+// ─── System prompt ────────────────────────────────────────────────────────────
+
+const MODULE_DESCRIPTIONS: Record<string, string> = {
+  "Dashboard":               "The Dashboard shows high-level KPIs, project summaries, recent activity, and key metrics across the system.",
+  "Tasks":                   "The Tasks module is a kanban board with four columns: To Do, In Progress, In Review, and Done.",
+  "Projects":                "The Projects module lists all ongoing projects with status, deadlines, and team assignments.",
+  "Project Board":           "The Project Board is a kanban-style view scoped to a specific project.",
+  "Project Timeline":        "The Project Timeline is a Gantt-style scheduler for tracking project milestones and deadlines.",
+  "P&ID Process":            "The P&ID module is a piping and instrumentation diagram viewer with AI BOM generation.",
+  "Drawings":                "The Drawings module stores engineering drawings across Mechanical, Electrical, and Civil categories.",
+  "Design 2D":               "The Design 2D module is a 2D CAD drawing viewer and annotator (DWG/DXF).",
+  "Design 3D":               "The Design 3D module renders 3D STEP/IGES mechanical models.",
+  "Viewer Options":          "The Viewer Options module is the 3D system selector for engineering systems.",
+  "Mechanical Viewer":       "The Mechanical Viewer is a full 3D STEP file viewer with mesh panel.",
+  "Presentation":            "The Presentation module displays PPTX slide decks.",
+  "Meeting Minutes":         "The Meeting Minutes module lets users record, transcribe (Whisper AI), and summarize meetings.",
+  "Sheets":                  "The Sheets module is a collaborative spreadsheet editor.",
+  "Material Request":        "The Material Request module manages procurement workflows.",
+  "Purchase Order":          "The Purchase Order module manages and tracks purchase orders and vendor payments.",
+  "HRMS":                    "The HRMS module connects to ERPNext for employee directories, attendance, and leave management.",
+  "User Management":         "The User Management module is an admin panel for users, roles, and permissions.",
+  "Settings":                "The Settings module covers application-level configuration.",
+  "Profile":                 "The Profile module lets users update personal information and credentials.",
+  "Campaigns":               "The Campaigns module tracks marketing campaigns including status, budget, and metrics.",
+  "Leads":                   "The Leads module is a CRM tool for tracking sales leads and pipeline stages.",
+  "Team":                    "The Team module is a directory of all team members.",
+  "Gallery":                 "The Gallery module is a media asset library.",
+  "Smart Inbox":             "The Smart Inbox uses AI to classify, summarize, and draft replies for emails.",
+  "FlowTalk":                "FlowTalk is the real-time team messaging platform with public/private channels.",
+  "Site Data":               "The Site Data module provides live monitoring from field sites and equipment.",
+  "Nesting":                 "The Nesting module optimizes material layout for cutting and sheet metal.",
+};
+
+function buildSystemPrompt(module?: string, liveDataCtx?: string): string {
+  const today = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+
+  const base = `You are a helpful AI assistant embedded in WTT FlowMatriX — a comprehensive project management and engineering platform. Today is ${today}.
+
+## CRITICAL RULES
+1. **NEVER tell the user to navigate anywhere** — do not say "go to the Projects module", "navigate to X", "you can find this in Y". Always answer directly.
+2. **When live data is provided below, use it to answer directly** — show the actual records, counts, statuses, names. Present the data clearly in your response.
+3. **If no live data is provided**, answer based on your general knowledge of the platform.
+4. **For data questions** (how many projects, what tasks are pending, who is on the team, etc.) — present the actual data in a clear table or list format.
+5. You can also answer any general knowledge question (science, math, coding, writing, etc.).
+
+## Response formatting
+- Use **Markdown**: headers, bullet lists, numbered lists, **bold**, tables
+- For lists of items: use a markdown table or bullet list with key fields (name, status, date, assignee, etc.)
+- For counts/summaries: give the exact numbers from the data
+- For timelines: use structured numbered format — end with <!-- TYPE:TIMELINE -->
+- For PDF reports: use full document structure — end with <!-- TYPE:REPORT -->
+- Be direct and data-driven
+
+## Platform modules
+- Dashboard, Tasks, Projects, Project Board, Project Timeline, P&ID, Drawings, Design 2D/3D, Presentation, Meeting Minutes, Sheets, Material Request, Purchase Order, Smart Inbox, FlowTalk, HRMS, Site Data, Nesting, Campaigns, Leads, Team, Gallery, User Management, Settings`;
+
+  let contextSection = "";
+  if (module) {
+    const moduleKey = module.split("–")[0]?.trim();
+    const desc = moduleKey ? MODULE_DESCRIPTIONS[moduleKey] : null;
+    if (desc) {
+      contextSection = `\n\n## Current module\nUser is on **${moduleKey}**. ${desc}`;
+    } else {
+      contextSection = `\n\n## Current module\nUser is viewing: ${module}.`;
+    }
+  }
+
+  return base + contextSection + (liveDataCtx || "");
+}
+
+// ─── Route ────────────────────────────────────────────────────────────────────
 
 router.post("/ai-search", async (req, res) => {
   const { query, history = [], module } = req.body as {
@@ -122,8 +247,11 @@ router.post("/ai-search", async (req, res) => {
 
   const stream = req.query.stream === "true" || req.body.stream === true;
 
+  const liveCtx = await fetchLiveData(query, module);
+  const liveDataStr = formatContextForPrompt(liveCtx);
+
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-    { role: "system", content: buildSystemPrompt(module) },
+    { role: "system", content: buildSystemPrompt(module, liveDataStr) },
     ...history.map((m) => ({ role: m.role, content: m.content } as OpenAI.Chat.ChatCompletionMessageParam)),
     { role: "user", content: query },
   ];
@@ -139,7 +267,7 @@ router.post("/ai-search", async (req, res) => {
         model: "gpt-4o",
         messages,
         max_tokens: 4096,
-        temperature: 0.7,
+        temperature: 0.4,
         stream: true,
       });
 
@@ -162,7 +290,7 @@ router.post("/ai-search", async (req, res) => {
         model: "gpt-4o",
         messages,
         max_tokens: 4096,
-        temperature: 0.7,
+        temperature: 0.4,
       });
 
       const answer = completion.choices[0]?.message?.content ?? "No response";
