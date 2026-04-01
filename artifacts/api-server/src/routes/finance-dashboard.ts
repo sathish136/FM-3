@@ -1,290 +1,280 @@
 import { Router } from "express";
-import { erpFetch, projectParams } from "../lib/erp";
+import { erpFetch } from "../lib/erp";
 
 const router = Router();
 
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
 function ok(res: any, data: any) { return res.json({ message: data }); }
 
-function errFallback(res: any, fallback: any, e: any) {
-  console.warn("[finance-dashboard] ERP error:", e?.message ?? e);
-  return res.json({ message: fallback, _source: "sample" });
+function num(v: any): number {
+  if (typeof v === "number") return v;
+  const n = parseFloat(String(v ?? 0));
+  return isNaN(n) ? 0 : n;
 }
 
-// ── Date params helper ──────────────────────────────────────────────────────────
-function dateParams(project?: string, from_date?: string, to_date?: string, quick?: string): Record<string, string> {
-  const params: Record<string, string> = {};
-  if (project && project.trim()) params.project = project;
-  if (quick === "today") {
-    const today = new Date().toISOString().split("T")[0];
-    params.from_date = today;
-    params.to_date = today;
-  } else if (quick === "yesterday") {
-    const d = new Date(); d.setDate(d.getDate() - 1);
-    const yest = d.toISOString().split("T")[0];
-    params.from_date = yest;
-    params.to_date = yest;
-  } else {
-    if (from_date) params.from_date = from_date;
-    if (to_date)   params.to_date   = to_date;
-  }
-  return params;
-}
-
-// ── Sample / fallback data ──────────────────────────────────────────────────────
-
-const SAMPLE_KPIS = {
-  project_budget: 92705110,
-  po_cost: 34705110,
-  pr_cost: 20181640,
-  other_expenses: 354000,
-  extra_expenses: 5000,
-  salary: 86135095,
-  cash_request: 4000,
-  req_payment: 350000,
-  ticket_booking: 0,
-  claim: 2115,
-  advance: 940199,
-};
-
-const SAMPLE_PO = {
-  po_wise: [
-    { po_no: "PO-2024-001", supplier: "ABC Corp",        po_amount: 15000000 },
-    { po_no: "PO-2024-002", supplier: "XYZ Ltd",         po_amount: 25000000 },
-    { po_no: "PO-2024-003", supplier: "Tech Solutions",  po_amount: 18000000 },
-    { po_no: "PO-2024-004", supplier: "Engineering Co",  po_amount: 34705110 },
-  ],
-  supplier_wise: [
-    { supplier: "ABC Corp",        no_of_pos: 2, po_amount: 20000000 },
-    { supplier: "XYZ Ltd",         no_of_pos: 3, po_amount: 30000000 },
-    { supplier: "Tech Solutions",  no_of_pos: 1, po_amount: 25000000 },
-    { supplier: "Engineering Co",  no_of_pos: 1, po_amount: 17705110 },
-  ],
-  item_group_wise: [
-    { item_group: "Equipment",  no_of_items: 5, po_amount: 45000000 },
-    { item_group: "Materials",  no_of_items: 8, po_amount: 30000000 },
-    { item_group: "Services",   no_of_items: 3, po_amount: 17705110 },
-  ],
-};
-
-const SAMPLE_PR = {
-  pr_wise: [
-    { pr_no: "PR-2024-001", supplier: "ABC Corp", pr_amount: 12000000 },
-    { pr_no: "PR-2024-002", supplier: "XYZ Ltd",  pr_amount: 20181640 },
-  ],
-  supplier_wise: [
-    { supplier: "ABC Corp", no_of_prs: 2, pr_amount: 15000000 },
-    { supplier: "XYZ Ltd",  no_of_prs: 3, pr_amount: 17181640 },
-  ],
-  item_group_wise: [
-    { item_group: "Equipment", no_of_items: 5, pr_amount: 20000000 },
-    { item_group: "Materials", no_of_items: 8, pr_amount: 12181640 },
-  ],
-};
-
-const SAMPLE_CASH_REQUEST = [
-  { date: "2026-03-31", entry_no: "CR-001", remarks: "Medicine for MD Sir", created_by: "Admin",   amount: 1500,   approved_by: "Approved" },
-  { date: "2026-03-30", entry_no: "CR-002", remarks: "Office supplies",      created_by: "HR",      amount: 2500,   approved_by: "Pending" },
-];
-
-const SAMPLE_REQ_PAYMENT = [
-  { date: "2026-03-30", entry_no: "RFP-001", remarks: "Advance for shipment", created_by: "Finance", amount: 350000, approved_by: "Approved" },
-];
-
-const SAMPLE_TICKET_BOOKING = [
-  { date: "2026-03-23", entry_no: "TBD-00253", employee_name: "RAGHUL RAJ D", amount: 0, reason: "Customer visit — GT Process" },
-];
-
-const SAMPLE_EXTRA_EXPENSES = [
-  { date: "2026-04-01", entry_no: "LT-26-00001", employee_name: "WTT1441", amount: 5000, reason: "Salary Rework" },
-];
-
-const SAMPLE_SALARY = [
-  { employee: "Engineering Team", salary: 35000000 },
-  { employee: "Management",       salary: 25000000 },
-  { employee: "Support Staff",    salary: 15000000 },
-  { employee: "Consultants",      salary: 11135095 },
-];
-
-const SAMPLE_CLAIM = [
-  { employee: "HARIHARAN V",  claim_amount: 809 },
-  { employee: "John Doe",     claim_amount: 850000 },
-  { employee: "Jane Smith",   claim_amount: 1255385 },
-];
-
-const SAMPLE_ADVANCE = [
-  { employee_name: "PREETHI RAJARAJESWARI S", advanced_amount: 0 },
-  { employee_name: "Project Manager",          advanced_amount: 500000 },
-  { employee_name: "Site Engineer",            advanced_amount: 440199 },
-];
-
-// ── Helpers to sum arrays ────────────────────────────────────────────────────────
-function sumField(arr: any[], field: string): number {
-  return Array.isArray(arr) ? arr.reduce((s, r) => s + (Number(r[field]) || 0), 0) : 0;
+function buildParams(project?: string, from_date?: string, to_date?: string): Record<string, string> {
+  const p: Record<string, string> = {};
+  if (project?.trim()) p.project = project;
+  if (from_date)       p.from_date = from_date;
+  if (to_date)         p.to_date   = to_date;
+  return p;
 }
 
 // ── GET /api/finance-dashboard/kpis ────────────────────────────────────────────
+// ERP: wtt_module.customization.custom.rfq.get_project_financials
 router.get("/finance-dashboard/kpis", async (req, res) => {
-  const { project, from_date, to_date, quick } = req.query as Record<string, string>;
-  const pp = dateParams(project, from_date, to_date, quick);
+  const { project = "WTT-0528", from_date, to_date } = req.query as Record<string, string>;
   try {
-    const [poR, prR, crR, rpR, tbR, eeR, salR, clR, advR] = await Promise.allSettled([
-      erpFetch("wtt_module.customization.custom.finance.get_po_cost",       pp),
-      erpFetch("wtt_module.customization.custom.finance.get_pr_cost",       pp),
-      erpFetch("wtt_module.customization.custom.finance.get_cash_request",  pp),
-      erpFetch("wtt_module.customization.custom.finance.get_req_payment",   pp),
-      erpFetch("wtt_module.customization.custom.finance.get_ticket_booking",pp),
-      erpFetch("wtt_module.customization.custom.finance.get_extra_expenses",pp),
-      erpFetch("wtt_module.customization.custom.finance.get_salary",        pp),
-      erpFetch("wtt_module.customization.custom.finance.get_claim",         pp),
-      erpFetch("wtt_module.customization.custom.finance.get_advance",       pp),
-    ]);
-
-    const msg = (r: PromiseSettledResult<any>, fb: any) =>
-      r.status === "fulfilled" && r.value?.message ? r.value.message : fb;
-
-    const po   = msg(poR, SAMPLE_PO.po_wise);
-    const pr   = msg(prR, SAMPLE_PR.pr_wise);
-    const cr   = msg(crR, SAMPLE_CASH_REQUEST);
-    const rp   = msg(rpR, SAMPLE_REQ_PAYMENT);
-    const tb   = msg(tbR, SAMPLE_TICKET_BOOKING);
-    const ee   = msg(eeR, SAMPLE_EXTRA_EXPENSES);
-    const sal  = msg(salR, SAMPLE_SALARY);
-    const cl   = msg(clR, SAMPLE_CLAIM);
-    const adv  = msg(advR, SAMPLE_ADVANCE);
-
-    const poCost  = Array.isArray(po)  ? sumField(po,  "po_amount")       : (typeof po === "object" ? sumField(po?.po_wise || [], "po_amount") : 0);
-    const prCost  = Array.isArray(pr)  ? sumField(pr,  "pr_amount")       : (typeof pr === "object" ? sumField(pr?.pr_wise || [], "pr_amount") : 0);
-    const crTotal = Array.isArray(cr)  ? sumField(cr,  "amount")          : 0;
-    const rpTotal = Array.isArray(rp)  ? sumField(rp,  "amount")          : 0;
-    const tbTotal = Array.isArray(tb)  ? sumField(tb,  "amount")          : 0;
-    const eeTotal = Array.isArray(ee)  ? sumField(ee,  "amount")          : 0;
-    const salTotal= Array.isArray(sal) ? sumField(sal, "salary")          : 0;
-    const clTotal = Array.isArray(cl)  ? sumField(cl,  "claim_amount")    : 0;
-    const advTotal= Array.isArray(adv) ? sumField(adv, "advanced_amount") : 0;
-
+    const data = await erpFetch(
+      "wtt_module.customization.custom.rfq.get_project_financials",
+      buildParams(project, from_date, to_date),
+    );
+    const m = data?.message ?? {};
     return ok(res, {
-      project_budget: SAMPLE_KPIS.project_budget,
-      po_cost:        poCost,
-      pr_cost:        prCost,
-      other_expenses: crTotal + rpTotal + tbTotal,
-      extra_expenses: eeTotal,
-      salary:         salTotal,
-      cash_request:   crTotal,
-      req_payment:    rpTotal,
-      ticket_booking: tbTotal,
-      claim:          clTotal,
-      advance:        advTotal,
+      project_budget:  0,
+      po_cost:         num(m.po_cost),
+      pr_cost:         num(m.pr_cost),
+      other_expenses:  num(m.cash_request) + num(m.request_for_payment) + num(m.ticket_booking) + num(m.operational_loss),
+      extra_expenses:  num(m.operational_loss),
+      salary:          num(m.salary),
+      cash_request:    num(m.cash_request),
+      req_payment:     num(m.request_for_payment),
+      ticket_booking:  num(m.ticket_booking),
+      claim:           num(m.claim),
+      advance:         num(m.advance),
     });
   } catch (e: any) {
-    return errFallback(res, SAMPLE_KPIS, e);
+    console.warn("[finance-dashboard/kpis]", e?.message ?? e);
+    return ok(res, { project_budget: 0, po_cost: 0, pr_cost: 0, other_expenses: 0, extra_expenses: 0, salary: 0, cash_request: 0, req_payment: 0, ticket_booking: 0, claim: 0, advance: 0 });
   }
 });
 
 // ── GET /api/finance-dashboard/po-cost ─────────────────────────────────────────
+// ERPs: get_po_wise / get_supplier_wise / get_item_group_wise
 router.get("/finance-dashboard/po-cost", async (req, res) => {
-  const { project } = req.query as Record<string, string>;
+  const { project = "WTT-0528" } = req.query as Record<string, string>;
+  const pp = buildParams(project);
   try {
-    const data = await erpFetch("wtt_module.customization.custom.finance.get_po_cost", projectParams(project));
-    if (data?.message) return ok(res, data.message);
-    throw new Error("no data");
+    const [poWise, supWise, igWise] = await Promise.allSettled([
+      erpFetch("wtt_module.customization.custom.rfq.get_po_wise",         pp),
+      erpFetch("wtt_module.customization.custom.rfq.get_supplier_wise",   pp),
+      erpFetch("wtt_module.customization.custom.rfq.get_item_group_wise", pp),
+    ]);
+    const msg = (r: PromiseSettledResult<any>) =>
+      r.status === "fulfilled" && Array.isArray(r.value?.message) ? r.value.message : [];
+
+    return ok(res, {
+      po_wise: msg(poWise).map((i: any) => ({
+        po_no:     i.po_name   ?? "",
+        supplier:  i.supplier  ?? "",
+        po_amount: num(i.total_po_cost),
+      })),
+      supplier_wise: msg(supWise).map((i: any) => ({
+        supplier:  i.supplier    ?? "",
+        no_of_pos: num(i.no_of_pos),
+        po_amount: num(i.total_amount),
+      })),
+      item_group_wise: msg(igWise).map((i: any) => ({
+        item_group:  i.item_group  ?? "",
+        no_of_items: num(i.no_of_items),
+        po_amount:   num(i.total_amount),
+      })),
+    });
   } catch (e: any) {
-    return errFallback(res, SAMPLE_PO, e);
+    console.warn("[finance-dashboard/po-cost]", e?.message ?? e);
+    return ok(res, { po_wise: [], supplier_wise: [], item_group_wise: [] });
   }
 });
 
 // ── GET /api/finance-dashboard/pr-cost ─────────────────────────────────────────
+// ERPs: get_pr_wise / get_pr_supplier_wise / get_pr_item_group_wise
 router.get("/finance-dashboard/pr-cost", async (req, res) => {
-  const { project } = req.query as Record<string, string>;
+  const { project = "WTT-0528" } = req.query as Record<string, string>;
+  const pp = buildParams(project);
   try {
-    const data = await erpFetch("wtt_module.customization.custom.finance.get_pr_cost", projectParams(project));
-    if (data?.message) return ok(res, data.message);
-    throw new Error("no data");
+    const [prWise, supWise, igWise] = await Promise.allSettled([
+      erpFetch("wtt_module.customization.custom.rfq.get_pr_wise",            pp),
+      erpFetch("wtt_module.customization.custom.rfq.get_pr_supplier_wise",   pp),
+      erpFetch("wtt_module.customization.custom.rfq.get_pr_item_group_wise", pp),
+    ]);
+    const msg = (r: PromiseSettledResult<any>) =>
+      r.status === "fulfilled" && Array.isArray(r.value?.message) ? r.value.message : [];
+
+    return ok(res, {
+      pr_wise: msg(prWise).map((i: any) => ({
+        pr_no:     i.pr_name       ?? "",
+        supplier:  i.supplier      ?? "",
+        pr_amount: num(i.total_pr_cost),
+      })),
+      supplier_wise: msg(supWise).map((i: any) => ({
+        supplier:  i.supplier   ?? "",
+        no_of_prs: num(i.no_of_prs),
+        pr_amount: num(i.total_amount),
+      })),
+      item_group_wise: msg(igWise).map((i: any) => ({
+        item_group:  i.item_group  ?? "",
+        no_of_items: num(i.no_of_items),
+        pr_amount:   num(i.total_amount),
+      })),
+    });
   } catch (e: any) {
-    return errFallback(res, SAMPLE_PR, e);
+    console.warn("[finance-dashboard/pr-cost]", e?.message ?? e);
+    return ok(res, { pr_wise: [], supplier_wise: [], item_group_wise: [] });
   }
 });
 
 // ── GET /api/finance-dashboard/cash-request ────────────────────────────────────
+// ERP: wtt_module.customization.custom.rfq.get_cash_request
 router.get("/finance-dashboard/cash-request", async (req, res) => {
-  const { project, from_date, to_date, quick } = req.query as Record<string, string>;
+  const { project = "WTT-0528", from_date, to_date } = req.query as Record<string, string>;
   try {
-    const data = await erpFetch("wtt_module.customization.custom.finance.get_cash_request", dateParams(project, from_date, to_date, quick));
-    if (Array.isArray(data?.message)) return ok(res, data.message);
-    throw new Error("no data");
+    const data = await erpFetch(
+      "wtt_module.customization.custom.rfq.get_cash_request",
+      buildParams(project, from_date, to_date),
+    );
+    const items: any[] = Array.isArray(data?.message) ? data.message : [];
+    return ok(res, items.map(i => ({
+      date:        i.transaction_date ?? i.date ?? i.posting_date ?? i.creation ?? "",
+      entry_no:    i.name ?? i.entry_no ?? i.document_no ?? "",
+      remarks:     i.remarks ?? i.description ?? i.purpose ?? i.cash_purpose ?? "",
+      created_by:  i.created_by ?? i.owner ?? i.employee ?? i.employee_name ?? "System",
+      amount:      num(i.total ?? i.amount ?? i.grand_total ?? i.net_total),
+      approved_by: i.workflow_state ?? i.approved_by ?? i.status ?? String(i.docstatus ?? "") ?? "",
+    })));
   } catch (e: any) {
-    return errFallback(res, SAMPLE_CASH_REQUEST, e);
+    console.warn("[finance-dashboard/cash-request]", e?.message ?? e);
+    return ok(res, []);
   }
 });
 
 // ── GET /api/finance-dashboard/req-payment ─────────────────────────────────────
+// ERP: wtt_module.customization.custom.rfq.get_request_for_payment
 router.get("/finance-dashboard/req-payment", async (req, res) => {
-  const { project, from_date, to_date, quick } = req.query as Record<string, string>;
+  const { project = "WTT-0528", from_date, to_date } = req.query as Record<string, string>;
   try {
-    const data = await erpFetch("wtt_module.customization.custom.finance.get_req_payment", dateParams(project, from_date, to_date, quick));
-    if (Array.isArray(data?.message)) return ok(res, data.message);
-    throw new Error("no data");
+    const data = await erpFetch(
+      "wtt_module.customization.custom.rfq.get_request_for_payment",
+      buildParams(project, from_date, to_date),
+    );
+    const items: any[] = Array.isArray(data?.message) ? data.message : [];
+    return ok(res, items.map(i => ({
+      date:        i.date ?? "",
+      entry_no:    i.name ?? "",
+      remarks:     i.remarks ?? "",
+      created_by:  "Finance",
+      amount:      num(i.total),
+      approved_by: i.workflow_state ?? "",
+    })));
   } catch (e: any) {
-    return errFallback(res, SAMPLE_REQ_PAYMENT, e);
+    console.warn("[finance-dashboard/req-payment]", e?.message ?? e);
+    return ok(res, []);
   }
 });
 
 // ── GET /api/finance-dashboard/ticket-booking ──────────────────────────────────
+// ERP: wtt_module.customization.custom.rfq.get_ticket_booking_details
 router.get("/finance-dashboard/ticket-booking", async (req, res) => {
-  const { project, from_date, to_date, quick } = req.query as Record<string, string>;
+  const { project = "WTT-0528", from_date, to_date } = req.query as Record<string, string>;
   try {
-    const data = await erpFetch("wtt_module.customization.custom.finance.get_ticket_booking", dateParams(project, from_date, to_date, quick));
-    if (Array.isArray(data?.message)) return ok(res, data.message);
-    throw new Error("no data");
+    const data = await erpFetch(
+      "wtt_module.customization.custom.rfq.get_ticket_booking_details",
+      buildParams(project, from_date, to_date),
+    );
+    const items: any[] = Array.isArray(data?.message) ? data.message : [];
+    return ok(res, items.map(i => ({
+      date:          i.travel_date   ?? "",
+      entry_no:      i.name          ?? "",
+      employee_name: i.employee_name ?? "",
+      amount:        num(i.fare),
+      reason:        i.other_details ?? "",
+    })));
   } catch (e: any) {
-    return errFallback(res, SAMPLE_TICKET_BOOKING, e);
+    console.warn("[finance-dashboard/ticket-booking]", e?.message ?? e);
+    return ok(res, []);
   }
 });
 
 // ── GET /api/finance-dashboard/extra-expenses ──────────────────────────────────
+// ERP: wtt_module.customization.custom.rfq.get_operational_loss_details
 router.get("/finance-dashboard/extra-expenses", async (req, res) => {
-  const { project, from_date, to_date, quick } = req.query as Record<string, string>;
+  const { project = "WTT-0528", from_date, to_date } = req.query as Record<string, string>;
   try {
-    const data = await erpFetch("wtt_module.customization.custom.finance.get_extra_expenses", dateParams(project, from_date, to_date, quick));
-    if (Array.isArray(data?.message)) return ok(res, data.message);
-    throw new Error("no data");
+    const data = await erpFetch(
+      "wtt_module.customization.custom.rfq.get_operational_loss_details",
+      buildParams(project, from_date, to_date),
+    );
+    const items: any[] = Array.isArray(data?.message) ? data.message : [];
+    return ok(res, items.map(i => ({
+      date:          i.date              ?? "",
+      entry_no:      i.name              ?? "",
+      employee_name: i.responsible_person ?? "",
+      amount:        num(i.manpower_cost),
+      reason:        i.title_short_summary ?? "",
+    })));
   } catch (e: any) {
-    return errFallback(res, SAMPLE_EXTRA_EXPENSES, e);
+    console.warn("[finance-dashboard/extra-expenses]", e?.message ?? e);
+    return ok(res, []);
   }
 });
 
 // ── GET /api/finance-dashboard/salary ─────────────────────────────────────────
+// ERP: wtt_module.customization.custom.rfq.get_salary_details
 router.get("/finance-dashboard/salary", async (req, res) => {
-  const { project, from_date, to_date, quick } = req.query as Record<string, string>;
+  const { project = "WTT-0528", from_date, to_date } = req.query as Record<string, string>;
   try {
-    const data = await erpFetch("wtt_module.customization.custom.finance.get_salary", dateParams(project, from_date, to_date, quick));
-    if (Array.isArray(data?.message)) return ok(res, data.message);
-    throw new Error("no data");
+    const data = await erpFetch(
+      "wtt_module.customization.custom.rfq.get_salary_details",
+      buildParams(project, from_date, to_date),
+    );
+    const items: any[] = Array.isArray(data?.message) ? data.message : [];
+    return ok(res, items.map(i => ({
+      employee: i.employee_name ?? "",
+      salary:   num(i.rounded_total),
+    })));
   } catch (e: any) {
-    return errFallback(res, SAMPLE_SALARY, e);
+    console.warn("[finance-dashboard/salary]", e?.message ?? e);
+    return ok(res, []);
   }
 });
 
 // ── GET /api/finance-dashboard/claim ──────────────────────────────────────────
+// ERP: wtt_module.customization.custom.rfq.get_claim_request_details
 router.get("/finance-dashboard/claim", async (req, res) => {
-  const { project, from_date, to_date, quick } = req.query as Record<string, string>;
+  const { project = "WTT-0528", from_date, to_date } = req.query as Record<string, string>;
   try {
-    const data = await erpFetch("wtt_module.customization.custom.finance.get_claim", dateParams(project, from_date, to_date, quick));
-    if (Array.isArray(data?.message)) return ok(res, data.message);
-    throw new Error("no data");
+    const data = await erpFetch(
+      "wtt_module.customization.custom.rfq.get_claim_request_details",
+      buildParams(project, from_date, to_date),
+    );
+    const items: any[] = Array.isArray(data?.message) ? data.message : [];
+    return ok(res, items.map(i => ({
+      employee:     i.employee_name ?? "",
+      claim_amount: num(i.grand_total),
+    })));
   } catch (e: any) {
-    return errFallback(res, SAMPLE_CLAIM, e);
+    console.warn("[finance-dashboard/claim]", e?.message ?? e);
+    return ok(res, []);
   }
 });
 
 // ── GET /api/finance-dashboard/advance ────────────────────────────────────────
+// ERP: wtt_module.customization.custom.rfq.get_employee_advance_details
 router.get("/finance-dashboard/advance", async (req, res) => {
-  const { project, from_date, to_date, quick } = req.query as Record<string, string>;
+  const { project = "WTT-0528", from_date, to_date } = req.query as Record<string, string>;
   try {
-    const data = await erpFetch("wtt_module.customization.custom.finance.get_advance", dateParams(project, from_date, to_date, quick));
-    if (Array.isArray(data?.message)) return ok(res, data.message);
-    throw new Error("no data");
+    const data = await erpFetch(
+      "wtt_module.customization.custom.rfq.get_employee_advance_details",
+      buildParams(project, from_date, to_date),
+    );
+    const items: any[] = Array.isArray(data?.message) ? data.message : [];
+    return ok(res, items.map(i => ({
+      employee_name:   i.employee_name ?? "",
+      advanced_amount: num(i.paid_amount),
+    })));
   } catch (e: any) {
-    return errFallback(res, SAMPLE_ADVANCE, e);
+    console.warn("[finance-dashboard/advance]", e?.message ?? e);
+    return ok(res, []);
   }
 });
 

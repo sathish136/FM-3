@@ -1,0 +1,573 @@
+@app.get("/api/finance")
+async def get_finance_data():
+    return {
+        "department": "Finance",
+        "metrics": {
+            "total_expenses": 1800000,
+            "profit_margin": 28.5,
+            "operating_costs": 1200000,
+            "net_profit": 700000
+        },
+        "expense_breakdown": [
+            {"category": "Salaries", "amount": 900000},
+            {"category": "Operations", "amount": 400000},
+            {"category": "Marketing", "amount": 250000},
+            {"category": "Infrastructure", "amount": 250000}
+        ]
+    }
+
+@app.get("/api/finance/kpis")
+async def get_finance_kpis(project: str = "WTT-0528"):
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_project_financials"
+    params = {"project": project}
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, params=params, headers=headers)
+            if response.status_code != 200:
+                print(f"Finance API returned status code: {response.status_code}")
+                return {"error": "API request failed"}
+            
+            data = response.json()
+            if data.get("message"):
+                # Map API response to our KPI structure
+                message = data["message"]
+                return {
+                    "project_budget": 0,  # Not provided in API
+                    "po_cost": message.get("po_cost", 0),
+                    "pr_cost": message.get("pr_cost", 0),
+                    "other_expenses": (
+                        message.get("cash_request", 0) + 
+                        message.get("request_for_payment", 0) + 
+                        message.get("ticket_booking", 0) + 
+                        message.get("operational_loss", 0)
+                    ),
+                    "extra_expenses": message.get("operational_loss", 0),
+                    "salary": message.get("salary", 0),
+                    "cash_request": message.get("cash_request", 0),
+                    "req_payment": message.get("request_for_payment", 0),
+                    "ticket_booking": message.get("ticket_booking", 0),
+                    "petty_cash": 0,  # Not provided in API
+                    "claim": message.get("claim", 0),
+                    "advance": message.get("advance", 0)
+                }
+            return {"error": "No data in response"}
+    except Exception as e:
+        print(f"Error fetching finance KPIs: {str(e)}")
+        return {"error": str(e)}
+
+# Mock endpoints for Finance table data (since ERP doesn't provide detailed table data)
+@app.get("/api/finance/po_cost")
+async def get_finance_po_cost(project: str = "WTT-0528"):
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            # Fetch PO Cost Wise data
+            po_wise_url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_po_wise"
+            po_wise_response = await client.get(po_wise_url, params={"project": project}, headers=headers)
+            po_wise_data = po_wise_response.json().get("message", []) if po_wise_response.status_code == 200 else []
+            
+            # Fetch Supplier Wise data
+            supplier_wise_url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_supplier_wise"
+            supplier_wise_response = await client.get(supplier_wise_url, params={"project": project}, headers=headers)
+            supplier_wise_data = supplier_wise_response.json().get("message", []) if supplier_wise_response.status_code == 200 else []
+            
+            # Fetch Item Group Wise data (with project parameter)
+            item_group_wise_url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_item_group_wise"
+            item_group_wise_response = await client.get(item_group_wise_url, params={"project": project}, headers=headers)
+            print(f"Item Group Wise API Status: {item_group_wise_response.status_code}")
+            if item_group_wise_response.status_code == 200:
+                item_group_wise_json = item_group_wise_response.json()
+                print(f"Item Group Wise API Response: {item_group_wise_json}")
+                item_group_wise_data = item_group_wise_json.get("message", [])
+            else:
+                print(f"Item Group Wise API Error: {item_group_wise_response.text}")
+                item_group_wise_data = []
+            
+            # Map the data to match frontend expectations
+            result = {
+                "po_wise": [
+                    {
+                        "po_no": item.get("po_name", ""),
+                        "supplier": item.get("supplier", ""),
+                        "po_amount": item.get("total_po_cost", 0)
+                    } for item in po_wise_data
+                ],
+                "supplier_wise": [
+                    {
+                        "supplier": item.get("supplier", ""),
+                        "no_of_pos": item.get("no_of_pos", 0),
+                        "po_amount": item.get("total_amount", 0)
+                    } for item in supplier_wise_data
+                ],
+                "item_group_wise": [
+                    {
+                        "item_group": item.get("item_group", ""),
+                        "no_of_items": item.get("no_of_items", 0),
+                        "po_amount": item.get("total_amount", 0)
+                    } for item in item_group_wise_data
+                ]
+            }
+            print(f"Final PO Cost Result: {result}")
+            return result
+    except Exception as e:
+        print(f"Error fetching PO cost data: {str(e)}")
+        # Return fallback mock data on error
+        return {
+            "po_wise": [
+                {"po_no": "PO-2024-001", "supplier": "ABC Corp", "po_amount": 15000000},
+                {"po_no": "PO-2024-002", "supplier": "XYZ Ltd", "po_amount": 25000000}
+            ],
+            "supplier_wise": [
+                {"supplier": "ABC Corp", "no_of_pos": 2, "po_amount": 20000000},
+                {"supplier": "XYZ Ltd", "no_of_pos": 3, "po_amount": 30000000}
+            ],
+            "item_group_wise": [
+                {"item_group": "Equipment", "no_of_items": 5, "po_amount": 45000000},
+                {"item_group": "Materials", "no_of_items": 8, "po_amount": 30000000}
+            ]
+        }
+
+@app.get("/api/finance/pr_cost")
+async def get_finance_pr_cost(project: str = "WTT-0528"):
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            # Fetch PR Cost Wise data
+            pr_wise_url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_pr_wise"
+            pr_wise_response = await client.get(pr_wise_url, params={"project": project}, headers=headers)
+            pr_wise_data = pr_wise_response.json().get("message", []) if pr_wise_response.status_code == 200 else []
+            
+            # Fetch PR Supplier Wise data
+            pr_supplier_wise_url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_pr_supplier_wise"
+            pr_supplier_wise_response = await client.get(pr_supplier_wise_url, params={"project": project}, headers=headers)
+            pr_supplier_wise_data = pr_supplier_wise_response.json().get("message", []) if pr_supplier_wise_response.status_code == 200 else []
+            
+            # Fetch PR Item Group Wise data
+            pr_item_group_wise_url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_pr_item_group_wise"
+            pr_item_group_wise_response = await client.get(pr_item_group_wise_url, params={"project": project}, headers=headers)
+            pr_item_group_wise_data = pr_item_group_wise_response.json().get("message", []) if pr_item_group_wise_response.status_code == 200 else []
+            
+            # Map the data to match frontend expectations
+            return {
+                "pr_wise": [
+                    {
+                        "pr_no": item.get("pr_name", ""),
+                        "supplier": item.get("supplier", ""),
+                        "pr_amount": item.get("total_pr_cost", 0)
+                    } for item in pr_wise_data
+                ],
+                "supplier_wise": [
+                    {
+                        "supplier": item.get("supplier", ""),
+                        "no_of_prs": item.get("no_of_prs", 0),
+                        "pr_amount": item.get("total_amount", 0)
+                    } for item in pr_supplier_wise_data
+                ],
+                "item_group_wise": [
+                    {
+                        "item_group": item.get("item_group", ""),
+                        "no_of_items": item.get("no_of_items", 0),
+                        "pr_amount": item.get("total_amount", 0)
+                    } for item in pr_item_group_wise_data
+                ]
+            }
+    except Exception as e:
+        print(f"Error fetching PR cost data: {str(e)}")
+        # Return fallback mock data on error
+        return {
+            "pr_wise": [
+                {"pr_no": "PR-2024-001", "supplier": "ABC Corp", "pr_amount": 12000000},
+                {"pr_no": "PR-2024-002", "supplier": "XYZ Ltd", "pr_amount": 20181640.03}
+            ],
+            "supplier_wise": [
+                {"supplier": "ABC Corp", "no_of_prs": 2, "pr_amount": 15000000},
+                {"supplier": "XYZ Ltd", "no_of_prs": 3, "pr_amount": 17181640.03}
+            ],
+            "item_group_wise": [
+                {"item_group": "Equipment", "no_of_items": 5, "pr_amount": 20000000},
+                {"item_group": "Materials", "no_of_items": 8, "pr_amount": 12181640.03}
+            ]
+        }
+
+@app.get("/api/finance/cash_request")
+async def get_finance_cash_request(project: str = "WTT-0528", from_date: str = None, to_date: str = None):
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_cash_request"
+    params = {"project": project}
+    if from_date:
+        params["from_date"] = from_date
+    if to_date:
+        params["to_date"] = to_date
+    
+    print(f"=== CASH REQUEST API DEBUG ===")
+    print(f"URL: {url}")
+    print(f"Params: {params}")
+    
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, params=params, headers=headers)
+            print(f"Response Status: {response.status_code}")
+            
+            if response.status_code != 200:
+                print(f"Error Response Text: {response.text}")
+                return []
+            
+            data = response.json()
+            print(f"Parsed JSON: {data}")
+            
+            message = data.get("message", [])
+            print(f"Message field: {message}")
+            print(f"Message type: {type(message)}")
+            print(f"Message length: {len(message) if isinstance(message, list) else 'Not a list'}")
+            
+            if message and len(message) > 0:
+                print(f"First cash request item: {message[0]}")
+                print(f"First cash request item keys: {list(message[0].keys()) if isinstance(message[0], dict) else 'Not a dict'}")
+            
+            # Map API response to frontend expected format with comprehensive field mapping
+            result = []
+            for item in message:
+                print(f"Processing cash request item: {item}")
+                
+                # Try multiple possible field names for each field
+                date_value = (
+                    item.get("transaction_date") or 
+                    item.get("date") or 
+                    item.get("posting_date") or
+                    item.get("creation") or
+                    ""
+                )
+                
+                entry_no_value = (
+                    item.get("name") or 
+                    item.get("entry_no") or 
+                    item.get("document_no") or
+                    ""
+                )
+                
+                remarks_value = (
+                    item.get("remarks") or 
+                    item.get("description") or 
+                    item.get("purpose") or
+                    item.get("cash_purpose") or
+                    ""
+                )
+                
+                created_by_value = (
+                    item.get("created_by") or 
+                    item.get("owner") or 
+                    item.get("employee") or
+                    item.get("employee_name") or
+                    "System"
+                )
+                
+                amount_value = (
+                    item.get("total") or 
+                    item.get("amount") or 
+                    item.get("grand_total") or
+                    item.get("net_total") or
+                    0
+                )
+                
+                approved_by_value = (
+                    item.get("workflow_state") or 
+                    item.get("approved_by") or 
+                    item.get("status") or
+                    item.get("docstatus") or
+                    ""
+                )
+                
+                # Convert amount to number if it's a string
+                if isinstance(amount_value, str):
+                    try:
+                        amount_value = float(amount_value)
+                    except (ValueError, TypeError):
+                        amount_value = 0
+                
+                result.append({
+                    "date": date_value,
+                    "entry_no": entry_no_value,
+                    "remarks": remarks_value,
+                    "created_by": created_by_value,
+                    "amount": amount_value,
+                    "approved_by": approved_by_value
+                })
+                
+                print(f"Mapped cash request item: {result[-1]}")
+            
+            print(f"Final mapped result: {result}")
+            print(f"=== END CASH REQUEST DEBUG ===")
+            return result
+            
+    except Exception as e:
+        print(f"Exception in cash_request: {str(e)}")
+        return []
+
+@app.get("/api/finance/req_payment")
+async def get_finance_req_payment(project: str = "WTT-0528", from_date: str = None, to_date: str = None):
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_request_for_payment"
+    params = {"project": project}
+    if from_date:
+        params["from_date"] = from_date
+    if to_date:
+        params["to_date"] = to_date
+    
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, params=params, headers=headers)
+            print(f"Request for Payment API Status: {response.status_code}")
+            print(f"Request for Payment API Params: {params}")
+            
+            if response.status_code != 200:
+                print(f"Request for Payment API Error: {response.text}")
+                return []
+            
+            data = response.json()
+            print(f"Request for Payment API Response: {data}")
+            req_payments = data.get("message", [])
+            
+            # Map API response to frontend expected format
+            result = [
+                {
+                    "date": item.get("date", ""),
+                    "entry_no": item.get("name", ""),
+                    "remarks": item.get("remarks", ""),
+                    "created_by": "Finance",  # Default value
+                    "amount": item.get("total", 0),
+                    "approved_by": item.get("workflow_state", "")
+                } for item in req_payments
+            ]
+            
+            print(f"Mapped Request for Payment Result: {result}")
+            return result
+            
+    except Exception as e:
+        print(f"Error fetching request for payment data: {str(e)}")
+        return [
+            {"date": "2024-01-15", "entry_no": "RP-001", "remarks": "Major vendor payment", "created_by": "Finance", "amount": 50000000, "approved_by": "CFO"},
+            {"date": "2024-01-20", "entry_no": "RP-002", "remarks": "Equipment payment", "created_by": "Procurement", "amount": 75000000, "approved_by": "CFO"},
+            {"date": "2024-01-25", "entry_no": "RP-003", "remarks": "Service payment", "created_by": "Finance", "amount": 33584058.51, "approved_by": "Manager"}
+        ]
+
+@app.get("/api/finance/ticket_booking")
+async def get_finance_ticket_booking(project: str = "WTT-0528", from_date: str = None, to_date: str = None):
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_ticket_booking_details"
+    params = {"project": project}
+    if from_date:
+        params["from_date"] = from_date
+    if to_date:
+        params["to_date"] = to_date
+    
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, params=params, headers=headers)
+            print(f"Ticket Booking API Status: {response.status_code}")
+            print(f"Ticket Booking API Params: {params}")
+            
+            if response.status_code != 200:
+                print(f"Ticket Booking API Error: {response.text}")
+                return []
+            
+            data = response.json()
+            print(f"Ticket Booking API Response: {data}")
+            ticket_bookings = data.get("message", [])
+            
+            # Map API response to frontend expected format
+            result = [
+                {
+                    "date": item.get("travel_date", ""),
+                    "entry_no": item.get("name", ""),
+                    "employee_name": item.get("employee_name", ""),
+                    "amount": item.get("fare", 0),
+                    "reason": item.get("other_details", "")
+                } for item in ticket_bookings
+            ]
+            
+            print(f"Mapped Ticket Booking Result: {result}")
+            return result
+            
+    except Exception as e:
+        print(f"Error fetching ticket booking data: {str(e)}")
+        return []
+
+@app.get("/api/finance/petty_cash")
+async def get_finance_petty_cash():
+    return []
+
+@app.get("/api/finance/extra_expenses")
+async def get_finance_extra_expenses(project: str = "WTT-0528", from_date: str = None, to_date: str = None):
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_operational_loss_details"
+    params = {"project": project}
+    if from_date:
+        params["from_date"] = from_date
+    if to_date:
+        params["to_date"] = to_date
+    
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, params=params, headers=headers)
+            print(f"Extra Expenses API Status: {response.status_code}")
+            print(f"Extra Expenses API Params: {params}")
+            
+            if response.status_code != 200:
+                print(f"Extra Expenses API Error: {response.text}")
+                return []
+            
+            data = response.json()
+            print(f"Extra Expenses API Response: {data}")
+            extra_expenses = data.get("message", [])
+            
+            # Map API response to frontend expected format
+            result = [
+                {
+                    "date": item.get("date", ""),
+                    "entry_no": item.get("name", ""),
+                    "employee_name": item.get("responsible_person", ""),
+                    "amount": item.get("manpower_cost", 0),
+                    "reason": item.get("title_short_summary", "")
+                } for item in extra_expenses
+            ]
+            
+            print(f"Mapped Extra Expenses Result: {result}")
+            return result
+            
+    except Exception as e:
+        print(f"Error fetching extra expenses data: {str(e)}")
+        return []
+
+@app.get("/api/finance/salary")
+async def get_finance_salary(project: str = "WTT-0528", from_date: str = None, to_date: str = None):
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_salary_details"
+    params = {"project": project}
+    if from_date:
+        params["from_date"] = from_date
+    if to_date:
+        params["to_date"] = to_date
+    
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, params=params, headers=headers)
+            print(f"Salary API Status: {response.status_code}")
+            print(f"Salary API Params: {params}")
+            
+            if response.status_code != 200:
+                print(f"Salary API Error: {response.text}")
+                return []
+            
+            data = response.json()
+            print(f"Salary API Response: {data}")
+            salaries = data.get("message", [])
+            
+            # Map API response to frontend expected format using correct field names
+            result = []
+            for item in salaries:
+                employee_name = item.get("employee_name", "Unknown Employee")
+                salary_amount = item.get("rounded_total", 0)
+                
+                # Convert to number if it's a string
+                if isinstance(salary_amount, str):
+                    try:
+                        salary_amount = float(salary_amount)
+                    except (ValueError, TypeError):
+                        salary_amount = 0
+                
+                result.append({
+                    "employee": employee_name,
+                    "salary": salary_amount
+                })
+            
+            print(f"Mapped Salary Result: {result}")
+            return result
+            
+    except Exception as e:
+        print(f"Error fetching salary data: {str(e)}")
+        return []
+
+@app.get("/api/finance/claim")
+async def get_finance_claim(project: str = "WTT-0528", from_date: str = None, to_date: str = None):
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_claim_request_details"
+    params = {"project": project}
+    if from_date:
+        params["from_date"] = from_date
+    if to_date:
+        params["to_date"] = to_date
+    
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, params=params, headers=headers)
+            print(f"Claim API Status: {response.status_code}")
+            print(f"Claim API Params: {params}")
+            
+            if response.status_code != 200:
+                print(f"Claim API Error: {response.text}")
+                return []
+            
+            data = response.json()
+            print(f"Claim API Response: {data}")
+            claims = data.get("message", [])
+            
+            # Map API response to frontend expected format
+            result = [
+                {
+                    "employee": item.get("employee_name", ""),
+                    "claim_amount": item.get("grand_total", 0)
+                } for item in claims
+            ]
+            
+            print(f"Mapped Claim Result: {result}")
+            return result
+            
+    except Exception as e:
+        print(f"Error fetching claim data: {str(e)}")
+        return [
+            {"employee": "John Doe", "claim_amount": 850000},
+            {"employee": "Jane Smith", "claim_amount": 1255385.075}
+        ]
+
+@app.get("/api/finance/advance")
+async def get_finance_advance(project: str = "WTT-0528", from_date: str = None, to_date: str = None):
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_employee_advance_details"
+    params = {"project": project}
+    if from_date:
+        params["from_date"] = from_date
+    if to_date:
+        params["to_date"] = to_date
+    
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, params=params, headers=headers)
+            print(f"Advance API Status: {response.status_code}")
+            print(f"Advance API Params: {params}")
+            
+            if response.status_code != 200:
+                print(f"Advance API Error: {response.text}")
+                return []
+            
+            data = response.json()
+            print(f"Advance API Response: {data}")
+            advances = data.get("message", [])
+            
+            # Map API response to frontend expected format
+            result = [
+                {
+                    "employee_name": item.get("employee_name", ""),
+                    "advanced_amount": item.get("paid_amount", 0)
+                } for item in advances
+            ]
+            
+            print(f"Mapped Advance Result: {result}")
+            return result
+            
+    except Exception as e:
+        print(f"Error fetching advance data: {str(e)}")
+        return [
+            {"employee_name": "Project Manager", "advanced_amount": 500000},
+            {"employee_name": "Site Engineer", "advanced_amount": 440199}
+        ]
