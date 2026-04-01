@@ -120,7 +120,7 @@ function StatCard({ icon: Icon, label, value, sub, color, bg }: {
 }
 
 // ── Compact Employee Card ─────────────────────────────────────────────────────
-function EmployeeCard({ emp }: { emp: EmployeeWithTask }) {
+function EmployeeCard({ emp, onSheetClick }: { emp: EmployeeWithTask; onSheetClick: (sheet: string) => void }) {
   const [accentHex] = avatarColor(emp.employee_name);
   const uc = utilColor(emp.utilization);
   const isActive = emp.today_hours > 0;
@@ -266,7 +266,7 @@ function EmployeeCard({ emp }: { emp: EmployeeWithTask }) {
             </div>
           );
           return erpUrl
-            ? <a href={erpUrl} target="_blank" rel="noopener noreferrer" className="block">{inner}</a>
+            ? <button onClick={() => onSheetClick(emp.current_activity_sheet!)} className="block w-full text-left">{inner}</button>
             : inner;
         })()}
       </div>
@@ -277,7 +277,7 @@ function EmployeeCard({ emp }: { emp: EmployeeWithTask }) {
 // ── Table View ────────────────────────────────────────────────────────────────
 type SortKey = "employee_name" | "department" | "week_hours" | "utilization" | "avg_hrs_day" | "today_hours" | "task_completion_rate" | "task_total";
 
-function TableView({ employees }: { employees: EmployeeWithTask[] }) {
+function TableView({ employees, onSheetClick }: { employees: EmployeeWithTask[]; onSheetClick: (sheet: string) => void }) {
   const [sortKey, setSortKey] = useState<SortKey>("week_hours");
   const [sortAsc, setSortAsc] = useState(false);
   const sorted = [...employees].sort((a, b) => {
@@ -410,7 +410,7 @@ function TableView({ employees }: { employees: EmployeeWithTask[] }) {
                         </div>
                       );
                       return erpUrl
-                        ? <a href={erpUrl} target="_blank" rel="noopener noreferrer" className="block">{cell}</a>
+                        ? <button onClick={() => onSheetClick(emp.current_activity_sheet!)} className="block w-full text-left">{cell}</button>
                         : cell;
                     })() : <span className="text-gray-300 text-[10px]">—</span>}
                   </td>
@@ -678,6 +678,7 @@ export default function TeamPerformanceDashboard() {
   const [empFilter, setEmpFilter] = useState(initialEmployee);
   const [view, setView] = useState<"cards" | "table">(initialEmployee ? "table" : "cards");
   const [lastRefresh, setLastRefresh] = useState(new Date());
+  const [selectedSheet, setSelectedSheet] = useState<string | null>(null);
 
   const loadTaskPerf = useCallback(async (from: string, to: string) => {
     try {
@@ -914,14 +915,17 @@ export default function TeamPerformanceDashboard() {
             <ChartView employees={employees} />
             {view === "cards" ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
-                {employees.map(emp => <EmployeeCard key={emp.employee_name + emp.employee_id} emp={emp} />)}
+                {employees.map(emp => <EmployeeCard key={emp.employee_name + emp.employee_id} emp={emp} onSheetClick={setSelectedSheet} />)}
               </div>
             ) : (
-              <TableView employees={employees} />
+              <TableView employees={employees} onSheetClick={setSelectedSheet} />
             )}
           </div>
         )}
       </div>
+      {selectedSheet && (
+        <ActivitySheetModal sheetName={selectedSheet} onClose={() => setSelectedSheet(null)} />
+      )}
     </Layout>
   );
 }
