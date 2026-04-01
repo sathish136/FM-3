@@ -26,6 +26,7 @@ import cctvRouter from "./cctv";
 import calendarRouter from "./calendar";
 import notificationsRouter from "./notifications";
 import performanceRouter from "./performance";
+import dailyReportingRouter from "./daily-reporting";
 
 const router: IRouter = Router();
 
@@ -56,5 +57,6 @@ router.use("/cctv", cctvRouter);
 router.use(calendarRouter);
 router.use(notificationsRouter);
 router.use(performanceRouter);
+router.use(dailyReportingRouter);
 
 export default router;
