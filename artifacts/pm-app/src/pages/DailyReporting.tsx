@@ -464,7 +464,7 @@ export default function DailyReporting() {
       const r = await fetch(`${API_BASE}/daily-reporting?${params}`);
       if (!r.ok) { const e = await r.json(); throw new Error(e.error || "Failed"); }
       const data = await r.json();
-      const rows: ReportSummary[] = (data.reports || []).filter((r: ReportSummary) => isAllowedEmployee(r.employee_name || r.employee || ""));
+      const rows: ReportSummary[] = data.reports || [];
       setHasMore(!!data.hasMore);
       setReports(rows);
       setPage(p);
