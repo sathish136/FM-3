@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Search, Mic, MicOff, X, Send, Bot, Loader2, Download, FileText, Calendar, Copy, Check, Sparkles, RefreshCw } from "lucide-react";
+import { Search, Mic, MicOff, X, Send, Bot, Loader2, Download, FileText, Calendar, Copy, Check, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -65,7 +65,7 @@ const MODULE_HINTS: Record<string, string> = {
 const QUICK_ACTIONS = [
   { label: "Generate PDF Report", prompt: "Generate a comprehensive project status report that I can export as PDF. Include executive summary, key milestones, risks, and next steps.", icon: FileText },
   { label: "Create Timeline", prompt: "Create a detailed project timeline with milestones, tasks, and deadlines for a typical 6-month engineering project.", icon: Calendar },
-  { label: "Summarize Module", prompt: "Explain what this module does and give me a quick-start guide for using it effectively.", icon: Sparkles },
+  { label: "Summarize Module", prompt: "Explain what this module does and give me a quick-start guide for using it effectively.", icon: Bot },
 ];
 
 function detectType(content: string): MessageType {
@@ -436,7 +436,7 @@ export function AISearch({ currentPath, forceOpen, hideTriggerOnMobile }: { curr
           "bg-gray-50 border-gray-200 text-gray-500 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600",
           hideTriggerOnMobile && "hidden md:flex"
         )}
-        title="Ask AI"
+        title="AI Search"
       >
         <Bot className="w-3.5 h-3.5" />
         <span className="hidden sm:inline">Ask AI</span>
@@ -444,19 +444,17 @@ export function AISearch({ currentPath, forceOpen, hideTriggerOnMobile }: { curr
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-start pt-10 px-4">
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setOpen(false)} />
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-start pt-14 px-4">
+          <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setOpen(false)} />
           <div
             className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden z-10"
-            style={{ maxHeight: "calc(100vh - 60px)" }}
+            style={{ maxHeight: "calc(100vh - 80px)" }}
           >
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-blue-600 to-indigo-600 shrink-0">
-              <div className="w-7 h-7 rounded-xl bg-white/20 flex items-center justify-center">
-                <Sparkles className="w-4 h-4 text-white" />
-              </div>
-              <span className="text-sm font-bold text-white">FlowAI</span>
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50 shrink-0">
+              <Bot className="w-4 h-4 text-blue-600 shrink-0" />
+              <span className="text-sm font-semibold text-gray-800">AI Assistant</span>
               {moduleLabel && (
-                <span className="text-xs bg-white/20 text-white px-2 py-0.5 rounded-full font-medium ml-0.5">
+                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium ml-1">
                   {moduleLabel}
                 </span>
               )}
@@ -464,14 +462,14 @@ export function AISearch({ currentPath, forceOpen, hideTriggerOnMobile }: { curr
                 {messages.length > 0 && (
                   <button
                     onClick={clearChat}
-                    className="text-xs text-white/70 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition-colors flex items-center gap-1"
+                    className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-white/60 transition-colors flex items-center gap-1"
                   >
-                    <RefreshCw className="w-3 h-3" /> New chat
+                    <RefreshCw className="w-3 h-3" /> Clear
                   </button>
                 )}
                 <button
                   onClick={() => setOpen(false)}
-                  className="p-1 rounded hover:bg-white/10 text-white/70 hover:text-white transition-colors"
+                  className="p-1 rounded hover:bg-white/60 text-gray-400 hover:text-gray-600 transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -479,15 +477,17 @@ export function AISearch({ currentPath, forceOpen, hideTriggerOnMobile }: { curr
             </div>
 
             {messages.length === 0 && !loading && (
-              <div className="flex flex-col items-center justify-center py-8 text-center px-6 shrink-0">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center mb-3 shadow-sm">
-                  <Sparkles className="w-7 h-7 text-blue-600" />
+              <div className="flex flex-col items-center justify-center py-10 text-center px-6 shrink-0">
+                <div className="w-12 h-12 rounded-2xl bg-blue-100 flex items-center justify-center mb-3">
+                  <Bot className="w-6 h-6 text-blue-600" />
                 </div>
-                <p className="text-base font-semibold text-gray-800 mb-1">
-                  {moduleLabel ? `Hi! I'm FlowAI — your assistant for ${moduleLabel}` : "Hi! I'm FlowAI — ask me anything"}
+                <p className="text-sm font-medium text-gray-700 mb-1">
+                  {moduleLabel ? `Ask me anything about ${moduleLabel}` : "How can I help you?"}
                 </p>
                 <p className="text-xs text-gray-400 mb-4">
-                  I can answer questions, generate reports, create timelines, write documents, and more
+                  {moduleHint
+                    ? `You're on: ${moduleHint}`
+                    : "Ask questions, generate reports, create timelines, or anything work-related."}
                 </p>
 
                 <div className="flex gap-2 mb-4 w-full justify-center flex-wrap">
@@ -508,7 +508,7 @@ export function AISearch({ currentPath, forceOpen, hideTriggerOnMobile }: { curr
                     <button
                       key={s}
                       onClick={() => sendQuery(s)}
-                      className="text-xs px-3 py-1.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors border border-gray-200"
+                      className="text-xs px-3 py-1.5 rounded-full bg-gray-100 hover:bg-blue-100 hover:text-blue-700 text-gray-600 transition-colors border border-gray-200"
                     >
                       {s}
                     </button>
@@ -518,7 +518,7 @@ export function AISearch({ currentPath, forceOpen, hideTriggerOnMobile }: { curr
             )}
 
             {(messages.length > 0 || loading) && (
-              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 min-h-0">
+              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-0" style={{ maxHeight: "50vh" }}>
                 {messages.map((msg, i) => {
                   const isUser = msg.role === "user";
                   const cleaned = cleanContent(msg.content);
@@ -527,10 +527,10 @@ export function AISearch({ currentPath, forceOpen, hideTriggerOnMobile }: { curr
                   return (
                     <div key={i} className={cn("flex gap-2.5", isUser ? "flex-row-reverse" : "flex-row")}>
                       <div className={cn(
-                        "w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold mt-0.5",
-                        isUser ? "bg-blue-600 text-white" : "bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-700"
+                        "w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-xs font-bold mt-0.5",
+                        isUser ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600"
                       )}>
-                        {isUser ? "U" : <Sparkles className="w-3.5 h-3.5" />}
+                        {isUser ? "U" : <Bot className="w-3.5 h-3.5" />}
                       </div>
 
                       <div className={cn("flex flex-col gap-1.5", isUser ? "items-end" : "items-start", "max-w-[85%]")}>
@@ -539,11 +539,11 @@ export function AISearch({ currentPath, forceOpen, hideTriggerOnMobile }: { curr
                             {msg.content}
                           </div>
                         ) : (
-                          <div className="bg-gray-50 border border-gray-100 rounded-2xl rounded-tl-sm px-4 py-3 w-full">
+                          <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-3.5 py-2.5 w-full">
                             {!cleaned && loading && i === messages.length - 1 ? (
                               <div className="flex items-center gap-2">
                                 <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin" />
-                                <span className="text-xs text-gray-400">Thinking…</span>
+                                <span className="text-xs text-gray-500">Thinking…</span>
                               </div>
                             ) : msgType === "timeline" ? (
                               <>
@@ -566,7 +566,7 @@ export function AISearch({ currentPath, forceOpen, hideTriggerOnMobile }: { curr
                                   {copiedIndex === i ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
                                   {copiedIndex === i ? "Copied" : "Copy"}
                                 </button>
-                                {(msgType === "report" || msgType === "timeline" || cleaned.length > 300) && (
+                                {msgType === "report" && (
                                   <button
                                     onClick={() => exportToPDF(msg.content)}
                                     className="flex items-center gap-1 text-[10px] text-blue-500 hover:text-blue-700 px-1.5 py-0.5 rounded hover:bg-blue-50 transition-colors"
@@ -586,12 +586,12 @@ export function AISearch({ currentPath, forceOpen, hideTriggerOnMobile }: { curr
 
                 {loading && messages[messages.length - 1]?.role !== "assistant" && (
                   <div className="flex gap-2.5 flex-row">
-                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center shrink-0 mt-0.5">
-                      <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                    <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center shrink-0 mt-0.5">
+                      <Bot className="w-3.5 h-3.5 text-gray-500" />
                     </div>
-                    <div className="bg-gray-50 border border-gray-100 rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-1.5">
+                    <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-3.5 py-2.5 flex items-center gap-1.5">
                       <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin" />
-                      <span className="text-xs text-gray-400">Thinking…</span>
+                      <span className="text-xs text-gray-500">Thinking…</span>
                     </div>
                   </div>
                 )}
@@ -617,7 +617,7 @@ export function AISearch({ currentPath, forceOpen, hideTriggerOnMobile }: { curr
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder={moduleLabel ? `Ask FlowAI about ${moduleLabel}…` : "Ask anything — reports, timelines, questions…"}
+                  placeholder={moduleLabel ? `Ask about ${moduleLabel}…` : "Type your question or use the mic…"}
                   className="flex-1 text-sm outline-none bg-transparent text-gray-800 placeholder:text-gray-400"
                   disabled={loading}
                 />
@@ -650,9 +650,7 @@ export function AISearch({ currentPath, forceOpen, hideTriggerOnMobile }: { curr
                   </button>
                 )}
               </div>
-              <p className="text-[10px] text-gray-400 text-center mt-1.5">
-                FlowAI · GPT-4o · Enter to send · Esc to close
-              </p>
+              <p className="text-[10px] text-gray-400 text-center mt-1.5">Press Enter to send · Esc to close</p>
             </div>
           </div>
         </div>
