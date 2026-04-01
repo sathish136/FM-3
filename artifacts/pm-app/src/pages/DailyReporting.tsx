@@ -8,7 +8,6 @@ import {
 import { cn } from "@/lib/utils";
 
 const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "").replace("/pm-app", "") + "/api";
-const WHATSAPP_NUMBER = "919698109426";
 
 // ─── Allowed employees (display name → used for matching) ────────────────────
 const ALLOWED_EMPLOYEES = [
@@ -82,37 +81,6 @@ function deptShort(dept: string) {
   return (dept || "").replace(/ - WTT$/i, "").replace(/ - wtt$/i, "");
 }
 function todayISO() { return new Date().toISOString().split("T")[0]; }
-
-// ─── Build WhatsApp message from report ──────────────────────────────────────
-function buildWhatsAppText(report: ReportDetail): string {
-  const lines: string[] = [
-    `📋 *Daily Report*`,
-    `👤 *${report.employee_name || report.employee}*`,
-  ];
-  if (report.department) lines.push(`🏢 ${deptShort(report.department)}`);
-  if (report.date) lines.push(`📅 ${fmtDate(report.date)}`);
-  lines.push(`📌 Status: ${report.status || "Draft"}`);
-  lines.push("");
-
-  const SKIP = new Set(["doctype","idx","docstatus","__islocal","__unsaved","owner","__last_sync_on","name","employee","employee_name","department","date","status","modified","modified_by","creation","amended_from"]);
-
-  // Scalar fields
-  const scalars = Object.entries(report).filter(([k, v]) => !SKIP.has(k) && !Array.isArray(v) && v !== null && v !== "" && v !== 0);
-  scalars.forEach(([k, v]) => lines.push(`*${k.replace(/_/g, " ")}:* ${v}`));
-
-  // Child table rows
-  Object.entries(report).filter(([, v]) => Array.isArray(v) && (v as any[]).length > 0).forEach(([key, rows]) => {
-    lines.push(""); lines.push(`*${key.replace(/_/g, " ").toUpperCase()}*`);
-    (rows as any[]).forEach((row, i) => {
-      lines.push(`${i + 1}.`);
-      Object.entries(row).filter(([k, v]) => !SKIP.has(k) && v !== null && v !== "" && v !== 0 && !["name","parent","parenttype","parentfield","doctype","idx"].includes(k))
-        .forEach(([k, v]) => lines.push(`  • ${k.replace(/_/g, " ")}: ${v}`));
-    });
-  });
-
-  lines.push(""); lines.push(`_Sent from FlowMatriX_`);
-  return lines.join("\n");
-}
 
 // ─── Detail Modal ─────────────────────────────────────────────────────────────
 function ReportDetailModal({ name, onClose }: { name: string; onClose: () => void }) {
