@@ -55,6 +55,7 @@ import MisReport from "@/pages/MisReport";
 import CCTV from "@/pages/CCTV";
 import CalendarPage from "@/pages/Calendar";
 import EmployeePerformance from "@/pages/EmployeePerformance";
+import TeamPerformanceDashboard from "@/pages/TeamPerformanceDashboard";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -191,6 +192,7 @@ function ProtectedRoutes() {
       <Route path="/cctv" component={CCTV} />
       <Route path="/calendar" component={CalendarPage} />
       <Route path="/hrms/performance" component={EmployeePerformance} />
+      <Route path="/hrms/team-performance" component={TeamPerformanceDashboard} />
       <Route component={NotFound} />
     </Switch>
   );

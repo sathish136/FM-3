@@ -259,7 +259,8 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { path: "/hrms/recruitment",   label: "Recruitment",    icon: UserPlus,      color: "text-blue-400",    bgColor: "bg-blue-500/15" },
       { path: "/hrms/incidents",     label: "HR Incidents",   icon: AlertTriangle, color: "text-rose-400",    bgColor: "bg-rose-500/15" },
       { path: "/hrms/analytics",    label: "HR Analytics",   icon: BarChart3,     color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
-      { path: "/hrms/performance",  label: "Performance",    icon: TrendingUp,    color: "text-cyan-400",    bgColor: "bg-cyan-500/15" },
+      { path: "/hrms/performance",       label: "Performance",     icon: TrendingUp,  color: "text-cyan-400",    bgColor: "bg-cyan-500/15" },
+      { path: "/hrms/team-performance",  label: "Team Dashboard",  icon: Activity,    color: "text-pink-400",    bgColor: "bg-pink-500/15" },
     ],
   },
   {

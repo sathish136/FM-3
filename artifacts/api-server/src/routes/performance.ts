@@ -254,6 +254,147 @@ router.delete("/performance/allocations/:id", async (req, res) => {
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
+// ─── Team Performance Dashboard ───────────────────────────────────────────────
+
+router.get("/performance/team-dashboard", async (req, res) => {
+  try {
+    const { department, from, to } = req.query as Record<string, string>;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const weekStart = from || (() => {
+      const d = new Date();
+      const day = d.getDay();
+      d.setDate(d.getDate() - ((day === 0 ? 7 : day) - 1));
+      return d.toISOString().slice(0, 10);
+    })();
+    const weekEnd = to || today;
+
+    const deptCondition = department ? `AND department ILIKE $1` : "";
+    const deptParams: unknown[] = department ? [`%${department}%`] : [];
+
+    // Today's hours per employee
+    const { rows: todayRows } = await pool.query(`
+      SELECT employee_name, employee_email, department,
+             SUM(hours::numeric) AS today_hours,
+             SUM(idle_hours::numeric) AS today_idle,
+             COUNT(DISTINCT task_title) AS today_tasks,
+             STRING_AGG(DISTINCT task_title, ', ') AS today_task_names
+      FROM timesheet_entries
+      WHERE date = '${today}' ${deptCondition}
+      GROUP BY employee_name, employee_email, department
+    `, deptParams);
+
+    // Weekly hours per employee
+    const { rows: weekRows } = await pool.query(`
+      SELECT employee_name,
+             SUM(hours::numeric) AS week_hours,
+             SUM(idle_hours::numeric) AS week_idle,
+             COUNT(DISTINCT date) AS working_days,
+             COUNT(DISTINCT task_title) AS unique_tasks
+      FROM timesheet_entries
+      WHERE date BETWEEN '${weekStart}' AND '${weekEnd}' ${deptCondition}
+      GROUP BY employee_name
+    `, deptParams);
+
+    // Task allocations (current / in-progress tasks)
+    const { rows: allocRows } = await pool.query(`
+      SELECT employee_name, employee_email, department,
+             task_title, project, priority, status
+      FROM task_allocations
+      WHERE status IN ('assigned','in-progress') ${deptCondition}
+      ORDER BY created_at DESC
+    `, deptParams);
+
+    // Merge
+    const empMap: Record<string, {
+      employee_name: string; employee_email: string; department: string;
+      today_hours: number; today_idle: number; today_tasks: number; today_task_names: string;
+      week_hours: number; week_idle: number; working_days: number; unique_tasks: number;
+      current_task: string; current_project: string; current_priority: string; alloc_status: string;
+    }> = {};
+
+    for (const r of todayRows) {
+      empMap[r.employee_name] = {
+        employee_name: r.employee_name,
+        employee_email: r.employee_email,
+        department: r.department,
+        today_hours: parseFloat(r.today_hours) || 0,
+        today_idle: parseFloat(r.today_idle) || 0,
+        today_tasks: parseInt(r.today_tasks) || 0,
+        today_task_names: r.today_task_names || "",
+        week_hours: 0, week_idle: 0, working_days: 0, unique_tasks: 0,
+        current_task: "", current_project: "", current_priority: "", alloc_status: "idle",
+      };
+    }
+
+    for (const r of weekRows) {
+      if (!empMap[r.employee_name]) {
+        empMap[r.employee_name] = {
+          employee_name: r.employee_name, employee_email: "", department: "",
+          today_hours: 0, today_idle: 0, today_tasks: 0, today_task_names: "",
+          week_hours: 0, week_idle: 0, working_days: 0, unique_tasks: 0,
+          current_task: "", current_project: "", current_priority: "", alloc_status: "idle",
+        };
+      }
+      empMap[r.employee_name].week_hours = parseFloat(r.week_hours) || 0;
+      empMap[r.employee_name].week_idle = parseFloat(r.week_idle) || 0;
+      empMap[r.employee_name].working_days = parseInt(r.working_days) || 0;
+      empMap[r.employee_name].unique_tasks = parseInt(r.unique_tasks) || 0;
+    }
+
+    // Attach current allocation (most recent per employee)
+    const seenAlloc = new Set<string>();
+    for (const a of allocRows) {
+      if (!seenAlloc.has(a.employee_name)) {
+        seenAlloc.add(a.employee_name);
+        if (!empMap[a.employee_name]) {
+          empMap[a.employee_name] = {
+            employee_name: a.employee_name, employee_email: a.employee_email,
+            department: a.department,
+            today_hours: 0, today_idle: 0, today_tasks: 0, today_task_names: "",
+            week_hours: 0, week_idle: 0, working_days: 0, unique_tasks: 0,
+            current_task: "", current_project: "", current_priority: "", alloc_status: "idle",
+          };
+        }
+        empMap[a.employee_name].current_task = a.task_title;
+        empMap[a.employee_name].current_project = a.project;
+        empMap[a.employee_name].current_priority = a.priority;
+        empMap[a.employee_name].alloc_status = a.status;
+        if (!empMap[a.employee_name].department) empMap[a.employee_name].department = a.department;
+        if (!empMap[a.employee_name].employee_email) empMap[a.employee_name].employee_email = a.employee_email;
+      }
+    }
+
+    const employees = Object.values(empMap).map((e) => {
+      const utilization = e.week_hours > 0
+        ? Math.min(Math.round((e.week_hours / Math.max(e.working_days, 1) / 8) * 100), 100)
+        : 0;
+      const live_status = e.alloc_status === "in-progress" ? "Running" :
+        e.today_hours > 0 ? "Idle" : "Idle";
+      return { ...e, utilization, live_status };
+    });
+
+    // Departments list
+    const { rows: deptListRows } = await pool.query(`
+      SELECT DISTINCT department FROM timesheet_entries WHERE department != '' ORDER BY department
+    `);
+
+    const summary = {
+      total_employees: employees.length,
+      running: employees.filter(e => e.alloc_status === "in-progress").length,
+      idle: employees.filter(e => e.alloc_status !== "in-progress" && e.today_hours === 0).length,
+      active: employees.filter(e => e.today_hours > 0).length,
+      avg_utilization: employees.length
+        ? Math.round(employees.reduce((s, e) => s + e.utilization, 0) / employees.length)
+        : 0,
+      total_logged_hrs: Math.round(employees.reduce((s, e) => s + e.week_hours, 0) * 10) / 10,
+      total_idle_hrs: Math.round(employees.reduce((s, e) => s + e.week_idle, 0) * 10) / 10,
+    };
+
+    res.json({ employees, departments: deptListRows.map(r => r.department), summary });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
 // ─── Python Agent Download ────────────────────────────────────────────────────
 
 router.get("/performance/agent-script", (req, res) => {
