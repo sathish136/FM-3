@@ -6,11 +6,13 @@ import {
 import {
   Users, RefreshCw, LayoutGrid, List, Clock, TrendingUp,
   Briefcase, ChevronDown, ChevronUp, Minus, ExternalLink,
+  CheckCircle2, AlertCircle, ListChecks,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSearch } from "wouter";
 
 const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "").replace("/pm-app", "") + "/api";
+const HRMS_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "");
 
 type Employee = {
   employee_name: string;
@@ -48,6 +50,28 @@ type DashData = {
   departments: string[];
   summary: Summary;
   week: { from: string; to: string };
+};
+
+type TaskPerf = {
+  employee: string;
+  employee_name: string;
+  department: string;
+  total_tasks: number;
+  pending: number;
+  partially_pending: number;
+  completed: number;
+  completion_rate: number;
+  efficiency_rate: number;
+  rank: number;
+};
+
+type EmployeeWithTask = Employee & {
+  task_total?: number;
+  task_pending?: number;
+  task_completed?: number;
+  task_completion_rate?: number;
+  task_efficiency_rate?: number;
+  task_rank?: number;
 };
 
 const AVATAR_COLORS = [
@@ -111,11 +135,20 @@ function StatCard({ icon: Icon, label, value, sub, color, bg }: {
   );
 }
 
-function EmployeeCard({ emp }: { emp: Employee }) {
+function taskRateColor(r: number) {
+  if (r >= 80) return { bar: "bg-emerald-500", text: "text-emerald-600" };
+  if (r >= 50) return { bar: "bg-amber-400",   text: "text-amber-600" };
+  return              { bar: "bg-red-400",      text: "text-red-500" };
+}
+
+function EmployeeCard({ emp }: { emp: EmployeeWithTask }) {
   const [bg] = avatarColor(emp.employee_name);
   const uc = utilColor(emp.utilization);
   const isActiveToday = emp.today_hours > 0;
   const hasTask = emp.alloc_status === "in-progress";
+  const hasTaskData = emp.task_total != null && emp.task_total > 0;
+  const cr = emp.task_completion_rate ?? 0;
+  const tc = taskRateColor(cr);
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
@@ -146,7 +179,7 @@ function EmployeeCard({ emp }: { emp: Employee }) {
         <div className="grid grid-cols-3 gap-2 mb-3">
           {[
             { label: "Week Hrs", value: emp.week_hours.toFixed(1) },
-            { label: "Tasks", value: emp.unique_tasks },
+            { label: "Logged Tasks", value: emp.unique_tasks },
             { label: "Avg/Day", value: `${emp.avg_hrs_day}h` },
           ].map(({ label, value }) => (
             <div key={label} className="bg-gray-50 rounded-xl p-2 text-center">
@@ -165,6 +198,42 @@ function EmployeeCard({ emp }: { emp: Employee }) {
             <div className={cn("h-full rounded-full transition-all", uc.bar)} style={{ width: `${emp.utilization}%` }} />
           </div>
         </div>
+
+        {hasTaskData && (
+          <div className="mb-3 bg-indigo-50/60 border border-indigo-100 rounded-xl p-2.5">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-semibold text-indigo-500 flex items-center gap-1">
+                <ListChecks className="w-3 h-3" /> Task Performance
+              </span>
+              {emp.task_rank != null && (
+                <span className="text-[10px] font-black text-indigo-400">#{emp.task_rank}</span>
+              )}
+            </div>
+            <div className="grid grid-cols-3 gap-1.5 mb-2">
+              <div className="bg-white rounded-lg p-1.5 text-center border border-indigo-100">
+                <p className="text-[9px] text-gray-400">Total</p>
+                <p className="text-xs font-bold text-gray-800">{emp.task_total}</p>
+              </div>
+              <div className="bg-white rounded-lg p-1.5 text-center border border-green-100">
+                <p className="text-[9px] text-gray-400">Done</p>
+                <p className="text-xs font-bold text-emerald-600">{emp.task_completed}</p>
+              </div>
+              <div className="bg-white rounded-lg p-1.5 text-center border border-amber-100">
+                <p className="text-[9px] text-gray-400">Pending</p>
+                <p className="text-xs font-bold text-amber-500">{emp.task_pending}</p>
+              </div>
+            </div>
+            <div>
+              <div className="flex justify-between mb-0.5">
+                <span className="text-[9px] text-gray-400">Completion</span>
+                <span className={cn("text-[9px] font-bold", tc.text)}>{cr}%</span>
+              </div>
+              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <div className={cn("h-full rounded-full transition-all", tc.bar)} style={{ width: `${cr}%` }} />
+              </div>
+            </div>
+          </div>
+        )}
 
         {(emp.current_task || emp.today_tasks) && (
           <div className="bg-gray-50 rounded-xl p-2.5">
@@ -194,14 +263,15 @@ function EmployeeCard({ emp }: { emp: Employee }) {
   );
 }
 
-type SortKey = "employee_name" | "department" | "week_hours" | "utilization" | "unique_tasks" | "avg_hrs_day" | "today_hours";
+type SortKey = "employee_name" | "department" | "week_hours" | "utilization" | "unique_tasks" | "avg_hrs_day" | "today_hours" | "task_completion_rate" | "task_total";
 
-function TableView({ employees }: { employees: Employee[] }) {
+function TableView({ employees }: { employees: EmployeeWithTask[] }) {
   const [sortKey, setSortKey] = useState<SortKey>("week_hours");
   const [sortAsc, setSortAsc] = useState(false);
 
   const sorted = [...employees].sort((a, b) => {
-    const av = a[sortKey], bv = b[sortKey];
+    const av = (a as any)[sortKey] ?? 0;
+    const bv = (b as any)[sortKey] ?? 0;
     if (typeof av === "string" && typeof bv === "string") return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
     return sortAsc ? (av as number) - (bv as number) : (bv as number) - (av as number);
   });
@@ -236,13 +306,18 @@ function TableView({ employees }: { employees: Employee[] }) {
                 <SortBtn k="week_hours" label="Week Hrs" />
               </th>
               <th className="text-center px-3 py-3 text-gray-400 font-semibold">
-                <SortBtn k="unique_tasks" label="Tasks" />
-              </th>
-              <th className="text-center px-3 py-3 text-gray-400 font-semibold">
                 <SortBtn k="avg_hrs_day" label="Avg/Day" />
               </th>
-              <th className="px-3 py-3 text-gray-400 font-semibold min-w-[140px]">
+              <th className="px-3 py-3 text-gray-400 font-semibold min-w-[120px]">
                 <SortBtn k="utilization" label="Utilization" />
+              </th>
+              <th className="text-center px-3 py-3 text-gray-400 font-semibold bg-indigo-50/40 min-w-[80px]">
+                <SortBtn k="task_total" label="Tasks" />
+              </th>
+              <th className="text-center px-3 py-3 text-gray-400 font-semibold bg-indigo-50/40">Done</th>
+              <th className="text-center px-3 py-3 text-gray-400 font-semibold bg-indigo-50/40">Pending</th>
+              <th className="px-3 py-3 text-gray-400 font-semibold bg-indigo-50/40 min-w-[120px]">
+                <SortBtn k="task_completion_rate" label="Completion" />
               </th>
               <th className="text-left px-3 py-3 text-gray-400 font-semibold min-w-[140px]">Current Task</th>
             </tr>
@@ -250,12 +325,15 @@ function TableView({ employees }: { employees: Employee[] }) {
           <tbody>
             {sorted.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-16 text-center text-gray-400">
+                <td colSpan={12} className="px-4 py-16 text-center text-gray-400">
                   No employee data for the selected period
                 </td>
               </tr>
             ) : sorted.map((emp, i) => {
               const uc = utilColor(emp.utilization);
+              const cr = emp.task_completion_rate ?? 0;
+              const tc = taskRateColor(cr);
+              const hasTaskData = emp.task_total != null && emp.task_total > 0;
               return (
                 <tr key={emp.employee_name} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                   <td className="px-4 py-3 text-gray-300 font-medium">{i + 1}</td>
@@ -279,7 +357,6 @@ function TableView({ employees }: { employees: Employee[] }) {
                     ) : <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-3 py-3 text-center font-semibold text-gray-700">{emp.week_hours.toFixed(1)}h</td>
-                  <td className="px-3 py-3 text-center text-gray-600">{emp.unique_tasks || "—"}</td>
                   <td className="px-3 py-3 text-center text-gray-600">{emp.avg_hrs_day > 0 ? `${emp.avg_hrs_day}h` : "—"}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-2">
@@ -290,6 +367,33 @@ function TableView({ employees }: { employees: Employee[] }) {
                         {emp.utilization}%
                       </span>
                     </div>
+                  </td>
+                  <td className="px-3 py-3 text-center bg-indigo-50/20">
+                    {hasTaskData ? <span className="font-semibold text-gray-700">{emp.task_total}</span> : <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="px-3 py-3 text-center bg-indigo-50/20">
+                    {hasTaskData ? (
+                      <span className="font-semibold text-emerald-600 flex items-center justify-center gap-0.5">
+                        <CheckCircle2 className="w-3 h-3" />{emp.task_completed}
+                      </span>
+                    ) : <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="px-3 py-3 text-center bg-indigo-50/20">
+                    {hasTaskData ? (
+                      <span className={cn("font-semibold", (emp.task_pending ?? 0) > 0 ? "text-amber-500" : "text-gray-400")}>
+                        {emp.task_pending ?? 0}
+                      </span>
+                    ) : <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="px-3 py-3 bg-indigo-50/20">
+                    {hasTaskData ? (
+                      <div className="flex items-center gap-1.5">
+                        <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div className={cn("h-full rounded-full", tc.bar)} style={{ width: `${cr}%` }} />
+                        </div>
+                        <span className={cn("text-[10px] font-bold min-w-[28px] text-right", tc.text)}>{cr}%</span>
+                      </div>
+                    ) : <span className="text-gray-300 text-[10px]">—</span>}
                   </td>
                   <td className="px-3 py-3">
                     {emp.current_task ? (
@@ -312,7 +416,7 @@ function TableView({ employees }: { employees: Employee[] }) {
   );
 }
 
-function ChartView({ employees }: { employees: Employee[] }) {
+function ChartView({ employees }: { employees: EmployeeWithTask[] }) {
   const data = employees
     .filter(e => e.week_hours > 0)
     .slice(0, 15)
@@ -344,6 +448,10 @@ function ChartView({ employees }: { employees: Employee[] }) {
   );
 }
 
+function fmtDateISO(d: Date) {
+  return d.toISOString().split("T")[0];
+}
+
 export default function TeamPerformanceDashboard() {
   const search = useSearch();
   const params = new URLSearchParams(search);
@@ -351,11 +459,27 @@ export default function TeamPerformanceDashboard() {
   const initialEmployee = params.get("employee") || "";
 
   const [data, setData] = useState<DashData | null>(null);
+  const [taskPerfMap, setTaskPerfMap] = useState<Record<string, TaskPerf>>({});
   const [loading, setLoading] = useState(true);
   const [dept, setDept] = useState(initialDept);
   const [empFilter, setEmpFilter] = useState(initialEmployee);
   const [view, setView] = useState<"cards" | "table">(initialEmployee ? "table" : "cards");
   const [lastRefresh, setLastRefresh] = useState(new Date());
+
+  const loadTaskPerf = useCallback(async (weekFrom: string, weekTo: string) => {
+    try {
+      const r = await fetch(`${HRMS_BASE}/api/hrms/task-summary/employees?from_date=${weekFrom}&to_date=${weekTo}`);
+      if (r.ok) {
+        const arr: TaskPerf[] = await r.json();
+        const map: Record<string, TaskPerf> = {};
+        arr.filter((x: any) => !x.is_total).forEach(tp => {
+          map[tp.employee_name?.toLowerCase().trim()] = tp;
+          if (tp.employee) map[tp.employee?.toLowerCase().trim()] = tp;
+        });
+        setTaskPerfMap(map);
+      }
+    } catch { /* non-blocking */ }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -363,14 +487,35 @@ export default function TeamPerformanceDashboard() {
       const p = new URLSearchParams();
       if (dept) p.set("department", dept);
       const r = await fetch(`${API_BASE}/performance/team-dashboard?${p}`);
-      if (r.ok) { setData(await r.json()); setLastRefresh(new Date()); }
+      if (r.ok) {
+        const d: DashData = await r.json();
+        setData(d);
+        setLastRefresh(new Date());
+        const from = d.week?.from || fmtDateISO(new Date());
+        const to = d.week?.to || fmtDateISO(new Date());
+        loadTaskPerf(from, to);
+      }
     } finally { setLoading(false); }
-  }, [dept]);
+  }, [dept, loadTaskPerf]);
 
   useEffect(() => { load(); }, [load]);
 
   const departments = data?.departments || [];
-  const allEmployees = data?.employees || [];
+  const allEmployees: EmployeeWithTask[] = (data?.employees || []).map(emp => {
+    const key = emp.employee_name?.toLowerCase().trim();
+    const idKey = emp.employee_id?.toLowerCase().trim();
+    const tp = taskPerfMap[key] || (idKey ? taskPerfMap[idKey] : undefined);
+    if (!tp) return emp;
+    return {
+      ...emp,
+      task_total: tp.total_tasks,
+      task_pending: (tp.pending || 0) + (tp.partially_pending || 0),
+      task_completed: tp.completed,
+      task_completion_rate: tp.completion_rate,
+      task_efficiency_rate: tp.efficiency_rate,
+      task_rank: tp.rank,
+    };
+  });
   const employees = empFilter
     ? allEmployees.filter(e => e.employee_name.toLowerCase().includes(empFilter.toLowerCase()) || e.employee_id?.toLowerCase().includes(empFilter.toLowerCase()))
     : allEmployees;
@@ -438,14 +583,24 @@ export default function TeamPerformanceDashboard() {
         </div>
 
         {/* Summary cards */}
-        {summary && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-            <StatCard icon={Users}     label="Total Employees"   value={summary.total}           color="text-indigo-600" bg="bg-indigo-50" />
-            <StatCard icon={Clock}     label="Active Today"      value={summary.active_today}     color="text-emerald-600" bg="bg-emerald-50" sub={`${employees.length > 0 ? Math.round(summary.active_today / employees.length * 100) : 0}% present`} />
-            <StatCard icon={Briefcase} label="Week Hours"        value={`${summary.total_week_hrs}h`} color="text-blue-600" bg="bg-blue-50" />
-            <StatCard icon={TrendingUp} label="Avg Utilization"  value={`${summary.avg_utilization}%`} color="text-amber-600" bg="bg-amber-50" />
-          </div>
-        )}
+        {summary && (() => {
+          const taskEmps = employees.filter(e => (e as EmployeeWithTask).task_total);
+          const avgCompletion = taskEmps.length
+            ? Math.round(taskEmps.reduce((s, e) => s + ((e as EmployeeWithTask).task_completion_rate ?? 0), 0) / taskEmps.length)
+            : 0;
+          const totalTasksDone = taskEmps.reduce((s, e) => s + ((e as EmployeeWithTask).task_completed ?? 0), 0);
+          const totalTasksPending = taskEmps.reduce((s, e) => s + ((e as EmployeeWithTask).task_pending ?? 0), 0);
+          return (
+            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
+              <StatCard icon={Users}        label="Total Employees"  value={summary.total}                     color="text-indigo-600" bg="bg-indigo-50" />
+              <StatCard icon={Clock}        label="Active Today"     value={summary.active_today}              color="text-emerald-600" bg="bg-emerald-50" sub={`${employees.length > 0 ? Math.round(summary.active_today / employees.length * 100) : 0}% present`} />
+              <StatCard icon={Briefcase}    label="Week Hours"       value={`${summary.total_week_hrs}h`}      color="text-blue-600" bg="bg-blue-50" />
+              <StatCard icon={TrendingUp}   label="Avg Utilization"  value={`${summary.avg_utilization}%`}    color="text-amber-600" bg="bg-amber-50" />
+              <StatCard icon={CheckCircle2} label="Task Completion"  value={`${avgCompletion}%`}               color="text-emerald-600" bg="bg-emerald-50" sub={`${totalTasksDone} done`} />
+              <StatCard icon={AlertCircle}  label="Tasks Pending"    value={totalTasksPending}                 color="text-rose-500" bg="bg-rose-50" sub="from task summary" />
+            </div>
+          );
+        })()}
 
         {/* View toggle + chart */}
         <div className="flex items-center justify-between mb-4">
