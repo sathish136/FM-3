@@ -5,9 +5,10 @@ import {
 } from "recharts";
 import {
   Users, RefreshCw, LayoutGrid, List, Clock, TrendingUp,
-  Briefcase, ChevronDown, ChevronUp, Minus,
+  Briefcase, ChevronDown, ChevronUp, Minus, ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useSearch } from "wouter";
 
 const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "").replace("/pm-app", "") + "/api";
 
@@ -344,10 +345,16 @@ function ChartView({ employees }: { employees: Employee[] }) {
 }
 
 export default function TeamPerformanceDashboard() {
+  const search = useSearch();
+  const params = new URLSearchParams(search);
+  const initialDept = params.get("dept") || "";
+  const initialEmployee = params.get("employee") || "";
+
   const [data, setData] = useState<DashData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [dept, setDept] = useState("");
-  const [view, setView] = useState<"cards" | "table">("cards");
+  const [dept, setDept] = useState(initialDept);
+  const [empFilter, setEmpFilter] = useState(initialEmployee);
+  const [view, setView] = useState<"cards" | "table">(initialEmployee ? "table" : "cards");
   const [lastRefresh, setLastRefresh] = useState(new Date());
 
   const load = useCallback(async () => {
@@ -363,7 +370,10 @@ export default function TeamPerformanceDashboard() {
   useEffect(() => { load(); }, [load]);
 
   const departments = data?.departments || [];
-  const employees = data?.employees || [];
+  const allEmployees = data?.employees || [];
+  const employees = empFilter
+    ? allEmployees.filter(e => e.employee_name.toLowerCase().includes(empFilter.toLowerCase()) || e.employee_id?.toLowerCase().includes(empFilter.toLowerCase()))
+    : allEmployees;
   const summary = data?.summary;
 
   const refreshLabel = lastRefresh.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
@@ -373,7 +383,7 @@ export default function TeamPerformanceDashboard() {
       <div className="min-h-screen bg-gray-50/50 px-4 sm:px-6 py-6 max-w-screen-2xl mx-auto">
 
         {/* Header */}
-        <div className="flex items-start justify-between gap-4 flex-wrap mb-6">
+        <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
           <div>
             <h1 className="text-xl font-bold text-gray-900">Team Performance</h1>
             <p className="text-sm text-gray-400 mt-0.5">
@@ -390,6 +400,24 @@ export default function TeamPerformanceDashboard() {
             Refresh
           </button>
         </div>
+
+        {/* From Task Summary banner */}
+        {(initialDept || initialEmployee) && (
+          <div className="flex items-center gap-2 flex-wrap mb-4 px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-200">
+            <ExternalLink className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+            <span className="text-xs text-indigo-600 font-medium">
+              Viewing from Task Summary
+              {initialDept && <> — Department: <strong>{initialDept}</strong></>}
+              {initialEmployee && <> — Employee: <strong>{initialEmployee}</strong></>}
+            </span>
+            <button
+              onClick={() => { setDept(""); setEmpFilter(""); setView("cards"); window.history.replaceState({}, "", window.location.pathname); }}
+              className="ml-auto text-[11px] font-semibold text-indigo-500 hover:text-indigo-700 underline"
+            >
+              Clear filter
+            </button>
+          </div>
+        )}
 
         {/* Dept filter pills */}
         <div className="flex gap-2 flex-wrap mb-6">

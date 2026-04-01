@@ -4,8 +4,10 @@ import {
   Building2, Users, CheckCircle2, Clock, TrendingUp,
   AlertTriangle, UserX, RefreshCw, Download, X,
   BarChart3, ListChecks, Activity, CalendarDays, Zap, Award,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLocation } from "wouter";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -215,9 +217,12 @@ const VIEW_LABELS: Record<ViewMode, string> = {
 };
 
 export default function TaskSummary() {
+  const [, navigate] = useLocation();
   const t = today();
   const [from, setFrom] = useState(addDays(t, -6));
   const [to, setTo]     = useState(t);
+
+  const BASE_APP = BASE.replace(/\/api$/, "");
   const [activeQuick, setActiveQuick] = useState("last_7");
   const [view, setView] = useState<ViewMode>("department");
   const [stats, setStats]   = useState<DashboardStats | null>(null);
@@ -487,13 +492,13 @@ export default function TaskSummary() {
                     className="px-4 py-2 text-xs font-semibold bg-primary text-primary-foreground rounded-lg">Retry</button>
                 </div>
               ) : view === "department" ? (
-                <DeptTable rows={rows as DeptRow[]} />
+                <DeptTable rows={rows as DeptRow[]} navigate={navigate} />
               ) : view === "employee" ? (
-                <EmpTable rows={rows as EmpRow[]} />
+                <EmpTable rows={rows as EmpRow[]} navigate={navigate} />
               ) : view === "idle-dept" ? (
-                <IdleDeptTable rows={rows as IdleDeptRow[]} />
+                <IdleDeptTable rows={rows as IdleDeptRow[]} navigate={navigate} />
               ) : (
-                <IdleEmpTable rows={rows as IdleEmpRow[]} />
+                <IdleEmpTable rows={rows as IdleEmpRow[]} navigate={navigate} />
               )}
             </div>
 
@@ -507,12 +512,13 @@ export default function TaskSummary() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Department Table
 // ─────────────────────────────────────────────────────────────────────────────
-function DeptTable({ rows }: { rows: DeptRow[] }) {
+function DeptTable({ rows, navigate }: { rows: DeptRow[]; navigate: (to: string) => void }) {
   const cols = [
     { label: "Department" }, { label: "Employees", center: true },
     { label: "Tasks", center: true }, { label: "Completion", center: true },
     { label: "Pending", center: true }, { label: "Completed", center: true },
     { label: "Efficiency", center: true }, { label: "Status" }, { label: "Rank", center: true },
+    { label: "Action", center: true },
   ];
   return (
     <DataTable cols={cols} empty={!rows.length}>
@@ -552,6 +558,14 @@ function DeptTable({ rows }: { rows: DeptRow[] }) {
             <TD center>
               {row.rank ? <RankBadge rank={row.rank} /> : <span className="text-muted-foreground">—</span>}
             </TD>
+            <TD center>
+              <button
+                onClick={() => navigate(`/hrms/team-performance?dept=${encodeURIComponent(row.department)}`)}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-colors whitespace-nowrap"
+              >
+                <ExternalLink className="w-3 h-3" /> Team View
+              </button>
+            </TD>
           </TR>
         );
       })}
@@ -562,12 +576,12 @@ function DeptTable({ rows }: { rows: DeptRow[] }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Employee Table
 // ─────────────────────────────────────────────────────────────────────────────
-function EmpTable({ rows }: { rows: EmpRow[] }) {
+function EmpTable({ rows, navigate }: { rows: EmpRow[]; navigate: (to: string) => void }) {
   const cols = [
     { label: "Employee" }, { label: "Department" }, { label: "Designation" },
     { label: "Days", center: true }, { label: "Tasks", center: true },
     { label: "Completion" }, { label: "Efficiency" },
-    { label: "Status" }, { label: "Rank", center: true },
+    { label: "Status" }, { label: "Rank", center: true }, { label: "Action", center: true },
   ];
   return (
     <DataTable cols={cols} empty={!rows.length}>
@@ -596,6 +610,14 @@ function EmpTable({ rows }: { rows: EmpRow[] }) {
           <TD><BarProgress rate={row.efficiency_rate} /></TD>
           <TD><StatusBadge rate={row.completion_rate} /></TD>
           <TD center><RankBadge rank={row.rank} /></TD>
+          <TD center>
+            <button
+              onClick={() => navigate(`/hrms/team-performance?dept=${encodeURIComponent(row.department)}&employee=${encodeURIComponent(row.employee_name)}`)}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-colors whitespace-nowrap"
+            >
+              <ExternalLink className="w-3 h-3" /> View
+            </button>
+          </TD>
         </TR>
       ))}
     </DataTable>
@@ -605,11 +627,11 @@ function EmpTable({ rows }: { rows: EmpRow[] }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Idle Department Table
 // ─────────────────────────────────────────────────────────────────────────────
-function IdleDeptTable({ rows }: { rows: IdleDeptRow[] }) {
+function IdleDeptTable({ rows, navigate }: { rows: IdleDeptRow[]; navigate: (to: string) => void }) {
   const cols = [
     { label: "Department" }, { label: "Total Emps", center: true },
     { label: "Idle Emps", center: true }, { label: "Idle %" },
-    { label: "Present Days", center: true }, { label: "Idle Rate", center: true }, { label: "Status" },
+    { label: "Present Days", center: true }, { label: "Idle Rate", center: true }, { label: "Status" }, { label: "Action", center: true },
   ];
   if (!rows.length) return (
     <div className="flex flex-col items-center py-16 gap-3 text-muted-foreground">
@@ -650,6 +672,14 @@ function IdleDeptTable({ rows }: { rows: IdleDeptRow[] }) {
             <TD>
               <span className={cn("inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold", cls)}>{txt}</span>
             </TD>
+            <TD center>
+              <button
+                onClick={() => navigate(`/hrms/team-performance?dept=${encodeURIComponent(row.department)}`)}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-colors whitespace-nowrap"
+              >
+                <ExternalLink className="w-3 h-3" /> Team View
+              </button>
+            </TD>
           </TR>
         );
       })}
@@ -660,10 +690,10 @@ function IdleDeptTable({ rows }: { rows: IdleDeptRow[] }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Idle Employee Table
 // ─────────────────────────────────────────────────────────────────────────────
-function IdleEmpTable({ rows }: { rows: IdleEmpRow[] }) {
+function IdleEmpTable({ rows, navigate }: { rows: IdleEmpRow[]; navigate: (to: string) => void }) {
   const cols = [
     { label: "Employee" }, { label: "Department" }, { label: "Designation" },
-    { label: "Present Days", center: true }, { label: "Tasks", center: true }, { label: "Status" },
+    { label: "Present Days", center: true }, { label: "Tasks", center: true }, { label: "Status" }, { label: "Action", center: true },
   ];
   if (!rows.length) return (
     <div className="flex flex-col items-center py-16 gap-3 text-muted-foreground">
@@ -694,6 +724,14 @@ function IdleEmpTable({ rows }: { rows: IdleEmpRow[] }) {
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold bg-red-500/15 text-red-400 border-red-500/25">
               <UserX className="w-3 h-3" /> {row.status || "No Tasks"}
             </span>
+          </TD>
+          <TD center>
+            <button
+              onClick={() => navigate(`/hrms/team-performance?dept=${encodeURIComponent(row.department)}&employee=${encodeURIComponent(row.employee_name)}`)}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-colors whitespace-nowrap"
+            >
+              <ExternalLink className="w-3 h-3" /> View
+            </button>
           </TD>
         </TR>
       ))}
