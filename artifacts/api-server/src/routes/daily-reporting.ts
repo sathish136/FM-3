@@ -433,41 +433,7 @@ function generateCombinedPDF(
         doc.fillColor(badgeTxtColor).fontSize(8).font("Helvetica-Bold")
           .text(badgeText, badgeX, rowY + 5, { width: 80, align: "center" });
 
-        // Child table rows (all tables, all fields — generic rendering)
         doc.y = rowY + (dept ? 28 : 20);
-
-        if (r.childTables && Object.keys(r.childTables).length > 0) {
-          for (const tableRows of Object.values(r.childTables)) {
-            (tableRows as any[]).forEach((trow: any, rowIdx: number) => {
-              const entries = Object.entries(trow).filter(
-                ([k, v]) => !CHILD_SKIP.has(k) && v !== null && v !== "" && v !== 0
-              );
-              if (!entries.length) return;
-
-              if (doc.y > doc.page.height - 80) { doc.addPage(); doc.y = 40; }
-
-              // Row number header band
-              const rowLineY = doc.y;
-              doc.fillColor("#e8f0fe").rect(60, rowLineY, doc.page.width - 100, 13).fill();
-              doc.fillColor("#1e3a5f").fontSize(8).font("Helvetica-Bold")
-                .text(`#${rowIdx + 1}`, 62, rowLineY + 2, { width: 20, lineBreak: false });
-              doc.y = rowLineY + 15;
-
-              // Each field: LABEL: value
-              entries.forEach(([k, v]) => {
-                if (doc.y > doc.page.height - 60) { doc.addPage(); doc.y = 40; }
-                const entryY = doc.y;
-                const label = k.replace(/_/g, " ").toUpperCase();
-                doc.fillColor("#64748b").fontSize(8).font("Helvetica-Bold")
-                  .text(label + ":", 72, entryY, { width: 110, lineBreak: false });
-                doc.fillColor("#1e293b").font("Helvetica")
-                  .text(String(v), 185, entryY, { width: doc.page.width - 225 });
-                doc.y = entryY + 12;
-              });
-              doc.y += 4;
-            });
-          }
-        }
 
         if (i < reported.length - 1) {
           doc.moveTo(62, doc.y + 2).lineTo(doc.page.width - 40, doc.y + 2).strokeColor("#f1f5f9").lineWidth(0.5).stroke();
@@ -540,44 +506,17 @@ router.post("/daily-reporting/send-combined", async (req, res) => {
     // 2. Filter to today's date and MD employees
     const dateRows = rows.filter(row => row.date === date && matchesMdEmployee(row.employee, row.employee_name));
 
-    // 3. Fetch full details for each reported doc — collect ALL child table arrays
-    const DETAIL_SKIP = new Set(["doctype","idx","docstatus","__islocal","__unsaved","owner",
-      "__last_sync_on","name","employee","employee_name","department","modified",
-      "modified_by","creation","amended_from"]);
-    const CHILD_ROW_SKIP = new Set([...DETAIL_SKIP, "parent","parenttype","parentfield"]);
-
-    const detailed = await Promise.all(dateRows.map(async row => {
-      try {
-        const dr = await fetch(`${ERP_URL}/api/resource/Daily Reporting/${encodeURIComponent(row.name)}`, {
-          headers: { Authorization: auth() },
-        });
-        if (!dr.ok) return row;
-        const dj = await dr.json() as { data: any };
-        const data = dj.data || {};
-        // Collect every array field that has rows (all child tables, whatever name)
-        const childTables: Record<string, any[]> = {};
-        for (const [k, v] of Object.entries(data)) {
-          if (!DETAIL_SKIP.has(k) && Array.isArray(v) && (v as any[]).length > 0) {
-            childTables[k] = v as any[];
-          }
-        }
-        return { ...row, childTables };
-      } catch {
-        return row;
-      }
-    }));
-
-    // 4. Determine which MD employees haven't filed a report
+    // 3. Determine which MD employees haven't filed a report
     const notReported = MD_EMPLOYEES.filter(emp =>
-      !detailed.some(r => matchesMdEmployee(r.employee, r.employee_name) && (
+      !dateRows.some(r => matchesMdEmployee(r.employee, r.employee_name) && (
         (r.employee || "").toUpperCase() === emp.id.toUpperCase() ||
         (r.employee_name || "").toUpperCase().includes(emp.name.toUpperCase()) ||
         emp.name.toUpperCase().includes((r.employee_name || "").toUpperCase())
       ))
     );
 
-    // 5. Generate combined PDF
-    const pdfBuf = await generateCombinedPDF(date, detailed, notReported);
+    // 4. Generate combined summary PDF (no child table details — summary only)
+    const pdfBuf = await generateCombinedPDF(date, dateRows, notReported);
     const id = randomUUID();
     const dateTag = date.replace(/-/g, "");
     const filename = `DailySummary_${dateTag}.pdf`;
