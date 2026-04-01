@@ -450,7 +450,6 @@ export default function DailyReporting() {
   const [fromDate, setFromDate] = useState(monthAgo);
   const [toDate, setToDate] = useState(today);
   const [statusFilter, setStatusFilter] = useState("");
-  const [empFilter, setEmpFilter] = useState("");
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
@@ -465,10 +464,7 @@ export default function DailyReporting() {
       const r = await fetch(`${API_BASE}/daily-reporting?${params}`);
       if (!r.ok) { const e = await r.json(); throw new Error(e.error || "Failed"); }
       const data = await r.json();
-      // Filter to allowed employees only
-      let rows: ReportSummary[] = (data.reports || []).filter((r: ReportSummary) => isAllowedEmployee(r.employee_name || r.employee || ""));
-      // Optional employee name sub-filter
-      if (empFilter.trim()) rows = rows.filter(r => (r.employee_name || r.employee || "").toUpperCase().includes(empFilter.trim().toUpperCase()));
+      const rows: ReportSummary[] = (data.reports || []).filter((r: ReportSummary) => isAllowedEmployee(r.employee_name || r.employee || ""));
       setHasMore(!!data.hasMore);
       setReports(rows);
       setPage(p);
@@ -477,7 +473,7 @@ export default function DailyReporting() {
     } finally {
       setLoading(false);
     }
-  }, [fromDate, toDate, statusFilter, empFilter]);
+  }, [fromDate, toDate, statusFilter]);
 
   useEffect(() => { load(0); }, [load]);
 
@@ -513,22 +509,6 @@ export default function DailyReporting() {
               <Plus className="w-3.5 h-3.5" /> New Report
             </button>
           </div>
-        </div>
-
-        {/* Employee chips */}
-        <div className="flex flex-wrap gap-1.5">
-          <button
-            onClick={() => setEmpFilter("")}
-            className={cn("text-[10px] px-2.5 py-1 rounded-full border font-bold transition-colors",
-              !empFilter ? "bg-orange-100 text-orange-700 border-orange-200" : "bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200")}
-          >All</button>
-          {ALLOWED_EMPLOYEES.map(emp => (
-            <button key={emp}
-              onClick={() => setEmpFilter(empFilter === emp ? "" : emp)}
-              className={cn("text-[10px] px-2.5 py-1 rounded-full border font-bold transition-colors",
-                empFilter === emp ? "bg-orange-100 text-orange-700 border-orange-200" : "bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200")}
-            >{emp}</button>
-          ))}
         </div>
 
         {/* Filters */}
