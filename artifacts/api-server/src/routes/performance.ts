@@ -276,136 +276,149 @@ router.get("/performance/team-dashboard", async (req, res) => {
     })();
     const weekEnd = to || today;
 
-    const deptCondition = department ? `AND department ILIKE $1` : "";
-    const deptParams: unknown[] = department ? [`%${department}%`] : [];
+    // 1. Fetch employees from ERPNext (source of truth)
+    let erpEmployees: Array<{
+      name: string; employee_name: string; department: string | null;
+      designation: string | null; status: string; user_id: string | null; image: string | null;
+    }> = [];
+    try {
+      const { fetchErpNextEmployees } = await import("../lib/erpnext");
+      erpEmployees = await fetchErpNextEmployees({ status: "Active", ...(department ? { department } : {}) });
+    } catch (_) { /* ERPNext not configured or unavailable */ }
 
-    // Check if idle_hours column exists
+    // 2. Check if idle_hours column exists
     const { rows: colCheck } = await pool.query(`
       SELECT 1 FROM information_schema.columns
       WHERE table_name='timesheet_entries' AND column_name='idle_hours' LIMIT 1
     `);
     const hasIdleHours = colCheck.length > 0;
 
-    // Today's hours per employee
-    const { rows: todayRows } = await pool.query(`
-      SELECT employee_name, employee_email, department,
-             SUM(hours::numeric) AS today_hours,
-             ${hasIdleHours ? "SUM(idle_hours::numeric)" : "0"} AS today_idle,
-             COUNT(DISTINCT task_title) AS today_tasks,
-             STRING_AGG(DISTINCT task_title, ', ') AS today_task_names
-      FROM timesheet_entries
-      WHERE date = '${today}' ${deptCondition}
-      GROUP BY employee_name, employee_email, department
-    `, deptParams);
+    const deptCondition = department ? `AND department ILIKE $1` : "";
+    const deptParams: unknown[] = department ? [`%${department}%`] : [];
 
-    // Weekly hours per employee
+    // 3. Weekly timesheet data per employee
     const { rows: weekRows } = await pool.query(`
-      SELECT employee_name,
+      SELECT employee_name, employee_email, department,
              SUM(hours::numeric) AS week_hours,
              ${hasIdleHours ? "SUM(idle_hours::numeric)" : "0"} AS week_idle,
              COUNT(DISTINCT date) AS working_days,
-             COUNT(DISTINCT task_title) AS unique_tasks
+             COUNT(DISTINCT task_title) AS unique_tasks,
+             MAX(date) AS last_active
       FROM timesheet_entries
       WHERE date BETWEEN '${weekStart}' AND '${weekEnd}' ${deptCondition}
+      GROUP BY employee_name, employee_email, department
+      ORDER BY week_hours DESC
+    `, deptParams);
+
+    // 4. Today's timesheet data
+    const { rows: todayRows } = await pool.query(`
+      SELECT employee_name,
+             SUM(hours::numeric) AS today_hours,
+             STRING_AGG(DISTINCT task_title, ', ') AS today_tasks
+      FROM timesheet_entries
+      WHERE date = '${today}' ${deptCondition}
       GROUP BY employee_name
     `, deptParams);
+    const todayMap = Object.fromEntries(todayRows.map(r => [r.employee_name, r]));
 
-    // Task allocations (current / in-progress tasks)
+    // 5. Task allocations
     const { rows: allocRows } = await pool.query(`
-      SELECT employee_name, employee_email, department,
-             task_title, project, priority, status
+      SELECT DISTINCT ON (employee_name)
+             employee_name, task_title, project, priority, status
       FROM task_allocations
       WHERE status IN ('assigned','in-progress') ${deptCondition}
-      ORDER BY created_at DESC
+      ORDER BY employee_name, created_at DESC
     `, deptParams);
+    const allocMap = Object.fromEntries(allocRows.map(r => [r.employee_name, r]));
 
-    // Merge
-    const empMap: Record<string, {
-      employee_name: string; employee_email: string; department: string;
-      today_hours: number; today_idle: number; today_tasks: number; today_task_names: string;
-      week_hours: number; week_idle: number; working_days: number; unique_tasks: number;
-      current_task: string; current_project: string; current_priority: string; alloc_status: string;
-    }> = {};
+    // 6. Build employee list — ERPNext employees as base, merged with timesheet data
+    const tsMap = Object.fromEntries(weekRows.map(r => [r.employee_name, r]));
 
-    for (const r of todayRows) {
-      empMap[r.employee_name] = {
-        employee_name: r.employee_name,
-        employee_email: r.employee_email,
-        department: r.department,
-        today_hours: parseFloat(r.today_hours) || 0,
-        today_idle: parseFloat(r.today_idle) || 0,
-        today_tasks: parseInt(r.today_tasks) || 0,
-        today_task_names: r.today_task_names || "",
-        week_hours: 0, week_idle: 0, working_days: 0, unique_tasks: 0,
-        current_task: "", current_project: "", current_priority: "", alloc_status: "idle",
-      };
+    // Departments from ERPNext employees
+    const deptSet = new Set<string>();
+    erpEmployees.forEach(e => { if (e.department) deptSet.add(e.department); });
+    weekRows.forEach(r => { if (r.department) deptSet.add(r.department); });
+
+    // Build final list
+    const seen = new Set<string>();
+    const employees: any[] = [];
+
+    // Add ERPNext employees first
+    for (const erp of erpEmployees) {
+      seen.add(erp.employee_name);
+      const ts = tsMap[erp.employee_name];
+      const td = todayMap[erp.employee_name];
+      const alloc = allocMap[erp.employee_name];
+      const week_hours = ts ? parseFloat(ts.week_hours) || 0 : 0;
+      const week_idle = ts ? parseFloat(ts.week_idle) || 0 : 0;
+      const working_days = ts ? parseInt(ts.working_days) || 0 : 0;
+      const unique_tasks = ts ? parseInt(ts.unique_tasks) || 0 : 0;
+      const utilization = week_hours > 0 ? Math.min(Math.round((week_hours / Math.max(working_days, 1) / 8) * 100), 100) : 0;
+      employees.push({
+        employee_name: erp.employee_name,
+        employee_id: erp.name,
+        employee_email: erp.user_id || (ts?.employee_email) || "",
+        department: erp.department || ts?.department || "",
+        designation: erp.designation || "",
+        erp_status: erp.status,
+        image: erp.image || null,
+        week_hours, week_idle, working_days, unique_tasks,
+        today_hours: td ? parseFloat(td.today_hours) || 0 : 0,
+        today_tasks: td?.today_tasks || "",
+        last_active: ts?.last_active || null,
+        current_task: alloc?.task_title || "",
+        current_project: alloc?.project || "",
+        current_priority: alloc?.priority || "",
+        alloc_status: alloc?.status || "none",
+        utilization,
+        avg_hrs_day: working_days > 0 ? Math.round((week_hours / working_days) * 10) / 10 : 0,
+      });
     }
 
-    for (const r of weekRows) {
-      if (!empMap[r.employee_name]) {
-        empMap[r.employee_name] = {
-          employee_name: r.employee_name, employee_email: "", department: "",
-          today_hours: 0, today_idle: 0, today_tasks: 0, today_task_names: "",
-          week_hours: 0, week_idle: 0, working_days: 0, unique_tasks: 0,
-          current_task: "", current_project: "", current_priority: "", alloc_status: "idle",
-        };
-      }
-      empMap[r.employee_name].week_hours = parseFloat(r.week_hours) || 0;
-      empMap[r.employee_name].week_idle = parseFloat(r.week_idle) || 0;
-      empMap[r.employee_name].working_days = parseInt(r.working_days) || 0;
-      empMap[r.employee_name].unique_tasks = parseInt(r.unique_tasks) || 0;
+    // Add any timesheet-only employees not in ERPNext
+    for (const ts of weekRows) {
+      if (seen.has(ts.employee_name)) continue;
+      const td = todayMap[ts.employee_name];
+      const alloc = allocMap[ts.employee_name];
+      const week_hours = parseFloat(ts.week_hours) || 0;
+      const working_days = parseInt(ts.working_days) || 0;
+      const utilization = week_hours > 0 ? Math.min(Math.round((week_hours / Math.max(working_days, 1) / 8) * 100), 100) : 0;
+      employees.push({
+        employee_name: ts.employee_name,
+        employee_id: "",
+        employee_email: ts.employee_email || "",
+        department: ts.department || "",
+        designation: "",
+        erp_status: "Active",
+        image: null,
+        week_hours, week_idle: parseFloat(ts.week_idle) || 0, working_days,
+        unique_tasks: parseInt(ts.unique_tasks) || 0,
+        today_hours: td ? parseFloat(td.today_hours) || 0 : 0,
+        today_tasks: td?.today_tasks || "",
+        last_active: ts.last_active || null,
+        current_task: alloc?.task_title || "",
+        current_project: alloc?.project || "",
+        current_priority: alloc?.priority || "",
+        alloc_status: alloc?.status || "none",
+        utilization,
+        avg_hrs_day: working_days > 0 ? Math.round((week_hours / working_days) * 10) / 10 : 0,
+      });
     }
-
-    // Attach current allocation (most recent per employee)
-    const seenAlloc = new Set<string>();
-    for (const a of allocRows) {
-      if (!seenAlloc.has(a.employee_name)) {
-        seenAlloc.add(a.employee_name);
-        if (!empMap[a.employee_name]) {
-          empMap[a.employee_name] = {
-            employee_name: a.employee_name, employee_email: a.employee_email,
-            department: a.department,
-            today_hours: 0, today_idle: 0, today_tasks: 0, today_task_names: "",
-            week_hours: 0, week_idle: 0, working_days: 0, unique_tasks: 0,
-            current_task: "", current_project: "", current_priority: "", alloc_status: "idle",
-          };
-        }
-        empMap[a.employee_name].current_task = a.task_title;
-        empMap[a.employee_name].current_project = a.project;
-        empMap[a.employee_name].current_priority = a.priority;
-        empMap[a.employee_name].alloc_status = a.status;
-        if (!empMap[a.employee_name].department) empMap[a.employee_name].department = a.department;
-        if (!empMap[a.employee_name].employee_email) empMap[a.employee_name].employee_email = a.employee_email;
-      }
-    }
-
-    const employees = Object.values(empMap).map((e) => {
-      const utilization = e.week_hours > 0
-        ? Math.min(Math.round((e.week_hours / Math.max(e.working_days, 1) / 8) * 100), 100)
-        : 0;
-      const live_status = e.alloc_status === "in-progress" ? "Running" :
-        e.today_hours > 0 ? "Idle" : "Idle";
-      return { ...e, utilization, live_status };
-    });
-
-    // Departments list
-    const { rows: deptListRows } = await pool.query(`
-      SELECT DISTINCT department FROM timesheet_entries WHERE department != '' ORDER BY department
-    `);
 
     const summary = {
-      total_employees: employees.length,
-      running: employees.filter(e => e.alloc_status === "in-progress").length,
-      idle: employees.filter(e => e.alloc_status !== "in-progress" && e.today_hours === 0).length,
-      active: employees.filter(e => e.today_hours > 0).length,
-      avg_utilization: employees.length
-        ? Math.round(employees.reduce((s, e) => s + e.utilization, 0) / employees.length)
-        : 0,
-      total_logged_hrs: Math.round(employees.reduce((s, e) => s + e.week_hours, 0) * 10) / 10,
-      total_idle_hrs: Math.round(employees.reduce((s, e) => s + e.week_idle, 0) * 10) / 10,
+      total: employees.length,
+      active_today: employees.filter(e => e.today_hours > 0).length,
+      with_tasks: employees.filter(e => e.alloc_status === "in-progress").length,
+      total_week_hrs: Math.round(employees.reduce((s, e) => s + e.week_hours, 0) * 10) / 10,
+      avg_utilization: employees.length ? Math.round(employees.reduce((s, e) => s + e.utilization, 0) / employees.length) : 0,
     };
 
-    res.json({ employees, departments: deptListRows.map(r => r.department), summary });
+    res.json({
+      employees,
+      departments: Array.from(deptSet).sort(),
+      summary,
+      week: { from: weekStart, to: weekEnd },
+    });
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
