@@ -438,6 +438,47 @@ router.get("/performance/team-dashboard", async (req, res) => {
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
+// ─── Activity Sheet Detail ────────────────────────────────────────────────────
+router.get("/performance/activity-sheet/:name", async (req, res) => {
+  const { name } = req.params;
+  try {
+    const { isErpNextConfigured } = await import("../lib/erpnext");
+    if (!isErpNextConfigured()) return res.status(503).json({ error: "ERPNext not configured" });
+
+    const ERP_URL = process.env.ERPNEXT_URL?.replace(/\/$/, "");
+    const auth = `token ${process.env.ERPNEXT_API_KEY}:${process.env.ERPNEXT_API_SECRET}`;
+
+    const r = await fetch(`${ERP_URL}/api/resource/Activity Sheet/${encodeURIComponent(name)}`, {
+      headers: { Authorization: auth },
+    });
+    if (!r.ok) return res.status(r.status).json({ error: "Not found" });
+
+    const json = await r.json() as { data: any };
+    const sheet = json?.data;
+    if (!sheet) return res.status(404).json({ error: "Not found" });
+
+    const rows: any[] = sheet?.activity || sheet?.activities || sheet?.activity_details || [];
+
+    res.json({
+      name: sheet.name,
+      employee: sheet.employee,
+      employee_name: sheet.employee_name,
+      department: sheet.department,
+      date: sheet.date,
+      status: sheet.docstatus === 1 ? "Submitted" : sheet.docstatus === 2 ? "Cancelled" : "Draft",
+      activities: rows.map((r: any, i: number) => ({
+        idx: i + 1,
+        activity_type: r.activity_type || r.description || "",
+        type_of_work: r.type_of_work || "",
+        project: r.project || r.project_name || "",
+        from_time: r.from_time || "",
+        to_time: r.to_time || "",
+        hours: r.hours || r.time_taken || "",
+      })),
+    });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
 // ─── Python Agent Download ────────────────────────────────────────────────────
 
 router.get("/performance/agent-script", (req, res) => {
