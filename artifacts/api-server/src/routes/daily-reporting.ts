@@ -365,7 +365,7 @@ function matchesMdEmployee(empId: string, empName: string): boolean {
 // ─── Combined Daily Report PDF ────────────────────────────────────────────────
 function generateCombinedPDF(
   date: string,
-  reported: Array<{ employee: string; employee_name: string; department: string; status: string; date: string; activities?: any[] }>,
+  reported: Array<{ employee: string; employee_name: string; department: string; status: string; date: string; childTables?: Record<string, any[]> }>,
   notReported: Array<{ id: string; name: string }>,
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -433,24 +433,47 @@ function generateCombinedPDF(
         doc.fillColor(badgeTxtColor).fontSize(8).font("Helvetica-Bold")
           .text(badgeText, badgeX, rowY + 5, { width: 80, align: "center" });
 
-        // Activities if present
-        if (r.activities && r.activities.length > 0) {
-          let actY = rowY + (dept ? 26 : 18);
-          r.activities.slice(0, 3).forEach(act => {
-            const text = [act.activity, act.project ? `(${act.project})` : "", act.no_of_hours ? `${act.no_of_hours}h` : ""].filter(Boolean).join("  ");
-            doc.fillColor("#475569").fontSize(8).font("Helvetica").text(`  • ${text}`, 68, actY, { width: doc.page.width - 120 });
-            actY += 11;
-          });
-          if (r.activities.length > 3) {
-            doc.fillColor("#94a3b8").fontSize(7.5).text(`  + ${r.activities.length - 3} more`, 68, actY);
+        // Child table rows (all tables, all fields — generic rendering)
+        doc.y = rowY + (dept ? 28 : 20);
+
+        if (r.childTables && Object.keys(r.childTables).length > 0) {
+          for (const tableRows of Object.values(r.childTables)) {
+            (tableRows as any[]).forEach((trow: any, rowIdx: number) => {
+              const entries = Object.entries(trow).filter(
+                ([k, v]) => !CHILD_SKIP.has(k) && v !== null && v !== "" && v !== 0
+              );
+              if (!entries.length) return;
+
+              if (doc.y > doc.page.height - 80) { doc.addPage(); doc.y = 40; }
+
+              // Row number header band
+              const rowLineY = doc.y;
+              doc.fillColor("#e8f0fe").rect(60, rowLineY, doc.page.width - 100, 13).fill();
+              doc.fillColor("#1e3a5f").fontSize(8).font("Helvetica-Bold")
+                .text(`#${rowIdx + 1}`, 62, rowLineY + 2, { width: 20, lineBreak: false });
+              doc.y = rowLineY + 15;
+
+              // Each field: LABEL: value
+              entries.forEach(([k, v]) => {
+                if (doc.y > doc.page.height - 60) { doc.addPage(); doc.y = 40; }
+                const entryY = doc.y;
+                const label = k.replace(/_/g, " ").toUpperCase();
+                doc.fillColor("#64748b").fontSize(8).font("Helvetica-Bold")
+                  .text(label + ":", 72, entryY, { width: 110, lineBreak: false });
+                doc.fillColor("#1e293b").font("Helvetica")
+                  .text(String(v), 185, entryY, { width: doc.page.width - 225 });
+                doc.y = entryY + 12;
+              });
+              doc.y += 4;
+            });
           }
-          doc.y = Math.max(doc.y, actY + 14);
-        } else {
-          doc.y = rowY + (dept ? 30 : 22);
         }
+
         if (i < reported.length - 1) {
           doc.moveTo(62, doc.y + 2).lineTo(doc.page.width - 40, doc.y + 2).strokeColor("#f1f5f9").lineWidth(0.5).stroke();
-          doc.y += 6;
+          doc.y += 8;
+        } else {
+          doc.y += 4;
         }
       });
     }
@@ -517,7 +540,12 @@ router.post("/daily-reporting/send-combined", async (req, res) => {
     // 2. Filter to today's date and MD employees
     const dateRows = rows.filter(row => row.date === date && matchesMdEmployee(row.employee, row.employee_name));
 
-    // 3. Fetch full details (activities) for each reported doc in parallel (up to 9 docs)
+    // 3. Fetch full details for each reported doc — collect ALL child table arrays
+    const DETAIL_SKIP = new Set(["doctype","idx","docstatus","__islocal","__unsaved","owner",
+      "__last_sync_on","name","employee","employee_name","department","modified",
+      "modified_by","creation","amended_from"]);
+    const CHILD_ROW_SKIP = new Set([...DETAIL_SKIP, "parent","parenttype","parentfield"]);
+
     const detailed = await Promise.all(dateRows.map(async row => {
       try {
         const dr = await fetch(`${ERP_URL}/api/resource/Daily Reporting/${encodeURIComponent(row.name)}`, {
@@ -525,8 +553,15 @@ router.post("/daily-reporting/send-combined", async (req, res) => {
         });
         if (!dr.ok) return row;
         const dj = await dr.json() as { data: any };
-        const activities: any[] = dj.data?.daily_reporting_detail || [];
-        return { ...row, activities };
+        const data = dj.data || {};
+        // Collect every array field that has rows (all child tables, whatever name)
+        const childTables: Record<string, any[]> = {};
+        for (const [k, v] of Object.entries(data)) {
+          if (!DETAIL_SKIP.has(k) && Array.isArray(v) && (v as any[]).length > 0) {
+            childTables[k] = v as any[];
+          }
+        }
+        return { ...row, childTables };
       } catch {
         return row;
       }
