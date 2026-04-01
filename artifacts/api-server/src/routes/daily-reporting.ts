@@ -6,39 +6,38 @@ const ERP_URL = process.env.ERPNEXT_URL?.replace(/\/$/, "");
 const auth = () => `token ${process.env.ERPNEXT_API_KEY}:${process.env.ERPNEXT_API_SECRET}`;
 function isConfigured() { return !!(ERP_URL && process.env.ERPNEXT_API_KEY && process.env.ERPNEXT_API_SECRET); }
 
+// Map Frappe docstatus integer to a human-readable label
+function mapDocStatus(docstatus: number): string {
+  if (docstatus === 1) return "Submitted";
+  if (docstatus === 2) return "Cancelled";
+  return "Draft";
+}
+
 // ─── List Daily Reports ───────────────────────────────────────────────────────
-// NOTE: "date" is a reserved SQL keyword in Frappe/ERPNext and cannot be used
-// in fields[], filters[], or order_by. We fetch without it and pull it from
-// the document name or the full detail endpoint.
+// IMPORTANT: Frappe blocks many field names as SQL reserved keywords in get_list:
+//   "date", "status", "type", "order", "group", "key", "value", "interval" …
+// Solution: only request guaranteed-safe meta fields, use docstatus for status,
+// derive the date from the document name or creation timestamp,
+// and do all filtering server-side.
 router.get("/daily-reporting", async (req, res) => {
   if (!isConfigured()) return res.status(503).json({ error: "ERPNext not configured" });
 
   const { from_date, to_date, employee, department, status, limit = "30", page = "0" } = req.query as Record<string, string>;
 
   try {
-    // Avoid "date" in fields — it's a reserved SQL keyword in Frappe
+    // Only safe Frappe meta fields that don't conflict with SQL reserved words
     const fields = JSON.stringify([
       "name", "employee", "employee_name", "department",
-      "status", "modified", "creation",
+      "docstatus", "modified", "creation",
     ]);
 
-    const filters: any[] = [];
-    if (employee) filters.push(["Daily Reporting", "employee_name", "like", `%${employee}%`]);
-    if (department) filters.push(["Daily Reporting", "department", "like", `%${department}%`]);
-    if (status) filters.push(["Daily Reporting", "status", "=", status]);
-
-    // Fetch larger batch when date range filter is requested (filter server-side)
-    const needsDateFilter = !!(from_date || to_date);
-    const fetchLimit = needsDateFilter ? "500" : String(Number(limit) + 1);
-    const fetchStart = needsDateFilter ? "0" : String(Number(page) * Number(limit));
-
+    // No ERPNext-side filters — all filtering done server-side to avoid keyword conflicts
     const params = new URLSearchParams({
       fields,
-      limit_page_length: fetchLimit,
-      limit_start: fetchStart,
+      limit_page_length: "500",
+      limit_start: "0",
       order_by: "creation desc",
     });
-    if (filters.length) params.set("filters", JSON.stringify(filters));
 
     const r = await fetch(`${ERP_URL}/api/resource/Daily Reporting?${params}`, {
       headers: { Authorization: auth() },
@@ -50,27 +49,28 @@ router.get("/daily-reporting", async (req, res) => {
     }
 
     const json = await r.json() as { data: any[] };
-    let rows: any[] = json.data || [];
+    let rows: any[] = (json.data || []).map(row => ({
+      ...row,
+      // Derive date from document name (e.g. DR-2026-03-01) or creation timestamp
+      date: row.name?.match(/(\d{4}-\d{2}-\d{2})/)?.[1] || row.creation?.split(" ")[0] || null,
+      // Map numeric docstatus to readable label
+      status: mapDocStatus(row.docstatus),
+    }));
 
-    // Extract date from document name (common ERPNext naming: DR-2026-03-01 or DR-2026-00001)
-    // Also parse from creation as fallback
-    rows = rows.map(row => {
-      const dateFromName = row.name?.match(/(\d{4}-\d{2}-\d{2})/)?.[1] || null;
-      const dateFromCreation = row.creation ? row.creation.split(" ")[0] : null;
-      return { ...row, date: dateFromName || dateFromCreation };
-    });
-
-    // Server-side date filtering
+    // Server-side filtering
     if (from_date) rows = rows.filter(r => r.date && r.date >= from_date);
-    if (to_date) rows = rows.filter(r => r.date && r.date <= to_date);
+    if (to_date)   rows = rows.filter(r => r.date && r.date <= to_date);
+    if (employee)  rows = rows.filter(r => (r.employee_name || r.employee || "").toLowerCase().includes((employee as string).toLowerCase()));
+    if (department) rows = rows.filter(r => (r.department || "").toLowerCase().includes((department as string).toLowerCase()));
+    if (status)    rows = rows.filter(r => r.status === status);
 
-    // Sort by date desc
+    // Sort by derived date desc
     rows.sort((a, b) => (b.date || b.creation || "").localeCompare(a.date || a.creation || ""));
 
     // Paginate
     const pageNum = Number(page);
     const pageSize = Number(limit);
-    const start = needsDateFilter ? pageNum * pageSize : 0;
+    const start = pageNum * pageSize;
     const paged = rows.slice(start, start + pageSize + 1);
     const hasMore = paged.length > pageSize;
 
@@ -81,7 +81,8 @@ router.get("/daily-reporting", async (req, res) => {
 });
 
 // ─── Single Daily Report Detail ───────────────────────────────────────────────
-// Full document fetch doesn't have the "date" field restriction
+// Single document fetch uses a different Frappe endpoint that doesn't have the
+// same field-name restrictions as get_list.
 router.get("/daily-reporting/:name", async (req, res) => {
   if (!isConfigured()) return res.status(503).json({ error: "ERPNext not configured" });
 
