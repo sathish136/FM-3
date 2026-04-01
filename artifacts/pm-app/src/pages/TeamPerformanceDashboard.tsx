@@ -6,13 +6,29 @@ import {
 import {
   Users, RefreshCw, LayoutGrid, List, Clock, TrendingUp,
   Briefcase, ChevronDown, ChevronUp, Minus, ExternalLink,
-  CheckCircle2, AlertCircle, ListChecks,
+  CheckCircle2, AlertCircle, ListChecks, Search, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSearch } from "wouter";
 
 const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "").replace("/pm-app", "") + "/api";
 const HRMS_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "");
+
+const SKIP_DESIGNATIONS = ["operator", "md - wtt", "managing director"];
+const SKIP_DEPT_KEYWORDS = ["operator", "workshop", "workshop shift"];
+
+function isExcluded(emp: { designation?: string; department?: string; employee_name?: string }) {
+  const des = (emp.designation || "").toLowerCase().trim();
+  const dept = (emp.department || "").toLowerCase().trim();
+  if (SKIP_DESIGNATIONS.some(s => des.includes(s))) return true;
+  if (SKIP_DEPT_KEYWORDS.some(k => dept.includes(k))) return true;
+  return false;
+}
+
+function isDeptExcluded(dept: string) {
+  const d = dept.toLowerCase().trim();
+  return SKIP_DEPT_KEYWORDS.some(k => d.includes(k));
+}
 
 type Employee = {
   employee_name: string;
@@ -470,9 +486,10 @@ export default function TeamPerformanceDashboard() {
     try {
       const r = await fetch(`${HRMS_BASE}/api/hrms/task-summary/employees?from_date=${weekFrom}&to_date=${weekTo}`);
       if (r.ok) {
-        const arr: TaskPerf[] = await r.json();
+        const arr: TaskPerf[] = (await r.json()).filter((x: any) => !x.is_total);
         const map: Record<string, TaskPerf> = {};
-        arr.filter((x: any) => !x.is_total).forEach(tp => {
+        arr.forEach(tp => {
+          if (isExcluded({ designation: (tp as any).designation, department: tp.department })) return;
           map[tp.employee_name?.toLowerCase().trim()] = tp;
           if (tp.employee) map[tp.employee?.toLowerCase().trim()] = tp;
         });
@@ -500,22 +517,79 @@ export default function TeamPerformanceDashboard() {
 
   useEffect(() => { load(); }, [load]);
 
-  const departments = data?.departments || [];
-  const allEmployees: EmployeeWithTask[] = (data?.employees || []).map(emp => {
-    const key = emp.employee_name?.toLowerCase().trim();
-    const idKey = emp.employee_id?.toLowerCase().trim();
-    const tp = taskPerfMap[key] || (idKey ? taskPerfMap[idKey] : undefined);
-    if (!tp) return emp;
-    return {
-      ...emp,
-      task_total: tp.total_tasks,
-      task_pending: (tp.pending || 0) + (tp.partially_pending || 0),
-      task_completed: tp.completed,
-      task_completion_rate: tp.completion_rate,
-      task_efficiency_rate: tp.efficiency_rate,
-      task_rank: tp.rank,
-    };
-  });
+  const departments = (() => {
+    const deptSet = new Set<string>((data?.departments || []).filter(d => !isDeptExcluded(d)));
+    Object.values(taskPerfMap).forEach(tp => {
+      if (tp.department && !isDeptExcluded(tp.department)) deptSet.add(tp.department);
+    });
+    return [...deptSet].sort();
+  })();
+
+  const mergedEmployees: EmployeeWithTask[] = (() => {
+    const seenNames = new Set<string>();
+    const result: EmployeeWithTask[] = [];
+
+    (data?.employees || []).forEach(emp => {
+      if (isExcluded(emp)) return;
+      const key = emp.employee_name?.toLowerCase().trim();
+      const idKey = emp.employee_id?.toLowerCase().trim();
+      const tp = taskPerfMap[key] || (idKey ? taskPerfMap[idKey] : undefined);
+      seenNames.add(key);
+      result.push({
+        ...emp,
+        ...(tp ? {
+          task_total: tp.total_tasks,
+          task_pending: (tp.pending || 0) + (tp.partially_pending || 0),
+          task_completed: tp.completed,
+          task_completion_rate: tp.completion_rate,
+          task_efficiency_rate: tp.efficiency_rate,
+          task_rank: tp.rank,
+        } : {}),
+      });
+    });
+
+    Object.values(taskPerfMap).forEach(tp => {
+      const key = tp.employee_name?.toLowerCase().trim();
+      if (!key || seenNames.has(key)) return;
+      if (isDeptExcluded(tp.department || "")) return;
+      seenNames.add(key);
+      result.push({
+        employee_name: tp.employee_name,
+        employee_id: tp.employee,
+        employee_email: "",
+        department: tp.department || "",
+        designation: (tp as any).designation || "",
+        erp_status: "Active",
+        image: null,
+        week_hours: 0,
+        week_idle: 0,
+        working_days: (tp as any).present_days || 0,
+        unique_tasks: tp.total_tasks,
+        today_hours: 0,
+        today_tasks: "",
+        last_active: null,
+        current_task: "",
+        current_project: "",
+        current_priority: "",
+        alloc_status: "",
+        utilization: 0,
+        avg_hrs_day: 0,
+        task_total: tp.total_tasks,
+        task_pending: (tp.pending || 0) + (tp.partially_pending || 0),
+        task_completed: tp.completed,
+        task_completion_rate: tp.completion_rate,
+        task_efficiency_rate: tp.efficiency_rate,
+        task_rank: tp.rank,
+      });
+    });
+
+    return result;
+  })();
+
+  const allEmployees = dept
+    ? mergedEmployees.filter(e => e.department?.toLowerCase().includes(dept.toLowerCase()))
+    : mergedEmployees;
+
   const employees = empFilter
     ? allEmployees.filter(e => e.employee_name.toLowerCase().includes(empFilter.toLowerCase()) || e.employee_id?.toLowerCase().includes(empFilter.toLowerCase()))
     : allEmployees;
@@ -564,22 +638,46 @@ export default function TeamPerformanceDashboard() {
           </div>
         )}
 
-        {/* Dept filter pills */}
-        <div className="flex gap-2 flex-wrap mb-6">
-          {["", ...departments].map((d) => (
-            <button
-              key={d || "__all"}
-              onClick={() => setDept(d)}
-              className={cn(
-                "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all border",
-                dept === d
-                  ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
-                  : "bg-white text-gray-500 border-gray-200 hover:border-indigo-300 hover:text-indigo-600"
+        {/* Dept filter pills + Employee search */}
+        <div className="flex flex-col gap-3 mb-5">
+          <div className="flex gap-2 flex-wrap items-center">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest shrink-0">Department</span>
+            {["", ...departments].map((d) => (
+              <button
+                key={d || "__all"}
+                onClick={() => setDept(d)}
+                className={cn(
+                  "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all border",
+                  dept === d
+                    ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                    : "bg-white text-gray-500 border-gray-200 hover:border-indigo-300 hover:text-indigo-600"
+                )}
+              >
+                {d || "All"}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <input
+                type="text"
+                value={empFilter}
+                onChange={e => setEmpFilter(e.target.value)}
+                placeholder="Search employee by name or ID…"
+                className="w-full pl-9 pr-9 py-2 text-xs bg-white border border-gray-200 rounded-xl focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 text-gray-700 placeholder-gray-400 shadow-sm"
+              />
+              {empFilter && (
+                <button
+                  onClick={() => setEmpFilter("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
               )}
-            >
-              {d || "All Departments"}
-            </button>
-          ))}
+            </div>
+            <span className="text-xs text-gray-400">{employees.length} employee{employees.length !== 1 ? "s" : ""}</span>
+          </div>
         </div>
 
         {/* Summary cards */}
@@ -602,8 +700,8 @@ export default function TeamPerformanceDashboard() {
           );
         })()}
 
-        {/* View toggle + chart */}
-        <div className="flex items-center justify-between mb-4">
+        {/* View toggle */}
+        <div className="flex items-center mb-4">
           <div className="flex gap-1 p-1 bg-white border border-gray-200 rounded-xl shadow-sm w-fit">
             {([["cards", LayoutGrid, "Cards"], ["table", List, "Table"]] as const).map(([k, Icon, label]) => (
               <button
@@ -618,9 +716,6 @@ export default function TeamPerformanceDashboard() {
               </button>
             ))}
           </div>
-          {employees.length > 0 && (
-            <p className="text-xs text-gray-400">{employees.length} employee{employees.length !== 1 ? "s" : ""}</p>
-          )}
         </div>
 
         {loading && !data ? (
