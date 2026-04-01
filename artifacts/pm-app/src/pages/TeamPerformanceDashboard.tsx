@@ -308,7 +308,7 @@ function TableView({ employees }: { employees: EmployeeWithTask[] }) {
                   Completion {sortKey === "task_completion_rate" ? (sortAsc ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />) : <Minus className="w-3 h-3 opacity-25" />}
                 </button>
               </th>
-              <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 min-w-[130px]">Current Task</th>
+              <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-blue-400 min-w-[160px]">Current Activity</th>
             </tr>
           </thead>
           <tbody>
@@ -368,25 +368,32 @@ function TableView({ employees }: { employees: EmployeeWithTask[] }) {
                       </div>
                     ) : <span className="text-gray-300">—</span>}
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-2.5 min-w-[160px]">
                     {emp.current_task ? (
-                      <div className="flex flex-col gap-0.5">
+                      <div className={cn(
+                        "rounded-md px-2 py-1.5 flex flex-col gap-0.5",
+                        emp.current_activity_time ? "bg-blue-50 border border-blue-100" : "bg-gray-50"
+                      )}>
                         <div className="flex items-center gap-1.5">
                           <span className={cn("w-1.5 h-1.5 rounded-full shrink-0",
-                            (emp as any).current_activity_time ? "bg-blue-500 animate-pulse" :
+                            emp.current_activity_time ? "bg-blue-500 animate-pulse" :
                             emp.alloc_status === "in-progress" ? "bg-blue-400" : "bg-gray-300")} />
-                          <span className={cn("text-[10px] truncate max-w-[110px]",
-                            (emp as any).current_activity_time ? "text-blue-700 font-medium" : "text-gray-600"
+                          <span className={cn("text-[10px] font-medium leading-tight",
+                            emp.current_activity_time ? "text-blue-700" : "text-gray-600"
                           )}>{emp.current_task}</span>
                         </div>
-                        {(emp as any).current_activity_time && (
-                          <span className="text-[9px] text-blue-300 pl-3">
-                            {(emp as any).current_activity_type || "Activity"} · till{" "}
-                            {new Date((emp as any).current_activity_time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}
-                          </span>
+                        {emp.current_activity_time && (
+                          <div className="flex items-center gap-1.5 pl-3">
+                            {emp.current_activity_type && (
+                              <span className="text-[9px] font-semibold text-blue-400">{emp.current_activity_type}</span>
+                            )}
+                            <span className="text-[9px] text-blue-300 ml-auto">
+                              till {new Date(emp.current_activity_time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                            </span>
+                          </div>
                         )}
                       </div>
-                    ) : <span className="text-gray-300">—</span>}
+                    ) : <span className="text-gray-300 text-[10px]">—</span>}
                   </td>
                 </tr>
               );
@@ -553,6 +560,7 @@ export default function TeamPerformanceDashboard() {
         working_days: (tp as any).present_days || 0, unique_tasks: tp.total_tasks,
         today_hours: 0, today_tasks: "", last_active: null,
         current_task: "", current_project: "", current_priority: "",
+        current_activity_type: "", current_activity_time: "",
         alloc_status: "", utilization: 0, avg_hrs_day: 0,
         task_total: tp.total_tasks,
         task_pending: (tp.pending || 0) + (tp.partially_pending || 0),
