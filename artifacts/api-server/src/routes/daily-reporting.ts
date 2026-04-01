@@ -433,11 +433,44 @@ function generateCombinedPDF(
         doc.fillColor(badgeTxtColor).fontSize(8).font("Helvetica-Bold")
           .text(badgeText, badgeX, rowY + 5, { width: 80, align: "center" });
 
-        doc.y = rowY + (dept ? 28 : 20);
+        doc.y = rowY + (dept ? 30 : 22);
+
+        // Child table detail rows
+        if (r.childTables && Object.keys(r.childTables).length > 0) {
+          for (const tableRows of Object.values(r.childTables)) {
+            (tableRows as any[]).forEach((trow: any, rowIdx: number) => {
+              const entries = Object.entries(trow).filter(
+                ([k, v]) => !CHILD_SKIP.has(k) && v !== null && v !== "" && v !== 0
+              );
+              if (!entries.length) return;
+
+              if (doc.y + 20 > doc.page.height - 60) { doc.addPage(); doc.y = 40; }
+
+              const rowLineY = doc.y;
+              doc.fillColor("#e8f0fe").rect(60, rowLineY, doc.page.width - 100, 13).fill();
+              doc.fillColor("#1e3a5f").fontSize(8).font("Helvetica-Bold")
+                .text(`#${rowIdx + 1}`, 62, rowLineY + 2, { width: 20, lineBreak: false });
+              doc.y = rowLineY + 15;
+
+              entries.forEach(([k, v]) => {
+                if (doc.y + 14 > doc.page.height - 60) { doc.addPage(); doc.y = 40; }
+                const entryY = doc.y;
+                const label = k.replace(/_/g, " ").toUpperCase();
+                doc.fillColor("#64748b").fontSize(8).font("Helvetica-Bold")
+                  .text(label + ":", 72, entryY, { width: 110, lineBreak: false });
+                doc.fillColor("#1e293b").font("Helvetica")
+                  .text(String(v), 185, entryY, { width: doc.page.width - 225 });
+                doc.y = entryY + 12;
+              });
+              doc.y += 4;
+            });
+          }
+        }
 
         if (i < reported.length - 1) {
+          if (doc.y + 10 > doc.page.height - 60) { doc.addPage(); doc.y = 40; }
           doc.moveTo(62, doc.y + 2).lineTo(doc.page.width - 40, doc.y + 2).strokeColor("#f1f5f9").lineWidth(0.5).stroke();
-          doc.y += 8;
+          doc.y += 10;
         } else {
           doc.y += 4;
         }
@@ -446,16 +479,17 @@ function generateCombinedPDF(
 
     // ── Not reported employees ──
     if (notReported.length > 0) {
+      if (doc.y + 50 > doc.page.height - 60) { doc.addPage(); doc.y = 40; }
       doc.moveDown(0.8);
       sectionHeader(`Not Reported  (${notReported.length})`, "#dc2626");
       notReported.forEach((emp, i) => {
+        if (doc.y + 35 > doc.page.height - 60) { doc.addPage(); doc.y = 40; }
         const rowY = doc.y;
         doc.circle(50, rowY + 7, 4).fill("#ef4444");
         doc.fillColor("#1e293b").fontSize(10).font("Helvetica-Bold")
           .text(emp.name, 62, rowY, { width: 200 });
         doc.fillColor("#94a3b8").fontSize(8.5).font("Helvetica")
           .text(emp.id, 62, rowY + 13, { width: 100 });
-        // "NOT REPORTED" badge
         const badgeX = doc.page.width - 150;
         doc.roundedRect(badgeX, rowY + 2, 100, 14, 3).fill("#fee2e2");
         doc.fillColor("#991b1b").fontSize(8).font("Helvetica-Bold")
@@ -467,12 +501,14 @@ function generateCombinedPDF(
       });
     }
 
-    // ── Footer ──
+    // ── Footer (only drawn if there is room on the current page) ──
     const footerY = doc.page.height - 35;
-    doc.rect(0, footerY - 5, doc.page.width, 40).fill("#f8fafc");
-    doc.fillColor("#94a3b8").fontSize(8).font("Helvetica")
-      .text(`FlowMatriX Daily Summary  ·  WTT International  ·  ${dateStr}`,
-        40, footerY, { align: "center", width: doc.page.width - 80 });
+    if (doc.y < footerY - 10) {
+      doc.rect(0, footerY - 5, doc.page.width, 40).fill("#f8fafc");
+      doc.fillColor("#94a3b8").fontSize(8).font("Helvetica")
+        .text(`FlowMatriX Daily Summary  ·  WTT International  ·  ${dateStr}`,
+          40, footerY, { align: "center", width: doc.page.width - 80 });
+    }
 
     doc.end();
   });
@@ -506,17 +542,42 @@ router.post("/daily-reporting/send-combined", async (req, res) => {
     // 2. Filter to today's date and MD employees
     const dateRows = rows.filter(row => row.date === date && matchesMdEmployee(row.employee, row.employee_name));
 
-    // 3. Determine which MD employees haven't filed a report
+    // 3. Fetch full details for each reported doc — collect ALL child table arrays
+    const DETAIL_SKIP = new Set(["doctype","idx","docstatus","__islocal","__unsaved","owner",
+      "__last_sync_on","name","employee","employee_name","department","modified",
+      "modified_by","creation","amended_from"]);
+
+    const detailed = await Promise.all(dateRows.map(async row => {
+      try {
+        const dr = await fetch(`${ERP_URL}/api/resource/Daily Reporting/${encodeURIComponent(row.name)}`, {
+          headers: { Authorization: auth() },
+        });
+        if (!dr.ok) return row;
+        const dj = await dr.json() as { data: any };
+        const data = dj.data || {};
+        const childTables: Record<string, any[]> = {};
+        for (const [k, v] of Object.entries(data)) {
+          if (!DETAIL_SKIP.has(k) && Array.isArray(v) && (v as any[]).length > 0) {
+            childTables[k] = v as any[];
+          }
+        }
+        return { ...row, childTables };
+      } catch {
+        return row;
+      }
+    }));
+
+    // 4. Determine which MD employees haven't filed a report
     const notReported = MD_EMPLOYEES.filter(emp =>
-      !dateRows.some(r => matchesMdEmployee(r.employee, r.employee_name) && (
+      !detailed.some(r => matchesMdEmployee(r.employee, r.employee_name) && (
         (r.employee || "").toUpperCase() === emp.id.toUpperCase() ||
         (r.employee_name || "").toUpperCase().includes(emp.name.toUpperCase()) ||
         emp.name.toUpperCase().includes((r.employee_name || "").toUpperCase())
       ))
     );
 
-    // 4. Generate combined summary PDF (no child table details — summary only)
-    const pdfBuf = await generateCombinedPDF(date, dateRows, notReported);
+    // 5. Generate combined PDF with full details
+    const pdfBuf = await generateCombinedPDF(date, detailed, notReported);
     const id = randomUUID();
     const dateTag = date.replace(/-/g, "");
     const filename = `DailySummary_${dateTag}.pdf`;
@@ -534,7 +595,7 @@ router.post("/daily-reporting/send-combined", async (req, res) => {
     const result = await sendWhatsAppDocument(to, pdfUrl, filename, caption);
 
     if (result.success) {
-      res.json({ success: true, to, filename, reported: dateRows.length, notReported: notReported.length });
+      res.json({ success: true, to, filename, reported: detailed.length, notReported: notReported.length });
     } else {
       res.status(502).json({ success: false, error: result.error || "WhatsApp send failed" });
     }
