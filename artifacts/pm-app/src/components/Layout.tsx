@@ -184,6 +184,18 @@ interface NavItem {
 
 const navGroups: { label: string; items: NavItem[] }[] = [
   {
+    label: "Shortcuts",
+    items: [
+      { path: "/purchase-dashboard",  label: "Purchase Dashboard",  icon: BarChart3,  color: "text-blue-400",    bgColor: "bg-blue-500/15" },
+      { path: "/stores-dashboard",    label: "Stores Dashboard",    icon: Warehouse,  color: "text-teal-400",    bgColor: "bg-teal-500/15" },
+      { path: "/logistics-dashboard", label: "Logistics Dashboard", icon: Truck,      color: "text-cyan-400",    bgColor: "bg-cyan-500/15" },
+      { path: "/process-proposal",    label: "Process & Proposal",  icon: Layers,     color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
+      { path: "/finance-dashboard",   label: "Finance Dashboard",   icon: Receipt,    color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
+      { path: "/hrms/analytics",      label: "HR Analytics",        icon: BarChart3,  color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
+      { path: "/hrms/task-summary",   label: "Task Summary",        icon: ListChecks, color: "text-lime-400",    bgColor: "bg-lime-500/15" },
+    ],
+  },
+  {
     label: "Work",
     items: [
       { path: "/calendar", label: "Calendar", icon: Calendar, color: "text-blue-400", bgColor: "bg-blue-500/15" },
@@ -667,7 +679,8 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
       if (saved) return JSON.parse(saved);
     } catch {}
     const active = getActiveGroupLabel(location);
-    return active ? [active] : ["Main"];
+    const defaults = ["Shortcuts", "Main"];
+    return active ? [...new Set([...defaults, active])] : defaults;
   });
   const [collapsed, setCollapsedState] = useState(() => {
     try {
