@@ -139,12 +139,12 @@ function ReportDetailModal({ name, onClose }: { name: string; onClose: () => voi
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
         {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-orange-50 to-white shrink-0">
-          <div className="w-9 h-9 rounded-xl bg-orange-100 flex items-center justify-center shrink-0">
-            <ClipboardList className="w-4 h-4 text-orange-600" />
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-indigo-50 to-white shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0">
+            <ClipboardList className="w-4 h-4 text-indigo-600" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[10px] text-orange-400 font-bold uppercase tracking-widest">Daily Report</p>
+            <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">Daily Report</p>
             <p className="text-sm font-black text-gray-900 leading-tight truncate">{name}</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors shrink-0">
@@ -156,18 +156,18 @@ function ReportDetailModal({ name, onClose }: { name: string; onClose: () => voi
         {report && (
           <div className="flex items-center gap-4 flex-wrap px-5 py-3 border-b border-gray-50 bg-gray-50/50 shrink-0">
             <div className="flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5 text-orange-400" />
+              <User className="w-3.5 h-3.5 text-indigo-400" />
               <span className="text-xs font-bold text-gray-700">{report.employee_name || report.employee}</span>
             </div>
             {report.department && (
               <div className="flex items-center gap-1.5">
-                <Building2 className="w-3.5 h-3.5 text-orange-400" />
+                <Building2 className="w-3.5 h-3.5 text-indigo-400" />
                 <span className="text-xs text-gray-500">{deptShort(report.department)}</span>
               </div>
             )}
             {report.date && (
               <div className="flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-orange-400" />
+                <Calendar className="w-3.5 h-3.5 text-indigo-400" />
                 <span className="text-xs text-gray-500">{fmtDate(report.date)}</span>
               </div>
             )}
@@ -181,7 +181,7 @@ function ReportDetailModal({ name, onClose }: { name: string; onClose: () => voi
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
           {loading && (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
-              <Loader2 className="w-6 h-6 animate-spin text-orange-400" />
+              <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
               <p className="text-xs text-gray-400">Loading report…</p>
             </div>
           )}
@@ -215,7 +215,7 @@ function ReportDetailModal({ name, onClose }: { name: string; onClose: () => voi
                       if (!rowFields.length) return null;
                       return (
                         <div key={ri} className={cn("px-4 py-3 border-b border-gray-50 last:border-0", ri % 2 === 0 ? "bg-white" : "bg-gray-50/50")}>
-                          <p className="text-[9px] font-bold text-orange-400 mb-2">#{ri + 1}</p>
+                          <p className="text-[9px] font-bold text-indigo-400 mb-2">#{ri + 1}</p>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5">
                             {rowFields.map(([k, v]) => (
                               <div key={k}>
@@ -319,12 +319,12 @@ function NewReportModal({ onClose, onCreated }: { onClose: () => void; onCreated
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
         {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-orange-50 to-white shrink-0">
-          <div className="w-9 h-9 rounded-xl bg-orange-100 flex items-center justify-center shrink-0">
-            <Plus className="w-4 h-4 text-orange-600" />
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-indigo-50 to-white shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0">
+            <Plus className="w-4 h-4 text-indigo-600" />
           </div>
           <div className="flex-1">
-            <p className="text-[10px] text-orange-400 font-bold uppercase tracking-widest">New Daily Report</p>
+            <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">New Daily Report</p>
             <p className="text-sm font-black text-gray-900">Create Report</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
@@ -346,7 +346,7 @@ function NewReportModal({ onClose, onCreated }: { onClose: () => void; onCreated
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5 block">Employee *</label>
               <select
                 value={employee} onChange={e => setEmployee(e.target.value)}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:border-orange-400 bg-white"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:border-indigo-400 bg-white"
               >
                 {ALLOWED_EMPLOYEES.map(emp => (
                   <option key={emp} value={emp}>{emp}{EMPLOYEE_DESIGNATIONS[emp] ? ` — ${EMPLOYEE_DESIGNATIONS[emp]}` : ""}</option>
@@ -357,7 +357,7 @@ function NewReportModal({ onClose, onCreated }: { onClose: () => void; onCreated
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5 block">Date *</label>
               <input
                 type="date" value={date} onChange={e => setDate(e.target.value)}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-orange-400"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-indigo-400"
               />
             </div>
           </div>
@@ -366,7 +366,7 @@ function NewReportModal({ onClose, onCreated }: { onClose: () => void; onCreated
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Activities / Tasks</label>
-              <button onClick={addRow} className="flex items-center gap-1 text-[10px] font-bold text-orange-600 hover:text-orange-700">
+              <button onClick={addRow} className="flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-700">
                 <Plus className="w-3 h-3" /> Add Row
               </button>
             </div>
@@ -378,7 +378,7 @@ function NewReportModal({ onClose, onCreated }: { onClose: () => void; onCreated
                     <input
                       value={row.activity} onChange={e => updateRow(i, "activity", e.target.value)}
                       placeholder="What did you do?"
-                      className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-orange-400 bg-white"
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-indigo-400 bg-white"
                     />
                   </div>
                   <div className="col-span-3">
@@ -386,7 +386,7 @@ function NewReportModal({ onClose, onCreated }: { onClose: () => void; onCreated
                     <input
                       value={row.project} onChange={e => updateRow(i, "project", e.target.value)}
                       placeholder="Project name"
-                      className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-orange-400 bg-white"
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-indigo-400 bg-white"
                     />
                   </div>
                   <div className="col-span-2">
@@ -394,7 +394,7 @@ function NewReportModal({ onClose, onCreated }: { onClose: () => void; onCreated
                     <input
                       type="number" min="0" step="0.5" value={row.hours} onChange={e => updateRow(i, "hours", e.target.value)}
                       placeholder="0"
-                      className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-orange-400 bg-white"
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-indigo-400 bg-white"
                     />
                   </div>
                   <div className="col-span-2">
@@ -402,7 +402,7 @@ function NewReportModal({ onClose, onCreated }: { onClose: () => void; onCreated
                     <input
                       value={row.remarks} onChange={e => updateRow(i, "remarks", e.target.value)}
                       placeholder="Notes"
-                      className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-orange-400 bg-white"
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-indigo-400 bg-white"
                     />
                   </div>
                   <div className="col-span-1 flex items-end pb-1 justify-center">
@@ -425,7 +425,7 @@ function NewReportModal({ onClose, onCreated }: { onClose: () => void; onCreated
           </button>
           <button
             onClick={handleSubmit} disabled={submitting}
-            className="flex items-center gap-2 px-5 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold transition-colors disabled:opacity-50 shadow-sm"
+            className="flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors disabled:opacity-50 shadow-sm"
           >
             {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
             {submitting ? "Saving…" : "Save Report"}
@@ -483,19 +483,19 @@ export default function DailyReporting() {
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center shadow-lg shadow-orange-200">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-500 flex items-center justify-center shadow-lg shadow-indigo-200">
               <ClipboardList className="w-5 h-5 text-white" />
             </div>
             <div>
               <h1 className="text-lg font-black text-gray-900 leading-tight">Daily Reporting</h1>
-              <p className="text-xs text-gray-400">{reports.length} report{reports.length !== 1 ? "s" : ""} · {ALLOWED_EMPLOYEES.length} employees</p>
+              <p className="text-xs text-gray-400">{reports.length} report{reports.length !== 1 ? "s" : ""}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowFilters(f => !f)}
               className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border",
-                showFilters ? "bg-orange-50 text-orange-600 border-orange-200" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50")}
+                showFilters ? "bg-indigo-50 text-indigo-600 border-indigo-200" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50")}
             >
               <Filter className="w-3.5 h-3.5" /> Filters
             </button>
@@ -504,7 +504,7 @@ export default function DailyReporting() {
             </button>
             <button
               onClick={() => setShowNewModal(true)}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold transition-colors shadow-sm"
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors shadow-sm"
             >
               <Plus className="w-3.5 h-3.5" /> New Report
             </button>
@@ -518,17 +518,17 @@ export default function DailyReporting() {
               <div>
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1 block">From Date</label>
                 <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-orange-400" />
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-400" />
               </div>
               <div>
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1 block">To Date</label>
                 <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-orange-400" />
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-400" />
               </div>
               <div>
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1 block">Status</label>
                 <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-orange-400 bg-white">
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-400 bg-white">
                   <option value="">All Statuses</option>
                   <option value="Draft">Draft</option>
                   <option value="Submitted">Submitted</option>
@@ -551,7 +551,7 @@ export default function DailyReporting() {
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
-              <Loader2 className="w-6 h-6 animate-spin text-orange-400" />
+              <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
               <p className="text-xs text-gray-400">Loading daily reports…</p>
             </div>
           ) : reports.length === 0 ? (
@@ -559,7 +559,7 @@ export default function DailyReporting() {
               <ClipboardList className="w-10 h-10 text-gray-200" />
               <p className="text-sm font-bold text-gray-400">No daily reports found</p>
               <p className="text-xs text-gray-300">Try adjusting the date range or create a new report</p>
-              <button onClick={() => setShowNewModal(true)} className="mt-2 flex items-center gap-1.5 px-4 py-2 rounded-lg bg-orange-500 text-white text-xs font-bold hover:bg-orange-600 transition-colors">
+              <button onClick={() => setShowNewModal(true)} className="mt-2 flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors">
                 <Plus className="w-3.5 h-3.5" /> New Report
               </button>
             </div>
@@ -579,11 +579,11 @@ export default function DailyReporting() {
                   </thead>
                   <tbody>
                     {reports.map((r, i) => (
-                      <tr key={r.name} className={cn("border-b border-gray-50 last:border-0 hover:bg-orange-50/40 transition-colors cursor-pointer", i % 2 === 0 ? "bg-white" : "bg-gray-50/30")}
+                      <tr key={r.name} className={cn("border-b border-gray-50 last:border-0 hover:bg-indigo-50/40 transition-colors cursor-pointer", i % 2 === 0 ? "bg-white" : "bg-gray-50/30")}
                         onClick={() => setSelectedReport(r.name)}>
                         <td className="px-4 py-2.5">
                           <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-orange-400 to-amber-300 flex items-center justify-center shrink-0">
+                            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-blue-400 flex items-center justify-center shrink-0">
                               <span className="text-white text-[9px] font-black">{(r.employee_name || r.employee || "?")[0].toUpperCase()}</span>
                             </div>
                             <div>
@@ -610,7 +610,7 @@ export default function DailyReporting() {
                         <td className="px-4 py-2.5">
                           <div className="flex items-center justify-center gap-1.5">
                             <button onClick={e => { e.stopPropagation(); setSelectedReport(r.name); }}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-600 text-[10px] font-semibold transition-colors">
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-[10px] font-semibold transition-colors">
                               <Eye className="w-3 h-3" /> View
                             </button>
                           </div>
