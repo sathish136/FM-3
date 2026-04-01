@@ -80,6 +80,49 @@ router.get("/daily-reporting", async (req, res) => {
   }
 });
 
+// ─── Create New Daily Report ─────────────────────────────────────────────────
+router.post("/daily-reporting", async (req, res) => {
+  if (!isConfigured()) return res.status(503).json({ error: "ERPNext not configured" });
+
+  const { employee_name, date, activities = [] } = req.body;
+  if (!employee_name || !date) return res.status(400).json({ error: "employee_name and date are required" });
+
+  try {
+    const docData: any = {
+      doctype: "Daily Reporting",
+      employee_name,
+      date,
+    };
+
+    // Add activities as child table if provided
+    if (Array.isArray(activities) && activities.length > 0) {
+      const validRows = activities.filter(a => a.activity || a.project);
+      if (validRows.length > 0) {
+        docData.daily_reporting_detail = validRows.map((a: any) => ({
+          doctype: "Daily Reporting Detail",
+          activity: a.activity || "",
+          project: a.project || "",
+          no_of_hours: parseFloat(a.hours) || 0,
+          remarks: a.remarks || "",
+        }));
+      }
+    }
+
+    const r = await fetch(`${ERP_URL}/api/resource/Daily Reporting`, {
+      method: "POST",
+      headers: { Authorization: auth(), "Content-Type": "application/json" },
+      body: JSON.stringify(docData),
+    });
+
+    const json = await r.json() as any;
+    if (!r.ok) return res.status(r.status).json({ error: json.exception || json.message || "Failed to create" });
+
+    res.json({ name: json.data?.name, success: true });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 // ─── Single Daily Report Detail ───────────────────────────────────────────────
 // Single document fetch uses a different Frappe endpoint that doesn't have the
 // same field-name restrictions as get_list.
