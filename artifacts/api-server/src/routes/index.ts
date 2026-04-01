@@ -28,6 +28,7 @@ import notificationsRouter from "./notifications";
 import performanceRouter from "./performance";
 import dailyReportingRouter from "./daily-reporting";
 import logisticsDashboardRouter from "./logistics-dashboard";
+import processProposalRouter from "./process-proposal";
 
 const router: IRouter = Router();
 
@@ -60,5 +61,6 @@ router.use(notificationsRouter);
 router.use(performanceRouter);
 router.use(dailyReportingRouter);
 router.use(logisticsDashboardRouter);
+router.use(processProposalRouter);
 
 export default router;

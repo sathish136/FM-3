@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Process &amp; Proposal Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.453.0/dist/umd/lucide.min.js"></script>
+</head>
+<body>
+
+  <!-- ═══════════════════ FULLSCREEN DETAIL OVERLAY ═══════════════════ -->
+  <div id="detailOverlay" class="detail-overlay" style="display:none;">
+    <div id="detailAccentBar" class="detail-accent-bar"></div>
+    <div class="detail-header">
+      <div class="detail-header-left">
+        <button class="btn-back" onclick="closeDetail()">
+          <i data-lucide="arrow-left" style="width:14px;height:14px;"></i>
+          Back to Dashboard
+        </button>
+        <div class="detail-title-block">
+          <span class="detail-panel-title" id="detailTitle">—</span>
+          <span class="detail-badge" id="detailBadge">0</span>
+        </div>
+      </div>
+      <div class="detail-header-right">
+        <img src="{{ url_for('static', filename='wtt_logo.png') }}" alt="WTT International" class="header-logo"/>
+        <div>
+          <div class="header-title">Process &amp; Proposal Dashboard</div>
+          <div class="header-sub">EXECUTIVE OVERVIEW</div>
+        </div>
+        <button class="btn-close-overlay" onclick="closeDetail()" title="Close (Esc)">
+          <i data-lucide="x" style="width:16px;height:16px;"></i>
+        </button>
+      </div>
+    </div>
+    <div class="detail-body">
+      <div class="detail-table-wrap">
+        <table id="detailTable">
+          <thead id="detailThead"></thead>
+          <tbody id="detailTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ HEADER ═══════════════════ -->
+  <header>
+    <div class="header-left">
+      <img src="{{ url_for('static', filename='wtt_logo.png') }}" alt="WTT International" class="header-logo"/>
+      <div>
+        <div class="header-title">Process &amp; Proposal Dashboard</div>
+        <div class="header-sub">EXECUTIVE OVERVIEW</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <span id="errorMsg" class="error-msg" style="display:none;">
+        <i data-lucide="wifi-off" style="width:12px;height:12px;"></i>
+        API not connected — showing mock data.
+      </span>
+      <button class="btn-refresh" onclick="loadDashboard()">
+        <i data-lucide="refresh-cw" style="width:12px;height:12px;"></i>
+        Refresh
+      </button>
+      <div class="clock">
+        <i data-lucide="clock" style="width:13px;height:13px;"></i>
+        <span id="datetime"></span>
+      </div>
+      <button class="btn-logout">
+        <i data-lucide="log-out" style="width:13px;height:13px;"></i>
+        Logout
+      </button>
+    </div>
+  </header>
+
+  <!-- ═══════════════════ SPLIT SCREEN ═══════════════════ -->
+  <div class="split-screen">
+
+    <!-- ══ LEFT: PROCESS ══ -->
+    <div class="split-pane">
+      <div class="pane-label">
+        <i data-lucide="settings" style="width:14px;height:14px;"></i>
+        PROCESS
+      </div>
+
+      <div class="kpi-row" style="grid-template-columns: repeat(5,1fr);">
+        <div class="kpi-card" style="background:#48c9b0;" onclick="openDetail('proc_today')">
+          <div class="kpi-top"><span class="kpi-label">TODAY'S PENDING</span>
+            <i data-lucide="clock" style="width:20px;height:20px;opacity:0.7;"></i></div>
+          <div class="kpi-value" id="kpi_proc_today">—</div>
+          <span class="kpi-zoom-hint">VIEW ALL ↗</span>
+        </div>
+        <div class="kpi-card" style="background:#ec7063;" onclick="openDetail('proc_yest')">
+          <div class="kpi-top"><span class="kpi-label">YESTERDAY'S ELEVATED</span>
+            <i data-lucide="trending-up" style="width:20px;height:20px;opacity:0.7;"></i></div>
+          <div class="kpi-value" id="kpi_proc_yest">—</div>
+          <span class="kpi-zoom-hint">VIEW ALL ↗</span>
+        </div>
+        <div class="kpi-card" style="background:#f5b041;" onclick="openDetail('proc_mkt')">
+          <div class="kpi-top"><span class="kpi-label">CLARIFICATION (MKT)</span>
+            <i data-lucide="message-circle" style="width:20px;height:20px;opacity:0.7;"></i></div>
+          <div class="kpi-value" id="kpi_proc_mkt">—</div>
+          <span class="kpi-zoom-hint">VIEW ALL ↗</span>
+        </div>
+        <div class="kpi-card" style="background:#af7ac5;" onclick="openDetail('proc_rd')">
+          <div class="kpi-top"><span class="kpi-label">R&amp;D</span>
+            <i data-lucide="flask-conical" style="width:20px;height:20px;opacity:0.7;"></i></div>
+          <div class="kpi-value" id="kpi_proc_rd">—</div>
+          <span class="kpi-zoom-hint">VIEW ALL ↗</span>
+        </div>
+        <div class="kpi-card" style="background:#5dade2;" onclick="openDetail('proc_civil')">
+          <div class="kpi-top"><span class="kpi-label">CIVIL</span>
+            <i data-lucide="building-2" style="width:20px;height:20px;opacity:0.7;"></i></div>
+          <div class="kpi-value" id="kpi_proc_civil">—</div>
+          <span class="kpi-zoom-hint">VIEW ALL ↗</span>
+        </div>
+      </div>
+
+      <div class="pane-tables">
+        <!-- ROW 1 -->
+        <div class="table-grid-2">
+          <div class="panel">
+            <div class="panel-header" style="border-left-color:#48c9b0;">
+              <span class="panel-title">Today's Pending</span>
+              <span class="badge" style="background:#48c9b0;" id="badge_proc_today">0</span>
+            </div>
+            <div class="table-wrap"><table>
+              <thead>
+                <tr><th>S.NO</th><th>DATE</th><th>COMPANY NAME</th><th>CAPACITY</th><th>REQUIREMENT</th><th>AGE</th></tr>
+                <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+              </thead>
+              <tbody id="tb_proc_today"><tr><td colspan="6" class="empty">No records</td></tr></tbody>
+            </table></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header" style="border-left-color:#ec7063;">
+              <span class="panel-title">Yesterday's Elevated</span>
+              <span class="badge" style="background:#ec7063;" id="badge_proc_yest">0</span>
+            </div>
+            <div class="table-wrap"><table>
+              <thead>
+                <tr><th>S.NO</th><th>DATE</th><th>COMPANY NAME</th><th>CAPACITY</th><th>REQUIREMENT</th><th>AGE</th></tr>
+                <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+              </thead>
+              <tbody id="tb_proc_yest"><tr><td colspan="6" class="empty">No records</td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+
+        <!-- ROW 2 -->
+        <div class="table-grid-2">
+          <div class="panel">
+            <div class="panel-header" style="border-left-color:#f5b041;">
+              <span class="panel-title">Clarification (Marketing Team)</span>
+              <span class="badge" style="background:#f5b041;" id="badge_proc_mkt">0</span>
+            </div>
+            <div class="table-wrap"><table>
+              <thead>
+                <tr><th>S.NO</th><th>DATE</th><th>COMPANY NAME</th><th>CAPACITY</th><th>REQUIREMENT</th><th>AGE</th></tr>
+                <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+              </thead>
+              <tbody id="tb_proc_mkt"><tr><td colspan="6" class="empty">No records</td></tr></tbody>
+            </table></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header" style="border-left-color:#af7ac5;">
+              <span class="panel-title">R&amp;D</span>
+              <span class="badge" style="background:#af7ac5;" id="badge_proc_rd">0</span>
+            </div>
+            <div class="table-wrap"><table>
+              <thead>
+                <tr><th>S.NO</th><th>DATE</th><th>COMPANY NAME</th><th>CAPACITY</th><th>REQUIREMENT</th><th>AGE</th></tr>
+                <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+              </thead>
+              <tbody id="tb_proc_rd"><tr><td colspan="6" class="empty">No records</td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+
+        <!-- ROW 3: CIVIL full width -->
+        <div class="table-grid-1">
+          <div class="panel">
+            <div class="panel-header" style="border-left-color:#5dade2;">
+              <span class="panel-title">CIVIL</span>
+              <span class="badge" style="background:#5dade2;" id="badge_proc_civil">0</span>
+            </div>
+            <div class="table-wrap"><table>
+              <thead>
+                <tr><th>S.NO</th><th>DATE</th><th>COMPANY NAME</th><th>CAPACITY</th><th>REQUIREMENT</th><th>AGE</th></tr>
+                <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+              </thead>
+              <tbody id="tb_proc_civil"><tr><td colspan="6" class="empty">No records</td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /left pane -->
+
+    <!-- DIVIDER -->
+    <div class="pane-divider"></div>
+
+    <!-- ══ RIGHT: PROPOSAL ══ -->
+    <div class="split-pane">
+      <div class="pane-label proposal-label">
+        <i data-lucide="file-pen-line" style="width:14px;height:14px;"></i>
+        PROPOSAL
+      </div>
+
+      <div class="kpi-row" style="grid-template-columns: repeat(6,1fr);">
+        <div class="kpi-card" style="background:#48c9b0;" onclick="openDetail('prop_today')">
+          <div class="kpi-top"><span class="kpi-label">TODAY'S PENDING</span>
+            <i data-lucide="clock" style="width:20px;height:20px;opacity:0.7;"></i></div>
+          <div class="kpi-value" id="kpi_prop_today">—</div>
+          <span class="kpi-zoom-hint">VIEW ALL ↗</span>
+        </div>
+        <div class="kpi-card" style="background:#ec7063;" onclick="openDetail('prop_yest')">
+          <div class="kpi-top"><span class="kpi-label">YESTERDAY'S PENDING</span>
+            <i data-lucide="calendar-clock" style="width:20px;height:20px;opacity:0.7;"></i></div>
+          <div class="kpi-value" id="kpi_prop_yest">—</div>
+          <span class="kpi-zoom-hint">VIEW ALL ↗</span>
+        </div>
+        <div class="kpi-card" style="background:#8e44ad;" onclick="openDetail('prop_last_week')">
+          <div class="kpi-top"><span class="kpi-label">LAST WEEK</span>
+            <i data-lucide="calendar" style="width:20px;height:20px;opacity:0.7;"></i></div>
+          <div class="kpi-value" id="kpi_last_week">—</div>
+          <span class="kpi-zoom-hint">VIEW ALL ↗</span>
+        </div>
+        <div class="kpi-card" style="background:#9b59b6;" onclick="openDetail('prop_this_week')">
+          <div class="kpi-top"><span class="kpi-label">THIS WEEK</span>
+            <i data-lucide="calendar-check" style="width:20px;height:20px;opacity:0.7;"></i></div>
+          <div class="kpi-value" id="kpi_this_week">—</div>
+          <span class="kpi-zoom-hint">VIEW ALL ↗</span>
+        </div>
+        <div class="kpi-card" style="background:#2980b9;" onclick="openDetail('prop_last_month')">
+          <div class="kpi-top"><span class="kpi-label">LAST MONTH</span>
+            <i data-lucide="calendar" style="width:20px;height:20px;opacity:0.7;"></i></div>
+          <div class="kpi-value" id="kpi_last_month">—</div>
+          <span class="kpi-zoom-hint">VIEW ALL ↗</span>
+        </div>
+        <div class="kpi-card" style="background:#3498db;" onclick="openDetail('prop_this_month')">
+          <div class="kpi-top"><span class="kpi-label">THIS MONTH</span>
+            <i data-lucide="calendar-days" style="width:20px;height:20px;opacity:0.7;"></i></div>
+          <div class="kpi-value" id="kpi_this_month">—</div>
+          <span class="kpi-zoom-hint">VIEW ALL ↗</span>
+        </div>
+      </div>
+
+      <div class="pane-tables">
+        <!-- ROW 1 -->
+        <div class="table-grid-2">
+          <div class="panel">
+            <div class="panel-header" style="border-left-color:#48c9b0;">
+              <span class="panel-title">Today's Pending</span>
+              <span class="badge" style="background:#48c9b0;" id="badge_prop_today">0</span>
+            </div>
+            <div class="table-wrap"><table>
+              <thead>
+                <tr><th>S.NO</th><th>DATE</th><th>COMPANY NAME</th><th>CAPACITY</th><th>REQUIREMENT</th><th>AGE</th></tr>
+                <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+              </thead>
+              <tbody id="tb_prop_today"><tr><td colspan="6" class="empty">No records</td></tr></tbody>
+            </table></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header" style="border-left-color:#ec7063;">
+              <span class="panel-title">Yesterday's Pending</span>
+              <span class="badge" style="background:#ec7063;" id="badge_prop_yest">0</span>
+            </div>
+            <div class="table-wrap"><table>
+              <thead>
+                <tr><th>S.NO</th><th>DATE</th><th>COMPANY NAME</th><th>CAPACITY</th><th>REQUIREMENT</th><th>AGE</th></tr>
+                <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+              </thead>
+              <tbody id="tb_prop_yest"><tr><td colspan="6" class="empty">No records</td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+
+        <!-- ROW 2 -->
+        <div class="table-grid-2">
+          <div class="panel">
+            <div class="panel-header" style="border-left-color:#8e44ad;">
+              <span class="panel-title">Last Week Projects</span>
+              <span class="badge" style="background:#8e44ad;" id="badge_last_week">0</span>
+            </div>
+            <div class="table-wrap"><table>
+              <thead>
+                <tr><th>S.NO</th><th>PROJECT NAME</th><th>CAPACITY</th><th>TOTAL PRICE</th><th>TIME TAKEN</th></tr>
+                <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+              </thead>
+              <tbody id="tb_last_week"><tr><td colspan="5" class="empty">No records</td></tr></tbody>
+            </table></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header" style="border-left-color:#9b59b6;">
+              <span class="panel-title">This Week Projects</span>
+              <span class="badge" style="background:#9b59b6;" id="badge_this_week">0</span>
+            </div>
+            <div class="table-wrap"><table>
+              <thead>
+                <tr><th>S.NO</th><th>PROJECT NAME</th><th>CAPACITY</th><th>TOTAL PRICE</th><th>TIME TAKEN</th></tr>
+                <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+              </thead>
+              <tbody id="tb_this_week"><tr><td colspan="5" class="empty">No records</td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+
+        <!-- ROW 3 -->
+        <div class="table-grid-2">
+          <div class="panel">
+            <div class="panel-header" style="border-left-color:#2980b9;">
+              <span class="panel-title">Last Month Projects</span>
+              <span class="badge" style="background:#2980b9;" id="badge_last_month">0</span>
+            </div>
+            <div class="table-wrap"><table>
+              <thead>
+                <tr><th>S.NO</th><th>PROJECT NAME</th><th>CAPACITY</th><th>TOTAL PRICE</th><th>TIME TAKEN</th></tr>
+                <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+              </thead>
+              <tbody id="tb_last_month"><tr><td colspan="5" class="empty">No records</td></tr></tbody>
+            </table></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header" style="border-left-color:#3498db;">
+              <span class="panel-title">This Month Projects</span>
+              <span class="badge" style="background:#3498db;" id="badge_this_month">0</span>
+            </div>
+            <div class="table-wrap"><table>
+              <thead>
+                <tr><th>S.NO</th><th>PROJECT NAME</th><th>CAPACITY</th><th>TOTAL PRICE</th><th>TIME TAKEN</th></tr>
+                <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+              </thead>
+              <tbody id="tb_this_month"><tr><td colspan="5" class="empty">No records</td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /right pane -->
+
+  </div><!-- /split-screen -->
+
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  <script>lucide.createIcons();</script>
+</body>
+</html>
