@@ -54,20 +54,27 @@ const SAMPLE_GPRS_PENDING = [
 ];
 
 // ── GET /api/logistics-dashboard/counts ───────────────────────────────────────
+// Derives counts from the individual list endpoints in parallel
 
 router.get("/logistics-dashboard/counts", async (req, res) => {
   const project = req.query.project as string | undefined;
+  const pp = projectParams(project);
   try {
-    const data = await erpFetch(
-      "wtt_module.customization.custom.logistics.get_logistics_dashboard_counts",
-      projectParams(project),
-    );
-    return ok(res, data?.message ?? {
-      po_pending:      SAMPLE_PO_PENDING.length,
-      supplier_delay:  SAMPLE_SUPPLIER_DELAY.length,
-      material_delay:  SAMPLE_MATERIAL_DELAY.length,
-      on_time:         SAMPLE_ON_TIME.length,
-      gprs_pending:    SAMPLE_GPRS_PENDING.length,
+    const [poPend, supDel, matDel, onTime, gprs] = await Promise.allSettled([
+      erpFetch("wtt_module.customization.custom.logistics.get_po_made_logistics_entry_pending", pp),
+      erpFetch("wtt_module.customization.custom.logistics.get_supplier_delay", pp),
+      erpFetch("wtt_module.customization.custom.logistics.get_material_delay", pp),
+      erpFetch("wtt_module.customization.custom.logistics.get_on_time_deliveries", pp),
+      erpFetch("wtt_module.customization.custom.logistics.get_gprs_tracking_not_entered", pp),
+    ]);
+    const len = (r: PromiseSettledResult<any>) =>
+      r.status === "fulfilled" && Array.isArray(r.value?.message) ? r.value.message.length : 0;
+    return ok(res, {
+      po_pending:     len(poPend),
+      supplier_delay: len(supDel),
+      material_delay: len(matDel),
+      on_time:        len(onTime),
+      gprs_pending:   len(gprs),
     });
   } catch (e: any) {
     return ok(res, {
@@ -87,7 +94,7 @@ router.get("/logistics-dashboard/po-pending", async (req, res) => {
   const project = req.query.project as string | undefined;
   try {
     const data = await erpFetch(
-      "wtt_module.customization.custom.logistics.get_po_logistics_pending",
+      "wtt_module.customization.custom.logistics.get_po_made_logistics_entry_pending",
       projectParams(project),
     );
     if (Array.isArray(data?.message)) return ok(res, data.message);
@@ -151,7 +158,7 @@ router.get("/logistics-dashboard/gprs-pending", async (req, res) => {
   const project = req.query.project as string | undefined;
   try {
     const data = await erpFetch(
-      "wtt_module.customization.custom.logistics.get_gprs_not_entered",
+      "wtt_module.customization.custom.logistics.get_gprs_tracking_not_entered",
       projectParams(project),
     );
     if (Array.isArray(data?.message)) return ok(res, data.message);

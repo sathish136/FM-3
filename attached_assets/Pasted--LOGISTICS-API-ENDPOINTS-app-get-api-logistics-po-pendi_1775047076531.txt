@@ -1,0 +1,71 @@
+# ===== LOGISTICS API ENDPOINTS =====
+
+@app.get("/api/logistics/po_pending")
+async def get_logistics_po_pending():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.logistics.get_po_made_logistics_entry_pending"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching logistics po_pending: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/logistics/supplier_delay")
+async def get_logistics_supplier_delay():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.logistics.get_supplier_delay"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching logistics supplier_delay: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/logistics/material_delay")
+async def get_logistics_material_delay():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.logistics.get_material_delay"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching logistics material_delay: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/logistics/on_time")
+async def get_logistics_on_time():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.logistics.get_on_time_deliveries"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching logistics on_time: {str(e)}")
+        return {"message": []}
+
+@app.get("/api/logistics/gprs_pending")
+async def get_logistics_gprs_pending():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.logistics.get_gprs_tracking_not_entered"
+    headers = get_auth_headers()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                return {"message": []}
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching logistics gprs_pending: {str(e)}")
+        return {"message": []}
