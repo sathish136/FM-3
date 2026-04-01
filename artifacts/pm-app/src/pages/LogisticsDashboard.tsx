@@ -3,11 +3,10 @@ import { Layout } from "@/components/Layout";
 import { useQuery } from "@tanstack/react-query";
 import {
   Package, AlertTriangle, Truck, CircleCheck, MapPinOff,
-  RefreshCw, Download, Search, X, Clock, ArrowLeft, MapPin,
-  ChevronDown, Calendar, BarChart2,
+  RefreshCw, Search, X, Clock, ArrowLeft, MapPin, Calendar,
+  ChevronDown, BarChart2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import * as XLSX from "xlsx";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -21,9 +20,8 @@ const C = {
   purple: "#af7ac5",
 };
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
 type Section = "po_pending" | "supplier_delay" | "material_delay" | "on_time" | "gprs_pending";
+type ColDef  = { key: string; label: string; render?: (val: any, row: Record<string, any>) => React.ReactNode };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -36,16 +34,8 @@ function apiUrl(path: string, project?: string) {
 
 function getRows(q: ReturnType<typeof useQuery>): Record<string, any>[] {
   const msg = (q.data as any)?.message;
-  if (!msg) return [];
   if (Array.isArray(msg)) return msg;
   return [];
-}
-
-function exportToExcel(rows: Record<string, any>[], filename: string) {
-  const ws = XLSX.utils.json_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Data");
-  XLSX.writeFile(wb, `${filename}.xlsx`);
 }
 
 function parseDelay(v: any): number {
@@ -53,38 +43,62 @@ function parseDelay(v: any): number {
   return isNaN(n) ? 0 : n;
 }
 
-// ── Badge Components ──────────────────────────────────────────────────────────
+// ── Cell Renderers ────────────────────────────────────────────────────────────
 
 function DelayBadge({ value }: { value: any }) {
   const d = parseDelay(value);
-  if (d <= 0) return <span style={{ color: "#9ca3af", fontSize: 12 }}>—</span>;
+  if (d <= 0) return <span style={{ color: "#9ca3af" }}>—</span>;
   const [bg, col] = d >= 10 ? ["#fef2f2", "#b91c1c"] : d >= 5 ? ["#fffbeb", "#b45309"] : ["#fff7ed", "#ea580c"];
   return (
-    <span style={{ background: bg, color: col, padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 3, whiteSpace: "nowrap" }}>
+    <span style={{ background: bg, color: col, padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 3, whiteSpace: "nowrap" }}>
       <AlertTriangle style={{ width: 10, height: 10 }} />{d}d delay
     </span>
   );
 }
 
 function TrackingBadge({ value }: { value: any }) {
-  const v = String(value ?? "—");
-  if (v === "—" || !v.trim()) {
-    return <span style={{ color: "#9ca3af", fontSize: 12 }}>—</span>;
-  }
+  const v = String(value ?? "—").trim();
+  if (!v || v === "—") return <span style={{ color: "#9ca3af" }}>—</span>;
   return (
-    <span style={{ background: "#f0fdfa", color: "#0f766e", padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
+    <span style={{ background: "#f0fdfa", color: "#0f766e", padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
       <MapPin style={{ width: 10, height: 10 }} />{v}
     </span>
   );
 }
 
-function DateBadge({ value }: { value: any }) {
-  const v = String(value ?? "—");
-  if (v === "—" || !v.trim()) return <span style={{ color: "#9ca3af", fontSize: 12 }}>—</span>;
+function DateCell({ value }: { value: any }) {
+  const v = String(value ?? "—").trim();
+  if (!v || v === "—") return <span style={{ color: "#9ca3af" }}>—</span>;
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#374151", whiteSpace: "nowrap" }}>
-      <Calendar style={{ width: 10, height: 10, color: "#6b7280" }} />{v}
+      <Calendar style={{ width: 10, height: 10, color: "#9ca3af" }} />{v}
     </span>
+  );
+}
+
+function PoCell({ value }: { value: any }) {
+  return <span style={{ color: C.blue, fontWeight: 600 }}>{value ?? "—"}</span>;
+}
+
+// ── KPI Card ──────────────────────────────────────────────────────────────────
+
+function KPICard({ label, value, icon: Icon, color, onClick }: {
+  label: string; value: any; icon: React.ElementType; color: string; onClick: () => void;
+}) {
+  return (
+    <button onClick={onClick}
+      style={{ background: color, border: "none", borderRadius: 10, padding: "12px 14px", cursor: "pointer", textAlign: "left", width: "100%", boxShadow: "0 2px 8px rgba(0,0,0,0.15)", transition: "transform 0.12s, box-shadow 0.12s" }}
+      onMouseEnter={e => { e.currentTarget.style.transform = "scale(1.03)"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.22)"; }}
+      onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)"; }}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
+        <span style={{ color: "rgba(255,255,255,0.9)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", lineHeight: 1.35 }}>{label}</span>
+        <Icon style={{ width: 18, height: 18, color: "rgba(255,255,255,0.65)", flexShrink: 0 } as any} />
+      </div>
+      <div style={{ color: "#fff", fontSize: 28, fontWeight: 900, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>
+        {value != null && value !== "" ? value : "—"}
+      </div>
+    </button>
   );
 }
 
@@ -100,42 +114,34 @@ function ProjectSelector({ value, onChange }: { value: string; onChange: (v: str
     staleTime: 5 * 60 * 1000,
   });
 
-  const projects: { code: string; label: string }[] = useMemo(() => data?.projects ?? [], [data]);
-  const filtered = useMemo(() => projects.filter(p => p.label.toLowerCase().includes(search.toLowerCase())), [projects, search]);
-  const selected = projects.find(p => p.code === value);
+  const projects: { code: string; label: string }[] = useMemo(() => {
+    const all = [{ code: "", label: "All Projects" }, ...(data?.projects ?? [])];
+    return search ? all.filter(p => p.label.toLowerCase().includes(search.toLowerCase())) : all;
+  }, [data, search]);
+
+  const selected = (data?.projects ?? []).find((p: any) => p.code === value);
+  const displayLabel = selected ? selected.label : value || "All Projects";
 
   return (
     <div style={{ position: "relative" }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, color: "#e5e7eb", fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}
-      >
-        <BarChart2 style={{ width: 13, height: 13, opacity: 0.7 }} />
-        {selected?.label ?? value}
-        <ChevronDown style={{ width: 12, height: 12, opacity: 0.7 }} />
+      <button onClick={() => setOpen(o => !o)}
+        style={{ background: "#fff", border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 12px", fontSize: 13, display: "flex", alignItems: "center", gap: 8, minWidth: 220, cursor: "pointer", fontWeight: 500, color: "#374151" }}>
+        <BarChart2 style={{ width: 13, height: 13, color: "#9ca3af", flexShrink: 0 }} />
+        <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayLabel}</span>
+        <ChevronDown style={{ width: 12, height: 12, color: "#9ca3af" }} />
       </button>
       {open && (
-        <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 50, background: "#1e293b", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, boxShadow: "0 8px 32px rgba(0,0,0,0.4)", minWidth: 280, overflow: "hidden" }}>
-          <div style={{ padding: "8px 10px", borderBottom: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", gap: 6 }}>
-            <Search style={{ width: 13, height: 13, color: "#6b7280" }} />
-            <input
-              autoFocus
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search project..."
-              style={{ background: "transparent", border: "none", outline: "none", color: "#e5e7eb", fontSize: 13, width: "100%" }}
-            />
+        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 50, background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, boxShadow: "0 10px 25px rgba(0,0,0,0.12)", width: 300 }}>
+          <div style={{ padding: 8, borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", gap: 8 }}>
+            <Search style={{ width: 13, height: 13, color: "#9ca3af" }} />
+            <input autoFocus style={{ border: "none", outline: "none", fontSize: 13, color: "#374151", flex: 1, background: "transparent" }} placeholder="Search project..." value={search} onChange={e => setSearch(e.target.value)} />
+            {search && <button onClick={() => setSearch("")} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}><X style={{ width: 12, height: 12, color: "#9ca3af" }} /></button>}
           </div>
-          <div style={{ maxHeight: 260, overflowY: "auto" }}>
-            {filtered.length === 0 && (
-              <div style={{ padding: "12px 14px", color: "#6b7280", fontSize: 13 }}>No projects found</div>
-            )}
-            {filtered.map(p => (
-              <button
-                key={p.code}
-                onClick={() => { onChange(p.code); setOpen(false); setSearch(""); }}
-                style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 14px", background: p.code === value ? "rgba(99,102,241,0.15)" : "transparent", border: "none", color: p.code === value ? "#818cf8" : "#d1d5db", fontSize: 13, cursor: "pointer" }}
-              >
+          <div style={{ maxHeight: 260, overflowY: "auto", padding: 4 }}>
+            {projects.map(p => (
+              <button key={p.code}
+                style={{ width: "100%", textAlign: "left", padding: "8px 12px", borderRadius: 8, fontSize: 13, cursor: "pointer", background: p.code === value ? C.blue : "transparent", color: p.code === value ? "#fff" : "#374151", border: "none", display: "block", fontWeight: p.code === value ? 600 : 400 }}
+                onClick={() => { onChange(p.code); setOpen(false); setSearch(""); }}>
                 {p.label}
               </button>
             ))}
@@ -146,292 +152,75 @@ function ProjectSelector({ value, onChange }: { value: string; onChange: (v: str
   );
 }
 
-// ── KPI Card ──────────────────────────────────────────────────────────────────
+// ── Panel Table ───────────────────────────────────────────────────────────────
 
-function KpiCard({
-  label, value, color, icon: Icon, active, onClick,
-}: {
-  label: string; value: number; color: string; icon: React.ElementType; active: boolean; onClick: () => void;
+function PanelTable({ title, rows, columns, loading, accentColor, onExpand }: {
+  title: string; rows: Record<string, any>[]; columns: ColDef[];
+  loading?: boolean; accentColor: string; onExpand: () => void;
 }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        flex: "1 1 160px",
-        background: active
-          ? `linear-gradient(135deg, ${color}cc, ${color}aa)`
-          : `linear-gradient(135deg, ${color}22, ${color}15)`,
-        border: `2px solid ${active ? color : color + "44"}`,
-        borderRadius: 14,
-        padding: "18px 20px",
-        cursor: "pointer",
-        textAlign: "left",
-        transition: "all 0.18s",
-        boxShadow: active ? `0 4px 24px ${color}44` : "none",
-        transform: active ? "translateY(-2px)" : "none",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: active ? "#fff" : "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", lineHeight: 1.4 }}>
-          {label}
-        </span>
-        <Icon style={{ width: 22, height: 22, color: active ? "#fff" : color, opacity: 0.85, flexShrink: 0 }} />
-      </div>
-      <div style={{ fontSize: 36, fontWeight: 800, color: active ? "#fff" : color, lineHeight: 1, letterSpacing: "-0.02em" }}>
-        {value}
-      </div>
-    </button>
-  );
-}
-
-// ── Column filter hook ────────────────────────────────────────────────────────
-
-function useFiltered(rows: Record<string, any>[], cols: string[]) {
   const [filters, setFilters] = useState<Record<string, string>>({});
+  const setFilter = useCallback((key: string, val: string) => setFilters(p => ({ ...p, [key]: val })), []);
+
   const filtered = useMemo(() => rows.filter(row =>
-    cols.every(col => {
-      const f = (filters[col] ?? "").toLowerCase();
-      if (!f) return true;
-      return String(row[col] ?? "").toLowerCase().includes(f);
-    })
-  ), [rows, filters, cols]);
-  return { filtered, filters, setFilters };
-}
-
-// ── Table head with filter row ────────────────────────────────────────────────
-
-function FilterThead({ columns, filters, setFilters }: {
-  columns: { key: string; label: string; w?: string }[];
-  filters: Record<string, string>;
-  setFilters: (f: Record<string, string>) => void;
-}) {
-  return (
-    <thead>
-      <tr>
-        <th style={{ width: 44 }}>#</th>
-        {columns.map(c => (
-          <th key={c.key} style={c.w ? { width: c.w } : {}}>{c.label}</th>
-        ))}
-      </tr>
-      <tr className="filter-row">
-        <td />
-        {columns.map(c => (
-          <td key={c.key}>
-            <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-              <Search style={{ position: "absolute", left: 6, width: 11, height: 11, color: "#6b7280", pointerEvents: "none" }} />
-              <input
-                value={filters[c.key] ?? ""}
-                onChange={e => setFilters({ ...filters, [c.key]: e.target.value })}
-                placeholder="Filter..."
-                style={{ paddingLeft: 22, paddingRight: filters[c.key] ? 22 : 6 }}
-              />
-              {filters[c.key] && (
-                <button onClick={() => setFilters({ ...filters, [c.key]: "" })} style={{ position: "absolute", right: 4, background: "none", border: "none", cursor: "pointer", padding: 0, color: "#6b7280" }}>
-                  <X style={{ width: 10, height: 10 }} />
-                </button>
-              )}
-            </div>
-          </td>
-        ))}
-      </tr>
-    </thead>
-  );
-}
-
-// ── Panels ────────────────────────────────────────────────────────────────────
-
-function PoPendingPanel({ rows, onDetailOpen }: { rows: Record<string, any>[]; onDetailOpen: (section: Section) => void }) {
-  const cols = [
-    { key: "po_no", label: "PO No." },
-    { key: "supplier", label: "Supplier" },
-    { key: "delivery_date", label: "Delivery Date" },
-    { key: "received_date", label: "Received Date" },
-    { key: "tracking", label: "Tracking" },
-  ];
-  const { filtered, filters, setFilters } = useFiltered(rows, cols.map(c => c.key));
+    columns.every(col => { const f = filters[col.key]; return !f || String(row[col.key] ?? "").toLowerCase().includes(f.toLowerCase()); })
+  ), [rows, filters, columns]);
 
   return (
-    <div className="panel">
-      <div className="panel-header" style={{ borderLeftColor: C.teal }}>
-        <span className="panel-title">PO Made — Logistics Entry Pending</span>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <span className="badge" style={{ background: C.teal }}>{rows.length}</span>
-          <button className="btn-icon" title="Export" onClick={() => exportToExcel(rows, "po-logistics-pending")}><Download style={{ width: 13, height: 13 }} /></button>
-          <button className="btn-icon btn-expand" title="View all" onClick={() => onDetailOpen("po_pending")}><ArrowLeft style={{ width: 12, height: 12, transform: "rotate(180deg)" }} /></button>
+    <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "2px solid #f3f4f6", background: "#fff" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ width: 4, height: 18, background: accentColor, borderRadius: 2, display: "inline-block", flexShrink: 0 }} />
+          <span style={{ fontWeight: 700, fontSize: 13, color: "#111827" }}>{title}</span>
+          <span style={{ background: accentColor, color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 10 }}>
+            {loading ? "…" : filtered.length}
+          </span>
         </div>
+        <button onClick={onExpand}
+          style={{ display: "flex", alignItems: "center", gap: 4, background: "#f3f4f6", border: "1px solid #e5e7eb", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "#374151", cursor: "pointer" }}>
+          View all →
+        </button>
       </div>
-      <div className="table-wrap">
-        <table>
-          <FilterThead columns={cols} filters={filters} setFilters={setFilters} />
+
+      <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: 300 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
+            <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
+              <th style={{ padding: "7px 10px", textAlign: "center", color: "#9ca3af", fontWeight: 700, fontSize: 10, width: 32 }}>#</th>
+              {columns.map(col => (
+                <th key={col.key} style={{ padding: "7px 10px", textAlign: "left", color: "#6b7280", fontWeight: 700, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em", whiteSpace: "nowrap" }}>
+                  {col.label}
+                </th>
+              ))}
+            </tr>
+            <tr style={{ background: "#fff", borderBottom: "2px solid #f3f4f6" }}>
+              <td style={{ padding: "4px 6px" }} />
+              {columns.map(col => (
+                <td key={col.key} style={{ padding: "4px 6px" }}>
+                  <input
+                    style={{ width: "100%", border: "1px solid #e5e7eb", borderRadius: 5, padding: "3px 7px", fontSize: 11, color: "#374151", background: "#f9fafb", outline: "none", boxSizing: "border-box" }}
+                    placeholder="Filter..."
+                    value={filters[col.key] ?? ""}
+                    onChange={e => setFilter(col.key, e.target.value)}
+                  />
+                </td>
+              ))}
+            </tr>
+          </thead>
           <tbody>
-            {filtered.length === 0 ? (
-              <tr><td colSpan={6} className="empty">No records</td></tr>
-            ) : filtered.map((r, i) => (
-              <tr key={i}>
-                <td style={{ color: "#6b7280", fontSize: 11 }}>{i + 1}</td>
-                <td style={{ fontWeight: 600, color: "#e5e7eb" }}>{r.po_no ?? "—"}</td>
-                <td>{r.supplier ?? "—"}</td>
-                <td><DateBadge value={r.delivery_date} /></td>
-                <td><DateBadge value={r.received_date} /></td>
-                <td><TrackingBadge value={r.tracking} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function SupplierDelayPanel({ rows, onDetailOpen }: { rows: Record<string, any>[]; onDetailOpen: (section: Section) => void }) {
-  const cols = [
-    { key: "supplier", label: "Supplier Name" },
-    { key: "po_no", label: "PO No." },
-    { key: "delay_days", label: "Delay Days" },
-  ];
-  const { filtered, filters, setFilters } = useFiltered(rows, cols.map(c => c.key));
-
-  return (
-    <div className="panel">
-      <div className="panel-header" style={{ borderLeftColor: C.red }}>
-        <span className="panel-title">Supplier Delay</span>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <span className="badge" style={{ background: C.red }}>{rows.length}</span>
-          <button className="btn-icon" title="Export" onClick={() => exportToExcel(rows, "supplier-delay")}><Download style={{ width: 13, height: 13 }} /></button>
-          <button className="btn-icon btn-expand" title="View all" onClick={() => onDetailOpen("supplier_delay")}><ArrowLeft style={{ width: 12, height: 12, transform: "rotate(180deg)" }} /></button>
-        </div>
-      </div>
-      <div className="table-wrap">
-        <table>
-          <FilterThead columns={cols} filters={filters} setFilters={setFilters} />
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr><td colSpan={4} className="empty">No records</td></tr>
-            ) : filtered.map((r, i) => (
-              <tr key={i}>
-                <td style={{ color: "#6b7280", fontSize: 11 }}>{i + 1}</td>
-                <td style={{ fontWeight: 600, color: "#e5e7eb" }}>{r.supplier ?? "—"}</td>
-                <td>{r.po_no ?? "—"}</td>
-                <td><DelayBadge value={r.delay_days} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function MaterialDelayPanel({ rows, onDetailOpen }: { rows: Record<string, any>[]; onDetailOpen: (section: Section) => void }) {
-  const cols = [
-    { key: "description", label: "Description" },
-    { key: "po_no", label: "PO No." },
-    { key: "supplier", label: "Supplier" },
-    { key: "delay_days", label: "Delay Days" },
-  ];
-  const { filtered, filters, setFilters } = useFiltered(rows, cols.map(c => c.key));
-
-  return (
-    <div className="panel">
-      <div className="panel-header" style={{ borderLeftColor: C.amber }}>
-        <span className="panel-title">Material Delay</span>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <span className="badge" style={{ background: C.amber }}>{rows.length}</span>
-          <button className="btn-icon" title="Export" onClick={() => exportToExcel(rows, "material-delay")}><Download style={{ width: 13, height: 13 }} /></button>
-          <button className="btn-icon btn-expand" title="View all" onClick={() => onDetailOpen("material_delay")}><ArrowLeft style={{ width: 12, height: 12, transform: "rotate(180deg)" }} /></button>
-        </div>
-      </div>
-      <div className="table-wrap">
-        <table>
-          <FilterThead columns={cols} filters={filters} setFilters={setFilters} />
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr><td colSpan={5} className="empty">No records</td></tr>
-            ) : filtered.map((r, i) => (
-              <tr key={i}>
-                <td style={{ color: "#6b7280", fontSize: 11 }}>{i + 1}</td>
-                <td style={{ maxWidth: 180 }}>{r.description ?? "—"}</td>
-                <td style={{ fontWeight: 600, color: "#e5e7eb" }}>{r.po_no ?? "—"}</td>
-                <td>{r.supplier ?? "—"}</td>
-                <td><DelayBadge value={r.delay_days} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function OnTimePanel({ rows, onDetailOpen }: { rows: Record<string, any>[]; onDetailOpen: (section: Section) => void }) {
-  const cols = [
-    { key: "po_no", label: "PO No." },
-    { key: "tracking", label: "Logistics Tracking" },
-    { key: "expected_delivery", label: "Expected Delivery" },
-  ];
-  const { filtered, filters, setFilters } = useFiltered(rows, cols.map(c => c.key));
-
-  return (
-    <div className="panel">
-      <div className="panel-header" style={{ borderLeftColor: C.blue }}>
-        <span className="panel-title">On-Time Deliveries</span>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <span className="badge" style={{ background: C.blue }}>{rows.length}</span>
-          <button className="btn-icon" title="Export" onClick={() => exportToExcel(rows, "on-time-deliveries")}><Download style={{ width: 13, height: 13 }} /></button>
-          <button className="btn-icon btn-expand" title="View all" onClick={() => onDetailOpen("on_time")}><ArrowLeft style={{ width: 12, height: 12, transform: "rotate(180deg)" }} /></button>
-        </div>
-      </div>
-      <div className="table-wrap">
-        <table>
-          <FilterThead columns={cols} filters={filters} setFilters={setFilters} />
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr><td colSpan={4} className="empty">No records</td></tr>
-            ) : filtered.map((r, i) => (
-              <tr key={i}>
-                <td style={{ color: "#6b7280", fontSize: 11 }}>{i + 1}</td>
-                <td style={{ fontWeight: 600, color: "#e5e7eb" }}>{r.po_no ?? "—"}</td>
-                <td><TrackingBadge value={r.tracking} /></td>
-                <td><DateBadge value={r.expected_delivery} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function GprsPendingPanel({ rows, onDetailOpen }: { rows: Record<string, any>[]; onDetailOpen: (section: Section) => void }) {
-  const cols = [
-    { key: "po_no", label: "PO No." },
-    { key: "tracking", label: "Logistics Tracking" },
-    { key: "expected_delivery", label: "Expected Delivery" },
-  ];
-  const { filtered, filters, setFilters } = useFiltered(rows, cols.map(c => c.key));
-
-  return (
-    <div className="panel">
-      <div className="panel-header" style={{ borderLeftColor: C.purple }}>
-        <span className="panel-title">GPRS Tracking Not Entered</span>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <span className="badge" style={{ background: C.purple }}>{rows.length}</span>
-          <button className="btn-icon" title="Export" onClick={() => exportToExcel(rows, "gprs-pending")}><Download style={{ width: 13, height: 13 }} /></button>
-          <button className="btn-icon btn-expand" title="View all" onClick={() => onDetailOpen("gprs_pending")}><ArrowLeft style={{ width: 12, height: 12, transform: "rotate(180deg)" }} /></button>
-        </div>
-      </div>
-      <div className="table-wrap">
-        <table>
-          <FilterThead columns={cols} filters={filters} setFilters={setFilters} />
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr><td colSpan={4} className="empty">No records</td></tr>
-            ) : filtered.map((r, i) => (
-              <tr key={i}>
-                <td style={{ color: "#6b7280", fontSize: 11 }}>{i + 1}</td>
-                <td style={{ fontWeight: 600, color: "#e5e7eb" }}>{r.po_no ?? "—"}</td>
-                <td><TrackingBadge value={r.tracking} /></td>
-                <td><DateBadge value={r.expected_delivery} /></td>
+            {loading ? (
+              <tr><td colSpan={columns.length + 1} style={{ padding: "20px", textAlign: "center", color: "#9ca3af", fontSize: 12 }}>Loading…</td></tr>
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={columns.length + 1} style={{ padding: "20px", textAlign: "center", color: "#9ca3af", fontSize: 12 }}>No records</td></tr>
+            ) : filtered.map((row, i) => (
+              <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}
+                onMouseEnter={e => (e.currentTarget.style.background = "#f9fafb")}
+                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                <td style={{ padding: "7px 10px", textAlign: "center", color: "#9ca3af", fontSize: 11, fontWeight: 600 }}>{i + 1}</td>
+                {columns.map(col => (
+                  <td key={col.key} style={{ padding: "7px 10px", color: "#374151", verticalAlign: "middle" }}>
+                    {col.render ? col.render(row[col.key], row) : (row[col.key] ?? "—")}
+                  </td>
+                ))}
               </tr>
             ))}
           </tbody>
@@ -444,155 +233,120 @@ function GprsPendingPanel({ rows, onDetailOpen }: { rows: Record<string, any>[];
 // ── Detail Overlay ────────────────────────────────────────────────────────────
 
 const SECTION_META: Record<Section, { label: string; color: string; icon: React.ElementType }> = {
-  po_pending:      { label: "PO Made — Logistics Entry Pending", color: C.teal,   icon: Package    },
+  po_pending:      { label: "PO Made — Logistics Entry Pending", color: C.teal,   icon: Package       },
   supplier_delay:  { label: "Supplier Delay",                    color: C.red,    icon: AlertTriangle },
-  material_delay:  { label: "Material Delay",                    color: C.amber,  icon: Truck      },
-  on_time:         { label: "On-Time Deliveries",                color: C.blue,   icon: CircleCheck },
-  gprs_pending:    { label: "GPRS Tracking Not Entered",         color: C.purple, icon: MapPinOff  },
+  material_delay:  { label: "Material Delay",                    color: C.amber,  icon: Truck         },
+  on_time:         { label: "On-Time Deliveries",                color: C.blue,   icon: CircleCheck   },
+  gprs_pending:    { label: "GPRS Tracking Not Entered",         color: C.purple, icon: MapPinOff     },
 };
 
-const SECTION_COLS: Record<Section, { key: string; label: string }[]> = {
+const SECTION_COLS: Record<Section, ColDef[]> = {
   po_pending: [
-    { key: "po_no", label: "PO No." },
-    { key: "supplier", label: "Supplier" },
-    { key: "delivery_date", label: "Delivery Date" },
-    { key: "received_date", label: "Received Date" },
-    { key: "tracking", label: "Tracking" },
+    { key: "po_no",         label: "PO No",           render: v => <PoCell value={v} /> },
+    { key: "supplier",      label: "Supplier" },
+    { key: "delivery_date", label: "Delivery Date",   render: v => <DateCell value={v} /> },
+    { key: "received_date", label: "Received Date",   render: v => <DateCell value={v} /> },
+    { key: "tracking",      label: "Tracking",        render: v => <TrackingBadge value={v} /> },
   ],
   supplier_delay: [
-    { key: "supplier", label: "Supplier Name" },
-    { key: "po_no", label: "PO No." },
-    { key: "delay_days", label: "Delay Days" },
+    { key: "supplier",   label: "Supplier Name" },
+    { key: "po_no",      label: "PO No",        render: v => <PoCell value={v} /> },
+    { key: "delay_days", label: "Delay Days",   render: v => <DelayBadge value={v} /> },
   ],
   material_delay: [
     { key: "description", label: "Description" },
-    { key: "po_no", label: "PO No." },
-    { key: "supplier", label: "Supplier" },
-    { key: "delay_days", label: "Delay Days" },
+    { key: "po_no",       label: "PO No",      render: v => <PoCell value={v} /> },
+    { key: "supplier",    label: "Supplier" },
+    { key: "delay_days",  label: "Delay Days", render: v => <DelayBadge value={v} /> },
   ],
   on_time: [
-    { key: "po_no", label: "PO No." },
-    { key: "tracking", label: "Logistics Tracking" },
-    { key: "expected_delivery", label: "Expected Delivery" },
+    { key: "po_no",              label: "PO No",             render: v => <PoCell value={v} /> },
+    { key: "tracking",           label: "Logistics Tracking",render: v => <TrackingBadge value={v} /> },
+    { key: "expected_delivery",  label: "Expected Delivery", render: v => <DateCell value={v} /> },
   ],
   gprs_pending: [
-    { key: "po_no", label: "PO No." },
-    { key: "tracking", label: "Logistics Tracking" },
-    { key: "expected_delivery", label: "Expected Delivery" },
+    { key: "po_no",             label: "PO No",              render: v => <PoCell value={v} /> },
+    { key: "tracking",          label: "Logistics Tracking", render: v => <TrackingBadge value={v} /> },
+    { key: "expected_delivery", label: "Expected Delivery",  render: v => <DateCell value={v} /> },
   ],
 };
 
-function DetailOverlay({
-  section, rows, onClose,
-}: { section: Section | null; rows: Record<string, any>[]; onClose: () => void }) {
+function DetailOverlay({ section, rows, onClose }: {
+  section: Section; rows: Record<string, any>[]; onClose: () => void;
+}) {
   const [search, setSearch] = useState("");
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  useEffect(() => { setSearch(""); }, [section]);
-
-  if (!section) return null;
-
   const meta = SECTION_META[section];
   const cols = SECTION_COLS[section];
   const Icon = meta.icon;
 
-  const filtered = rows.filter(row =>
-    !search || cols.some(c => String(row[c.key] ?? "").toLowerCase().includes(search.toLowerCase()))
-  );
+  useEffect(() => {
+    setSearch("");
+  }, [section]);
 
-  function renderCell(key: string, value: any) {
-    if (key === "delay_days") return <DelayBadge value={value} />;
-    if (key === "tracking") return <TrackingBadge value={value} />;
-    if (key === "delivery_date" || key === "received_date" || key === "expected_delivery") return <DateBadge value={value} />;
-    if (key === "po_no") return <span style={{ fontWeight: 600, color: "#e5e7eb" }}>{value ?? "—"}</span>;
-    return <span>{value ?? "—"}</span>;
-  }
+  const filtered = useMemo(() => {
+    if (!search) return rows;
+    const q = search.toLowerCase();
+    return rows.filter(row => cols.some(c => String(row[c.key] ?? "").toLowerCase().includes(q)));
+  }, [rows, search, cols]);
 
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 100,
-      background: "#0f172a",
-      display: "flex", flexDirection: "column",
-      animation: "slideUp 0.2s ease",
-    }}>
-      <div style={{ height: 4, background: meta.color, flexShrink: 0 }} />
-
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "14px 24px", borderBottom: "1px solid rgba(255,255,255,0.08)",
-        background: "rgba(255,255,255,0.02)", flexShrink: 0,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <button
-            onClick={onClose}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#9ca3af", fontSize: 13, cursor: "pointer" }}
-          >
-            <ArrowLeft style={{ width: 14, height: 14 }} />
-            Back to Dashboard
+    <div style={{ position: "fixed", inset: 0, zIndex: 50, background: "#f0f2f5", display: "flex", flexDirection: "column" }}>
+      {/* Colored header */}
+      <div style={{ background: meta.color, padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, boxShadow: "0 2px 8px rgba(0,0,0,0.15)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button onClick={onClose}
+            style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.2)", border: "none", borderRadius: 7, padding: "6px 12px", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+            <ArrowLeft style={{ width: 13, height: 13 }} /> Back
           </button>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: meta.color + "22", border: `1.5px solid ${meta.color}55`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Icon style={{ width: 18, height: 18, color: meta.color }} />
-            </div>
-            <div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: "#f1f5f9" }}>{meta.label}</div>
-              <div style={{ fontSize: 12, color: "#64748b" }}>{filtered.length} records</div>
-            </div>
-          </div>
+          <Icon style={{ width: 18, height: 18, color: "rgba(255,255,255,0.85)" } as any} />
+          <span style={{ color: "#fff", fontWeight: 700, fontSize: 15 }}>{meta.label}</span>
+          <span style={{ background: "rgba(255,255,255,0.25)", color: "#fff", fontSize: 11, fontWeight: 700, padding: "2px 10px", borderRadius: 10 }}>
+            {filtered.length} records
+          </span>
         </div>
-
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-            <Search style={{ position: "absolute", left: 10, width: 13, height: 13, color: "#6b7280", pointerEvents: "none" }} />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search all columns..."
-              style={{ paddingLeft: 30, paddingRight: search ? 28 : 10, height: 34, borderRadius: 8, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", color: "#e5e7eb", fontSize: 13, outline: "none", width: 220 }}
-            />
-            {search && (
-              <button onClick={() => setSearch("")} style={{ position: "absolute", right: 8, background: "none", border: "none", cursor: "pointer", padding: 0, color: "#6b7280" }}>
-                <X style={{ width: 12, height: 12 }} />
-              </button>
-            )}
-          </div>
-          <button
-            onClick={() => exportToExcel(rows, `logistics-${section}`)}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 14px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#9ca3af", fontSize: 13, cursor: "pointer" }}
-          >
-            <Download style={{ width: 13, height: 13 }} />
-            Export
-          </button>
-          <button
-            onClick={onClose}
-            style={{ width: 34, height: 34, borderRadius: 8, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#9ca3af" }}
-          >
-            <X style={{ width: 15, height: 15 }} />
-          </button>
+        <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+          <Search style={{ position: "absolute", left: 9, width: 13, height: 13, color: "rgba(255,255,255,0.6)", pointerEvents: "none" }} />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search..."
+            style={{ paddingLeft: 28, paddingRight: search ? 28 : 10, height: 32, borderRadius: 7, border: "1px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.15)", color: "#fff", fontSize: 13, outline: "none", width: 200 }}
+          />
+          {search && (
+            <button onClick={() => setSearch("")} style={{ position: "absolute", right: 8, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+              <X style={{ width: 12, height: 12, color: "rgba(255,255,255,0.7)" }} />
+            </button>
+          )}
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
-        <div className="table-wrap" style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", overflow: "hidden" }}>
-          <table style={{ fontSize: 13 }}>
-            <thead>
-              <tr>
-                <th style={{ width: 48 }}>#</th>
-                {cols.map(c => <th key={c.key}>{c.label}</th>)}
+      {/* Table */}
+      <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
+        <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
+              <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
+                <th style={{ padding: "9px 12px", textAlign: "center", color: "#9ca3af", fontWeight: 700, fontSize: 10, width: 40 }}>#</th>
+                {cols.map(c => (
+                  <th key={c.key} style={{ padding: "9px 12px", textAlign: "left", color: "#6b7280", fontWeight: 700, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em", whiteSpace: "nowrap" }}>
+                    {c.label}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={cols.length + 1} className="empty">No records found</td></tr>
-              ) : filtered.map((r, i) => (
-                <tr key={i}>
-                  <td style={{ color: "#475569", fontSize: 11, fontWeight: 600 }}>{i + 1}</td>
-                  {cols.map(c => <td key={c.key}>{renderCell(c.key, r[c.key])}</td>)}
+                <tr><td colSpan={cols.length + 1} style={{ padding: "32px", textAlign: "center", color: "#9ca3af" }}>No records found</td></tr>
+              ) : filtered.map((row, i) => (
+                <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "#f9fafb")}
+                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                  <td style={{ padding: "9px 12px", textAlign: "center", color: "#9ca3af", fontSize: 11, fontWeight: 600 }}>{i + 1}</td>
+                  {cols.map(c => (
+                    <td key={c.key} style={{ padding: "9px 12px", color: "#374151", verticalAlign: "middle" }}>
+                      {c.render ? c.render(row[c.key], row) : (row[c.key] ?? "—")}
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>
@@ -603,263 +357,157 @@ function DetailOverlay({
   );
 }
 
-// ── Clock ─────────────────────────────────────────────────────────────────────
-
-function LiveClock() {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#94a3b8", fontSize: 12 }}>
-      <Clock style={{ width: 12, height: 12 }} />
-      {now.toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-    </span>
-  );
-}
-
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function LogisticsDashboard() {
-  const [project, setProject] = useState(DEFAULT_PROJECT);
-  const [activeSection, setActiveSection] = useState<Section | null>(null);
-  const [detailSection, setDetailSection] = useState<Section | null>(null);
+  const [project, setProject]         = useState(DEFAULT_PROJECT);
+  const [detailSection, setDetail]    = useState<Section | null>(null);
 
-  const qOpts = useCallback((key: string) => ({
-    queryKey: ["logistics", key, project],
-    queryFn: () => fetch(apiUrl(key, project)).then(r => r.json()),
-    staleTime: 60 * 1000,
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") setDetail(null); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, []);
+
+  const pq = useCallback((path: string) => ({
+    queryKey: ["logistics", path, project],
+    queryFn: () => fetch(apiUrl(path, project)).then(r => r.json()),
+    staleTime: 60_000,
   }), [project]);
 
-  const qCounts  = useQuery<any>(qOpts("counts"));
-  const qPoPend  = useQuery<any>(qOpts("po-pending"));
-  const qSupDel  = useQuery<any>(qOpts("supplier-delay"));
-  const qMatDel  = useQuery<any>(qOpts("material-delay"));
-  const qOnTime  = useQuery<any>(qOpts("on-time"));
-  const qGprs    = useQuery<any>(qOpts("gprs-pending"));
+  const qCounts  = useQuery<any>(pq("counts"));
+  const qPoPend  = useQuery<any>(pq("po-pending"));
+  const qSupDel  = useQuery<any>(pq("supplier-delay"));
+  const qMatDel  = useQuery<any>(pq("material-delay"));
+  const qOnTime  = useQuery<any>(pq("on-time"));
+  const qGprs    = useQuery<any>(pq("gprs-pending"));
 
-  const counts = useMemo(() => {
-    const m = (qCounts.data as any)?.message ?? {};
-    return {
-      po_pending:     m.po_pending     ?? 0,
-      supplier_delay: m.supplier_delay ?? 0,
-      material_delay: m.material_delay ?? 0,
-      on_time:        m.on_time        ?? 0,
-      gprs_pending:   m.gprs_pending   ?? 0,
-    };
-  }, [qCounts.data]);
+  const c = qCounts.data?.message ?? {};
+  const counts = {
+    po_pending:     c.po_pending     ?? 0,
+    supplier_delay: c.supplier_delay ?? 0,
+    material_delay: c.material_delay ?? 0,
+    on_time:        c.on_time        ?? 0,
+    gprs_pending:   c.gprs_pending   ?? 0,
+  };
 
-  const rowsBySection: Record<Section, Record<string, any>[]> = useMemo(() => ({
+  const rowsBySection: Record<Section, Record<string, any>[]> = {
     po_pending:     getRows(qPoPend),
     supplier_delay: getRows(qSupDel),
     material_delay: getRows(qMatDel),
     on_time:        getRows(qOnTime),
     gprs_pending:   getRows(qGprs),
-  }), [qPoPend, qSupDel, qMatDel, qOnTime, qGprs]);
+  };
 
-  const isLoading = qPoPend.isLoading || qSupDel.isLoading || qMatDel.isLoading || qOnTime.isLoading || qGprs.isLoading;
+  const refetchAll = () => [qCounts, qPoPend, qSupDel, qMatDel, qOnTime, qGprs].forEach(q => q.refetch());
 
-  function refreshAll() {
-    qCounts.refetch();
-    qPoPend.refetch();
-    qSupDel.refetch();
-    qMatDel.refetch();
-    qOnTime.refetch();
-    qGprs.refetch();
-  }
+  const isSample = (qPoPend.data as any)?._source === "sample";
 
-  function handleKpiClick(s: Section) {
-    setActiveSection(prev => prev === s ? null : s);
-  }
-
-  function openDetail(s: Section) {
-    setDetailSection(s);
-  }
-
-  const kpis: { key: Section; label: string; color: string; icon: React.ElementType }[] = [
-    { key: "po_pending",     label: "PO Made — Logistics Entry Pending", color: C.teal,   icon: Package       },
-    { key: "supplier_delay", label: "Supplier Delay",                    color: C.red,    icon: AlertTriangle },
-    { key: "material_delay", label: "Material Delay",                    color: C.amber,  icon: Truck         },
-    { key: "on_time",        label: "On-Time Deliveries",                color: C.blue,   icon: CircleCheck   },
-    { key: "gprs_pending",   label: "GPRS Tracking Not Entered",         color: C.purple, icon: MapPinOff     },
+  const kpis: { key: Section; label: string; icon: React.ElementType; color: string }[] = [
+    { key: "po_pending",     label: "PO Logistics Entry Pending",  icon: Package,       color: C.teal   },
+    { key: "supplier_delay", label: "Supplier Delay",              icon: AlertTriangle, color: C.red    },
+    { key: "material_delay", label: "Material Delay",              icon: Truck,         color: C.amber  },
+    { key: "on_time",        label: "On-Time Deliveries",          icon: CircleCheck,   color: C.blue   },
+    { key: "gprs_pending",   label: "GPRS Tracking Not Entered",   icon: MapPinOff,     color: C.purple },
   ];
 
   return (
     <Layout>
-      <style>{`
-        .logistics-page { display:flex; flex-direction:column; gap:0; height:100%; overflow:hidden; }
+      {detailSection && (
+        <DetailOverlay
+          section={detailSection}
+          rows={rowsBySection[detailSection]}
+          onClose={() => setDetail(null)}
+        />
+      )}
 
-        .logistics-header {
-          display:flex; align-items:center; justify-content:space-between;
-          padding:14px 22px;
-          border-bottom:1px solid rgba(255,255,255,0.07);
-          background:rgba(255,255,255,0.015);
-          flex-shrink:0;
-        }
-        .logistics-header-title { font-size:18px; font-weight:800; color:#f1f5f9; letter-spacing:-0.02em; }
-        .logistics-header-sub { font-size:11px; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; margin-top:1px; }
+      <div style={{ minHeight: "100vh", background: "#f0f2f5", padding: 20, display: "flex", flexDirection: "column", gap: 18 }}>
 
-        .kpi-strip {
-          display:flex; gap:12px; padding:16px 22px;
-          background:rgba(255,255,255,0.01);
-          border-bottom:1px solid rgba(255,255,255,0.07);
-          flex-shrink:0; overflow-x:auto;
-        }
-
-        .logistics-body { flex:1; overflow-y:auto; padding:16px 22px; display:flex; flex-direction:column; gap:16px; }
-
-        .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-        .grid-1 { display:grid; grid-template-columns:1fr; gap:16px; }
-
-        .panel {
-          background:rgba(255,255,255,0.03);
-          border:1px solid rgba(255,255,255,0.08);
-          border-radius:14px;
-          overflow:hidden;
-          display:flex; flex-direction:column;
-        }
-        .panel-header {
-          display:flex; align-items:center; justify-content:space-between;
-          padding:12px 16px;
-          border-bottom:1px solid rgba(255,255,255,0.06);
-          border-left:3px solid transparent;
-          background:rgba(255,255,255,0.02);
-        }
-        .panel-title { font-size:13px; font-weight:700; color:#e2e8f0; }
-        .badge {
-          padding:2px 9px; border-radius:12px; font-size:11px; font-weight:800;
-          color:#fff; min-width:26px; text-align:center;
-        }
-
-        .table-wrap { overflow-x:auto; flex:1; }
-        table { width:100%; border-collapse:collapse; font-size:12px; }
-        th {
-          padding:8px 10px; text-align:left; font-size:10.5px; font-weight:700;
-          color:#64748b; text-transform:uppercase; letter-spacing:0.07em;
-          border-bottom:1px solid rgba(255,255,255,0.07);
-          background:rgba(255,255,255,0.02); white-space:nowrap;
-        }
-        td {
-          padding:8px 10px; border-bottom:1px solid rgba(255,255,255,0.04);
-          color:#cbd5e1; vertical-align:middle;
-        }
-        tr:last-child td { border-bottom:none; }
-        tr:hover td { background:rgba(255,255,255,0.025); }
-
-        .filter-row td { padding:4px 6px; background:rgba(0,0,0,0.15); }
-        .filter-row input {
-          width:100%; padding:4px 8px; border-radius:6px;
-          border:1px solid rgba(255,255,255,0.1);
-          background:rgba(255,255,255,0.05); color:#e5e7eb;
-          font-size:11px; outline:none;
-        }
-        .filter-row input:focus { border-color:rgba(99,102,241,0.5); }
-
-        td.empty { text-align:center; color:#475569; padding:28px; font-size:12px; }
-
-        .btn-icon {
-          width:28px; height:28px; border-radius:7px;
-          border:1px solid rgba(255,255,255,0.1);
-          background:rgba(255,255,255,0.05);
-          display:inline-flex; align-items:center; justify-content:center;
-          cursor:pointer; color:#9ca3af;
-          transition:background 0.15s, color 0.15s;
-        }
-        .btn-icon:hover { background:rgba(255,255,255,0.1); color:#e5e7eb; }
-        .btn-expand { }
-
-        .btn-refresh {
-          display:inline-flex; align-items:center; gap:5px;
-          padding:6px 14px; border-radius:8px;
-          border:1px solid rgba(255,255,255,0.1);
-          background:rgba(255,255,255,0.06); color:#9ca3af;
-          font-size:12px; cursor:pointer;
-          transition:background 0.15s;
-        }
-        .btn-refresh:hover { background:rgba(255,255,255,0.1); color:#e5e7eb; }
-        .btn-refresh.loading svg { animation:spin 0.8s linear infinite; }
-
-        .sample-note {
-          display:inline-flex; align-items:center; gap:5px;
-          padding:3px 10px; border-radius:20px;
-          background:rgba(245,180,65,0.12); border:1px solid rgba(245,180,65,0.25);
-          color:#f5b041; font-size:11px; font-weight:600;
-        }
-
-        @keyframes spin { to { transform:rotate(360deg); } }
-        @keyframes slideUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:none; } }
-
-        @media (max-width:900px) { .grid-2 { grid-template-columns:1fr; } }
-      `}</style>
-
-      <div className="logistics-page">
         {/* Header */}
-        <div className="logistics-header">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(72,201,176,0.15)", border: "1.5px solid rgba(72,201,176,0.3)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Truck style={{ width: 19, height: 19, color: C.teal }} />
-              </div>
-              <div>
-                <div className="logistics-header-title">Logistics Dashboard</div>
-                <div className="logistics-header-sub">Executive Overview</div>
-              </div>
-            </div>
+            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 900, color: "#111827", letterSpacing: "-0.02em" }}>Logistics Dashboard</h1>
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9ca3af" }}>
+              Live tracking · <span style={{ fontWeight: 600, color: "#6b7280" }}>{project || "All Projects"}</span>
+              {isSample && <span style={{ marginLeft: 8, color: "#d97706", fontWeight: 600 }}>· Sample Data</span>}
+            </p>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <LiveClock />
-            {(qPoPend.data as any)?._source === "sample" && (
-              <span className="sample-note">
-                <AlertTriangle style={{ width: 11, height: 11 }} />
-                Sample Data
-              </span>
-            )}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <ProjectSelector value={project} onChange={setProject} />
-            <button className={cn("btn-refresh", isLoading && "loading")} onClick={refreshAll}>
-              <RefreshCw style={{ width: 12, height: 12 }} />
+            <button onClick={refetchAll}
+              style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", border: "1px solid #d1d5db", borderRadius: 8, padding: "7px 14px", fontSize: 13, fontWeight: 600, color: "#374151", cursor: "pointer" }}>
+              <RefreshCw className={cn("w-3.5 h-3.5", qCounts.isFetching && "animate-spin")} />
               Refresh
             </button>
           </div>
         </div>
 
-        {/* KPI Strip */}
-        <div className="kpi-strip">
+        {/* KPI Cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
           {kpis.map(k => (
-            <KpiCard
-              key={k.key}
+            <KPICard key={k.key}
               label={k.label}
-              value={counts[k.key]}
-              color={k.color}
+              value={qCounts.isLoading ? "…" : counts[k.key]}
               icon={k.icon}
-              active={activeSection === k.key}
-              onClick={() => handleKpiClick(k.key)}
+              color={k.color}
+              onClick={() => setDetail(k.key)}
             />
           ))}
         </div>
 
-        {/* Body */}
-        <div className="logistics-body">
-          <div className="grid-2">
-            <PoPendingPanel     rows={rowsBySection.po_pending}     onDetailOpen={openDetail} />
-            <SupplierDelayPanel rows={rowsBySection.supplier_delay} onDetailOpen={openDetail} />
-          </div>
-          <div className="grid-2">
-            <MaterialDelayPanel rows={rowsBySection.material_delay} onDetailOpen={openDetail} />
-            <OnTimePanel        rows={rowsBySection.on_time}        onDetailOpen={openDetail} />
-          </div>
-          <div className="grid-1">
-            <GprsPendingPanel rows={rowsBySection.gprs_pending} onDetailOpen={openDetail} />
-          </div>
+        {/* Row 1: 2 panels */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <PanelTable
+            title="PO Made — Logistics Entry Pending"
+            rows={rowsBySection.po_pending}
+            columns={SECTION_COLS.po_pending}
+            loading={qPoPend.isLoading}
+            accentColor={C.teal}
+            onExpand={() => setDetail("po_pending")}
+          />
+          <PanelTable
+            title="Supplier Delay"
+            rows={rowsBySection.supplier_delay}
+            columns={SECTION_COLS.supplier_delay}
+            loading={qSupDel.isLoading}
+            accentColor={C.red}
+            onExpand={() => setDetail("supplier_delay")}
+          />
         </div>
-      </div>
 
-      {/* Detail Overlay */}
-      <DetailOverlay
-        section={detailSection}
-        rows={detailSection ? rowsBySection[detailSection] : []}
-        onClose={() => setDetailSection(null)}
-      />
+        {/* Row 2: 2 panels */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <PanelTable
+            title="Material Delay"
+            rows={rowsBySection.material_delay}
+            columns={SECTION_COLS.material_delay}
+            loading={qMatDel.isLoading}
+            accentColor={C.amber}
+            onExpand={() => setDetail("material_delay")}
+          />
+          <PanelTable
+            title="On-Time Deliveries"
+            rows={rowsBySection.on_time}
+            columns={SECTION_COLS.on_time}
+            loading={qOnTime.isLoading}
+            accentColor={C.blue}
+            onExpand={() => setDetail("on_time")}
+          />
+        </div>
+
+        {/* Row 3: full width */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
+          <PanelTable
+            title="GPRS Tracking Not Entered"
+            rows={rowsBySection.gprs_pending}
+            columns={SECTION_COLS.gprs_pending}
+            loading={qGprs.isLoading}
+            accentColor={C.purple}
+            onExpand={() => setDetail("gprs_pending")}
+          />
+        </div>
+
+      </div>
     </Layout>
   );
 }
