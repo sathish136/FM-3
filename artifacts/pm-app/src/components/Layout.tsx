@@ -4,6 +4,7 @@ import {
   Briefcase, FileText,
   LogOut, ChevronDown, ChevronRight as ChevronRightIcon, Menu, MoreHorizontal,
   MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp, ListChecks, ClipboardList, Truck,
+  Play, Pause, Square, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -304,7 +305,9 @@ const navGroups: { label: string; items: NavItem[] }[] = [
   },
 ];
 
-const allNavItems: NavItem[] = navGroups.flatMap(g => g.items);
+const allNavItems: NavItem[] = navGroups.flatMap(g => g.items).filter(
+  (item, idx, arr) => arr.findIndex(x => x.path === item.path) === idx
+);
 
 const mobileBottomNav = [
   { path: "/", label: "Home", icon: LayoutDashboard, color: "text-sky-400" },
@@ -444,7 +447,8 @@ function AppItem({ item, location, theme, onClose }: { item: any; location: stri
   );
 }
 
-function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, toggleGroup, setCollapsed, setMobileSidebarOpen, aiTrigger, setAiTrigger, logout, theme, user }: any) {
+function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, toggleGroup, setCollapsed, setMobileSidebarOpen, aiTrigger, setAiTrigger, logout, theme, user, slideshowProps }: any) {
+  const ss = slideshowProps ?? {};
   return (
     <div className="flex flex-col h-full relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-b from-slate-900 via-[#0f172a] to-slate-950 pointer-events-none" />
@@ -479,27 +483,46 @@ function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, to
 
           return (
             <div key={gi}>
-              <button
-                onClick={() => toggleGroup(group.label)}
-                className={cn(
-                  "w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all duration-150 select-none",
-                  groupHasActive
-                    ? "text-white"
-                    : "text-slate-300 hover:text-white hover:bg-white/[0.04]"
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => toggleGroup(group.label)}
+                  className={cn(
+                    "flex-1 flex items-center justify-between px-3 py-2 rounded-lg transition-all duration-150 select-none",
+                    groupHasActive
+                      ? "text-white"
+                      : "text-slate-300 hover:text-white hover:bg-white/[0.04]"
+                  )}
+                >
+                  <span className={cn(
+                    "text-[11px] font-semibold uppercase tracking-[0.08em]",
+                    groupHasActive ? "text-white/90" : "text-slate-300"
+                  )}>
+                    {group.label === "Main" ? "Home" : group.label}
+                  </span>
+                  <ChevronDown className={cn(
+                    "w-3.5 h-3.5 shrink-0 transition-transform duration-200",
+                    groupHasActive ? "text-white/50" : "text-slate-400",
+                    isGroupExpanded ? "rotate-0" : "-rotate-90"
+                  )} />
+                </button>
+                {group.label === "Shortcuts" && (
+                  <button
+                    title={ss.ssActive ? "Stop slideshow" : "Start slideshow"}
+                    onClick={() => ss.ssActive ? ss.stopSlideshow() : ss.startSlideshow()}
+                    className={cn(
+                      "flex-shrink-0 w-6 h-6 rounded-md flex items-center justify-center transition-all cursor-pointer border-0",
+                      ss.ssActive
+                        ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
+                        : "bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30"
+                    )}
+                  >
+                    {ss.ssActive
+                      ? <Square style={{ width: 10, height: 10 }} />
+                      : <Play style={{ width: 10, height: 10 }} />
+                    }
+                  </button>
                 )}
-              >
-                <span className={cn(
-                  "text-[11px] font-semibold uppercase tracking-[0.08em]",
-                  groupHasActive ? "text-white/90" : "text-slate-300"
-                )}>
-                  {group.label === "Main" ? "Home" : group.label}
-                </span>
-                <ChevronDown className={cn(
-                  "w-3.5 h-3.5 shrink-0 transition-transform duration-200",
-                  groupHasActive ? "text-white/50" : "text-slate-400",
-                  isGroupExpanded ? "rotate-0" : "-rotate-90"
-                )} />
-              </button>
+              </div>
 
               {isGroupExpanded && (
                 <div className="mt-0.5 mb-2 space-y-0.5">
@@ -655,8 +678,118 @@ function MiniSidebar({ location, expandedItems, toggleExpand, setCollapsed, aiTr
 }
 
 const COLLAPSED_KEY = "fm_sidebar_collapsed";
-
 const EXPANDED_GROUPS_KEY = "fm_sidebar_expanded_groups";
+
+// ── Slideshow ──────────────────────────────────────────────────────────────────
+const SLIDESHOW_PATHS = [
+  "/purchase-dashboard",
+  "/stores-dashboard",
+  "/logistics-dashboard",
+  "/process-proposal",
+  "/finance-dashboard",
+  "/hrms/analytics",
+  "/hrms/task-summary",
+];
+const SLIDESHOW_LABELS = [
+  "Purchase Dashboard",
+  "Stores Dashboard",
+  "Logistics Dashboard",
+  "Process & Proposal",
+  "Finance Dashboard",
+  "HR Analytics",
+  "Task Summary",
+];
+
+function SlideshowBar({ active, paused, idx, intervalSecs, onPause, onResume, onStop, onPrev, onNext, showSettings, setShowSettings, setIntervalSecs }: {
+  active: boolean; paused: boolean; idx: number; intervalSecs: number;
+  onPause: () => void; onResume: () => void; onStop: () => void;
+  onPrev: () => void; onNext: () => void;
+  showSettings: boolean; setShowSettings: (v: boolean) => void;
+  setIntervalSecs: (v: number) => void;
+}) {
+  const [countdown, setCountdown] = useState(intervalSecs);
+  const total = SLIDESHOW_PATHS.length;
+
+  useEffect(() => {
+    if (!active || paused) { setCountdown(intervalSecs); return; }
+    setCountdown(intervalSecs);
+    const tick = setInterval(() => {
+      setCountdown(prev => (prev <= 1 ? intervalSecs : prev - 1));
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [active, paused, idx, intervalSecs]);
+
+  if (!active) return null;
+
+  const pct = ((intervalSecs - countdown) / intervalSecs) * 100;
+
+  return (
+    <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[999] flex flex-col items-center gap-2">
+      {showSettings && (
+        <div className="bg-slate-900 border border-white/10 rounded-xl px-4 py-3 shadow-2xl flex flex-col gap-2 min-w-[220px]">
+          <span className="text-white/70 text-[11px] font-bold uppercase tracking-wider">Interval</span>
+          <div className="flex gap-2">
+            {[5, 10, 15, 30].map(s => (
+              <button key={s} onClick={() => setIntervalSecs(s)}
+                className={cn("flex-1 py-1.5 rounded-lg text-xs font-bold transition-all border-0 cursor-pointer",
+                  intervalSecs === s ? "bg-indigo-600 text-white" : "bg-white/10 text-white/60 hover:bg-white/20")}>
+                {s}s
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="relative bg-slate-900/95 border border-white/10 rounded-2xl px-4 py-2.5 shadow-2xl backdrop-blur-md flex items-center gap-3 overflow-hidden">
+        <div className="absolute bottom-0 left-0 h-0.5 bg-indigo-500/60 transition-all duration-1000"
+          style={{ width: `${pct}%` }} />
+
+        <span className="text-white/40 text-[10px] font-bold tabular-nums">{idx + 1}/{total}</span>
+
+        <div className="flex gap-1">
+          {Array.from({ length: total }).map((_, i) => (
+            <span key={i} className={cn("rounded-full transition-all duration-300",
+              i === idx ? "w-4 h-1.5 bg-indigo-400" : "w-1.5 h-1.5 bg-white/20")} />
+          ))}
+        </div>
+
+        <span className="text-white/80 text-xs font-semibold max-w-[140px] truncate">
+          {SLIDESHOW_LABELS[idx]}
+        </span>
+
+        <div className="flex items-center gap-1">
+          <button onClick={onPrev}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-all cursor-pointer border-0 bg-transparent">
+            <ChevronLeft style={{ width: 14, height: 14 }} />
+          </button>
+          <button onClick={paused ? onResume : onPause}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-white hover:bg-white/10 transition-all cursor-pointer border-0 bg-transparent">
+            {paused
+              ? <Play style={{ width: 13, height: 13 }} />
+              : <Pause style={{ width: 13, height: 13 }} />
+            }
+          </button>
+          <button onClick={onNext}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-all cursor-pointer border-0 bg-transparent">
+            <ChevronRight style={{ width: 14, height: 14 }} />
+          </button>
+          <button onClick={onStop}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-red-400/80 hover:text-red-400 hover:bg-red-500/10 transition-all cursor-pointer border-0 bg-transparent">
+            <Square style={{ width: 11, height: 11 }} />
+          </button>
+          <button onClick={() => setShowSettings(!showSettings)}
+            className={cn("w-7 h-7 rounded-lg flex items-center justify-center transition-all cursor-pointer border-0 bg-transparent",
+              showSettings ? "text-indigo-400 bg-indigo-500/15" : "text-white/40 hover:text-white hover:bg-white/10")}>
+            <Settings style={{ width: 13, height: 13 }} />
+          </button>
+        </div>
+
+        {!paused && (
+          <span className="text-white/30 text-[10px] font-mono tabular-nums">{countdown}s</span>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function getActiveGroupLabel(loc: string): string | null {
   for (const group of navGroups) {
@@ -670,7 +803,7 @@ function getActiveGroupLabel(loc: string): string | null {
 }
 
 export function Layout({ children, hideChrome }: { children: React.ReactNode; hideChrome?: boolean }) {
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const { navStyle } = useNavStyle();
   const [expandedItems, setExpandedItems] = useState<string[]>(["/drawings"]);
   const [expandedGroups, setExpandedGroups] = useState<string[]>(() => {
@@ -693,6 +826,46 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   const { user, logout } = useAuth();
   const { theme, themeIndex, setTheme, darkMode, toggleDarkMode } = useTheme();
   const [showThemePicker, setShowThemePicker] = useState(false);
+
+  // ── Slideshow state ──────────────────────────────────────────────────────────
+  const [ssActive, setSsActive]       = useState(false);
+  const [ssPaused, setSsPaused]       = useState(false);
+  const [ssIdx, setSsIdx]             = useState(0);
+  const [ssInterval, setSsInterval]   = useState(10);
+  const [showSsSettings, setShowSsSettings] = useState(false);
+
+  const startSlideshow = () => {
+    setSsIdx(0);
+    setSsActive(true);
+    setSsPaused(false);
+    setCollapsedState(true);
+    try { localStorage.setItem(COLLAPSED_KEY, "true"); } catch {}
+  };
+
+  const stopSlideshow = () => {
+    setSsActive(false);
+    setSsPaused(false);
+    setSsIdx(0);
+    setShowSsSettings(false);
+    setCollapsedState(false);
+    try { localStorage.setItem(COLLAPSED_KEY, "false"); } catch {}
+  };
+
+  const prevSlide = () => setSsIdx(i => (i - 1 + SLIDESHOW_PATHS.length) % SLIDESHOW_PATHS.length);
+  const nextSlide = () => setSsIdx(i => (i + 1) % SLIDESHOW_PATHS.length);
+
+  useEffect(() => {
+    if (!ssActive) return;
+    navigate(SLIDESHOW_PATHS[ssIdx]);
+  }, [ssIdx, ssActive]);
+
+  useEffect(() => {
+    if (!ssActive || ssPaused) return;
+    const timer = setInterval(() => {
+      setSsIdx(i => (i + 1) % SLIDESHOW_PATHS.length);
+    }, ssInterval * 1000);
+    return () => clearInterval(timer);
+  }, [ssActive, ssPaused, ssInterval]);
 
   const setCollapsed = (value: boolean) => {
     setCollapsedState(value);
@@ -745,7 +918,8 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   const pageTitle = currentPage?.label ?? "Dashboard";
   const CurrentIcon = currentPage?.icon;
 
-  const sidebarProps = { location, expandedItems, toggleExpand, expandedGroups, toggleGroup, setCollapsed, setMobileSidebarOpen, aiTrigger, setAiTrigger, logout, theme, user, darkMode, toggleDarkMode, setShowThemePicker };
+  const slideshowProps = { ssActive, ssPaused, ssIdx, ssInterval, setSsInterval, startSlideshow, stopSlideshow, prevSlide, nextSlide, setSsPaused, showSsSettings, setShowSsSettings };
+  const sidebarProps = { location, expandedItems, toggleExpand, expandedGroups, toggleGroup, setCollapsed, setMobileSidebarOpen, aiTrigger, setAiTrigger, logout, theme, user, darkMode, toggleDarkMode, setShowThemePicker, slideshowProps };
 
   if (hideChrome) {
     return <div className="min-h-screen bg-slate-100">{children}</div>;
@@ -896,6 +1070,21 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
           )}
         </nav>
       </div>
+
+      <SlideshowBar
+        active={ssActive}
+        paused={ssPaused}
+        idx={ssIdx}
+        intervalSecs={ssInterval}
+        onPause={() => setSsPaused(true)}
+        onResume={() => setSsPaused(false)}
+        onStop={stopSlideshow}
+        onPrev={prevSlide}
+        onNext={nextSlide}
+        showSettings={showSsSettings}
+        setShowSettings={setShowSsSettings}
+        setIntervalSecs={setSsInterval}
+      />
     </div>
   );
 }
