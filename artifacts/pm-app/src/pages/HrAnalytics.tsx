@@ -34,7 +34,7 @@ interface AnalyticsData {
   };
   recruitment: {
     openings: number; shortlisted: number; hired: number; processing: number; rejected: number; notInterested: number;
-    interviews: { year: number; month: number; today: number; yesterday: number };
+    interviews: { total: number; year: number; month: number; today: number; yesterday: number };
     followups: { year: number; month: number; today: number; yesterday: number };
   };
   attendance: {
@@ -338,6 +338,7 @@ export default function HrAnalytics() {
             />
             <KpiCard
               label="Interviews"
+              value={d.recruitment.interviews.total}
               icon={Mic}
               color="from-sky-500 to-cyan-500"
               chips={[

@@ -693,7 +693,7 @@ export async function fetchErpNextGrievances(filters?: { from_date?: string; to_
     const fArr: any[] = [];
     if (filters?.from_date) fArr.push(["Employee Grievance", "date", ">=", filters.from_date]);
     if (filters?.to_date)   fArr.push(["Employee Grievance", "date", "<=", filters.to_date]);
-    const params = new URLSearchParams({ fields, limit_page_length: "500", order_by: "date desc" });
+    const params = new URLSearchParams({ fields, limit_page_length: "2000", order_by: "date desc" });
     if (fArr.length) params.set("filters", JSON.stringify(fArr));
     const url = `${ERPNEXT_URL}/api/resource/Employee Grievance?${params}`;
     const res = await fetch(url, { headers: { Authorization: authHeader() } });
@@ -1109,7 +1109,7 @@ export async function fetchErpNextRecruitmentTrackers(filters?: {
   if (filters?.department) fArr.push(["Recruitment Tracker", "department", "like", `%${filters.department}%`]);
   if (filters?.position)   fArr.push(["Recruitment Tracker", "applying_for_the_post", "like", `%${filters.position}%`]);
 
-  const params = new URLSearchParams({ fields, limit_page_length: "500", order_by: "modified desc" });
+  const params = new URLSearchParams({ fields, limit_page_length: "2000", order_by: "modified desc" });
   if (fArr.length) params.set("filters", JSON.stringify(fArr));
 
   const url = `${ERPNEXT_URL}/api/resource/Recruitment Tracker?${params.toString()}`;

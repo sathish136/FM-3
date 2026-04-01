@@ -887,7 +887,7 @@ router.get("/hrms/analytics", async (req, res) => {
       fetchErpNextAttendance({ status: "Absent", from_date: todayStr, to_date: todayStr }),
       fetchErpNextAttendance({ status: "Absent", from_date: yesterdayStr, to_date: yesterdayStr }),
       fetchErpNextAttendance({ status: "Absent", from_date: monthStart, to_date: todayStr }),
-      fetchErpNextRecruitmentTrackers(),
+      fetchErpNextRecruitmentTrackers().catch(() => [] as Awaited<ReturnType<typeof fetchErpNextRecruitmentTrackers>>),
       fetchErpNextGrievances({ from_date: yearStart, to_date: todayStr }),
       fetchErpNextGrievances({ from_date: monthStart, to_date: todayStr }),
       fetchErpNextGrievances({ from_date: prevMonthStart, to_date: prevMonthEndStr }),
@@ -917,7 +917,8 @@ router.get("/hrms/analytics", async (req, res) => {
     const deptHeadcount = Object.entries(deptMap).map(([dept, count]) => ({ dept, count })).sort((a, b) => b.count - a.count);
 
     // Recruitment stats
-    const statusCount = (status: string) => recruiters.filter(r => r.status === status).length;
+    const statusCount = (status: string) => recruiters.filter(r => (r.status || "").trim().toLowerCase() === status.toLowerCase()).length;
+    const interviewsTotal = recruiters.filter(r => r.rt_telephonic_interview).length;
     const interviewsYear  = recruiters.filter(r => r.rt_telephonic_interview && r.rt_telephonic_interview >= yearStart).length;
     const interviewsMonth = recruiters.filter(r => r.rt_telephonic_interview && r.rt_telephonic_interview >= monthStart).length;
     const interviewsToday = recruiters.filter(r => r.rt_telephonic_interview === todayStr).length;
@@ -970,7 +971,7 @@ router.get("/hrms/analytics", async (req, res) => {
         processing: statusCount("Processing"),
         rejected: statusCount("Rejected"),
         notInterested: statusCount("Not Interested"),
-        interviews: { year: interviewsYear, month: interviewsMonth, today: interviewsToday, yesterday: interviewsYest },
+        interviews: { total: interviewsTotal, year: interviewsYear, month: interviewsMonth, today: interviewsToday, yesterday: interviewsYest },
         followups: { year: followupsYear, month: followupsMonth, today: followupsToday, yesterday: followupsYest },
       },
       attendance: {
