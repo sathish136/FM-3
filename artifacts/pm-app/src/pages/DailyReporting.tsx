@@ -4,23 +4,26 @@ import {
   ClipboardList, X, RefreshCw, Calendar, User, Building2, Clock,
   CheckCircle2, AlertCircle, Filter, ChevronLeft, ChevronRight, Eye,
   Loader2, Minus, Info, Plus, Send, MessageCircle, FileText, Printer,
+  Settings, Users, Bell, Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "").replace("/pm-app", "") + "/api";
 
-// ─── Allowed employees (display name → used for matching) ────────────────────
-const ALLOWED_EMPLOYEES = [
-  "GOKUL R",
-  "GOKUL S",
-  "RAGHUL RAJ D",
-  "RAJA A",
-  "SATHISHKUMAR G",
-  "SHOBANA P",
-  "SIVAKUMAR P",
-  "SIVAKUMAR M",
-  "VIGNESH S",
+// ─── Under MD Reporting employees ────────────────────────────────────────────
+const MD_REPORTING_EMPLOYEES: { id: string; name: string }[] = [
+  { id: "WTT1199", name: "GOKUL R"        },
+  { id: "WTT1606", name: "GOKUL S"        },
+  { id: "WTT1278", name: "RAGHUL RAJ D"   },
+  { id: "WTT947",  name: "RAJA A"         },
+  { id: "WTT1194", name: "SATHISHKUMAR G" },
+  { id: "WTT1619", name: "SHOBANA P"      },
+  { id: "WTT1211", name: "SIVAKUMAR P"    },
+  { id: "WTT1603", name: "SIVAKUMAR M"    },
+  { id: "WTT1502", name: "VIGNESH S"      },
 ];
+
+const ALLOWED_EMPLOYEES = MD_REPORTING_EMPLOYEES.map(e => e.name);
 
 const EMPLOYEE_DESIGNATIONS: Record<string, string> = {
   "GOKUL R":       "Senior Software Developer",
@@ -34,9 +37,19 @@ const EMPLOYEE_DESIGNATIONS: Record<string, string> = {
   "VIGNESH S":     "Assistant Manager - O&M cum Commissioning",
 };
 
+const MD_EMP_IDS = new Set(MD_REPORTING_EMPLOYEES.map(e => e.id.toUpperCase()));
+const MD_EMP_NAMES = new Set(MD_REPORTING_EMPLOYEES.map(e => e.name.toUpperCase()));
+
 function isAllowedEmployee(name: string) {
   const n = (name || "").toUpperCase().trim();
   return ALLOWED_EMPLOYEES.some(a => n.includes(a) || a.includes(n));
+}
+
+function isMdEmployee(employeeId: string, employeeName: string) {
+  const id = (employeeId || "").toUpperCase().trim();
+  const name = (employeeName || "").toUpperCase().trim();
+  if (MD_EMP_IDS.has(id)) return true;
+  return MD_EMP_NAMES.has(name) || ALLOWED_EMPLOYEES.some(a => name.includes(a) || a.includes(name));
 }
 
 type ReportSummary = {
@@ -436,37 +449,252 @@ function NewReportModal({ onClose, onCreated }: { onClose: () => void; onCreated
   );
 }
 
+// ─── Settings ─────────────────────────────────────────────────────────────────
+type DRSettings = { whatsappTo: string; sendTime: string; autoSend: boolean };
+const DEFAULT_SETTINGS: DRSettings = { whatsappTo: "919698109426", sendTime: "20:00", autoSend: false };
+function loadSettings(): DRSettings {
+  try { const s = localStorage.getItem("dr_settings"); if (s) return { ...DEFAULT_SETTINGS, ...JSON.parse(s) }; } catch {}
+  return { ...DEFAULT_SETTINGS };
+}
+function saveSettings(s: DRSettings) { localStorage.setItem("dr_settings", JSON.stringify(s)); }
+
+function SettingsModal({ onClose }: { onClose: () => void }) {
+  const [form, setForm] = useState<DRSettings>(loadSettings);
+  const [saved, setSaved] = useState(false);
+  function save() { saveSettings(form); setSaved(true); setTimeout(() => setSaved(false), 2000); }
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-indigo-50 to-white">
+          <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0">
+            <Settings className="w-4 h-4 text-indigo-600" />
+          </div>
+          <div className="flex-1">
+            <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">Daily Reporting</p>
+            <p className="text-sm font-black text-gray-900">Settings</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5 block">WhatsApp Number</label>
+            <input
+              value={form.whatsappTo}
+              onChange={e => setForm(f => ({ ...f, whatsappTo: e.target.value }))}
+              placeholder="919698109426"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-indigo-400"
+            />
+            <p className="text-[10px] text-gray-400 mt-1">Include country code, no + or spaces (e.g. 919876543210)</p>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5 block">Auto-send Time</label>
+            <input
+              type="time"
+              value={form.sendTime}
+              onChange={e => setForm(f => ({ ...f, sendTime: e.target.value }))}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-indigo-400"
+            />
+          </div>
+          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
+            <div>
+              <p className="text-xs font-bold text-gray-700">Auto-send Daily Summary</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">Automatically send combined report at the set time (page must be open)</p>
+            </div>
+            <button
+              onClick={() => setForm(f => ({ ...f, autoSend: !f.autoSend }))}
+              className={cn("relative w-10 h-5 rounded-full transition-colors shrink-0 ml-3",
+                form.autoSend ? "bg-indigo-600" : "bg-gray-300")}
+            >
+              <span className={cn("absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all",
+                form.autoSend ? "left-5" : "left-0.5")} />
+            </button>
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-100 bg-gray-50/50">
+          <button onClick={onClose} className="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 text-xs font-semibold hover:bg-gray-50 transition-colors">Cancel</button>
+          <button
+            onClick={save}
+            className={cn("flex items-center gap-2 px-5 py-2 rounded-xl text-white text-xs font-bold transition-colors shadow-sm",
+              saved ? "bg-emerald-500" : "bg-indigo-600 hover:bg-indigo-700")}
+          >
+            {saved ? <><CheckCircle2 className="w-3.5 h-3.5" /> Saved!</> : <><Settings className="w-3.5 h-3.5" /> Save Settings</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Today's Coverage Panel ───────────────────────────────────────────────────
+function TodayCoverage({
+  reports, sending, summaryStatus, summaryError, onSend, loading,
+}: {
+  reports: ReportSummary[];
+  sending: boolean;
+  summaryStatus: "idle" | "sent" | "error";
+  summaryError: string;
+  onSend: () => void;
+  loading: boolean;
+}) {
+  const reportedMap = new Map<string, ReportSummary>();
+  for (const r of reports) {
+    const nameKey = (r.employee_name || r.employee || "").toUpperCase().trim();
+    const idKey = (r.employee || "").toUpperCase().trim();
+    for (const emp of MD_REPORTING_EMPLOYEES) {
+      if (idKey === emp.id.toUpperCase() || nameKey.includes(emp.name.toUpperCase()) || emp.name.toUpperCase().includes(nameKey)) {
+        if (!reportedMap.has(emp.id)) reportedMap.set(emp.id, r);
+      }
+    }
+  }
+  const reportedCount = reportedMap.size;
+  const notReported = MD_REPORTING_EMPLOYEES.filter(e => !reportedMap.has(e.id));
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 bg-gradient-to-r from-indigo-50/60 to-white">
+        <div className="flex items-center gap-2.5">
+          <Users className="w-4 h-4 text-indigo-500" />
+          <div>
+            <p className="text-xs font-black text-gray-800">Today's Coverage</p>
+            <p className="text-[10px] text-gray-400">
+              {loading ? "Loading…" : `${reportedCount} of ${MD_REPORTING_EMPLOYEES.length} reported`}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {summaryStatus === "sent" && (
+            <span className="flex items-center gap-1 text-[10px] text-emerald-600 font-semibold">
+              <CheckCircle2 className="w-3.5 h-3.5" /> Sent!
+            </span>
+          )}
+          {summaryStatus === "error" && (
+            <span className="flex items-center gap-1 text-[10px] text-red-500 font-semibold">
+              <AlertCircle className="w-3.5 h-3.5" /> {summaryError || "Failed"}
+            </span>
+          )}
+          <button
+            onClick={onSend}
+            disabled={sending || summaryStatus === "sent"}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[11px] font-bold transition-colors shadow-sm"
+          >
+            {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MessageCircle className="w-3.5 h-3.5" />}
+            {sending ? "Sending…" : "Send to WhatsApp"}
+          </button>
+        </div>
+      </div>
+      <div className="p-4">
+        <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-2">
+          {MD_REPORTING_EMPLOYEES.map(emp => {
+            const report = reportedMap.get(emp.id);
+            const status = report?.status;
+            const isSubmitted = status === "Submitted";
+            const isDraft = status === "Draft";
+            const notFiled = !report;
+            return (
+              <div
+                key={emp.id}
+                className={cn(
+                  "flex flex-col items-center gap-1 p-2 rounded-xl border text-center cursor-default transition-colors",
+                  isSubmitted ? "bg-emerald-50 border-emerald-200" :
+                  isDraft ? "bg-amber-50 border-amber-200" :
+                  "bg-red-50 border-red-200"
+                )}
+              >
+                <div className={cn(
+                  "w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black",
+                  isSubmitted ? "bg-emerald-500 text-white" :
+                  isDraft ? "bg-amber-400 text-white" :
+                  "bg-red-300 text-white"
+                )}>
+                  {emp.name[0]}
+                </div>
+                <p className="text-[9px] font-bold text-gray-700 leading-tight line-clamp-2">{emp.name}</p>
+                <span className={cn(
+                  "text-[8px] font-black px-1.5 py-0.5 rounded-full",
+                  isSubmitted ? "text-emerald-600" :
+                  isDraft ? "text-amber-600" :
+                  "text-red-500"
+                )}>
+                  {isSubmitted ? "✓ Filed" : isDraft ? "⏳ Draft" : "✗ Missing"}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        {notReported.length > 0 && (
+          <div className="mt-3 flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-bold text-red-500 flex items-center gap-1">
+              <AlertCircle className="w-3 h-3" /> Not yet reported:
+            </span>
+            {notReported.map(emp => (
+              <span key={emp.id} className="text-[10px] font-semibold bg-red-50 border border-red-200 text-red-600 px-2 py-0.5 rounded-full">
+                {emp.id} · {emp.name}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
+type DateMode = "today" | "yesterday" | "week" | "custom";
+
 export default function DailyReporting() {
-  const [reports, setReports] = useState<ReportSummary[]>([]);
+  const [allReports, setAllReports] = useState<ReportSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedReport, setSelectedReport] = useState<string | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   const today = todayISO();
-  const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().split("T")[0];
+  const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
 
-  const [fromDate, setFromDate] = useState(monthAgo);
+  const [dateMode, setDateMode] = useState<DateMode>("today");
+  const [fromDate, setFromDate] = useState(today);
   const [toDate, setToDate] = useState(today);
   const [statusFilter, setStatusFilter] = useState("");
+  const [mdFilter, setMdFilter] = useState(true);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
+
+  const [sendingSummary, setSendingSummary] = useState(false);
+  const [summaryStatus, setSummaryStatus] = useState<"idle" | "sent" | "error">("idle");
+  const [summaryError, setSummaryError] = useState("");
+
   const LIMIT = 30;
+
+  const reports = mdFilter
+    ? allReports.filter(r => isMdEmployee(r.employee, r.employee_name))
+    : allReports;
+
+  useEffect(() => {
+    if (dateMode === "today")     { setFromDate(today);     setToDate(today); }
+    else if (dateMode === "yesterday") { setFromDate(yesterday); setToDate(yesterday); }
+    else if (dateMode === "week") { setFromDate(weekAgo);   setToDate(today); }
+  }, [dateMode]);
 
   const load = useCallback(async (p = 0) => {
     setLoading(true); setError("");
     try {
       const params = new URLSearchParams({ from_date: fromDate, to_date: toDate, limit: String(LIMIT), page: String(p) });
       if (statusFilter) params.set("status", statusFilter);
-
       const r = await fetch(`${API_BASE}/daily-reporting?${params}`);
       if (!r.ok) { const e = await r.json(); throw new Error(e.error || "Failed"); }
       const data = await r.json();
-      const rows: ReportSummary[] = data.reports || [];
       setHasMore(!!data.hasMore);
-      setReports(rows);
+      setAllReports(data.reports || []);
       setPage(p);
     } catch (e: any) {
       setError(e.message || "Failed to load reports");
@@ -477,10 +705,53 @@ export default function DailyReporting() {
 
   useEffect(() => { load(0); }, [load]);
 
+  // Auto-send logic (checks every 30s, sends once per day)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const settings = loadSettings();
+      if (!settings.autoSend) return;
+      const now = new Date();
+      const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      if (hhmm === settings.sendTime) {
+        const todayStr = now.toISOString().split("T")[0];
+        const lastSent = localStorage.getItem("dr_last_auto_send");
+        if (lastSent !== todayStr) {
+          localStorage.setItem("dr_last_auto_send", todayStr);
+          handleSendSummary();
+        }
+      }
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  async function handleSendSummary() {
+    setSendingSummary(true); setSummaryStatus("idle"); setSummaryError("");
+    try {
+      const settings = loadSettings();
+      const r = await fetch(`${API_BASE}/daily-reporting/send-combined`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: today, to: settings.whatsappTo }),
+      });
+      const data = await r.json();
+      if (r.ok && data.success) { setSummaryStatus("sent"); }
+      else { setSummaryStatus("error"); setSummaryError(data.error || "Failed to send"); }
+    } catch (e: any) {
+      setSummaryStatus("error"); setSummaryError(e.message || "Network error");
+    } finally {
+      setSendingSummary(false);
+    }
+  }
+
+  const dateModeLabel: Record<DateMode, string> = {
+    today: "Today", yesterday: "Yesterday", week: "This Week", custom: "Custom Range"
+  };
+
   return (
     <Layout>
       <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-4">
-        {/* Header */}
+
+        {/* ── Header ── */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-500 flex items-center justify-center shadow-lg shadow-indigo-200">
@@ -488,58 +759,101 @@ export default function DailyReporting() {
             </div>
             <div>
               <h1 className="text-lg font-black text-gray-900 leading-tight">Daily Reporting</h1>
-              <p className="text-xs text-gray-400">{reports.length} report{reports.length !== 1 ? "s" : ""}</p>
+              <p className="text-xs text-gray-400">
+                {reports.length} report{reports.length !== 1 ? "s" : ""} · {dateModeLabel[dateMode]}
+              </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowFilters(f => !f)}
-              className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border",
-                showFilters ? "bg-indigo-50 text-indigo-600 border-indigo-200" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50")}
-            >
-              <Filter className="w-3.5 h-3.5" /> Filters
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={() => setShowSettings(true)}
+              className="p-2 rounded-lg bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors" title="Settings">
+              <Settings className="w-4 h-4" />
             </button>
-            <button onClick={() => load(0)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-600 text-xs font-semibold hover:bg-gray-50 transition-colors">
-              <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} /> Refresh
+            <button onClick={() => load(0)}
+              className="p-2 rounded-lg bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors" title="Refresh">
+              <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
             </button>
-            <button
-              onClick={() => setShowNewModal(true)}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors shadow-sm"
-            >
+            <button onClick={() => setShowNewModal(true)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors shadow-sm">
               <Plus className="w-3.5 h-3.5" /> New Report
             </button>
           </div>
         </div>
 
-        {/* Filters */}
-        {showFilters && (
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1 block">From Date</label>
+        {/* ── Filter Bar ── */}
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-3 space-y-3">
+          {/* Row 1: date mode tabs + MD filter + status */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Date tabs */}
+            <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
+              {(["today","yesterday","week","custom"] as DateMode[]).map(m => (
+                <button key={m} onClick={() => setDateMode(m)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-md text-xs font-semibold transition-colors capitalize",
+                    dateMode === m ? "bg-white text-indigo-700 shadow-sm font-bold" : "text-gray-500 hover:text-gray-700"
+                  )}>
+                  {m === "today" ? "Today" : m === "yesterday" ? "Yesterday" : m === "week" ? "This Week" : "Custom"}
+                </button>
+              ))}
+            </div>
+
+            {/* Divider */}
+            <div className="w-px h-6 bg-gray-200" />
+
+            {/* MD Reporting filter */}
+            <button onClick={() => setMdFilter(f => !f)}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border",
+                mdFilter ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50"
+              )}>
+              <Users className="w-3.5 h-3.5" />
+              Under MD Reporting
+              {mdFilter && <X className="w-3 h-3 opacity-80" onClick={e => { e.stopPropagation(); setMdFilter(false); }} />}
+            </button>
+
+            {/* Spacer */}
+            <div className="flex-1" />
+
+            {/* Status filter */}
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-400 bg-white text-gray-600">
+              <option value="">All Statuses</option>
+              <option value="Draft">Draft</option>
+              <option value="Submitted">Submitted</option>
+              <option value="Cancelled">Cancelled</option>
+            </select>
+          </div>
+
+          {/* Row 2: Custom date range (only when custom) */}
+          {dateMode === "custom" && (
+            <div className="flex items-center gap-3 flex-wrap pt-1 border-t border-gray-50">
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide whitespace-nowrap">From</label>
                 <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-400" />
+                  className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-400" />
               </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1 block">To Date</label>
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide whitespace-nowrap">To</label>
                 <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-400" />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1 block">Status</label>
-                <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-400 bg-white">
-                  <option value="">All Statuses</option>
-                  <option value="Draft">Draft</option>
-                  <option value="Submitted">Submitted</option>
-                  <option value="Cancelled">Cancelled</option>
-                </select>
+                  className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-400" />
               </div>
             </div>
-          </div>
+          )}
+        </div>
+
+        {/* ── Today's Coverage (only when Today + MD filter) ── */}
+        {dateMode === "today" && mdFilter && (
+          <TodayCoverage
+            reports={reports}
+            sending={sendingSummary}
+            summaryStatus={summaryStatus}
+            summaryError={summaryError}
+            onSend={handleSendSummary}
+            loading={loading}
+          />
         )}
 
-        {/* Error */}
+        {/* ── Error ── */}
         {error && (
           <div className="flex items-center gap-2 p-4 bg-red-50 rounded-xl border border-red-100">
             <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
@@ -547,7 +861,7 @@ export default function DailyReporting() {
           </div>
         )}
 
-        {/* Table */}
+        {/* ── Table ── */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
@@ -579,7 +893,8 @@ export default function DailyReporting() {
                   </thead>
                   <tbody>
                     {reports.map((r, i) => (
-                      <tr key={r.name} className={cn("border-b border-gray-50 last:border-0 hover:bg-indigo-50/40 transition-colors cursor-pointer", i % 2 === 0 ? "bg-white" : "bg-gray-50/30")}
+                      <tr key={r.name}
+                        className={cn("border-b border-gray-50 last:border-0 hover:bg-indigo-50/40 transition-colors cursor-pointer", i % 2 === 0 ? "bg-white" : "bg-gray-50/30")}
                         onClick={() => setSelectedReport(r.name)}>
                         <td className="px-4 py-2.5">
                           <div className="flex items-center gap-2">
@@ -588,9 +903,12 @@ export default function DailyReporting() {
                             </div>
                             <div>
                               <p className="font-bold text-gray-800 leading-tight">{r.employee_name || r.employee}</p>
-                              {EMPLOYEE_DESIGNATIONS[r.employee_name?.toUpperCase().trim()] && (
-                                <p className="text-[9px] text-gray-400">{EMPLOYEE_DESIGNATIONS[r.employee_name.toUpperCase().trim()]}</p>
-                              )}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {r.employee && <span className="text-[9px] font-semibold text-indigo-500">{r.employee}</span>}
+                                {EMPLOYEE_DESIGNATIONS[(r.employee_name || "").toUpperCase().trim()] && (
+                                  <span className="text-[9px] text-gray-400">{EMPLOYEE_DESIGNATIONS[(r.employee_name || "").toUpperCase().trim()]}</span>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </td>
@@ -642,6 +960,7 @@ export default function DailyReporting() {
 
       {selectedReport && <ReportDetailModal name={selectedReport} onClose={() => setSelectedReport(null)} />}
       {showNewModal && <NewReportModal onClose={() => setShowNewModal(false)} onCreated={() => load(0)} />}
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </Layout>
   );
 }

@@ -309,6 +309,242 @@ router.post("/daily-reporting/:name/send-whatsapp", async (req, res) => {
   }
 });
 
+// ─── MD Reporting employees (mirrors frontend list) ───────────────────────────
+const MD_EMPLOYEES = [
+  { id: "WTT1199", name: "GOKUL R"        },
+  { id: "WTT1606", name: "GOKUL S"        },
+  { id: "WTT1278", name: "RAGHUL RAJ D"   },
+  { id: "WTT947",  name: "RAJA A"         },
+  { id: "WTT1194", name: "SATHISHKUMAR G" },
+  { id: "WTT1619", name: "SHOBANA P"      },
+  { id: "WTT1211", name: "SIVAKUMAR P"    },
+  { id: "WTT1603", name: "SIVAKUMAR M"    },
+  { id: "WTT1502", name: "VIGNESH S"      },
+];
+const MD_IDS   = new Set(MD_EMPLOYEES.map(e => e.id.toUpperCase()));
+const MD_NAMES = new Set(MD_EMPLOYEES.map(e => e.name.toUpperCase()));
+
+function matchesMdEmployee(empId: string, empName: string): boolean {
+  const id = (empId || "").toUpperCase().trim();
+  const name = (empName || "").toUpperCase().trim();
+  if (MD_IDS.has(id)) return true;
+  if (MD_NAMES.has(name)) return true;
+  return MD_EMPLOYEES.some(e => name.includes(e.name.toUpperCase()) || e.name.toUpperCase().includes(name));
+}
+
+// ─── Combined Daily Report PDF ────────────────────────────────────────────────
+function generateCombinedPDF(
+  date: string,
+  reported: Array<{ employee: string; employee_name: string; department: string; status: string; date: string; activities?: any[] }>,
+  notReported: Array<{ id: string; name: string }>,
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: "A4", margin: 40, bufferPages: true });
+    const chunks: Buffer[] = [];
+    doc.on("data", (c: Buffer) => chunks.push(c));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    const dateStr = date
+      ? new Date(date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })
+      : new Date().toLocaleDateString("en-GB");
+
+    const total = MD_EMPLOYEES.length;
+    const reportedCount = reported.length;
+
+    // ── Header band ──
+    doc.rect(0, 0, doc.page.width, 75).fill("#1a3a5c");
+    doc.fillColor("white").fontSize(20).font("Helvetica-Bold")
+      .text("Daily Report Summary", 40, 16);
+    doc.fontSize(10).font("Helvetica")
+      .text(`WTT International  ·  ${dateStr}`, 40, 42);
+    doc.fontSize(9).fillColor("#93c5fd")
+      .text(`${reportedCount} of ${total} employees reported  ·  Generated ${new Date().toLocaleString("en-GB")}`, 40, 58);
+
+    doc.y = 90;
+
+    // ── Coverage bar ──
+    const barX = 40, barW = doc.page.width - 80, barH = 10;
+    doc.roundedRect(barX, doc.y, barW, barH, 5).fill("#e2e8f0");
+    const filled = reportedCount / total;
+    if (filled > 0) doc.roundedRect(barX, doc.y, barW * filled, barH, 5).fill("#22c55e");
+    doc.y += barH + 14;
+
+    function sectionHeader(title: string, color: string) {
+      doc.moveDown(0.4);
+      doc.fillColor(color).fontSize(11).font("Helvetica-Bold").text(title.toUpperCase());
+      doc.moveTo(40, doc.y + 2).lineTo(doc.page.width - 40, doc.y + 2)
+        .strokeColor(color).lineWidth(1.2).stroke();
+      doc.moveDown(0.5);
+    }
+
+    // ── Reported employees ──
+    if (reported.length > 0) {
+      sectionHeader(`Reported  (${reported.length})`, "#15803d");
+      reported.forEach((r, i) => {
+        const isSubmitted = r.status === "Submitted";
+        const rowY = doc.y;
+        // Status indicator dot
+        doc.circle(50, rowY + 7, 4).fill(isSubmitted ? "#22c55e" : "#f59e0b");
+        // Name + details
+        doc.fillColor("#1e293b").fontSize(10).font("Helvetica-Bold")
+          .text(r.employee_name || r.employee, 62, rowY, { width: 200 });
+        const dept = (r.department || "").replace(/ - WTT$/i, "");
+        if (dept) {
+          doc.fillColor("#64748b").fontSize(8.5).font("Helvetica")
+            .text(dept, 62, rowY + 13, { width: 200 });
+        }
+        // Status badge
+        const badgeColor = isSubmitted ? "#dcfce7" : "#fef3c7";
+        const badgeText = isSubmitted ? "SUBMITTED" : "DRAFT";
+        const badgeTxtColor = isSubmitted ? "#166534" : "#92400e";
+        const badgeX = doc.page.width - 140;
+        doc.roundedRect(badgeX, rowY + 2, 80, 14, 3).fill(badgeColor);
+        doc.fillColor(badgeTxtColor).fontSize(8).font("Helvetica-Bold")
+          .text(badgeText, badgeX, rowY + 5, { width: 80, align: "center" });
+
+        // Activities if present
+        if (r.activities && r.activities.length > 0) {
+          let actY = rowY + (dept ? 26 : 18);
+          r.activities.slice(0, 3).forEach(act => {
+            const text = [act.activity, act.project ? `(${act.project})` : "", act.no_of_hours ? `${act.no_of_hours}h` : ""].filter(Boolean).join("  ");
+            doc.fillColor("#475569").fontSize(8).font("Helvetica").text(`  • ${text}`, 68, actY, { width: doc.page.width - 120 });
+            actY += 11;
+          });
+          if (r.activities.length > 3) {
+            doc.fillColor("#94a3b8").fontSize(7.5).text(`  + ${r.activities.length - 3} more`, 68, actY);
+          }
+          doc.y = Math.max(doc.y, actY + 14);
+        } else {
+          doc.y = rowY + (dept ? 30 : 22);
+        }
+        if (i < reported.length - 1) {
+          doc.moveTo(62, doc.y + 2).lineTo(doc.page.width - 40, doc.y + 2).strokeColor("#f1f5f9").lineWidth(0.5).stroke();
+          doc.y += 6;
+        }
+      });
+    }
+
+    // ── Not reported employees ──
+    if (notReported.length > 0) {
+      doc.moveDown(0.8);
+      sectionHeader(`Not Reported  (${notReported.length})`, "#dc2626");
+      notReported.forEach((emp, i) => {
+        const rowY = doc.y;
+        doc.circle(50, rowY + 7, 4).fill("#ef4444");
+        doc.fillColor("#1e293b").fontSize(10).font("Helvetica-Bold")
+          .text(emp.name, 62, rowY, { width: 200 });
+        doc.fillColor("#94a3b8").fontSize(8.5).font("Helvetica")
+          .text(emp.id, 62, rowY + 13, { width: 100 });
+        // "NOT REPORTED" badge
+        const badgeX = doc.page.width - 150;
+        doc.roundedRect(badgeX, rowY + 2, 100, 14, 3).fill("#fee2e2");
+        doc.fillColor("#991b1b").fontSize(8).font("Helvetica-Bold")
+          .text("NOT REPORTED", badgeX, rowY + 5, { width: 100, align: "center" });
+        doc.y = rowY + 30;
+        if (i < notReported.length - 1) {
+          doc.moveTo(62, doc.y - 4).lineTo(doc.page.width - 40, doc.y - 4).strokeColor("#fee2e2").lineWidth(0.5).stroke();
+        }
+      });
+    }
+
+    // ── Footer ──
+    const footerY = doc.page.height - 35;
+    doc.rect(0, footerY - 5, doc.page.width, 40).fill("#f8fafc");
+    doc.fillColor("#94a3b8").fontSize(8).font("Helvetica")
+      .text(`FlowMatriX Daily Summary  ·  WTT International  ·  ${dateStr}`,
+        40, footerY, { align: "center", width: doc.page.width - 80 });
+
+    doc.end();
+  });
+}
+
+// ─── Send Combined Daily Summary to WhatsApp ──────────────────────────────────
+router.post("/daily-reporting/send-combined", async (req, res) => {
+  if (!isConfigured()) return res.status(503).json({ error: "ERPNext not configured" });
+
+  const date: string = req.body.date || new Date().toISOString().split("T")[0];
+  const to: string = req.body.to || REPORT_WHATSAPP_TO;
+
+  try {
+    // 1. Fetch all reports for the date from ERP
+    const fields = JSON.stringify(["name","employee","employee_name","department","docstatus","modified","creation"]);
+    const params = new URLSearchParams({ fields, limit_page_length: "500", limit_start: "0", order_by: "creation desc" });
+    const r = await fetch(`${ERP_URL}/api/resource/Daily Reporting?${params}`, {
+      headers: { Authorization: auth() },
+    });
+    if (!r.ok) {
+      const text = await r.text().catch(() => "");
+      return res.status(r.status).json({ error: `ERPNext error: ${text.slice(0, 300)}` });
+    }
+    const json = await r.json() as { data: any[] };
+    let rows: any[] = (json.data || []).map(row => ({
+      ...row,
+      date: row.name?.match(/(\d{4}-\d{2}-\d{2})/)?.[1] || row.creation?.split(" ")[0] || null,
+      status: mapDocStatus(row.docstatus),
+    }));
+
+    // 2. Filter to today's date and MD employees
+    const dateRows = rows.filter(row => row.date === date && matchesMdEmployee(row.employee, row.employee_name));
+
+    // 3. Fetch full details (activities) for each reported doc in parallel (up to 9 docs)
+    const detailed = await Promise.all(dateRows.map(async row => {
+      try {
+        const dr = await fetch(`${ERP_URL}/api/resource/Daily Reporting/${encodeURIComponent(row.name)}`, {
+          headers: { Authorization: auth() },
+        });
+        if (!dr.ok) return row;
+        const dj = await dr.json() as { data: any };
+        const activities: any[] = dj.data?.daily_reporting_detail || [];
+        return { ...row, activities };
+      } catch {
+        return row;
+      }
+    }));
+
+    // 4. Determine which MD employees haven't filed a report
+    const notReported = MD_EMPLOYEES.filter(emp =>
+      !detailed.some(r => matchesMdEmployee(r.employee, r.employee_name) && (
+        (r.employee || "").toUpperCase() === emp.id.toUpperCase() ||
+        (r.employee_name || "").toUpperCase().includes(emp.name.toUpperCase()) ||
+        emp.name.toUpperCase().includes((r.employee_name || "").toUpperCase())
+      ))
+    );
+
+    // 5. Generate combined PDF
+    const pdfBuf = await generateCombinedPDF(date, detailed, notReported);
+    const id = randomUUID();
+    const dateTag = date.replace(/-/g, "");
+    const filename = `DailySummary_${dateTag}.pdf`;
+    pdfStore.set(id, { buf: pdfBuf, filename, expires: Date.now() + 10 * 60_000 });
+
+    // 6. Build a publicly accessible URL
+    const host = process.env.REPLIT_DEV_DOMAIN
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+      : `http://localhost:${process.env.PORT || 8080}`;
+    const pdfUrl = `${host}/api/daily-reporting/pdf/${id}`;
+
+    const dateStr = new Date(date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    const caption = [
+      `📋 Daily Report Summary — ${dateStr}`,
+      `✅ Reported: ${detailed.length}/${MD_EMPLOYEES.length}`,
+      notReported.length > 0
+        ? `❌ Not Reported: ${notReported.map(e => e.name).join(", ")}`
+        : "✅ All employees have reported!",
+    ].join("\n");
+
+    const result = await sendWhatsAppDocument(to, pdfUrl, filename, caption);
+
+    if (result.success) {
+      res.json({ success: true, to, filename, reported: detailed.length, notReported: notReported.length });
+    } else {
+      res.status(502).json({ success: false, error: result.error || "WhatsApp send failed" });
+    }
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 // ─── Single Daily Report Detail ───────────────────────────────────────────────
 // Single document fetch uses a different Frappe endpoint that doesn't have the
 // same field-name restrictions as get_list.
