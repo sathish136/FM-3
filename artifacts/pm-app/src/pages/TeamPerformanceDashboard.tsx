@@ -38,6 +38,7 @@ type Employee = {
   week_hours: number; week_idle: number; working_days: number; unique_tasks: number;
   today_hours: number; today_tasks: string; last_active: string | null;
   current_task: string; current_project: string; current_priority: string;
+  current_activity_type: string; current_activity_time: string;
   alloc_status: string; utilization: number; avg_hrs_day: number;
 };
 type Summary = { total: number; active_today: number; with_tasks: number; total_week_hrs: number; avg_utilization: number };
@@ -221,19 +222,45 @@ function EmployeeCard({ emp }: { emp: EmployeeWithTask }) {
           </div>
         )}
 
-        {/* Row 6: Current task */}
-        {(emp.current_task || emp.today_tasks) && (
-          <div className="rounded-lg bg-gray-50 px-2.5 py-1.5 flex items-start gap-1.5">
-            <span className={cn("w-1.5 h-1.5 rounded-full mt-0.5 shrink-0",
-              emp.current_priority === "critical" ? "bg-red-500" :
-              emp.current_priority === "high"     ? "bg-orange-400" :
-              emp.current_priority === "medium"   ? "bg-blue-400" : "bg-gray-300"
-            )} />
-            <p className="text-[10px] text-gray-600 font-medium line-clamp-1 leading-tight">
-              {emp.current_task || emp.today_tasks}
-            </p>
-          </div>
-        )}
+        {/* Row 6: Current task / Activity */}
+        {(emp.current_task || emp.today_tasks) && (() => {
+          const fromActivity = !!emp.current_activity_time;
+          const timeLabel = emp.current_activity_time
+            ? new Date(emp.current_activity_time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })
+            : null;
+          return (
+            <div className={cn(
+              "rounded-lg px-2.5 py-1.5 flex flex-col gap-0.5",
+              fromActivity ? "bg-blue-50 border border-blue-100" : "bg-gray-50"
+            )}>
+              <div className="flex items-center gap-1.5">
+                {fromActivity
+                  ? <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
+                  : <span className={cn("w-1.5 h-1.5 rounded-full mt-0.5 shrink-0",
+                      emp.current_priority === "critical" ? "bg-red-500" :
+                      emp.current_priority === "high"     ? "bg-orange-400" :
+                      emp.current_priority === "medium"   ? "bg-blue-400" : "bg-gray-300"
+                    )} />
+                }
+                <p className={cn("text-[10px] font-medium line-clamp-1 leading-tight flex-1",
+                  fromActivity ? "text-blue-700" : "text-gray-600"
+                )}>
+                  {emp.current_task || emp.today_tasks}
+                </p>
+              </div>
+              {fromActivity && (
+                <div className="flex items-center gap-2 pl-3">
+                  {emp.current_activity_type && (
+                    <span className="text-[9px] font-semibold text-blue-400">{emp.current_activity_type}</span>
+                  )}
+                  {timeLabel && (
+                    <span className="text-[9px] text-blue-300 ml-auto">till {timeLabel}</span>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
@@ -343,10 +370,21 @@ function TableView({ employees }: { employees: EmployeeWithTask[] }) {
                   </td>
                   <td className="px-3 py-2.5">
                     {emp.current_task ? (
-                      <div className="flex items-center gap-1.5">
-                        <span className={cn("w-1.5 h-1.5 rounded-full shrink-0",
-                          emp.alloc_status === "in-progress" ? "bg-blue-500" : "bg-gray-300")} />
-                        <span className="text-gray-600 text-[10px] truncate max-w-[110px]">{emp.current_task}</span>
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className={cn("w-1.5 h-1.5 rounded-full shrink-0",
+                            (emp as any).current_activity_time ? "bg-blue-500 animate-pulse" :
+                            emp.alloc_status === "in-progress" ? "bg-blue-400" : "bg-gray-300")} />
+                          <span className={cn("text-[10px] truncate max-w-[110px]",
+                            (emp as any).current_activity_time ? "text-blue-700 font-medium" : "text-gray-600"
+                          )}>{emp.current_task}</span>
+                        </div>
+                        {(emp as any).current_activity_time && (
+                          <span className="text-[9px] text-blue-300 pl-3">
+                            {(emp as any).current_activity_type || "Activity"} · till{" "}
+                            {new Date((emp as any).current_activity_time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                          </span>
+                        )}
                       </div>
                     ) : <span className="text-gray-300">—</span>}
                   </td>

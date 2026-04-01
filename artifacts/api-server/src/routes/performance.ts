@@ -276,14 +276,18 @@ router.get("/performance/team-dashboard", async (req, res) => {
     })();
     const weekEnd = to || today;
 
-    // 1. Fetch employees from ERPNext (source of truth)
+    // 1. Fetch employees from ERPNext + latest Activity Sheet data in parallel
     let erpEmployees: Array<{
       name: string; employee_name: string; department: string | null;
       designation: string | null; status: string; user_id: string | null; image: string | null;
     }> = [];
+    let activityMap: Record<string, import("../lib/erpnext").LatestActivity> = {};
     try {
-      const { fetchErpNextEmployees } = await import("../lib/erpnext");
-      erpEmployees = await fetchErpNextEmployees({ status: "Active", ...(department ? { department } : {}) });
+      const { fetchErpNextEmployees, fetchLatestEmployeeActivities } = await import("../lib/erpnext");
+      [erpEmployees, activityMap] = await Promise.all([
+        fetchErpNextEmployees({ status: "Active", ...(department ? { department } : {}) }),
+        fetchLatestEmployeeActivities().catch(() => ({})),
+      ]);
     } catch (_) { /* ERPNext not configured or unavailable */ }
 
     // 2. Check if idle_hours column exists
@@ -349,11 +353,16 @@ router.get("/performance/team-dashboard", async (req, res) => {
       const ts = tsMap[erp.employee_name];
       const td = todayMap[erp.employee_name];
       const alloc = allocMap[erp.employee_name];
+      const act = activityMap[(erp.employee_name || "").toLowerCase().trim()];
       const week_hours = ts ? parseFloat(ts.week_hours) || 0 : 0;
       const week_idle = ts ? parseFloat(ts.week_idle) || 0 : 0;
       const working_days = ts ? parseInt(ts.working_days) || 0 : 0;
       const unique_tasks = ts ? parseInt(ts.unique_tasks) || 0 : 0;
       const utilization = week_hours > 0 ? Math.min(Math.round((week_hours / Math.max(working_days, 1) / 8) * 100), 100) : 0;
+      // Activity Sheet = live "current task"; fall back to task allocation, then today's timesheet
+      const current_task    = act?.activity_type || alloc?.task_title || "";
+      const current_project = act?.project || alloc?.project || "";
+      const alloc_status    = act ? "in-progress" : (alloc?.status || "none");
       employees.push({
         employee_name: erp.employee_name,
         employee_id: erp.name,
@@ -366,10 +375,12 @@ router.get("/performance/team-dashboard", async (req, res) => {
         today_hours: td ? parseFloat(td.today_hours) || 0 : 0,
         today_tasks: td?.today_tasks || "",
         last_active: ts?.last_active || null,
-        current_task: alloc?.task_title || "",
-        current_project: alloc?.project || "",
+        current_task,
+        current_project,
         current_priority: alloc?.priority || "",
-        alloc_status: alloc?.status || "none",
+        current_activity_type: act?.type_of_work || "",
+        current_activity_time: act?.to_time || "",
+        alloc_status,
         utilization,
         avg_hrs_day: working_days > 0 ? Math.round((week_hours / working_days) * 10) / 10 : 0,
       });
@@ -380,6 +391,7 @@ router.get("/performance/team-dashboard", async (req, res) => {
       if (seen.has(ts.employee_name)) continue;
       const td = todayMap[ts.employee_name];
       const alloc = allocMap[ts.employee_name];
+      const act = activityMap[(ts.employee_name || "").toLowerCase().trim()];
       const week_hours = parseFloat(ts.week_hours) || 0;
       const working_days = parseInt(ts.working_days) || 0;
       const utilization = week_hours > 0 ? Math.min(Math.round((week_hours / Math.max(working_days, 1) / 8) * 100), 100) : 0;
@@ -396,10 +408,12 @@ router.get("/performance/team-dashboard", async (req, res) => {
         today_hours: td ? parseFloat(td.today_hours) || 0 : 0,
         today_tasks: td?.today_tasks || "",
         last_active: ts.last_active || null,
-        current_task: alloc?.task_title || "",
-        current_project: alloc?.project || "",
+        current_task:    act?.activity_type || alloc?.task_title || "",
+        current_project: act?.project       || alloc?.project    || "",
         current_priority: alloc?.priority || "",
-        alloc_status: alloc?.status || "none",
+        current_activity_type: act?.type_of_work || "",
+        current_activity_time: act?.to_time || "",
+        alloc_status: act ? "in-progress" : (alloc?.status || "none"),
         utilization,
         avg_hrs_day: working_days > 0 ? Math.round((week_hours / working_days) * 10) / 10 : 0,
       });

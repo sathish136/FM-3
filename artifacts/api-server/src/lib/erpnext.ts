@@ -1330,3 +1330,80 @@ export async function fetchErpNextUsers(): Promise<ErpUser[]> {
     enabled: u.enabled ?? 1,
   }));
 }
+
+export interface LatestActivity {
+  activity_type: string;
+  type_of_work: string;
+  project: string;
+  from_time: string;
+  to_time: string;
+  sheet_date: string;
+}
+
+export async function fetchLatestEmployeeActivities(): Promise<Record<string, LatestActivity>> {
+  if (!ERPNEXT_URL) return {};
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+
+    // 1. Get Activity Sheets for today and yesterday
+    const fields = JSON.stringify(["name", "employee_name", "employee", "department", "date", "modified"]);
+    const filters = JSON.stringify([["Activity Sheet", "date", ">=", yesterday]]);
+    const params = new URLSearchParams({
+      fields,
+      filters,
+      limit_page_length: "500",
+      order_by: "modified desc",
+    });
+    const listRes = await fetch(`${ERPNEXT_URL}/api/resource/Activity Sheet?${params}`, {
+      headers: { Authorization: authHeader() },
+    });
+    if (!listRes.ok) return {};
+    const { data: sheets } = await listRes.json() as { data: any[] };
+    if (!sheets?.length) return {};
+
+    // 2. Per employee — keep only the most recently modified sheet
+    const empSheet: Record<string, { name: string; date: string }> = {};
+    for (const s of sheets) {
+      const key = (s.employee_name || "").toLowerCase().trim();
+      if (!key) continue;
+      if (!empSheet[key]) empSheet[key] = { name: s.name, date: s.date };
+    }
+
+    // 3. Batch-fetch sheet details with concurrency limit of 6
+    const entries = Object.entries(empSheet);
+    const result: Record<string, LatestActivity> = {};
+    const CONCURRENCY = 6;
+
+    for (let i = 0; i < entries.length; i += CONCURRENCY) {
+      const batch = entries.slice(i, i + CONCURRENCY);
+      await Promise.all(batch.map(async ([empKey, { name, date }]) => {
+        try {
+          const r = await fetch(`${ERPNEXT_URL}/api/resource/Activity Sheet/${encodeURIComponent(name)}`, {
+            headers: { Authorization: authHeader() },
+          });
+          if (!r.ok) return;
+          const json = await r.json() as { data: any };
+          const sheet = json?.data;
+          // Child table field might be named "activity", "activities", or similar
+          const rows: any[] = sheet?.activity || sheet?.activities || sheet?.activity_details || [];
+          if (!rows.length) return;
+          // Sort by to_time desc to get the most recent activity
+          const sorted = [...rows].sort((a, b) => (b.to_time || "").localeCompare(a.to_time || ""));
+          const last = sorted[0];
+          result[empKey] = {
+            activity_type: last.activity_type || last.description || "",
+            type_of_work: last.type_of_work || "",
+            project: last.project || last.project_name || "",
+            from_time: last.from_time || "",
+            to_time: last.to_time || "",
+            sheet_date: date,
+          };
+        } catch { /* skip */ }
+      }));
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
