@@ -1338,6 +1338,7 @@ export interface LatestActivity {
   from_time: string;
   to_time: string;
   sheet_date: string;
+  sheet_name: string;
 }
 
 export async function fetchLatestEmployeeActivities(): Promise<Record<string, LatestActivity>> {
@@ -1398,6 +1399,7 @@ export async function fetchLatestEmployeeActivities(): Promise<Record<string, La
             from_time: last.from_time || "",
             to_time: last.to_time || "",
             sheet_date: date,
+            sheet_name: name,
           };
         } catch { /* skip */ }
       }));

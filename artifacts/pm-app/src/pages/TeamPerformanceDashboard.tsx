@@ -38,7 +38,7 @@ type Employee = {
   week_hours: number; week_idle: number; working_days: number; unique_tasks: number;
   today_hours: number; today_tasks: string; last_active: string | null;
   current_task: string; current_project: string; current_priority: string;
-  current_activity_type: string; current_activity_time: string;
+  current_activity_type: string; current_activity_time: string; current_activity_sheet: string;
   alloc_status: string; utilization: number; avg_hrs_day: number;
 };
 type Summary = { total: number; active_today: number; with_tasks: number; total_week_hrs: number; avg_utilization: number };
@@ -228,10 +228,13 @@ function EmployeeCard({ emp }: { emp: EmployeeWithTask }) {
           const timeLabel = emp.current_activity_time
             ? new Date(emp.current_activity_time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })
             : null;
-          return (
+          const erpUrl = emp.current_activity_sheet
+            ? `https://erp.wttint.com/app/activity-sheet/${emp.current_activity_sheet}`
+            : null;
+          const inner = (
             <div className={cn(
               "rounded-lg px-2.5 py-1.5 flex flex-col gap-0.5",
-              fromActivity ? "bg-blue-50 border border-blue-100" : "bg-gray-50"
+              fromActivity ? "bg-blue-50 border border-blue-100 hover:bg-blue-100 transition-colors" : "bg-gray-50"
             )}>
               <div className="flex items-center gap-1.5">
                 {fromActivity
@@ -247,6 +250,7 @@ function EmployeeCard({ emp }: { emp: EmployeeWithTask }) {
                 )}>
                   {emp.current_task || emp.today_tasks}
                 </p>
+                {erpUrl && <ExternalLink className="w-2.5 h-2.5 text-blue-300 shrink-0" />}
               </div>
               {fromActivity && (
                 <div className="flex items-center gap-2 pl-3">
@@ -260,6 +264,9 @@ function EmployeeCard({ emp }: { emp: EmployeeWithTask }) {
               )}
             </div>
           );
+          return erpUrl
+            ? <a href={erpUrl} target="_blank" rel="noopener noreferrer" className="block">{inner}</a>
+            : inner;
         })()}
       </div>
     </div>
@@ -369,31 +376,42 @@ function TableView({ employees }: { employees: EmployeeWithTask[] }) {
                     ) : <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-3 py-2.5 min-w-[160px]">
-                    {emp.current_task ? (
-                      <div className={cn(
-                        "rounded-md px-2 py-1.5 flex flex-col gap-0.5",
-                        emp.current_activity_time ? "bg-blue-50 border border-blue-100" : "bg-gray-50"
-                      )}>
-                        <div className="flex items-center gap-1.5">
-                          <span className={cn("w-1.5 h-1.5 rounded-full shrink-0",
-                            emp.current_activity_time ? "bg-blue-500 animate-pulse" :
-                            emp.alloc_status === "in-progress" ? "bg-blue-400" : "bg-gray-300")} />
-                          <span className={cn("text-[10px] font-medium leading-tight",
-                            emp.current_activity_time ? "text-blue-700" : "text-gray-600"
-                          )}>{emp.current_task}</span>
-                        </div>
-                        {emp.current_activity_time && (
-                          <div className="flex items-center gap-1.5 pl-3">
-                            {emp.current_activity_type && (
-                              <span className="text-[9px] font-semibold text-blue-400">{emp.current_activity_type}</span>
-                            )}
-                            <span className="text-[9px] text-blue-300 ml-auto">
-                              till {new Date(emp.current_activity_time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}
-                            </span>
+                    {emp.current_task ? (() => {
+                      const erpUrl = emp.current_activity_sheet
+                        ? `https://erp.wttint.com/app/activity-sheet/${emp.current_activity_sheet}`
+                        : null;
+                      const cell = (
+                        <div className={cn(
+                          "rounded-md px-2 py-1.5 flex flex-col gap-0.5",
+                          emp.current_activity_time
+                            ? "bg-blue-50 border border-blue-100 hover:bg-blue-100 transition-colors cursor-pointer"
+                            : "bg-gray-50"
+                        )}>
+                          <div className="flex items-center gap-1.5">
+                            <span className={cn("w-1.5 h-1.5 rounded-full shrink-0",
+                              emp.current_activity_time ? "bg-blue-500 animate-pulse" :
+                              emp.alloc_status === "in-progress" ? "bg-blue-400" : "bg-gray-300")} />
+                            <span className={cn("text-[10px] font-medium leading-tight flex-1",
+                              emp.current_activity_time ? "text-blue-700" : "text-gray-600"
+                            )}>{emp.current_task}</span>
+                            {erpUrl && <ExternalLink className="w-2.5 h-2.5 text-blue-300 shrink-0" />}
                           </div>
-                        )}
-                      </div>
-                    ) : <span className="text-gray-300 text-[10px]">—</span>}
+                          {emp.current_activity_time && (
+                            <div className="flex items-center gap-1.5 pl-3">
+                              {emp.current_activity_type && (
+                                <span className="text-[9px] font-semibold text-blue-400">{emp.current_activity_type}</span>
+                              )}
+                              <span className="text-[9px] text-blue-300 ml-auto">
+                                till {new Date(emp.current_activity_time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                      return erpUrl
+                        ? <a href={erpUrl} target="_blank" rel="noopener noreferrer" className="block">{cell}</a>
+                        : cell;
+                    })() : <span className="text-gray-300 text-[10px]">—</span>}
                   </td>
                 </tr>
               );
@@ -560,7 +578,7 @@ export default function TeamPerformanceDashboard() {
         working_days: (tp as any).present_days || 0, unique_tasks: tp.total_tasks,
         today_hours: 0, today_tasks: "", last_active: null,
         current_task: "", current_project: "", current_priority: "",
-        current_activity_type: "", current_activity_time: "",
+        current_activity_type: "", current_activity_time: "", current_activity_sheet: "",
         alloc_status: "", utilization: 0, avg_hrs_day: 0,
         task_total: tp.total_tasks,
         task_pending: (tp.pending || 0) + (tp.partially_pending || 0),
