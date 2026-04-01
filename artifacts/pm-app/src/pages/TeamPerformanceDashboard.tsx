@@ -5,7 +5,7 @@ import {
   Users, RefreshCw, LayoutGrid, List, Clock, TrendingUp, Briefcase,
   ChevronDown, ChevronUp, Minus, CheckCircle2, AlertCircle,
   ListChecks, Search, X, ChevronRight, Building2, FileText,
-  CalendarDays, Timer, Layers,
+  CalendarDays, Timer, Layers, ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSearch } from "wouter";
