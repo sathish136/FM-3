@@ -267,8 +267,8 @@ export default function DailyReporting() {
       if (!r.ok) { const e = await r.json(); throw new Error(e.error || "Failed"); }
       const data = await r.json();
       const rows: ReportSummary[] = data.reports || [];
-      setHasMore(rows.length > LIMIT);
-      setReports(rows.slice(0, LIMIT));
+      setHasMore(!!data.hasMore);
+      setReports(rows);
       setPage(p);
     } catch (e: any) {
       setError(e.message || "Failed to load reports");
