@@ -525,13 +525,7 @@ router.post("/daily-reporting/send-combined", async (req, res) => {
     const pdfUrl = `${host}/api/daily-reporting/pdf/${id}`;
 
     const dateStr = new Date(date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-    const caption = [
-      `📋 Daily Report Summary — ${dateStr}`,
-      `✅ Reported: ${detailed.length}/${MD_EMPLOYEES.length}`,
-      notReported.length > 0
-        ? `❌ Not Reported: ${notReported.map(e => e.name).join(", ")}`
-        : "✅ All employees have reported!",
-    ].join("\n");
+    const caption = `Daily Report Summary — ${dateStr}\nWTT International`;
 
     const result = await sendWhatsAppDocument(to, pdfUrl, filename, caption);
 

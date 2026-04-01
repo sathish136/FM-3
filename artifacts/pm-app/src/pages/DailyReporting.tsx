@@ -590,57 +590,66 @@ function TodayCoverage({
           </button>
         </div>
       </div>
-      <div className="p-4">
-        <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-2">
-          {MD_REPORTING_EMPLOYEES.map(emp => {
-            const report = reportedMap.get(emp.id);
-            const status = report?.status;
-            const isSubmitted = status === "Submitted";
-            const isDraft = status === "Draft";
-            const notFiled = !report;
-            return (
-              <div
-                key={emp.id}
-                className={cn(
-                  "flex flex-col items-center gap-1 p-2 rounded-xl border text-center cursor-default transition-colors",
-                  isSubmitted ? "bg-emerald-50 border-emerald-200" :
-                  isDraft ? "bg-amber-50 border-amber-200" :
-                  "bg-red-50 border-red-200"
-                )}
-              >
-                <div className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black",
-                  isSubmitted ? "bg-emerald-500 text-white" :
-                  isDraft ? "bg-amber-400 text-white" :
-                  "bg-red-300 text-white"
-                )}>
-                  {emp.name[0]}
-                </div>
-                <p className="text-[9px] font-bold text-gray-700 leading-tight line-clamp-2">{emp.name}</p>
-                <span className={cn(
-                  "text-[8px] font-black px-1.5 py-0.5 rounded-full",
-                  isSubmitted ? "text-emerald-600" :
-                  isDraft ? "text-amber-600" :
-                  "text-red-500"
-                )}>
-                  {isSubmitted ? "✓ Filed" : isDraft ? "⏳ Draft" : "✗ Missing"}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-        {notReported.length > 0 && (
-          <div className="mt-3 flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] font-bold text-red-500 flex items-center gap-1">
-              <AlertCircle className="w-3 h-3" /> Not yet reported:
-            </span>
-            {notReported.map(emp => (
-              <span key={emp.id} className="text-[10px] font-semibold bg-red-50 border border-red-200 text-red-600 px-2 py-0.5 rounded-full">
-                {emp.id} · {emp.name}
-              </span>
-            ))}
-          </div>
-        )}
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-100">
+              <th className="px-4 py-2 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wide w-8">#</th>
+              <th className="px-4 py-2 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wide">Employee</th>
+              <th className="px-4 py-2 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wide">ID</th>
+              <th className="px-4 py-2 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wide">Designation</th>
+              <th className="px-4 py-2 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wide">Status</th>
+              <th className="px-4 py-2 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wide">Modified</th>
+            </tr>
+          </thead>
+          <tbody>
+            {MD_REPORTING_EMPLOYEES.map((emp, i) => {
+              const report = reportedMap.get(emp.id);
+              const status = report?.status;
+              const isSubmitted = status === "Submitted";
+              const isDraft = status === "Draft";
+              return (
+                <tr key={emp.id}
+                  className={cn("border-b border-gray-50 last:border-0 transition-colors",
+                    i % 2 === 0 ? "bg-white" : "bg-gray-50/30",
+                    report ? "hover:bg-indigo-50/30 cursor-pointer" : ""
+                  )}>
+                  <td className="px-4 py-2.5 text-gray-300 text-[10px] font-bold">{i + 1}</td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className={cn(
+                        "w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0",
+                        isSubmitted ? "bg-emerald-500 text-white" :
+                        isDraft     ? "bg-amber-400 text-white"   :
+                                      "bg-gray-200 text-gray-400"
+                      )}>
+                        {emp.name[0]}
+                      </div>
+                      <p className="font-bold text-gray-800">{emp.name}</p>
+                    </div>
+                  </td>
+                  <td className="px-4 py-2.5 text-indigo-500 font-semibold text-[11px]">{emp.id}</td>
+                  <td className="px-4 py-2.5 text-gray-400 text-[11px]">{EMPLOYEE_DESIGNATIONS[emp.name.toUpperCase().trim()] || "—"}</td>
+                  <td className="px-4 py-2.5 text-center">
+                    <span className={cn(
+                      "inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full border",
+                      isSubmitted ? "bg-emerald-100 text-emerald-700 border-emerald-200" :
+                      isDraft     ? "bg-amber-100 text-amber-700 border-amber-200"       :
+                                    "bg-red-50 text-red-500 border-red-200"
+                    )}>
+                      {isSubmitted ? <><CheckCircle2 className="w-3 h-3" /> Submitted</> :
+                       isDraft     ? <><Clock className="w-3 h-3" /> Draft</>             :
+                                     <><X className="w-3 h-3" /> Not Reported</>}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-gray-400 text-[10px]">
+                    {report?.modified ? fmtDateTime(report.modified) : "—"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );
