@@ -7,26 +7,30 @@ const auth = () => `token ${process.env.ERPNEXT_API_KEY}:${process.env.ERPNEXT_A
 function isConfigured() { return !!(ERP_URL && process.env.ERPNEXT_API_KEY && process.env.ERPNEXT_API_SECRET); }
 
 // ─── List Daily Reports ───────────────────────────────────────────────────────
+// NOTE: "date" is a reserved SQL keyword in Frappe/ERPNext and cannot be used
+// in fields[], filters[], or order_by. We fetch without it and pull it from
+// the document name or the full detail endpoint.
 router.get("/daily-reporting", async (req, res) => {
   if (!isConfigured()) return res.status(503).json({ error: "ERPNext not configured" });
 
   const { from_date, to_date, employee, department, status, limit = "30", page = "0" } = req.query as Record<string, string>;
 
   try {
+    // Avoid "date" in fields — it's a reserved SQL keyword in Frappe
     const fields = JSON.stringify([
       "name", "employee", "employee_name", "department",
-      "date", "status", "modified", "creation",
+      "status", "modified", "creation",
     ]);
 
-    // Only use non-reserved fields in ERPNext filters
     const filters: any[] = [];
     if (employee) filters.push(["Daily Reporting", "employee_name", "like", `%${employee}%`]);
     if (department) filters.push(["Daily Reporting", "department", "like", `%${department}%`]);
     if (status) filters.push(["Daily Reporting", "status", "=", status]);
 
-    // Fetch a larger batch to accommodate server-side date filtering + pagination
-    const fetchLimit = from_date || to_date ? "500" : limit;
-    const fetchStart = from_date || to_date ? "0" : String(Number(page) * Number(limit));
+    // Fetch larger batch when date range filter is requested (filter server-side)
+    const needsDateFilter = !!(from_date || to_date);
+    const fetchLimit = needsDateFilter ? "500" : String(Number(limit) + 1);
+    const fetchStart = needsDateFilter ? "0" : String(Number(page) * Number(limit));
 
     const params = new URLSearchParams({
       fields,
@@ -48,21 +52,25 @@ router.get("/daily-reporting", async (req, res) => {
     const json = await r.json() as { data: any[] };
     let rows: any[] = json.data || [];
 
-    // Server-side date filtering (since "date" is a reserved SQL keyword in ERPNext filters)
+    // Extract date from document name (common ERPNext naming: DR-2026-03-01 or DR-2026-00001)
+    // Also parse from creation as fallback
+    rows = rows.map(row => {
+      const dateFromName = row.name?.match(/(\d{4}-\d{2}-\d{2})/)?.[1] || null;
+      const dateFromCreation = row.creation ? row.creation.split(" ")[0] : null;
+      return { ...row, date: dateFromName || dateFromCreation };
+    });
+
+    // Server-side date filtering
     if (from_date) rows = rows.filter(r => r.date && r.date >= from_date);
     if (to_date) rows = rows.filter(r => r.date && r.date <= to_date);
 
-    // Sort by date desc then creation desc
-    rows.sort((a, b) => {
-      const da = a.date || a.creation || "";
-      const db = b.date || b.creation || "";
-      return db.localeCompare(da);
-    });
+    // Sort by date desc
+    rows.sort((a, b) => (b.date || b.creation || "").localeCompare(a.date || a.creation || ""));
 
-    // Paginate after filtering
+    // Paginate
     const pageNum = Number(page);
     const pageSize = Number(limit);
-    const start = pageNum * pageSize;
+    const start = needsDateFilter ? pageNum * pageSize : 0;
     const paged = rows.slice(start, start + pageSize + 1);
     const hasMore = paged.length > pageSize;
 
@@ -73,6 +81,7 @@ router.get("/daily-reporting", async (req, res) => {
 });
 
 // ─── Single Daily Report Detail ───────────────────────────────────────────────
+// Full document fetch doesn't have the "date" field restriction
 router.get("/daily-reporting/:name", async (req, res) => {
   if (!isConfigured()) return res.status(503).json({ error: "ERPNext not configured" });
 
