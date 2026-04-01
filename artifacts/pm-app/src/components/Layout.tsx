@@ -232,6 +232,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { path: "/stores-dashboard",     label: "Stores Dashboard",     icon: Warehouse,    color: "text-teal-400",   bgColor: "bg-teal-500/15" },
       { path: "/logistics-dashboard",    label: "Logistics Dashboard",      icon: Truck,     color: "text-cyan-400",    bgColor: "bg-cyan-500/15" },
       { path: "/process-proposal",      label: "Process & Proposal",       icon: Layers,    color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
+      { path: "/finance-dashboard",     label: "Finance Dashboard",        icon: Receipt,   color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
     ],
   },
   {

@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Finance Dashboard</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/finance.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.453.0/dist/umd/lucide.min.js"></script>
+</head>
+<body>
+
+<!-- ═══════ FULLSCREEN DETAIL OVERLAY ═══════ -->
+<div id="detailOverlay" class="detail-overlay" style="display:none;">
+  <div id="detailAccentBar" class="detail-accent-bar"></div>
+  <div class="detail-header">
+    <div class="detail-header-left">
+      <button class="btn-back" onclick="closeDetail()">
+        <i data-lucide="arrow-left" style="width:14px;height:14px;"></i>
+        Back to Dashboard
+      </button>
+      <div class="detail-title-block">
+        <span class="detail-panel-title" id="detailTitle">—</span>
+        <span class="detail-badge" id="detailBadge">0</span>
+      </div>
+    </div>
+    <div class="detail-header-right">
+      <img src="https://res.cloudinary.com/dd8fsxba6/image/upload/v1755166473/logo-bg_less_yaefzj.png" alt="WTT" class="header-logo"/>
+      <div>
+        <div class="header-title">Finance Dashboard</div>
+        <div class="header-sub">EXECUTIVE OVERVIEW</div>
+      </div>
+      <button class="btn-close-overlay" onclick="closeDetail()" title="Close (Esc)">
+        <i data-lucide="x" style="width:16px;height:16px;"></i>
+      </button>
+    </div>
+  </div>
+  <div class="detail-body">
+    <div class="detail-table-wrap">
+      <table id="detailTable">
+        <thead id="detailThead"></thead>
+        <tbody id="detailTbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ HEADER ═══════ -->
+<div class="header">
+  <div class="header-left">
+    <button class="menu-toggle" onclick="toggleMenu()">☰</button>
+    <div class="logo-section">
+      <img src="https://res.cloudinary.com/dd8fsxba6/image/upload/v1755166473/logo-bg_less_yaefzj.png" alt="WTT Logo" class="logo">
+      <div class="company-info">
+        <h1>WTT International Pvt Ltd</h1>
+        <p>Data Analytics Platform</p>
+      </div>
+    </div>
+  </div>
+  <div class="header-title">
+    <h2>Finance Department</h2>
+  </div>
+  <div class="header-right">
+    <!-- PROJECT SELECTOR -->
+    <div class="project-selector" id="projectSelectorWrap">
+      <span class="project-label">PROJECT</span>
+      <div class="custom-select-wrap" id="customSelectWrap">
+        <div class="custom-select-display" id="customSelectDisplay" onclick="toggleProjectDropdown()">
+          <span id="customSelectText">All Projects</span>
+          <i data-lucide="chevron-down" style="width:12px;height:12px;flex-shrink:0;" id="customSelectChevron"></i>
+        </div>
+        <div class="custom-select-dropdown" id="customSelectDropdown" style="display:none;">
+          <div class="custom-select-search-wrap">
+            <i data-lucide="search" style="width:11px;height:11px;color:#999;flex-shrink:0;"></i>
+            <input type="text" id="projectSearchInput" class="custom-select-search" placeholder="Search project..." oninput="filterProjects()" autocomplete="off"/>
+          </div>
+          <div class="custom-select-options" id="customSelectOptions"></div>
+        </div>
+      </div>
+      <select id="projectSelect" style="display:none;" onchange="onProjectChange()">
+        <option value="">All Projects</option>
+      </select>
+    </div>
+
+    <!-- DATE FILTER BUTTON -->
+    <button class="btn-date-filter" onclick="toggleDateDrop()">
+      <i data-lucide="calendar" style="width:12px;height:12px;"></i>
+      <span id="btnDateLabel">Date Filter</span>
+      <i data-lucide="chevron-down" style="width:11px;height:11px;"></i>
+    </button>
+
+    <!-- CALENDAR POPUP -->
+    <div class="cal-popup" id="datePop" style="display:none;">
+      <div class="cal-top">
+        <!-- FROM calendar -->
+        <div class="cal-side">
+          <div class="cal-label">FROM</div>
+          <div class="cal-nav">
+            <button onclick="calNav('from',-1)"><i data-lucide="chevron-left" style="width:13px;height:13px;"></i></button>
+            <span id="calFromMonthLabel"></span>
+            <button onclick="calNav('from',1)"><i data-lucide="chevron-right" style="width:13px;height:13px;"></i></button>
+          </div>
+          <div class="cal-grid" id="calFromGrid"></div>
+        </div>
+        <div class="cal-divider"></div>
+        <!-- TO calendar -->
+        <div class="cal-side">
+          <div class="cal-label">TO</div>
+          <div class="cal-nav">
+            <button onclick="calNav('to',-1)"><i data-lucide="chevron-left" style="width:13px;height:13px;"></i></button>
+            <span id="calToMonthLabel"></span>
+            <button onclick="calNav('to',1)"><i data-lucide="chevron-right" style="width:13px;height:13px;"></i></button>
+          </div>
+          <div class="cal-grid" id="calToGrid"></div>
+        </div>
+      </div>
+      <!-- Selected range display + action -->
+      <div class="cal-footer">
+        <div class="cal-range-display">
+          <span class="cal-range-from" id="calRangeFrom">—</span>
+          <i data-lucide="arrow-right" style="width:12px;height:12px;color:#999;"></i>
+          <span class="cal-range-to" id="calRangeTo">—</span>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="cal-btn-clear" onclick="calClear()">Clear</button>
+          <button class="cal-btn-apply" onclick="applyDate()">Apply</button>
+        </div>
+      </div>
+      <!-- Quick Filter Buttons -->
+      <div class="cal-quick-filters">
+        <button class="cal-quick-btn" id="btnToday" onclick="setQuickFilter('today')">
+          <i data-lucide="sun" style="width:12px;height:12px;"></i>
+          Today
+        </button>
+        <button class="cal-quick-btn" id="btnYesterday" onclick="setQuickFilter('yesterday')">
+          <i data-lucide="clock" style="width:12px;height:12px;"></i>
+          Yesterday
+        </button>
+        <button class="cal-quick-btn" onclick="clearFilters()">
+          <i data-lucide="x" style="width:12px;height:12px;"></i>
+          Clear All
+        </button>
+      </div>
+    </div>
+
+    <span id="errorMsg" class="error-msg" style="display:none;">
+      <i data-lucide="wifi-off" style="width:12px;height:12px;"></i>
+      API not connected
+    </span>
+    <button class="btn-refresh" onclick="loadDashboard()">
+      <i data-lucide="refresh-cw" style="width:12px;height:12px;"></i>
+      Refresh
+    </button>
+    <div class="clock">
+      <i data-lucide="clock" style="width:13px;height:13px;"></i>
+      <span id="datetime"></span>
+    </div>
+    <button class="btn-logout" onclick="logout()">
+      <i data-lucide="log-out" style="width:13px;height:13px;"></i>
+      Logout
+    </button>
+  </div>
+</div>
+
+<div class="sidebar">
+  <div class="sidebar-brand">
+    <img src="https://res.cloudinary.com/dd8fsxba6/image/upload/v1755166473/logo-bg_less_yaefzj.png" alt="WTT Logo">
+    <div class="sidebar-brand-info">
+      <h4>WTT International Pvt Ltd</h4>
+      <p>Data Analytics Platform</p>
+    </div>
+  </div>
+  <nav>
+    <a href="hr.html">Human Resources</a>
+    <a href="finance.html">Finance</a>
+    <a href="marketing.html">Marketing</a>
+    <a href="purchase.html">Purchase</a>
+    <a href="process_proposal.html">Process & Proposal</a>
+    <a href="logistics.html">Logistics</a>
+  </nav>
+</div>
+<div class="overlay" onclick="closeMenu()"></div>
+
+<!-- ═══════ MAIN SCROLL AREA ═══════ -->
+<div class="main" id="mainContent">
+
+  <!-- ── KPI ROW ── -->
+  <div class="kpi-row">
+
+    <!-- 1. Project Budget (no table) -->
+    <div class="kpi-card" style="background:#1a2a5e;" onclick="kpiClick('project_budget')">
+      <div class="kpi-top">
+        <span class="kpi-label">Project Budget</span>
+        <i data-lucide="briefcase" style="width:20px;height:20px;opacity:0.75;"></i>
+      </div>
+      <div>
+        <div class="kpi-currency">₹</div>
+        <div class="kpi-value" id="kpi_project_budget">0</div>
+      </div>
+    </div>
+
+    <!-- 2. PO Cost -->
+    <div class="kpi-card" style="background:#2980b9;" onclick="kpiClick('po_cost')">
+      <div class="kpi-top">
+        <span class="kpi-label">PO Cost</span>
+        <i data-lucide="shopping-cart" style="width:20px;height:20px;opacity:0.75;"></i>
+      </div>
+      <div>
+        <div class="kpi-currency">₹</div>
+        <div class="kpi-value" id="kpi_po_cost">0</div>
+      </div>
+    </div>
+
+    <!-- 3. PR Cost -->
+    <div class="kpi-card" style="background:#8e44ad;" onclick="kpiClick('pr_cost')">
+      <div class="kpi-top">
+        <span class="kpi-label">PR Cost</span>
+        <i data-lucide="file-text" style="width:20px;height:20px;opacity:0.75;"></i>
+      </div>
+      <div>
+        <div class="kpi-currency">₹</div>
+        <div class="kpi-value" id="kpi_pr_cost">0</div>
+      </div>
+    </div>
+
+    <!-- 4. Other Expenses (expandable) -->
+    <div class="kpi-card" style="background:#e67e22;" onclick="toggleSubKpi('other_expenses')">
+      <div class="kpi-top">
+        <span class="kpi-label">Other Expenses</span>
+        <i data-lucide="chevron-down" id="icon_other_expenses" style="width:20px;height:20px;opacity:0.75;transition:transform 0.2s;"></i>
+      </div>
+      <div>
+        <div class="kpi-currency">₹</div>
+        <div class="kpi-value" id="kpi_other_expenses">0</div>
+      </div>
+    </div>
+
+    <!-- 5. Extra Expenses for Operational -->
+    <div class="kpi-card" style="background:#16a085;" onclick="kpiClick('extra_expenses')">
+      <div class="kpi-top">
+        <span class="kpi-label">Operational Loss</span>
+        <i data-lucide="trending-up" style="width:20px;height:20px;opacity:0.75;"></i>
+      </div>
+      <div>
+        <div class="kpi-currency">₹</div>
+        <div class="kpi-value" id="kpi_extra_expenses">0</div>
+      </div>
+    </div>
+
+    <!-- 6. Salary (expandable) -->
+    <div class="kpi-card" style="background:#c0392b;" onclick="toggleSubKpi('salary')">
+      <div class="kpi-top">
+        <span class="kpi-label">Salary</span>
+        <i data-lucide="chevron-down" id="icon_salary" style="width:20px;height:20px;opacity:0.75;transition:transform 0.2s;"></i>
+      </div>
+      <div>
+        <div class="kpi-currency">₹</div>
+        <div class="kpi-value" id="kpi_salary">0</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── SUB KPI: Other Expenses ── -->
+  <div class="sub-kpi-wrap" id="sub_other_expenses">
+    <div class="sub-kpi-card" style="background:#f39c12;" onclick="kpiClick('cash_request')">
+      <div class="sub-kpi-label">Cash Request</div>
+      <div><div style="font-size:9px;opacity:0.8;">₹</div><div class="sub-kpi-value" id="kpi_cash_request">0</div></div>
+    </div>
+    <div class="sub-kpi-card" style="background:#d68910;" onclick="kpiClick('req_payment')">
+      <div class="sub-kpi-label">Request for Payment</div>
+      <div><div style="font-size:9px;opacity:0.8;">₹</div><div class="sub-kpi-value" id="kpi_req_payment">0</div></div>
+    </div>
+    <div class="sub-kpi-card" style="background:#ca6f1e;" onclick="kpiClick('ticket_booking')">
+      <div class="sub-kpi-label">Ticket Booking</div>
+      <div><div style="font-size:9px;opacity:0.8;">₹</div><div class="sub-kpi-value" id="kpi_ticket_booking">0</div></div>
+    </div>
+  </div>
+
+  <!-- ── SUB KPI: Salary ── -->
+  <div class="sub-kpi-wrap" id="sub_salary">
+    <div class="sub-kpi-card" style="background:#e74c3c;" onclick="kpiClick('claim')">
+      <div class="sub-kpi-label">Claim</div>
+      <div><div style="font-size:9px;opacity:0.8;">₹</div><div class="sub-kpi-value" id="kpi_claim">0</div></div>
+    </div>
+    <div class="sub-kpi-card" style="background:#922b21;" onclick="kpiClick('advance')">
+      <div class="sub-kpi-label">Advance</div>
+      <div><div style="font-size:9px;opacity:0.8;">₹</div><div class="sub-kpi-value" id="kpi_advance">0</div></div>
+    </div>
+  </div>
+
+  <!-- ═══════ TABLES ═══════ -->
+
+  <!-- ROW 1: PO Cost | PR Cost -->
+  <div class="grid-2">
+
+    <!-- Table 1 — PO Cost (with 3-view switcher) -->
+    <div class="panel">
+      <div class="panel-header" style="border-left-color:#2980b9;">
+        <span class="panel-title">PO Cost</span>
+        <div class="tbl-switcher">
+          <button class="tbl-tab active" onclick="switchTab('po','po_wise',this)">PO Cost Wise</button>
+          <button class="tbl-tab" onclick="switchTab('po','supplier_wise',this)">Supplier Wise</button>
+          <button class="tbl-tab" onclick="switchTab('po','item_group_wise',this)">Item Group Wise</button>
+        </div>
+        <span class="badge" style="background:#2980b9;" id="badge_po_cost">0</span>
+      </div>
+      <div class="table-wrap" id="wrap_po">
+
+        <!-- PO Cost Wise -->
+        <div class="table-view active" id="po_po_wise">
+          <table>
+            <thead>
+              <tr><th>PO NO.</th><th>SUPPLIER</th><th>PO AMOUNT</th></tr>
+              <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+            </thead>
+            <tbody id="tb_po_po_wise"><tr><td colspan="3" class="empty">No records</td></tr></tbody>
+          </table>
+        </div>
+
+        <!-- Supplier Wise -->
+        <div class="table-view" id="po_supplier_wise">
+          <table>
+            <thead>
+              <tr><th>SUPPLIER</th><th>NO. OF POs</th><th>TOTAL AMOUNT</th></tr>
+              <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+            </thead>
+            <tbody id="tb_po_supplier_wise"><tr><td colspan="3" class="empty">No records</td></tr></tbody>
+          </table>
+        </div>
+
+        <!-- Item Group Wise -->
+        <div class="table-view" id="po_item_group_wise">
+          <table>
+            <thead>
+              <tr><th>ITEM GROUP</th><th>NO. OF ITEMS</th><th>TOTAL AMOUNT</th></tr>
+              <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+            </thead>
+            <tbody id="tb_po_item_group_wise"><tr><td colspan="3" class="empty">No records</td></tr></tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Table 2 — PR Cost (with 3-view switcher) -->
+    <div class="panel">
+      <div class="panel-header" style="border-left-color:#8e44ad;">
+        <span class="panel-title">PR Cost</span>
+        <div class="tbl-switcher">
+          <button class="tbl-tab active" onclick="switchTab('pr','pr_wise',this)">PR Cost Wise</button>
+          <button class="tbl-tab" onclick="switchTab('pr','supplier_wise',this)">Supplier Wise</button>
+          <button class="tbl-tab" onclick="switchTab('pr','item_group_wise',this)">Item Group Wise</button>
+        </div>
+        <span class="badge" style="background:#8e44ad;" id="badge_pr_cost">0</span>
+      </div>
+      <div class="table-wrap" id="wrap_pr">
+
+        <!-- PR Cost Wise -->
+        <div class="table-view active" id="pr_pr_wise">
+          <table>
+            <thead>
+              <tr><th>PR NO.</th><th>SUPPLIER</th><th>PR AMOUNT</th></tr>
+              <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+            </thead>
+            <tbody id="tb_pr_pr_wise"><tr><td colspan="3" class="empty">No records</td></tr></tbody>
+          </table>
+        </div>
+
+        <!-- Supplier Wise -->
+        <div class="table-view" id="pr_supplier_wise">
+          <table>
+            <thead>
+              <tr><th>SUPPLIER</th><th>NO. OF PRs</th><th>PR AMOUNT</th></tr>
+              <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+            </thead>
+            <tbody id="tb_pr_supplier_wise"><tr><td colspan="3" class="empty">No records</td></tr></tbody>
+          </table>
+        </div>
+
+        <!-- Item Group Wise -->
+        <div class="table-view" id="pr_item_group_wise">
+          <table>
+            <thead>
+              <tr><th>ITEM GROUP</th><th>NO. OF ITEMS</th><th>PR AMOUNT</th></tr>
+              <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+            </thead>
+            <tbody id="tb_pr_item_group_wise"><tr><td colspan="3" class="empty">No records</td></tr></tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+
+  </div><!-- /grid-2 row1 -->
+
+  <!-- ROW 2: Cash Request | Request for Payment -->
+  <div class="grid-2">
+
+    <div class="panel">
+      <div class="panel-header" style="border-left-color:#f39c12;">
+        <span class="panel-title">Cash Request</span>
+        <span class="badge" style="background:#f39c12;" id="badge_cash_request">0</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>DATE</th><th>ENTRY NO.</th><th>REMARKS</th><th>CREATED BY</th><th>AMOUNT</th><th>APPROVED BY</th></tr>
+            <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+          </thead>
+          <tbody id="tb_cash_request"><tr><td colspan="6" class="empty">No records</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header" style="border-left-color:#d68910;">
+        <span class="panel-title">Request for Payment</span>
+        <span class="badge" style="background:#d68910;" id="badge_req_payment">0</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>DATE</th><th>ENTRY NO.</th><th>REMARKS</th><th>CREATED BY</th><th>AMOUNT</th><th>APPROVED BY</th></tr>
+            <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+          </thead>
+          <tbody id="tb_req_payment"><tr><td colspan="6" class="empty">No records</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /grid-2 row2 -->
+
+  <!-- ROW 3: Ticket Booking | Extra Expenses -->
+  <div class="grid-2">
+
+    <div class="panel">
+      <div class="panel-header" style="border-left-color:#ca6f1e;">
+        <span class="panel-title">Ticket Booking</span>
+        <span class="badge" style="background:#ca6f1e;" id="badge_ticket_booking">0</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>DATE</th><th>ENTRY NO.</th><th>EMPLOYEE NAME</th><th>AMOUNT</th><th>REASON</th></tr>
+            <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+          </thead>
+          <tbody id="tb_ticket_booking"><tr><td colspan="5" class="empty">No records</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header" style="border-left-color:#16a085;">
+        <span class="panel-title">Extra Expenses (Operational)</span>
+        <span class="badge" style="background:#16a085;" id="badge_extra_expenses">0</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>DATE</th><th>ENTRY NO.</th><th>EMPLOYEE NAME</th><th>AMOUNT</th><th>REASON</th></tr>
+            <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+          </thead>
+          <tbody id="tb_extra_expenses"><tr><td colspan="5" class="empty">No records</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /grid-2 row3 -->
+
+  <!-- ROW 4: Salary | Claim -->
+  <div class="grid-2">
+
+    <div class="panel">
+      <div class="panel-header" style="border-left-color:#c0392b;">
+        <span class="panel-title">Salary</span>
+        <span class="badge" style="background:#c0392b;" id="badge_salary">0</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>EMPLOYEE</th><th>SALARY</th></tr>
+            <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+          </thead>
+          <tbody id="tb_salary"><tr><td colspan="2" class="empty">No records</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header" style="border-left-color:#e74c3c;">
+        <span class="panel-title">Claim</span>
+        <span class="badge" style="background:#e74c3c;" id="badge_claim">0</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>EMPLOYEE</th><th>CLAIM AMOUNT</th></tr>
+            <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+          </thead>
+          <tbody id="tb_claim"><tr><td colspan="2" class="empty">No records</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /grid-2 row4 -->
+
+  <!-- ROW 5: Advance (full width) -->
+  <div class="grid-1">
+    <div class="panel">
+      <div class="panel-header" style="border-left-color:#922b21;">
+        <span class="panel-title">Advance</span>
+        <span class="badge" style="background:#922b21;" id="badge_advance">0</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>EMPLOYEE NAME</th><th>ADVANCED AMOUNT</th></tr>
+            <tr class="filter-row"><td><input placeholder="Filter..."/></td><td><input placeholder="Filter..."/></td></tr>
+          </thead>
+          <tbody id="tb_advance"><tr><td colspan="2" class="empty">No records</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /grid-1 row5 -->
+
+</div><!-- /main -->
+
+<script src="js/main.js"></script>
+<script src="js/finance.js"></script>
+<script>lucide.createIcons();</script>
+</body>
+</html>
