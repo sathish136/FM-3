@@ -2409,6 +2409,617 @@ function SendApprovalModal({
   );
 }
 
+// ─── DrawingDetailPage ────────────────────────────────────────────────────────
+
+type DetailTab = "info" | "revisions" | "ai";
+
+function DrawingDetailPage({
+  drawing,
+  fileData,
+  onBack,
+  onCheck,
+  onApprove,
+  onRevisionUpload,
+  onMarkFinal,
+  onDelete,
+  currentUserName,
+}: {
+  drawing: ProjectDrawing;
+  fileData: string;
+  onBack: () => void;
+  onCheck: () => void;
+  onApprove: () => void;
+  onRevisionUpload: () => void;
+  onMarkFinal: () => void;
+  onDelete: () => void;
+  currentUserName: string;
+}) {
+  const cfg = STATUS_CONFIG[drawing.status];
+
+  // PDF viewer state
+  const [numPages, setNumPages] = useState<number | null>(null);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pdfError, setPdfError] = useState(false);
+  const [scale, setScale] = useState(1.0);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Revision file viewing — null = current drawing
+  const [viewRevIdx, setViewRevIdx] = useState<number | null>(null);
+  const [revFileData, setRevFileData] = useState<Record<number, string>>({});
+  const [revFileLoading, setRevFileLoading] = useState<number | null>(null);
+
+  // Tab
+  const [activeTab, setActiveTab] = useState<DetailTab>("ai");
+
+  // AI analysis
+  const [aiAnalysis, setAiAnalysis] = useState<{
+    detectedType: string;
+    suggestedDepartment: string;
+    summary: string;
+    keyElements: string[];
+    observations: string[];
+    recommendations: string[];
+    report: string;
+    actionPlan: string[];
+    isElectrical: boolean;
+  } | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const autoAnalyzedRef = useRef(false);
+
+  // Reset on drawing change
+  useEffect(() => {
+    setPageNumber(1);
+    setNumPages(null);
+    setPdfError(false);
+    setAiAnalysis(null);
+    setAiError(null);
+    setViewRevIdx(null);
+    autoAnalyzedRef.current = false;
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [drawing.id]);
+
+  const handleAnalyze = useCallback(async () => {
+    if (aiLoading) return;
+    setAiLoading(true);
+    setAiError(null);
+    setActiveTab("ai");
+    try {
+      const canvas = scrollRef.current?.querySelector("canvas");
+      if (!canvas) throw new Error("No rendered page available. Wait for the drawing to load.");
+      const imageBase64 = canvas.toDataURL("image/jpeg", 0.85);
+      const resp = await fetch(`${BASE}/api/drawings/analyze-page`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageBase64,
+          drawingNo: drawing.drawingNo,
+          title: drawing.title,
+          department: drawing.department,
+        }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || "Analysis failed");
+      }
+      const data = await resp.json();
+      setAiAnalysis(data);
+    } catch (e: any) {
+      setAiError(e.message || "Analysis failed");
+    } finally {
+      setAiLoading(false);
+    }
+  }, [aiLoading, drawing.drawingNo, drawing.title, drawing.department]);
+
+  // Auto-analyze when PDF canvas is ready
+  useEffect(() => {
+    if (autoAnalyzedRef.current) return;
+    if (aiAnalysis || aiLoading) return;
+    const tryAnalyze = () => {
+      const canvas = scrollRef.current?.querySelector("canvas");
+      if (canvas) {
+        autoAnalyzedRef.current = true;
+        handleAnalyze();
+      }
+    };
+    const timer = setInterval(tryAnalyze, 800);
+    const timeout = setTimeout(() => clearInterval(timer), 15000);
+    return () => { clearInterval(timer); clearTimeout(timeout); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawing.id]);
+
+  // Load revision file
+  const loadRevFile = async (revIdx: number) => {
+    if (revFileData[revIdx] !== undefined) {
+      setViewRevIdx(revIdx);
+      return;
+    }
+    setRevFileLoading(revIdx);
+    try {
+      // Try local storage first
+      const key = `drawing-file-rev-${drawing.id}-${revIdx}`;
+      const local = localStorage.getItem(key);
+      if (local) {
+        setRevFileData(prev => ({ ...prev, [revIdx]: local }));
+        setViewRevIdx(revIdx);
+        setRevFileLoading(null);
+        return;
+      }
+      // Fallback: try history entry fileData
+      const hist = drawing.history[revIdx];
+      if (hist?.fileData) {
+        setRevFileData(prev => ({ ...prev, [revIdx]: hist.fileData }));
+        setViewRevIdx(revIdx);
+      } else {
+        setRevFileData(prev => ({ ...prev, [revIdx]: "" }));
+        setViewRevIdx(revIdx);
+      }
+    } catch {
+      setRevFileData(prev => ({ ...prev, [revIdx]: "" }));
+      setViewRevIdx(revIdx);
+    } finally {
+      setRevFileLoading(null);
+    }
+  };
+
+  const activeFileData = viewRevIdx !== null
+    ? (revFileData[viewRevIdx] || "")
+    : fileData;
+  const activeRevEntry = viewRevIdx !== null ? drawing.history[viewRevIdx] : null;
+  const activeStatus: DrawingStatus = activeRevEntry?.status || drawing.status;
+  const activeRevLabel = activeRevEntry?.revisionLabel || drawing.revisionLabel;
+  const activeCfg = STATUS_CONFIG[activeStatus];
+
+  // All revisions (old history + current as "current")
+  const allRevisions = [
+    ...drawing.history.map((h, i) => ({ ...h, idx: i, isCurrent: false })),
+    {
+      revisionLabel: drawing.revisionLabel,
+      uploadedAt: drawing.uploadedAt,
+      status: drawing.status,
+      fileData: fileData,
+      fileName: drawing.fileName,
+      note: drawing.note,
+      revisedBy: drawing.uploadedBy,
+      idx: -1,
+      isCurrent: true,
+    },
+  ];
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      <div className="flex-shrink-0 px-5 py-3 bg-white border-b border-gray-200 flex items-center gap-3 flex-wrap">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors font-medium"
+        >
+          <ChevronLeft className="w-4 h-4" /> Back to Drawings
+        </button>
+        <div className="h-5 w-px bg-gray-200" />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-mono text-sm font-bold text-gray-900 truncate">{drawing.drawingNo}</p>
+            {drawing.title && <p className="text-sm text-gray-500 truncate">— {drawing.title}</p>}
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${cfg.bg} ${cfg.border} ${cfg.textColor}`}>
+              {drawing.status === "draft" && <Clock className="w-3 h-3" />}
+              {drawing.status === "revision" && <RefreshCw className="w-3 h-3" />}
+              {drawing.status === "final" && <CheckCircle2 className="w-3 h-3" />}
+              {drawing.revisionLabel}
+            </span>
+          </div>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {[drawing.department, drawing.systemName, drawing.project].filter(Boolean).join(" · ")}
+          </p>
+        </div>
+        {/* Action buttons */}
+        <div className="flex items-center gap-1">
+          {!drawing.checkedBy && drawing.status !== "final" && (
+            <button onClick={onCheck} title="Mark as Checked"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors">
+              <UserCheck className="w-3.5 h-3.5" /> Check
+            </button>
+          )}
+          {drawing.checkedBy && !drawing.approvedBy && drawing.status !== "final" && (
+            <button onClick={onApprove} title="Approve"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors">
+              <ThumbsUp className="w-3.5 h-3.5" /> Approve
+            </button>
+          )}
+          {drawing.status !== "final" && (
+            <button onClick={onRevisionUpload} title="Upload Revision"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-600 hover:bg-gray-100 border border-gray-200 transition-colors">
+              <RefreshCw className="w-3.5 h-3.5" /> Revise
+            </button>
+          )}
+          {drawing.status !== "final" && (
+            <button onClick={onMarkFinal} title="Mark as Final"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors">
+              <CheckCircle2 className="w-3.5 h-3.5" /> Finalize
+            </button>
+          )}
+          <button onClick={handleAnalyze} disabled={aiLoading} title="AI Analyze"
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors border ${aiLoading ? "text-purple-500 bg-purple-50 border-purple-200 cursor-wait" : "text-purple-700 bg-purple-50 hover:bg-purple-100 border-purple-200"}`}>
+            {aiLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+            {aiLoading ? "Analyzing…" : "AI Analyze"}
+          </button>
+          <button onClick={onDelete} title="Delete"
+            className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* ── Body ──────────────────────────────────────────────────────────── */}
+      <div className="flex flex-1 overflow-hidden">
+
+        {/* ── Left: PDF Viewer ────────────────────────────────────────────── */}
+        <div className="flex flex-col flex-1 min-w-0 bg-gray-100 overflow-hidden">
+          {/* PDF toolbar */}
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-white border-b border-gray-200 flex-shrink-0">
+            <button onClick={() => setScale(s => Math.max(0.4, parseFloat((s - 0.2).toFixed(1))))}
+              className="p-1.5 rounded text-gray-500 hover:bg-gray-100 transition-colors"><ZoomOut className="w-3.5 h-3.5" /></button>
+            <button onClick={() => setScale(1.0)} className="px-2 text-xs text-gray-500 tabular-nums w-12 text-center">
+              {Math.round(scale * 100)}%
+            </button>
+            <button onClick={() => setScale(s => Math.min(3, parseFloat((s + 0.2).toFixed(1))))}
+              className="p-1.5 rounded text-gray-500 hover:bg-gray-100 transition-colors"><ZoomIn className="w-3.5 h-3.5" /></button>
+            <button onClick={() => setScale(1.0)} className="text-xs text-gray-400 hover:text-gray-700 px-1 transition-colors"><RotateCcw className="w-3 h-3" /></button>
+            <div className="h-4 w-px bg-gray-200 mx-1" />
+            {numPages && (
+              <div className="flex items-center gap-1">
+                <button onClick={() => setPageNumber(p => Math.max(1, p - 1))} disabled={pageNumber <= 1}
+                  className="p-1 rounded text-gray-400 hover:text-gray-700 disabled:opacity-30 transition-colors"><ChevronLeft className="w-3.5 h-3.5" /></button>
+                <span className="text-xs text-gray-500 tabular-nums">{pageNumber} / {numPages}</span>
+                <button onClick={() => setPageNumber(p => Math.min(numPages, p + 1))} disabled={pageNumber >= numPages}
+                  className="p-1 rounded text-gray-400 hover:text-gray-700 disabled:opacity-30 transition-colors"><ChevronRight className="w-3.5 h-3.5" /></button>
+              </div>
+            )}
+            {/* Viewing revision indicator */}
+            {viewRevIdx !== null && (
+              <div className="flex items-center gap-1.5 ml-auto">
+                <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full">
+                  Viewing: {drawing.history[viewRevIdx]?.revisionLabel || `Rev ${viewRevIdx + 1}`}
+                </span>
+                <button onClick={() => setViewRevIdx(null)}
+                  className="text-[10px] text-blue-600 hover:text-blue-800 underline">Current</button>
+              </div>
+            )}
+          </div>
+          {/* PDF area */}
+          <div ref={scrollRef} className="flex-1 overflow-auto flex flex-col items-center py-6 px-4 gap-4">
+            {!activeFileData ? (
+              <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-400">
+                <FileText className="w-12 h-12 text-gray-300" />
+                <p className="text-sm">{viewRevIdx !== null ? "No file available for this revision" : "No PDF file available"}</p>
+              </div>
+            ) : (
+              <Document
+                file={activeFileData}
+                onLoadSuccess={({ numPages: n }) => { setNumPages(n); setPageNumber(1); }}
+                onLoadError={() => setPdfError(true)}
+                loading={
+                  <div className="flex items-center gap-2 text-gray-400 py-12">
+                    <Loader2 className="w-5 h-5 animate-spin" /> Loading PDF…
+                  </div>
+                }
+              >
+                {pdfError ? (
+                  <div className="text-red-500 text-sm">Failed to load PDF</div>
+                ) : (
+                  <div className="relative shadow-lg">
+                    <Page
+                      pageNumber={pageNumber}
+                      scale={scale}
+                      renderTextLayer={false}
+                      renderAnnotationLayer={false}
+                    />
+                    <PdfWatermark status={activeStatus} revisionLbl={activeRevLabel} />
+                  </div>
+                )}
+              </Document>
+            )}
+          </div>
+        </div>
+
+        {/* ── Right: Detail Panel ──────────────────────────────────────────── */}
+        <div className="w-96 flex flex-col border-l border-gray-200 bg-white overflow-hidden flex-shrink-0">
+          {/* Tabs */}
+          <div className="flex border-b border-gray-200 flex-shrink-0">
+            {([
+              { key: "ai" as DetailTab, label: "AI Analysis", icon: Sparkles },
+              { key: "info" as DetailTab, label: "Info", icon: Info },
+              { key: "revisions" as DetailTab, label: `Revisions (${allRevisions.length})`, icon: History },
+            ] as { key: DetailTab; label: string; icon: React.ElementType }[]).map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                onClick={() => setActiveTab(key)}
+                className={`flex items-center gap-1 flex-1 px-2 py-2.5 text-[11px] font-semibold transition-colors border-b-2 ${
+                  activeTab === key
+                    ? "text-blue-600 border-blue-600 bg-blue-50"
+                    : "text-gray-500 border-transparent hover:text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                <Icon className="w-3 h-3" /> {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab content */}
+          <div className="flex-1 overflow-y-auto">
+
+            {/* ── INFO TAB ── */}
+            {activeTab === "info" && (
+              <div className="p-4 space-y-4">
+                <div className="space-y-2">
+                  {[
+                    { label: "Drawing No.", value: drawing.drawingNo },
+                    { label: "Title", value: drawing.title || "—" },
+                    { label: "Project", value: drawing.project || "—" },
+                    { label: "System", value: drawing.systemName || "—" },
+                    { label: "Department", value: drawing.department || "—" },
+                    { label: "Drawing Type", value: drawing.drawingType || "—" },
+                    { label: "Status", value: cfg.label },
+                    { label: "Revision", value: drawing.revisionLabel },
+                    { label: "Uploaded By", value: drawing.uploadedBy || "—" },
+                    { label: "Date", value: formatDate(drawing.uploadedAt) },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="flex items-start justify-between gap-2">
+                      <span className="text-[10px] text-gray-400 uppercase tracking-widest shrink-0 w-24">{label}</span>
+                      <span className="text-xs text-gray-800 text-right font-medium">{value}</span>
+                    </div>
+                  ))}
+                </div>
+                {/* Approval status */}
+                <div className="border-t border-gray-100 pt-3 space-y-2">
+                  <p className="text-[10px] text-gray-400 uppercase tracking-widest">Approvals</p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-500">Checked by</span>
+                    {drawing.checkedBy ? (
+                      <span className="text-xs text-emerald-700 font-medium">{drawing.checkedBy.name} · {formatDate(drawing.checkedBy.at)}</span>
+                    ) : (
+                      <span className="text-[11px] text-gray-400 italic">Not yet</span>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-500">Approved by</span>
+                    {drawing.approvedBy ? (
+                      <span className="text-xs text-blue-700 font-medium">{drawing.approvedBy.name} · {formatDate(drawing.approvedBy.at)}</span>
+                    ) : (
+                      <span className="text-[11px] text-gray-400 italic">Not yet</span>
+                    )}
+                  </div>
+                </div>
+                {drawing.note && (
+                  <div className="border-t border-gray-100 pt-3">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-1">Note</p>
+                    <p className="text-xs text-gray-700 leading-relaxed">{drawing.note}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── REVISIONS TAB ── */}
+            {activeTab === "revisions" && (
+              <div className="p-4 space-y-3">
+                <p className="text-[10px] text-gray-400 uppercase tracking-widest">All Revisions — oldest to newest</p>
+                <div className="space-y-2">
+                  {allRevisions.map((rev) => {
+                    const revCfg = STATUS_CONFIG[rev.status as DrawingStatus] || STATUS_CONFIG.draft;
+                    const isViewing = rev.isCurrent ? viewRevIdx === null : viewRevIdx === rev.idx;
+                    return (
+                      <div
+                        key={rev.isCurrent ? "current" : rev.idx}
+                        className={`rounded-xl border p-3 transition-all ${isViewing ? "border-blue-400 bg-blue-50 shadow-sm" : "border-gray-200 bg-white hover:border-gray-300"}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold border ${revCfg.bg} ${revCfg.border} ${revCfg.textColor}`}>
+                                {rev.revisionLabel}
+                              </span>
+                              {rev.isCurrent && (
+                                <span className="text-[9px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">CURRENT</span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-gray-500 mt-1">{formatDateTime(rev.uploadedAt)}</p>
+                            {rev.revisedBy && <p className="text-[10px] text-gray-500">By: {rev.revisedBy}</p>}
+                            {rev.note && <p className="text-xs text-gray-700 mt-1 leading-relaxed">{rev.note}</p>}
+                            {rev.fileName && <p className="text-[10px] text-gray-400 mt-0.5 truncate">{rev.fileName}</p>}
+                          </div>
+                          <button
+                            onClick={() => {
+                              if (rev.isCurrent) {
+                                setViewRevIdx(null);
+                              } else {
+                                loadRevFile(rev.idx);
+                              }
+                              setPageNumber(1);
+                            }}
+                            disabled={revFileLoading === rev.idx}
+                            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold transition-colors flex-shrink-0 ${
+                              isViewing
+                                ? "bg-blue-600 text-white"
+                                : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                            }`}
+                          >
+                            {revFileLoading === rev.idx
+                              ? <Loader2 className="w-3 h-3 animate-spin" />
+                              : <Eye className="w-3 h-3" />}
+                            {isViewing ? "Viewing" : "View"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ── AI ANALYSIS TAB ── */}
+            {activeTab === "ai" && (
+              <div className="p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-purple-500" />
+                    <p className="text-xs font-semibold text-purple-700">AI Drawing Analysis</p>
+                  </div>
+                  {aiAnalysis && (
+                    <button onClick={handleAnalyze} disabled={aiLoading}
+                      className="text-[10px] text-purple-500 hover:text-purple-700 flex items-center gap-1">
+                      <RefreshCw className="w-3 h-3" /> Re-analyze
+                    </button>
+                  )}
+                </div>
+
+                {!aiAnalysis && !aiLoading && !aiError && (
+                  <div className="flex flex-col items-center gap-3 py-8 text-center">
+                    <ScanSearch className="w-10 h-10 text-gray-300" />
+                    <p className="text-xs text-gray-400 max-w-[180px] leading-relaxed">
+                      Waiting for drawing to load, then AI analysis will start automatically
+                    </p>
+                    <button onClick={handleAnalyze}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors">
+                      <Sparkles className="w-3.5 h-3.5" /> Analyze Now
+                    </button>
+                  </div>
+                )}
+
+                {aiLoading && (
+                  <div className="flex flex-col items-center gap-3 py-8 text-center">
+                    <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
+                      <Loader2 className="w-6 h-6 text-purple-500 animate-spin" />
+                    </div>
+                    <p className="text-xs text-gray-500 font-medium">Analyzing drawing with AI…</p>
+                    <p className="text-[10px] text-gray-400">Checking standards, elements, and generating report</p>
+                  </div>
+                )}
+
+                {aiError && (
+                  <div className="rounded-xl bg-red-50 border border-red-200 p-3">
+                    <p className="text-xs text-red-600 font-medium">Analysis failed</p>
+                    <p className="text-[11px] text-red-500 mt-0.5">{aiError}</p>
+                    <button onClick={handleAnalyze} className="mt-2 text-xs text-red-600 hover:text-red-800 underline flex items-center gap-1">
+                      <RefreshCw className="w-3 h-3" /> Retry
+                    </button>
+                  </div>
+                )}
+
+                {aiAnalysis && !aiLoading && (
+                  <div className="space-y-4">
+                    {/* Type + Department */}
+                    <div className="rounded-xl bg-purple-50 border border-purple-200 p-3 space-y-2">
+                      <div>
+                        <p className="text-[9px] text-purple-500 uppercase tracking-widest mb-0.5 flex items-center gap-1"><Tag className="w-2.5 h-2.5" /> Detected Type</p>
+                        <p className="text-xs text-gray-900 font-semibold">{aiAnalysis.detectedType || "—"}</p>
+                      </div>
+                      {aiAnalysis.suggestedDepartment && (
+                        <div>
+                          <p className="text-[9px] text-purple-500 uppercase tracking-widest mb-0.5">Suggested Department</p>
+                          <p className="text-xs text-gray-700">{aiAnalysis.suggestedDepartment}</p>
+                        </div>
+                      )}
+                      {aiAnalysis.isElectrical && (
+                        <div className="flex items-center gap-1.5 pt-1">
+                          <Sparkles className="w-3 h-3 text-amber-500" />
+                          <p className="text-[10px] text-amber-700 font-medium">Full electrical analysis applied</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Summary */}
+                    {aiAnalysis.summary && (
+                      <div className="rounded-xl bg-gray-50 border border-gray-200 p-3">
+                        <p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1.5">Summary</p>
+                        <p className="text-xs text-gray-700 leading-relaxed">{aiAnalysis.summary}</p>
+                      </div>
+                    )}
+
+                    {/* Key Elements */}
+                    {aiAnalysis.keyElements.length > 0 && (
+                      <div>
+                        <p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1.5 flex items-center gap-1"><ListChecks className="w-3 h-3" /> Key Elements</p>
+                        <div className="flex flex-wrap gap-1">
+                          {aiAnalysis.keyElements.map((el, i) => (
+                            <span key={i} className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full">{el}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Observations */}
+                    {aiAnalysis.observations.length > 0 && (
+                      <div>
+                        <p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1.5 flex items-center gap-1"><Eye className="w-3 h-3" /> Observations</p>
+                        <div className="space-y-1">
+                          {aiAnalysis.observations.map((obs, i) => (
+                            <div key={i} className="flex items-start gap-1.5">
+                              <span className="w-1 h-1 rounded-full bg-amber-400 mt-1.5 flex-shrink-0" />
+                              <p className="text-[11px] text-gray-600 leading-relaxed">{obs}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Recommendations */}
+                    {aiAnalysis.recommendations.length > 0 && (
+                      <div>
+                        <p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1.5 flex items-center gap-1"><Lightbulb className="w-3 h-3" /> Recommendations</p>
+                        <div className="space-y-1">
+                          {aiAnalysis.recommendations.map((rec, i) => (
+                            <div key={i} className="flex items-start gap-1.5">
+                              <span className="w-1 h-1 rounded-full bg-emerald-500 mt-1.5 flex-shrink-0" />
+                              <p className="text-[11px] text-gray-600 leading-relaxed">{rec}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Engineering Report */}
+                    {aiAnalysis.report && (
+                      <div className="rounded-xl bg-blue-50 border border-blue-200 p-3">
+                        <p className="text-[9px] text-blue-600 uppercase tracking-widest mb-2 flex items-center gap-1">
+                          <FileText className="w-3 h-3" /> Engineering Report
+                        </p>
+                        <p className="text-[11px] text-gray-700 leading-relaxed whitespace-pre-line">{aiAnalysis.report}</p>
+                      </div>
+                    )}
+
+                    {/* Action Plan */}
+                    {aiAnalysis.actionPlan && aiAnalysis.actionPlan.length > 0 && (
+                      <div className="rounded-xl bg-orange-50 border border-orange-200 p-3">
+                        <p className="text-[9px] text-orange-600 uppercase tracking-widest mb-2 flex items-center gap-1">
+                          <ListChecks className="w-3 h-3" /> Action Plan
+                        </p>
+                        <div className="space-y-2">
+                          {aiAnalysis.actionPlan.map((item, i) => {
+                            const isHigh = item.startsWith("[HIGH]");
+                            const isMed = item.startsWith("[MEDIUM]");
+                            const dotColor = isHigh ? "bg-red-500" : isMed ? "bg-amber-500" : "bg-blue-400";
+                            const textColor = isHigh ? "text-red-700" : isMed ? "text-amber-700" : "text-gray-600";
+                            return (
+                              <div key={i} className="flex items-start gap-2">
+                                <span className={`w-2 h-2 rounded-full ${dotColor} mt-1.5 flex-shrink-0`} />
+                                <p className={`text-[11px] ${textColor} leading-relaxed`}>{item}</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type ModalState =
   | { type: "none" }
   | { type: "upload" }
@@ -2461,6 +3072,7 @@ export default function ProjectDrawings() {
   const [deptFilter, setDeptFilter] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
   const [viewerIdx, setViewerIdx] = useState<number | null>(null);
+  const [detailDrawingId, setDetailDrawingId] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalState>({ type: "none" });
   const [sendModal, setSendModal] = useState<ProjectDrawing | null>(null);
   const [validationMsg, setValidationMsg] = useState<string | null>(null);
@@ -2811,6 +3423,24 @@ export default function ProjectDrawings() {
     }
   }, [viewerIdx]);
 
+  // Load file data when opening detail page
+  useEffect(() => {
+    if (!detailDrawingId) return;
+    handleLogView(detailDrawingId);
+    if (!fileDataCache[detailDrawingId]) {
+      fetch(`${BASE}/api/project-drawings/${detailDrawingId}/file`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data?.fileData) {
+            setFileDataCache(prev => ({ ...prev, [detailDrawingId]: data.fileData }));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [detailDrawingId]);
+
+  const detailDrawing = detailDrawingId ? drawings.find(d => d.id === detailDrawingId) ?? null : null;
+
   // Base set respecting department permissions (for accurate counts)
   const permittedDrawings = drawings.filter((d) => isDeptAccessible(d.department));
 
@@ -2823,6 +3453,19 @@ export default function ProjectDrawings() {
 
   return (
     <Layout>
+      {detailDrawing ? (
+        <DrawingDetailPage
+          drawing={detailDrawing}
+          fileData={fileDataCache[detailDrawing.id] || ""}
+          onBack={() => setDetailDrawingId(null)}
+          onCheck={() => handleCheck(detailDrawing)}
+          onApprove={() => handleApprove(detailDrawing)}
+          onRevisionUpload={() => setModal({ type: "revision", drawing: detailDrawing })}
+          onMarkFinal={() => setModal({ type: "final", drawing: detailDrawing })}
+          onDelete={() => { setDetailDrawingId(null); setModal({ type: "delete", drawing: detailDrawing }); }}
+          currentUserName={user?.full_name || ""}
+        />
+      ) : (
       <div className="flex flex-col h-full">
         {/* Header */}
         <div className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-gray-200 bg-white">
@@ -2997,7 +3640,8 @@ export default function ProjectDrawings() {
               {filtered.map((drawing) => (
                 <div
                   key={drawing.id}
-                  className="bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-blue-300 hover:shadow-sm transition-all group"
+                  onClick={() => setDetailDrawingId(drawing.id)}
+                  className="bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-blue-400 hover:shadow-md transition-all group cursor-pointer"
                 >
                   <div className="hidden md:grid grid-cols-[2.5fr_2fr_1.5fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 items-center">
                     <div className="min-w-0" title={drawing.title || drawing.drawingNo}>
@@ -3052,22 +3696,17 @@ export default function ProjectDrawings() {
                     <div className="text-xs text-gray-500">
                       {formatDate(drawing.uploadedAt)}
                     </div>
-                    <div className="flex items-center gap-0.5">
+                    <div className="flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
                       <button
-                        onClick={() => {
-                          const idx = filtered.findIndex(
-                            (d) => d.id === drawing.id,
-                          );
-                          setViewerIdx(idx);
-                        }}
-                        title="View PDF"
+                        onClick={(e) => { e.stopPropagation(); setDetailDrawingId(drawing.id); }}
+                        title="Open Detailed View"
                         className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                       >
                         <Eye className="w-4 h-4" />
                       </button>
                       {(drawing.status === "final" || drawing.approvedBy) && (
                         <button
-                          onClick={() => setSendModal(drawing)}
+                          onClick={(e) => { e.stopPropagation(); setSendModal(drawing); }}
                           title="Send Approval Notification"
                           className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                         >
@@ -3076,9 +3715,7 @@ export default function ProjectDrawings() {
                       )}
                       {drawing.status !== "final" && (
                         <button
-                          onClick={() =>
-                            setModal({ type: "revision", drawing })
-                          }
+                          onClick={(e) => { e.stopPropagation(); setModal({ type: "revision", drawing }); }}
                           title="Upload Revision"
                           className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                         >
@@ -3087,7 +3724,7 @@ export default function ProjectDrawings() {
                       )}
                       {drawing.status !== "final" && (
                         <button
-                          onClick={() => setModal({ type: "final", drawing })}
+                          onClick={(e) => { e.stopPropagation(); setModal({ type: "final", drawing }); }}
                           title="Mark as Final Copy"
                           className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
                         >
@@ -3095,7 +3732,7 @@ export default function ProjectDrawings() {
                         </button>
                       )}
                       <button
-                        onClick={() => setModal({ type: "delete", drawing })}
+                        onClick={(e) => { e.stopPropagation(); setModal({ type: "delete", drawing }); }}
                         title="Delete"
                         className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                       >
@@ -3178,8 +3815,9 @@ export default function ProjectDrawings() {
           )}
         </div>
       </div>
+      )}
 
-      {/* PDF Viewer */}
+      {/* PDF Viewer (legacy eye-icon path) */}
       {viewerIdx !== null && filtered[viewerIdx] && (
         <PdfViewer
           drawing={filtered[viewerIdx]}
