@@ -61,6 +61,7 @@ import DailyReporting from "@/pages/DailyReporting";
 import LogisticsDashboard from "@/pages/LogisticsDashboard";
 import ProcessProposalDashboard from "@/pages/ProcessProposalDashboard";
 import FinanceDashboard from "@/pages/FinanceDashboard";
+import { SlideshowProvider } from "@/contexts/SlideshowContext";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -215,10 +216,12 @@ function App() {
       <AuthProvider>
         <TooltipProvider>
           <WouterRouter base={base}>
-            <Switch>
-              <Route path="/pptx-viewer" component={PptxPreviewPage} />
-              <Route component={ProtectedRoutes} />
-            </Switch>
+            <SlideshowProvider>
+              <Switch>
+                <Route path="/pptx-viewer" component={PptxPreviewPage} />
+                <Route component={ProtectedRoutes} />
+              </Switch>
+            </SlideshowProvider>
           </WouterRouter>
           <Toaster />
         </TooltipProvider>
