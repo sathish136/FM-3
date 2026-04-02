@@ -7,6 +7,7 @@ import {
   leadsTable,
   teamMembersTable,
   userPermissionsTable,
+  projectDrawingsTable,
 } from "@workspace/db/schema";
 import { eq, sql } from "drizzle-orm";
 
@@ -52,6 +53,29 @@ pool
   ALTER TABLE user_permissions ADD COLUMN IF NOT EXISTS two_fa_enabled BOOLEAN NOT NULL DEFAULT false;
   ALTER TABLE user_permissions ADD COLUMN IF NOT EXISTS theme TEXT NOT NULL DEFAULT 'system';
   ALTER TABLE user_permissions ADD COLUMN IF NOT EXISTS navbar_style TEXT NOT NULL DEFAULT 'full';
+  CREATE TABLE IF NOT EXISTS project_drawings (
+    id TEXT PRIMARY KEY,
+    drawing_no TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    project TEXT NOT NULL DEFAULT '',
+    department TEXT NOT NULL DEFAULT '',
+    system_name TEXT NOT NULL DEFAULT '',
+    uploaded_at TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',
+    revision_no INTEGER NOT NULL DEFAULT 0,
+    revision_label TEXT NOT NULL DEFAULT '',
+    file_data TEXT NOT NULL DEFAULT '',
+    file_name TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT '',
+    uploaded_by TEXT NOT NULL DEFAULT '',
+    history JSONB NOT NULL DEFAULT '[]',
+    view_log JSONB NOT NULL DEFAULT '[]',
+    checked_by JSONB,
+    approved_by JSONB,
+    erp_file_url TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
 `,
   )
   .then(() => console.log("PM tables ready"))
@@ -682,6 +706,137 @@ router.get("/suppliers", async (_req, res) => {
   try {
     const suppliers = await fetchErpNextSuppliers();
     res.json(suppliers);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── Project Drawings (DB-backed) ────────────────────────────────────────────
+
+router.get("/project-drawings", async (_req, res) => {
+  try {
+    const rows = await db
+      .select({
+        id: projectDrawingsTable.id,
+        drawingNo: projectDrawingsTable.drawingNo,
+        title: projectDrawingsTable.title,
+        project: projectDrawingsTable.project,
+        department: projectDrawingsTable.department,
+        systemName: projectDrawingsTable.systemName,
+        uploadedAt: projectDrawingsTable.uploadedAt,
+        status: projectDrawingsTable.status,
+        revisionNo: projectDrawingsTable.revisionNo,
+        revisionLabel: projectDrawingsTable.revisionLabel,
+        fileName: projectDrawingsTable.fileName,
+        note: projectDrawingsTable.note,
+        uploadedBy: projectDrawingsTable.uploadedBy,
+        history: projectDrawingsTable.history,
+        viewLog: projectDrawingsTable.viewLog,
+        checkedBy: projectDrawingsTable.checkedBy,
+        approvedBy: projectDrawingsTable.approvedBy,
+        erpFileUrl: projectDrawingsTable.erpFileUrl,
+        createdAt: projectDrawingsTable.createdAt,
+        updatedAt: projectDrawingsTable.updatedAt,
+      })
+      .from(projectDrawingsTable)
+      .orderBy(projectDrawingsTable.createdAt);
+    res.json(rows.map(r => ({
+      ...r,
+      fileData: "",
+      createdAt: r.createdAt?.toISOString?.() ?? r.createdAt,
+      updatedAt: r.updatedAt?.toISOString?.() ?? r.updatedAt,
+    })));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get("/project-drawings/:id/file", async (req, res) => {
+  try {
+    const [row] = await db
+      .select({ fileData: projectDrawingsTable.fileData })
+      .from(projectDrawingsTable)
+      .where(eq(projectDrawingsTable.id, req.params.id));
+    if (!row) return res.status(404).json({ error: "Not found" });
+    res.json({ fileData: row.fileData });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.post("/project-drawings", async (req, res) => {
+  try {
+    const body = req.body;
+    const [row] = await db
+      .insert(projectDrawingsTable)
+      .values({
+        id: body.id,
+        drawingNo: body.drawingNo,
+        title: body.title ?? "",
+        project: body.project ?? "",
+        department: body.department ?? "",
+        systemName: body.systemName ?? "",
+        uploadedAt: body.uploadedAt,
+        status: body.status ?? "draft",
+        revisionNo: body.revisionNo ?? 0,
+        revisionLabel: body.revisionLabel ?? "",
+        fileData: body.fileData ?? "",
+        fileName: body.fileName ?? "",
+        note: body.note ?? "",
+        uploadedBy: body.uploadedBy ?? "",
+        history: body.history ?? [],
+        viewLog: body.viewLog ?? [],
+        checkedBy: body.checkedBy ?? null,
+        approvedBy: body.approvedBy ?? null,
+        erpFileUrl: body.erpFileUrl ?? null,
+      })
+      .returning();
+    res.status(201).json({ ...row, fileData: "", createdAt: row.createdAt?.toISOString?.() ?? row.createdAt, updatedAt: row.updatedAt?.toISOString?.() ?? row.updatedAt });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.put("/project-drawings/:id", async (req, res) => {
+  try {
+    const body = req.body;
+    const updateData: Record<string, unknown> = { updatedAt: new Date() };
+    if (body.drawingNo !== undefined) updateData.drawingNo = body.drawingNo;
+    if (body.title !== undefined) updateData.title = body.title;
+    if (body.project !== undefined) updateData.project = body.project;
+    if (body.department !== undefined) updateData.department = body.department;
+    if (body.systemName !== undefined) updateData.systemName = body.systemName;
+    if (body.uploadedAt !== undefined) updateData.uploadedAt = body.uploadedAt;
+    if (body.status !== undefined) updateData.status = body.status;
+    if (body.revisionNo !== undefined) updateData.revisionNo = body.revisionNo;
+    if (body.revisionLabel !== undefined) updateData.revisionLabel = body.revisionLabel;
+    if (body.fileData !== undefined && body.fileData !== "") updateData.fileData = body.fileData;
+    if (body.fileName !== undefined) updateData.fileName = body.fileName;
+    if (body.note !== undefined) updateData.note = body.note;
+    if (body.uploadedBy !== undefined) updateData.uploadedBy = body.uploadedBy;
+    if (body.history !== undefined) updateData.history = body.history;
+    if (body.viewLog !== undefined) updateData.viewLog = body.viewLog;
+    if (body.checkedBy !== undefined) updateData.checkedBy = body.checkedBy;
+    if (body.approvedBy !== undefined) updateData.approvedBy = body.approvedBy;
+    if (body.erpFileUrl !== undefined) updateData.erpFileUrl = body.erpFileUrl;
+    const [row] = await db
+      .update(projectDrawingsTable)
+      .set(updateData)
+      .where(eq(projectDrawingsTable.id, req.params.id))
+      .returning();
+    if (!row) return res.status(404).json({ error: "Not found" });
+    res.json({ ...row, fileData: "", createdAt: row.createdAt?.toISOString?.() ?? row.createdAt, updatedAt: row.updatedAt?.toISOString?.() ?? row.updatedAt });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.delete("/project-drawings/:id", async (req, res) => {
+  try {
+    await db
+      .delete(projectDrawingsTable)
+      .where(eq(projectDrawingsTable.id, req.params.id));
+    res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

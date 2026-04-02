@@ -220,8 +220,8 @@ function saveDrawings(drawings: ProjectDrawing[]) {
   }
 }
 
-function getFileData(drawing: ProjectDrawing): string {
-  return loadFileData(drawing.id) || drawing.fileData || "";
+function getFileData(drawing: ProjectDrawing, cache?: Record<string, string>): string {
+  return (cache && cache[drawing.id]) || drawing.fileData || "";
 }
 
 function formatDate(iso: string) {
@@ -347,6 +347,7 @@ type PanelTab = "info" | "history" | "pages";
 
 function PdfViewer({
   drawing,
+  fileData,
   onClose,
   onPrev,
   onNext,
@@ -359,6 +360,7 @@ function PdfViewer({
   currentUserName,
 }: {
   drawing: ProjectDrawing;
+  fileData: string;
   onClose: () => void;
   onPrev: () => void;
   onNext: () => void;
@@ -561,7 +563,7 @@ function PdfViewer({
               <p className="text-sm">Unable to render this PDF.</p>
               <p className="text-xs text-gray-500 text-center max-w-xs">The file may be corrupted. Try re-uploading the drawing.</p>
             </div>
-          ) : !getFileData(drawing) ? (
+          ) : !fileData ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3 pt-20">
               <FileText className="w-12 h-12 opacity-30" />
               <p className="text-sm font-medium text-gray-300">
@@ -574,7 +576,7 @@ function PdfViewer({
           ) : (
             <div className="relative">
               <Document
-                file={getFileData(drawing)}
+                file={fileData}
                 onLoadSuccess={({ numPages }) => {
                   setNumPages(numPages);
                   setPageNumber(1);
@@ -965,9 +967,9 @@ function PdfViewer({
                   <p className="text-[9px] text-gray-600 uppercase tracking-widest mb-2 px-1">
                     {numPages ? `${numPages} pages` : "Loading…"}
                   </p>
-                  {numPages && getFileData(drawing) && (
+                  {numPages && fileData && (
                     <Document
-                      file={getFileData(drawing)}
+                      file={fileData}
                       loading={null}
                       onLoadError={() => {}}
                     >
@@ -1785,7 +1787,9 @@ function SelectFilter({
 
 export default function ProjectDrawings() {
   const { user } = useAuth();
-  const [drawings, setDrawings] = useState<ProjectDrawing[]>(loadDrawings);
+  const [drawings, setDrawings] = useState<ProjectDrawing[]>([]);
+  const [drawingsLoading, setDrawingsLoading] = useState(true);
+  const [fileDataCache, setFileDataCache] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<DrawingStatus | "all">(
     "all",
@@ -1823,6 +1827,41 @@ export default function ProjectDrawings() {
   }, []);
 
   useEffect(() => {
+    setDrawingsLoading(true);
+    fetch(`${BASE}/api/project-drawings`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: ProjectDrawing[]) => {
+        setDrawings(data);
+        // Migrate any drawings from localStorage into DB then clear local storage
+        const localData = (() => { try { return JSON.parse(localStorage.getItem("project-drawings-v3") || "[]"); } catch { return []; } })();
+        if (Array.isArray(localData) && localData.length > 0) {
+          const remoteIds = new Set(data.map((d: ProjectDrawing) => d.id));
+          const toMigrate = localData.filter((d: ProjectDrawing) => !remoteIds.has(d.id));
+          if (toMigrate.length > 0) {
+            Promise.all(toMigrate.map((d: ProjectDrawing) => {
+              const fileData = (() => { try { return localStorage.getItem(`drawing-file-${d.id}`) || d.fileData || ""; } catch { return d.fileData || ""; } })();
+              return fetch(`${BASE}/api/project-drawings`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ...d, fileData }),
+              }).then(r => r.ok ? r.json() : null);
+            })).then((migrated) => {
+              const migratedValid = migrated.filter(Boolean) as ProjectDrawing[];
+              if (migratedValid.length > 0) {
+                setDrawings((prev) => [...prev, ...migratedValid]);
+              }
+              localStorage.removeItem("project-drawings-v3");
+            }).catch(() => {});
+          } else {
+            localStorage.removeItem("project-drawings-v3");
+          }
+        }
+      })
+      .catch(() => {})
+      .finally(() => setDrawingsLoading(false));
+  }, []);
+
+  useEffect(() => {
     if (!user?.email) return;
     fetch(`${BASE}/api/auth/profile?email=${encodeURIComponent(user.email)}`)
       .then((r) => (r.ok ? r.json() : null))
@@ -1836,6 +1875,16 @@ export default function ProjectDrawings() {
       })
       .catch(() => {});
   }, [user?.email]);
+
+  const apiSaveDrawing = async (drawing: ProjectDrawing, fileData?: string) => {
+    try {
+      await fetch(`${BASE}/api/project-drawings/${drawing.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...drawing, fileData: fileData ?? "" }),
+      });
+    } catch {}
+  };
 
   const persist = (updated: ProjectDrawing[]) => {
     setDrawings(updated);
@@ -1888,10 +1937,10 @@ export default function ProjectDrawings() {
       uploadedBy: string;
     }>,
   ) => {
-    const newDrawings: ProjectDrawing[] = items.map((data) => {
+    const saved: ProjectDrawing[] = [];
+    for (const data of items) {
       const id = generateUUID();
-      if (data.fileData) saveFileData(id, data.fileData);
-      return {
+      const newDrawing: ProjectDrawing = {
         id,
         drawingNo: data.drawingNo,
         title: data.title,
@@ -1912,8 +1961,19 @@ export default function ProjectDrawings() {
         approvedBy: null,
         erpFileUrl: null,
       };
-    });
-    persist([...newDrawings, ...drawings]);
+      try {
+        const res = await fetch(`${BASE}/api/project-drawings`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...newDrawing, fileData: data.fileData ?? "" }),
+        });
+        if (res.ok) {
+          if (data.fileData) setFileDataCache(prev => ({ ...prev, [id]: data.fileData }));
+          saved.push(newDrawing);
+        }
+      } catch {}
+    }
+    if (saved.length > 0) setDrawings((prev) => [...saved, ...prev]);
     setModal({ type: "none" });
   };
 
@@ -1931,7 +1991,6 @@ export default function ProjectDrawings() {
       revisedBy: drawing.uploadedBy,
     };
     const newRevNo = drawing.status === "draft" ? 1 : drawing.revisionNo + 1;
-    if (data.fileData) saveFileData(drawing.id, data.fileData);
     const updated: ProjectDrawing = {
       ...drawing,
       status: "revision",
@@ -1947,11 +2006,13 @@ export default function ProjectDrawings() {
       approvedBy: null,
       erpFileUrl: null,
     };
-    persist(drawings.map((d) => (d.id === drawing.id ? updated : d)));
+    if (data.fileData) setFileDataCache(prev => ({ ...prev, [drawing.id]: data.fileData }));
+    await apiSaveDrawing(updated, data.fileData);
+    setDrawings((prev) => prev.map((d) => (d.id === drawing.id ? updated : d)));
     setModal({ type: "none" });
   };
 
-  const handleFinal = (drawing: ProjectDrawing) => {
+  const handleFinal = async (drawing: ProjectDrawing) => {
     const historyEntry: RevisionEntry = {
       revisionLabel: drawing.revisionLabel,
       uploadedAt: drawing.uploadedAt,
@@ -1969,11 +2030,12 @@ export default function ProjectDrawings() {
       uploadedAt: new Date().toISOString(),
       history: [...drawing.history, historyEntry],
     };
-    persist(drawings.map((d) => (d.id === drawing.id ? updated : d)));
+    await apiSaveDrawing(updated);
+    setDrawings((prev) => prev.map((d) => (d.id === drawing.id ? updated : d)));
     setModal({ type: "none" });
   };
 
-  const handleCheck = (drawing: ProjectDrawing) => {
+  const handleCheck = async (drawing: ProjectDrawing) => {
     const updated: ProjectDrawing = {
       ...drawing,
       checkedBy: {
@@ -1981,10 +2043,11 @@ export default function ProjectDrawings() {
         at: new Date().toISOString(),
       },
     };
-    persist(drawings.map((d) => (d.id === drawing.id ? updated : d)));
+    await apiSaveDrawing(updated);
+    setDrawings((prev) => prev.map((d) => (d.id === drawing.id ? updated : d)));
   };
 
-  const handleApprove = (drawing: ProjectDrawing) => {
+  const handleApprove = async (drawing: ProjectDrawing) => {
     const updated: ProjectDrawing = {
       ...drawing,
       approvedBy: {
@@ -1992,7 +2055,8 @@ export default function ProjectDrawings() {
         at: new Date().toISOString(),
       },
     };
-    persist(drawings.map((d) => (d.id === drawing.id ? updated : d)));
+    await apiSaveDrawing(updated);
+    setDrawings((prev) => prev.map((d) => (d.id === drawing.id ? updated : d)));
   };
 
   const handleLogView = useCallback(
@@ -2009,15 +2073,20 @@ export default function ProjectDrawings() {
             recentLog.at > fiveMinAgo
           )
             return d;
-          return {
+          const updatedDrawing = {
             ...d,
             viewLog: [
               ...(d.viewLog || []),
               { by: user.full_name, at: new Date().toISOString() },
             ],
           };
+          fetch(`${BASE}/api/project-drawings/${drawingId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ viewLog: updatedDrawing.viewLog }),
+          }).catch(() => {});
+          return updatedDrawing;
         });
-        saveDrawings(updated);
         return updated;
       });
     },
@@ -2027,6 +2096,17 @@ export default function ProjectDrawings() {
   useEffect(() => {
     if (viewerIdx !== null && filtered[viewerIdx]) {
       handleLogView(filtered[viewerIdx].id);
+      const drawing = filtered[viewerIdx];
+      if (!fileDataCache[drawing.id]) {
+        fetch(`${BASE}/api/project-drawings/${drawing.id}/file`)
+          .then(r => r.ok ? r.json() : null)
+          .then(data => {
+            if (data?.fileData) {
+              setFileDataCache(prev => ({ ...prev, [drawing.id]: data.fileData }));
+            }
+          })
+          .catch(() => {});
+      }
     }
   }, [viewerIdx]);
 
@@ -2171,7 +2251,14 @@ export default function ProjectDrawings() {
 
         {/* Drawing list */}
         <div className="flex-1 overflow-auto p-6">
-          {filtered.length === 0 ? (
+          {drawingsLoading ? (
+            <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-4 py-20">
+              <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center animate-pulse">
+                <FolderOpen className="w-8 h-8 text-gray-300" />
+              </div>
+              <p className="text-sm text-gray-400">Loading drawings…</p>
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-4 py-20">
               <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center">
                 <FolderOpen className="w-8 h-8 text-gray-300" />
@@ -2388,6 +2475,7 @@ export default function ProjectDrawings() {
       {viewerIdx !== null && filtered[viewerIdx] && (
         <PdfViewer
           drawing={filtered[viewerIdx]}
+          fileData={fileDataCache[filtered[viewerIdx].id] || ""}
           onClose={() => setViewerIdx(null)}
           onPrev={() => setViewerIdx((i) => Math.max(0, (i ?? 0) - 1))}
           onNext={() =>
@@ -2474,9 +2562,13 @@ export default function ProjectDrawings() {
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  deleteFileData(modal.drawing.id);
-                  persist(drawings.filter((d) => d.id !== modal.drawing.id));
+                onClick={async () => {
+                  const id = modal.drawing.id;
+                  try {
+                    await fetch(`${BASE}/api/project-drawings/${id}`, { method: "DELETE" });
+                  } catch {}
+                  setFileDataCache(prev => { const n = { ...prev }; delete n[id]; return n; });
+                  setDrawings((prev) => prev.filter((d) => d.id !== id));
                   setModal({ type: "none" });
                 }}
                 className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors"
