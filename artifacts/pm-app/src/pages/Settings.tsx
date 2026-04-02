@@ -264,6 +264,7 @@ function DrawingRecipientsSettings() {
   const [employeeId, setEmployeeId] = useState("");
   const [fetching, setFetching] = useState(false);
   const [fetchedEmployee, setFetchedEmployee] = useState<{ employeeId: string; name: string; companyEmail: string; officialMobile: string } | null>(null);
+  const [multipleResults, setMultipleResults] = useState<Array<{ employeeId: string; name: string; companyEmail: string; officialMobile: string }>>([]);
   const [fetchError, setFetchError] = useState("");
   const [saving, setSaving] = useState(false);
   const [notifyEmail, setNotifyEmail] = useState(true);
@@ -285,11 +286,16 @@ function DrawingRecipientsSettings() {
     setFetching(true);
     setFetchError("");
     setFetchedEmployee(null);
+    setMultipleResults([]);
     try {
       const r = await fetch(`${BASE}/api/erpnext-employee/${encodeURIComponent(employeeId.trim())}`);
       const d = await r.json();
       if (r.ok) {
-        setFetchedEmployee({ employeeId: d.employeeId || employeeId.trim().toUpperCase(), name: d.name, companyEmail: d.companyEmail, officialMobile: d.officialMobile });
+        if (d.multiple && Array.isArray(d.results)) {
+          setMultipleResults(d.results);
+        } else {
+          setFetchedEmployee({ employeeId: d.employeeId || employeeId.trim().toUpperCase(), name: d.name, companyEmail: d.companyEmail, officialMobile: d.officialMobile });
+        }
       } else {
         setFetchError(d.error || "Employee not found");
       }
@@ -389,7 +395,7 @@ function DrawingRecipientsSettings() {
           <div className="flex gap-2">
             <input
               value={employeeId}
-              onChange={e => { setEmployeeId(e.target.value); setFetchedEmployee(null); setFetchError(""); }}
+              onChange={e => { setEmployeeId(e.target.value); setFetchedEmployee(null); setFetchError(""); setMultipleResults([]); }}
               onKeyDown={e => e.key === "Enter" && fetchEmployee()}
               placeholder="Employee ID (WTT948) or name"
               className="flex-1 px-3 py-2 text-sm border border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -405,6 +411,34 @@ function DrawingRecipientsSettings() {
           </div>
 
           {fetchError && <p className="text-xs text-destructive">{fetchError}</p>}
+
+          {/* Multiple results — show selectable list */}
+          {multipleResults.length > 0 && !fetchedEmployee && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-foreground">{multipleResults.length} employees found — select one:</p>
+              <div className="max-h-56 overflow-y-auto rounded-xl border border-border divide-y divide-border bg-background">
+                {multipleResults.map(emp => (
+                  <button
+                    key={emp.employeeId}
+                    onClick={() => { setFetchedEmployee(emp); setMultipleResults([]); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/60 transition-colors"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                      <span className="text-xs font-bold text-primary">{(emp.name || emp.employeeId).charAt(0).toUpperCase()}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-foreground truncate">{emp.name}</p>
+                      <p className="text-[10px] text-muted-foreground font-mono">{emp.employeeId}</p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      {emp.companyEmail && <p className="text-[10px] text-muted-foreground truncate max-w-[120px]">{emp.companyEmail}</p>}
+                      {emp.officialMobile && <p className="text-[10px] text-muted-foreground">{emp.officialMobile}</p>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {fetchedEmployee && (
             <div className="bg-muted/50 rounded-xl p-4 space-y-3">
@@ -449,7 +483,7 @@ function DrawingRecipientsSettings() {
 
               <div className="flex gap-2 pt-1">
                 <button
-                  onClick={() => { setAddMode(false); setEmployeeId(""); setFetchedEmployee(null); }}
+                  onClick={() => { setAddMode(false); setEmployeeId(""); setFetchedEmployee(null); setMultipleResults([]); }}
                   className="flex-1 px-4 py-2 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"
                 >
                   Cancel

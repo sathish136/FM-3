@@ -145,7 +145,7 @@ async function getApprovalRecipients() {
   return rows.rows;
 }
 
-async function fetchErpEmployee(query: string) {
+async function searchErpEmployees(query: string): Promise<any[]> {
   const fields = '["name","employee_name","company_email","cell_number","prefered_contact_email","personal_email","user_id"]';
   const hdr = { Authorization: ERP_AUTH(), Accept: "application/json" };
 
@@ -157,10 +157,10 @@ async function fetchErpEmployee(query: string) {
   if (r1.ok) {
     const d: any = await r1.json();
     const emp = d.data || d;
-    if (emp?.name) return emp;
+    if (emp?.name) return [emp];
   }
 
-  // Strategy 2: also try as-is (in case mixed case)
+  // Strategy 2: also try as-is (mixed case)
   if (query !== query.toUpperCase()) {
     const r1b = await fetch(
       `${ERP_URL}/api/resource/Employee/${encodeURIComponent(query)}?fields=${encodeURIComponent(fields)}`,
@@ -169,35 +169,35 @@ async function fetchErpEmployee(query: string) {
     if (r1b.ok) {
       const d: any = await r1b.json();
       const emp = d.data || d;
-      if (emp?.name) return emp;
+      if (emp?.name) return [emp];
     }
   }
 
-  // Strategy 3: search by employee_name LIKE %query%
+  // Strategy 3: search by employee_name LIKE %query% — returns ALL matches
   const nameFilter = encodeURIComponent(`[["employee_name","like","%${query}%"]]`);
   const r2 = await fetch(
-    `${ERP_URL}/api/resource/Employee?filters=${nameFilter}&fields=${encodeURIComponent(fields)}&limit=5`,
+    `${ERP_URL}/api/resource/Employee?filters=${nameFilter}&fields=${encodeURIComponent(fields)}&limit=20`,
     { headers: hdr }
   );
   if (r2.ok) {
     const d: any = await r2.json();
     const list: any[] = d.data || [];
-    if (list.length > 0) return list[0];
+    if (list.length > 0) return list;
   }
 
   // Strategy 4: search by user_id LIKE %query%
   const emailFilter = encodeURIComponent(`[["user_id","like","%${query}%"]]`);
   const r3 = await fetch(
-    `${ERP_URL}/api/resource/Employee?filters=${emailFilter}&fields=${encodeURIComponent(fields)}&limit=5`,
+    `${ERP_URL}/api/resource/Employee?filters=${emailFilter}&fields=${encodeURIComponent(fields)}&limit=20`,
     { headers: hdr }
   );
   if (r3.ok) {
     const d: any = await r3.json();
     const list: any[] = d.data || [];
-    if (list.length > 0) return list[0];
+    if (list.length > 0) return list;
   }
 
-  throw new Error("Employee not found. Try the employee ID (e.g. WTT948) or their full name.");
+  return [];
 }
 
 async function triggerDrawingApprovalNotifications(drawing: any) {
@@ -289,16 +289,20 @@ router.delete("/drawing-approval-recipients/:id", async (req, res) => {
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
-// GET /api/erpnext-employee/:id — fetch employee details from ERPNext
+// GET /api/erpnext-employee/:id — fetch employee details from ERPNext (supports multiple results)
 router.get("/erpnext-employee/:id", async (req, res) => {
   try {
-    const emp = await fetchErpEmployee(req.params.id);
-    res.json({
+    const results = await searchErpEmployees(req.params.id);
+    if (!results.length) return res.status(404).json({ error: "Employee not found. Try the employee ID (e.g. WTT948) or their full name." });
+    const mapped = results.map((emp: any) => ({
       employeeId: emp.name,
       name: emp.employee_name || "",
       companyEmail: emp.company_email || emp.prefered_contact_email || "",
       officialMobile: emp.cell_number || "",
-    });
+    }));
+    // Return single object if only one result, array if multiple
+    if (mapped.length === 1) return res.json(mapped[0]);
+    res.json({ multiple: true, results: mapped });
   } catch (e: any) {
     res.status(502).json({ error: e.message });
   }
