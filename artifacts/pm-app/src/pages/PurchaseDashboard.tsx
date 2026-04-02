@@ -231,9 +231,9 @@ function PanelTable({ title, rows, columns, loading, filename, accentColor }: {
             <tr style={{ background:"#fff", borderBottom:"2px solid #f3f4f6" }}>
               <td style={{ padding:"4px 6px" }} />
               {columns.map(col => (
-                <td key={col.key} style={{ padding:"4px 6px" }}>
+                <td key={col.key} style={{ padding:"2px 4px" }}>
                   <input
-                    style={{ width:"100%", border:"1px solid #e5e7eb", borderRadius:5, padding:"3px 7px", fontSize:11, color:"#374151", background:"#f9fafb", outline:"none", boxSizing:"border-box" }}
+                    style={{ width:"100%", border:"1px solid #e5e7eb", borderRadius:4, padding:"1px 5px", fontSize:10, color:"#374151", background:"#f9fafb", outline:"none", boxSizing:"border-box" }}
                     placeholder="Filter..."
                     value={filters[col.key] ?? ""}
                     onChange={e => setFilter(col.key, e.target.value)}

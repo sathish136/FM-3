@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Briefcase, ShoppingCart, FileText, ChevronDown, TrendingUp,
   Users, RefreshCw, X, ArrowLeft, Search, Calendar,
-  IndianRupee, Receipt,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -178,12 +177,12 @@ function DataTable({ columns, data, colSpan }: {
           </tr>
           <tr className="bg-white">
             {columns.map((_, i) => (
-              <td key={i} className="px-2 py-1">
+              <td key={i} style={{ padding:"2px 4px" }}>
                 <input
                   placeholder="Filter…"
                   value={filters[i]}
                   onChange={e => setFilters(f => f.map((v, j) => j === i ? e.target.value : v))}
-                  className="w-full text-xs border border-slate-200 rounded px-2 py-1 outline-none focus:border-blue-400"
+                  style={{ width:"100%", border:"1px solid #e5e7eb", borderRadius:4, padding:"1px 5px", fontSize:10, color:"#374151", background:"#f9fafb", outline:"none", boxSizing:"border-box" }}
                 />
               </td>
             ))}
@@ -458,29 +457,25 @@ export default function FinanceDashboard() {
         />
       )}
 
-      <div className="min-h-screen bg-slate-50">
+      <div style={{ minHeight:"100vh", background:"#f0f2f5", padding:20, display:"flex", flexDirection:"column", gap:18 }}>
         {/* ── Header ── */}
-        <div className="bg-[#1a2a5e] px-5 py-3 flex items-center justify-between gap-3 flex-wrap shadow-lg">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center">
-              <Receipt style={{ width: 18, height: 18, color: "white" }} />
-            </div>
-            <div>
-              <div className="text-white font-bold text-base leading-tight">Finance Dashboard</div>
-              <div className="text-white/60 text-[10px] uppercase tracking-widest">WTT International — Executive Overview</div>
-            </div>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
+          <div>
+            <h1 style={{ margin:0, fontSize:20, fontWeight:900, color:"#111827", letterSpacing:"-0.02em" }}>Finance Dashboard</h1>
+            <p style={{ margin:"2px 0 0", fontSize:12, color:"#9ca3af" }}>
+              Executive Overview · <span style={{ fontWeight:600, color:"#6b7280" }}>{filters.project || "All Projects"}</span>
+            </p>
           </div>
-
-          <div className="flex items-center gap-2 flex-wrap">
+          <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
             {/* Project selector */}
             <select
               value={filters.project}
               onChange={e => setFilters(f => ({ ...f, project: e.target.value }))}
-              className="bg-white/10 border border-white/20 text-white text-xs rounded-lg px-3 py-1.5 outline-none focus:border-white/40 cursor-pointer"
+              style={{ background:"#fff", border:"1px solid #d1d5db", borderRadius:8, padding:"6px 12px", fontSize:13, color:"#374151", outline:"none", cursor:"pointer" }}
             >
-              <option value="" className="text-slate-800 bg-white">All Projects</option>
+              <option value="">All Projects</option>
               {projects.map(p => (
-                <option key={p.code} value={p.code} className="text-slate-800 bg-white">{p.label}</option>
+                <option key={p.code} value={p.code}>{p.label}</option>
               ))}
             </select>
 
@@ -492,9 +487,9 @@ export default function FinanceDashboard() {
             <div className="relative">
               <button
                 onClick={() => setShowDatePicker(s => !s)}
-                className="flex items-center gap-1.5 bg-white/10 border border-white/20 text-white text-xs rounded-lg px-3 py-1.5 hover:bg-white/20 transition-all cursor-pointer"
+                style={{ display:"flex", alignItems:"center", gap:6, background:"#fff", border:"1px solid #d1d5db", borderRadius:8, padding:"6px 12px", fontSize:13, color:"#374151", cursor:"pointer" }}
               >
-                <Calendar style={{ width: 12, height: 12 }} />
+                <Calendar style={{ width: 13, height: 13 }} />
                 {filters.dateFrom ? `${filters.dateFrom} → ${filters.dateTo || filters.dateFrom}` : "Date Filter"}
               </button>
               {showDatePicker && (
@@ -527,14 +522,14 @@ export default function FinanceDashboard() {
 
             {/* Refresh */}
             <button onClick={refetchAll}
-              className="flex items-center gap-1.5 bg-white/10 border border-white/20 text-white text-xs rounded-lg px-3 py-1.5 hover:bg-white/20 transition-all cursor-pointer">
-              <RefreshCw style={{ width: 12, height: 12 }} className={anyLoading ? "animate-spin" : ""} />
+              style={{ display:"flex", alignItems:"center", gap:6, background:"#fff", border:"1px solid #d1d5db", borderRadius:8, padding:"6px 14px", fontSize:13, fontWeight:600, color:"#374151", cursor:"pointer" }}>
+              <RefreshCw style={{ width: 13, height: 13 }} className={anyLoading ? "animate-spin" : ""} />
               Refresh
             </button>
           </div>
         </div>
 
-        <div className="p-4 space-y-4">
+        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
           {/* ── KPI Row ── */}
           {loading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
