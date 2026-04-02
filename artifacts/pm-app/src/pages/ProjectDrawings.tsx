@@ -960,6 +960,15 @@ function PdfViewer({
                           <p className="text-[10px] text-gray-500 mt-0.5">
                             {formatDateTime(drawing.approvedBy.at)}
                           </p>
+                          {/* Re-approve option for final drawings */}
+                          {drawing.status === "final" && (
+                            <button
+                              onClick={onApprove}
+                              className="mt-2 w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded bg-blue-900 hover:bg-blue-700 border border-blue-700 text-blue-200 text-[10px] font-semibold transition-colors"
+                            >
+                              <ThumbsUp className="w-3 h-3" /> Re-Approve
+                            </button>
+                          )}
                         </>
                       ) : (
                         <button
@@ -2395,7 +2404,8 @@ export default function ProjectDrawings() {
   };
 
   const handleApprove = async (drawing: ProjectDrawing) => {
-    if (!drawing.checkedBy) {
+    // For final drawings, allow re-approval without the check requirement
+    if (!drawing.checkedBy && drawing.status !== "final") {
       showValidationError("Drawing must be checked (FST validated) before it can be approved.");
       return;
     }
