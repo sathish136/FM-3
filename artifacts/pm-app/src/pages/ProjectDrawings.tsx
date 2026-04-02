@@ -2650,370 +2650,304 @@ function DrawingDetailPage({
         </div>
       </div>
 
-      {/* ── Body ──────────────────────────────────────────────────────────── */}
-      <div className="flex flex-1 overflow-hidden">
-
-        {/* ── Left: PDF Viewer ────────────────────────────────────────────── */}
-        <div className="flex flex-col flex-1 min-w-0 bg-gray-100 overflow-hidden">
-          {/* PDF toolbar */}
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-white border-b border-gray-200 flex-shrink-0">
-            <button onClick={() => setScale(s => Math.max(0.4, parseFloat((s - 0.2).toFixed(1))))}
-              className="p-1.5 rounded text-gray-500 hover:bg-gray-100 transition-colors"><ZoomOut className="w-3.5 h-3.5" /></button>
-            <button onClick={() => setScale(1.0)} className="px-2 text-xs text-gray-500 tabular-nums w-12 text-center">
-              {Math.round(scale * 100)}%
-            </button>
-            <button onClick={() => setScale(s => Math.min(3, parseFloat((s + 0.2).toFixed(1))))}
-              className="p-1.5 rounded text-gray-500 hover:bg-gray-100 transition-colors"><ZoomIn className="w-3.5 h-3.5" /></button>
-            <button onClick={() => setScale(1.0)} className="text-xs text-gray-400 hover:text-gray-700 px-1 transition-colors"><RotateCcw className="w-3 h-3" /></button>
-            <div className="h-4 w-px bg-gray-200 mx-1" />
-            {numPages && (
-              <div className="flex items-center gap-1">
-                <button onClick={() => setPageNumber(p => Math.max(1, p - 1))} disabled={pageNumber <= 1}
-                  className="p-1 rounded text-gray-400 hover:text-gray-700 disabled:opacity-30 transition-colors"><ChevronLeft className="w-3.5 h-3.5" /></button>
-                <span className="text-xs text-gray-500 tabular-nums">{pageNumber} / {numPages}</span>
-                <button onClick={() => setPageNumber(p => Math.min(numPages, p + 1))} disabled={pageNumber >= numPages}
-                  className="p-1 rounded text-gray-400 hover:text-gray-700 disabled:opacity-30 transition-colors"><ChevronRight className="w-3.5 h-3.5" /></button>
-              </div>
-            )}
-            {/* Viewing revision indicator */}
-            {viewRevIdx !== null && (
-              <div className="flex items-center gap-1.5 ml-auto">
-                <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full">
-                  Viewing: {drawing.history[viewRevIdx]?.revisionLabel || `Rev ${viewRevIdx + 1}`}
-                </span>
-                <button onClick={() => setViewRevIdx(null)}
-                  className="text-[10px] text-blue-600 hover:text-blue-800 underline">Current</button>
-              </div>
-            )}
-          </div>
-          {/* PDF area */}
-          <div ref={scrollRef} className="flex-1 overflow-auto flex flex-col items-center py-6 px-4 gap-4">
-            {!activeFileData ? (
-              <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-400">
-                <FileText className="w-12 h-12 text-gray-300" />
-                <p className="text-sm">{viewRevIdx !== null ? "No file available for this revision" : "No PDF file available"}</p>
-              </div>
-            ) : (
-              <Document
-                file={activeFileData}
-                onLoadSuccess={({ numPages: n }) => { setNumPages(n); setPageNumber(1); }}
-                onLoadError={() => setPdfError(true)}
-                loading={
-                  <div className="flex items-center gap-2 text-gray-400 py-12">
-                    <Loader2 className="w-5 h-5 animate-spin" /> Loading PDF…
-                  </div>
-                }
-              >
-                {pdfError ? (
-                  <div className="text-red-500 text-sm">Failed to load PDF</div>
-                ) : (
-                  <div className="relative shadow-lg">
-                    <Page
-                      pageNumber={pageNumber}
-                      scale={scale}
-                      renderTextLayer={false}
-                      renderAnnotationLayer={false}
-                    />
-                    <PdfWatermark status={activeStatus} revisionLbl={activeRevLabel} />
-                  </div>
-                )}
-              </Document>
-            )}
-          </div>
+      {/* Hidden PDF renderer — off-screen, needed only for AI canvas capture */}
+      {fileData && (
+        <div
+          ref={scrollRef}
+          style={{ position: "absolute", left: -9999, top: -9999, opacity: 0, pointerEvents: "none", width: 800 }}
+          aria-hidden="true"
+        >
+          <Document file={fileData} onLoadSuccess={({ numPages: n }) => setNumPages(n)} onLoadError={() => setPdfError(true)}>
+            <Page pageNumber={1} scale={1} renderTextLayer={false} renderAnnotationLayer={false} />
+          </Document>
         </div>
+      )}
 
-        {/* ── Right: Detail Panel ──────────────────────────────────────────── */}
-        <div className="w-96 flex flex-col border-l border-gray-200 bg-white overflow-hidden flex-shrink-0">
-          {/* Tabs */}
-          <div className="flex border-b border-gray-200 flex-shrink-0">
-            {([
-              { key: "ai" as DetailTab, label: "AI Analysis", icon: Sparkles },
-              { key: "info" as DetailTab, label: "Info", icon: Info },
-              { key: "revisions" as DetailTab, label: `Revisions (${allRevisions.length})`, icon: History },
-            ] as { key: DetailTab; label: string; icon: React.ElementType }[]).map(({ key, label, icon: Icon }) => (
+      {/* ── Body: Full-width report layout ─────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto bg-gray-50">
+        <div className="max-w-7xl mx-auto px-6 py-6 grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6">
+
+          {/* ── Left column: AI Analysis ───────────────────────────────────── */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-purple-600 flex items-center justify-center">
+                  <Sparkles className="w-4 h-4 text-white" />
+                </div>
+                <h2 className="text-sm font-bold text-gray-900">AI Drawing Analysis</h2>
+                {aiAnalysis?.isElectrical && (
+                  <span className="text-[10px] font-bold text-amber-700 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full">
+                    ⚡ Full Electrical Analysis
+                  </span>
+                )}
+              </div>
               <button
-                key={key}
-                onClick={() => setActiveTab(key)}
-                className={`flex items-center gap-1 flex-1 px-2 py-2.5 text-[11px] font-semibold transition-colors border-b-2 ${
-                  activeTab === key
-                    ? "text-blue-600 border-blue-600 bg-blue-50"
-                    : "text-gray-500 border-transparent hover:text-gray-700 hover:bg-gray-50"
+                onClick={handleAnalyze}
+                disabled={aiLoading}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  aiLoading
+                    ? "bg-purple-100 text-purple-500 cursor-wait"
+                    : "bg-purple-600 text-white hover:bg-purple-700"
                 }`}
               >
-                <Icon className="w-3 h-3" /> {label}
+                {aiLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                {aiLoading ? "Analyzing…" : aiAnalysis ? "Re-analyze" : "Run Analysis"}
               </button>
-            ))}
-          </div>
+            </div>
 
-          {/* Tab content */}
-          <div className="flex-1 overflow-y-auto">
+            {/* Loading state */}
+            {aiLoading && (
+              <div className="bg-white rounded-2xl border border-gray-200 p-10 flex flex-col items-center gap-4 text-center">
+                <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center">
+                  <Loader2 className="w-8 h-8 text-purple-500 animate-spin" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-700">Analyzing drawing with AI…</p>
+                  <p className="text-xs text-gray-400 mt-1">Reviewing elements, standards compliance, and generating engineering report</p>
+                </div>
+              </div>
+            )}
 
-            {/* ── INFO TAB ── */}
-            {activeTab === "info" && (
-              <div className="p-4 space-y-4">
-                <div className="space-y-2">
-                  {[
-                    { label: "Drawing No.", value: drawing.drawingNo },
-                    { label: "Title", value: drawing.title || "—" },
-                    { label: "Project", value: drawing.project || "—" },
-                    { label: "System", value: drawing.systemName || "—" },
-                    { label: "Department", value: drawing.department || "—" },
-                    { label: "Drawing Type", value: drawing.drawingType || "—" },
-                    { label: "Status", value: cfg.label },
-                    { label: "Revision", value: drawing.revisionLabel },
-                    { label: "Uploaded By", value: drawing.uploadedBy || "—" },
-                    { label: "Date", value: formatDate(drawing.uploadedAt) },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="flex items-start justify-between gap-2">
-                      <span className="text-[10px] text-gray-400 uppercase tracking-widest shrink-0 w-24">{label}</span>
-                      <span className="text-xs text-gray-800 text-right font-medium">{value}</span>
+            {/* Error state */}
+            {aiError && !aiLoading && (
+              <div className="bg-red-50 rounded-2xl border border-red-200 p-5 flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-red-700">Analysis failed</p>
+                  <p className="text-xs text-red-500 mt-0.5">{aiError}</p>
+                  <button onClick={handleAnalyze} className="mt-2 text-xs font-medium text-red-600 hover:text-red-800 flex items-center gap-1">
+                    <RefreshCw className="w-3 h-3" /> Retry
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Idle state */}
+            {!aiAnalysis && !aiLoading && !aiError && (
+              <div className="bg-white rounded-2xl border border-dashed border-purple-300 p-10 flex flex-col items-center gap-3 text-center">
+                <ScanSearch className="w-12 h-12 text-purple-200" />
+                <p className="text-sm text-gray-500">Loading drawing for analysis…</p>
+                <p className="text-xs text-gray-400">AI analysis starts automatically once the drawing file is ready</p>
+              </div>
+            )}
+
+            {/* Analysis results */}
+            {aiAnalysis && !aiLoading && (
+              <div className="space-y-4">
+                {/* Detected type banner */}
+                <div className="bg-white rounded-2xl border border-gray-200 p-4 flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
+                    <Tag className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-widest">Detected Drawing Type</p>
+                    <p className="text-sm font-bold text-gray-900 mt-0.5">{aiAnalysis.detectedType || "—"}</p>
+                    {aiAnalysis.suggestedDepartment && (
+                      <p className="text-xs text-purple-600 font-medium">{aiAnalysis.suggestedDepartment} Department</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Summary */}
+                {aiAnalysis.summary && (
+                  <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-2">Summary</p>
+                    <p className="text-sm text-gray-700 leading-relaxed">{aiAnalysis.summary}</p>
+                  </div>
+                )}
+
+                {/* Key Elements */}
+                {aiAnalysis.keyElements.length > 0 && (
+                  <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1">
+                      <ListChecks className="w-3 h-3" /> Key Elements Identified
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {aiAnalysis.keyElements.map((el, i) => (
+                        <span key={i} className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-lg font-medium">{el}</span>
+                      ))}
                     </div>
-                  ))}
-                </div>
-                {/* Approval status */}
-                <div className="border-t border-gray-100 pt-3 space-y-2">
-                  <p className="text-[10px] text-gray-400 uppercase tracking-widest">Approvals</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500">Checked by</span>
-                    {drawing.checkedBy ? (
-                      <span className="text-xs text-emerald-700 font-medium">{drawing.checkedBy.name} · {formatDate(drawing.checkedBy.at)}</span>
-                    ) : (
-                      <span className="text-[11px] text-gray-400 italic">Not yet</span>
-                    )}
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500">Approved by</span>
-                    {drawing.approvedBy ? (
-                      <span className="text-xs text-blue-700 font-medium">{drawing.approvedBy.name} · {formatDate(drawing.approvedBy.at)}</span>
-                    ) : (
-                      <span className="text-[11px] text-gray-400 italic">Not yet</span>
-                    )}
-                  </div>
+                )}
+
+                {/* Observations + Recommendations side by side */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {aiAnalysis.observations.length > 0 && (
+                    <div className="bg-white rounded-2xl border border-amber-200 p-5">
+                      <p className="text-[10px] text-amber-600 uppercase tracking-widest mb-3 flex items-center gap-1">
+                        <Eye className="w-3 h-3" /> Technical Observations
+                      </p>
+                      <div className="space-y-2">
+                        {aiAnalysis.observations.map((obs, i) => (
+                          <div key={i} className="flex items-start gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-1.5 flex-shrink-0" />
+                            <p className="text-xs text-gray-600 leading-relaxed">{obs}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {aiAnalysis.recommendations.length > 0 && (
+                    <div className="bg-white rounded-2xl border border-emerald-200 p-5">
+                      <p className="text-[10px] text-emerald-600 uppercase tracking-widest mb-3 flex items-center gap-1">
+                        <Lightbulb className="w-3 h-3" /> Recommendations
+                      </p>
+                      <div className="space-y-2">
+                        {aiAnalysis.recommendations.map((rec, i) => (
+                          <div key={i} className="flex items-start gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 flex-shrink-0" />
+                            <p className="text-xs text-gray-600 leading-relaxed">{rec}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                {drawing.note && (
-                  <div className="border-t border-gray-100 pt-3">
-                    <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-1">Note</p>
-                    <p className="text-xs text-gray-700 leading-relaxed">{drawing.note}</p>
+
+                {/* Engineering Report */}
+                {aiAnalysis.report && (
+                  <div className="bg-blue-50 rounded-2xl border border-blue-200 p-5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <FileText className="w-4 h-4 text-blue-600" />
+                      <p className="text-xs font-bold text-blue-700 uppercase tracking-widest">Engineering Report</p>
+                    </div>
+                    <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{aiAnalysis.report}</p>
+                  </div>
+                )}
+
+                {/* Action Plan */}
+                {aiAnalysis.actionPlan && aiAnalysis.actionPlan.length > 0 && (
+                  <div className="bg-orange-50 rounded-2xl border border-orange-200 p-5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <ListChecks className="w-4 h-4 text-orange-600" />
+                      <p className="text-xs font-bold text-orange-700 uppercase tracking-widest">Action Plan</p>
+                    </div>
+                    <div className="space-y-2.5">
+                      {aiAnalysis.actionPlan.map((item, i) => {
+                        const isHigh = item.startsWith("[HIGH]");
+                        const isMed = item.startsWith("[MEDIUM]");
+                        const bg = isHigh ? "bg-red-100 border-red-200" : isMed ? "bg-amber-100 border-amber-200" : "bg-gray-100 border-gray-200";
+                        const dot = isHigh ? "bg-red-500" : isMed ? "bg-amber-500" : "bg-blue-400";
+                        const text = isHigh ? "text-red-800" : isMed ? "text-amber-800" : "text-gray-700";
+                        return (
+                          <div key={i} className={`flex items-start gap-2.5 px-3 py-2 rounded-lg border ${bg}`}>
+                            <span className={`w-2 h-2 rounded-full ${dot} mt-1.5 flex-shrink-0`} />
+                            <p className={`text-xs ${text} leading-relaxed`}>{item}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
             )}
+          </div>
 
-            {/* ── REVISIONS TAB ── */}
-            {activeTab === "revisions" && (
-              <div className="p-4 space-y-3">
-                <p className="text-[10px] text-gray-400 uppercase tracking-widest">All Revisions — oldest to newest</p>
-                <div className="space-y-2">
-                  {allRevisions.map((rev) => {
+          {/* ── Right column: Info + Revisions ─────────────────────────────── */}
+          <div className="space-y-5">
+
+            {/* Drawing Info */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <Info className="w-4 h-4 text-gray-500" />
+                <h3 className="text-xs font-bold text-gray-700 uppercase tracking-widest">Drawing Details</h3>
+              </div>
+              <div className="space-y-2.5">
+                {[
+                  { label: "Drawing No.", value: drawing.drawingNo, mono: true },
+                  { label: "Title", value: drawing.title || "—" },
+                  { label: "Project", value: drawing.project || "—" },
+                  { label: "System", value: drawing.systemName || "—" },
+                  { label: "Department", value: drawing.department || "—" },
+                  { label: "Drawing Type", value: drawing.drawingType || "—" },
+                  { label: "Uploaded By", value: drawing.uploadedBy || "—" },
+                  { label: "Date", value: formatDate(drawing.uploadedAt) },
+                ].map(({ label, value, mono }) => (
+                  <div key={label} className="flex items-start justify-between gap-3">
+                    <span className="text-[10px] text-gray-400 uppercase tracking-widest shrink-0 w-24 pt-0.5">{label}</span>
+                    <span className={`text-xs text-gray-800 font-medium text-right ${mono ? "font-mono" : ""}`}>{value}</span>
+                  </div>
+                ))}
+              </div>
+              {/* Approvals */}
+              <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
+                <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-2">Approvals</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-500 flex items-center gap-1"><UserCheck className="w-3 h-3" /> Checked</span>
+                  {drawing.checkedBy
+                    ? <span className="text-[11px] text-emerald-700 font-semibold">{drawing.checkedBy.name}</span>
+                    : <span className="text-[11px] text-gray-400 italic">Pending</span>}
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-500 flex items-center gap-1"><ThumbsUp className="w-3 h-3" /> Approved</span>
+                  {drawing.approvedBy
+                    ? <span className="text-[11px] text-blue-700 font-semibold">{drawing.approvedBy.name}</span>
+                    : <span className="text-[11px] text-gray-400 italic">Pending</span>}
+                </div>
+              </div>
+              {drawing.note && (
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-1">Note</p>
+                  <p className="text-xs text-gray-700 leading-relaxed">{drawing.note}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Revision History */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <History className="w-4 h-4 text-gray-500" />
+                  <h3 className="text-xs font-bold text-gray-700 uppercase tracking-widest">Revision History</h3>
+                </div>
+                <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                  {allRevisions.length} version{allRevisions.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+              <div className="relative">
+                {/* Timeline line */}
+                <div className="absolute left-3 top-2 bottom-2 w-px bg-gray-200" />
+                <div className="space-y-4">
+                  {allRevisions.map((rev, i) => {
                     const revCfg = STATUS_CONFIG[rev.status as DrawingStatus] || STATUS_CONFIG.draft;
-                    const isViewing = rev.isCurrent ? viewRevIdx === null : viewRevIdx === rev.idx;
                     return (
-                      <div
-                        key={rev.isCurrent ? "current" : rev.idx}
-                        className={`rounded-xl border p-3 transition-all ${isViewing ? "border-blue-400 bg-blue-50 shadow-sm" : "border-gray-200 bg-white hover:border-gray-300"}`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold border ${revCfg.bg} ${revCfg.border} ${revCfg.textColor}`}>
-                                {rev.revisionLabel}
-                              </span>
-                              {rev.isCurrent && (
-                                <span className="text-[9px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">CURRENT</span>
-                              )}
-                            </div>
-                            <p className="text-[10px] text-gray-500 mt-1">{formatDateTime(rev.uploadedAt)}</p>
-                            {rev.revisedBy && <p className="text-[10px] text-gray-500">By: {rev.revisedBy}</p>}
-                            {rev.note && <p className="text-xs text-gray-700 mt-1 leading-relaxed">{rev.note}</p>}
-                            {rev.fileName && <p className="text-[10px] text-gray-400 mt-0.5 truncate">{rev.fileName}</p>}
+                      <div key={rev.isCurrent ? "current" : rev.idx} className="flex gap-3 relative">
+                        {/* Timeline dot */}
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 z-10 border-2 ${
+                          rev.isCurrent
+                            ? "bg-blue-600 border-blue-600"
+                            : "bg-white border-gray-300"
+                        }`}>
+                          {rev.isCurrent
+                            ? <CheckCircle2 className="w-3 h-3 text-white" />
+                            : <span className="text-[9px] font-bold text-gray-500">{i + 1}</span>}
+                        </div>
+                        <div className="flex-1 min-w-0 pb-2">
+                          <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border ${revCfg.bg} ${revCfg.border} ${revCfg.textColor}`}>
+                              {rev.revisionLabel}
+                            </span>
+                            {rev.isCurrent && (
+                              <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">CURRENT</span>
+                            )}
                           </div>
-                          <button
-                            onClick={() => {
-                              if (rev.isCurrent) {
-                                setViewRevIdx(null);
-                              } else {
-                                loadRevFile(rev.idx);
-                              }
-                              setPageNumber(1);
-                            }}
-                            disabled={revFileLoading === rev.idx}
-                            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold transition-colors flex-shrink-0 ${
-                              isViewing
-                                ? "bg-blue-600 text-white"
-                                : "bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700"
-                            }`}
-                          >
-                            {revFileLoading === rev.idx
-                              ? <Loader2 className="w-3 h-3 animate-spin" />
-                              : <Eye className="w-3 h-3" />}
-                            {isViewing ? "Viewing" : "View"}
-                          </button>
+                          <p className="text-[10px] text-gray-400">{formatDateTime(rev.uploadedAt)}</p>
+                          {rev.revisedBy && <p className="text-[10px] text-gray-500 font-medium">By: {rev.revisedBy}</p>}
+                          {rev.fileName && <p className="text-[10px] text-gray-400 truncate">{rev.fileName}</p>}
+                          {rev.note && (
+                            <p className="text-[11px] text-gray-600 mt-1 leading-relaxed bg-gray-50 rounded-lg px-2 py-1.5 border border-gray-100">
+                              {rev.note}
+                            </p>
+                          )}
                         </div>
                       </div>
                     );
                   })}
                 </div>
               </div>
-            )}
-
-            {/* ── AI ANALYSIS TAB ── */}
-            {activeTab === "ai" && (
-              <div className="p-4 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-purple-500" />
-                    <p className="text-xs font-semibold text-purple-700">AI Drawing Analysis</p>
-                  </div>
-                  {aiAnalysis && (
-                    <button onClick={handleAnalyze} disabled={aiLoading}
-                      className="text-[10px] text-purple-500 hover:text-purple-700 flex items-center gap-1">
-                      <RefreshCw className="w-3 h-3" /> Re-analyze
-                    </button>
-                  )}
-                </div>
-
-                {!aiAnalysis && !aiLoading && !aiError && (
-                  <div className="flex flex-col items-center gap-3 py-8 text-center">
-                    <ScanSearch className="w-10 h-10 text-gray-300" />
-                    <p className="text-xs text-gray-400 max-w-[180px] leading-relaxed">
-                      Waiting for drawing to load, then AI analysis will start automatically
-                    </p>
-                    <button onClick={handleAnalyze}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors">
-                      <Sparkles className="w-3.5 h-3.5" /> Analyze Now
-                    </button>
-                  </div>
-                )}
-
-                {aiLoading && (
-                  <div className="flex flex-col items-center gap-3 py-8 text-center">
-                    <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
-                      <Loader2 className="w-6 h-6 text-purple-500 animate-spin" />
-                    </div>
-                    <p className="text-xs text-gray-500 font-medium">Analyzing drawing with AI…</p>
-                    <p className="text-[10px] text-gray-400">Checking standards, elements, and generating report</p>
-                  </div>
-                )}
-
-                {aiError && (
-                  <div className="rounded-xl bg-red-50 border border-red-200 p-3">
-                    <p className="text-xs text-red-600 font-medium">Analysis failed</p>
-                    <p className="text-[11px] text-red-500 mt-0.5">{aiError}</p>
-                    <button onClick={handleAnalyze} className="mt-2 text-xs text-red-600 hover:text-red-800 underline flex items-center gap-1">
-                      <RefreshCw className="w-3 h-3" /> Retry
-                    </button>
-                  </div>
-                )}
-
-                {aiAnalysis && !aiLoading && (
-                  <div className="space-y-4">
-                    {/* Type + Department */}
-                    <div className="rounded-xl bg-purple-50 border border-purple-200 p-3 space-y-2">
-                      <div>
-                        <p className="text-[9px] text-purple-500 uppercase tracking-widest mb-0.5 flex items-center gap-1"><Tag className="w-2.5 h-2.5" /> Detected Type</p>
-                        <p className="text-xs text-gray-900 font-semibold">{aiAnalysis.detectedType || "—"}</p>
-                      </div>
-                      {aiAnalysis.suggestedDepartment && (
-                        <div>
-                          <p className="text-[9px] text-purple-500 uppercase tracking-widest mb-0.5">Suggested Department</p>
-                          <p className="text-xs text-gray-700">{aiAnalysis.suggestedDepartment}</p>
-                        </div>
-                      )}
-                      {aiAnalysis.isElectrical && (
-                        <div className="flex items-center gap-1.5 pt-1">
-                          <Sparkles className="w-3 h-3 text-amber-500" />
-                          <p className="text-[10px] text-amber-700 font-medium">Full electrical analysis applied</p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Summary */}
-                    {aiAnalysis.summary && (
-                      <div className="rounded-xl bg-gray-50 border border-gray-200 p-3">
-                        <p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1.5">Summary</p>
-                        <p className="text-xs text-gray-700 leading-relaxed">{aiAnalysis.summary}</p>
-                      </div>
-                    )}
-
-                    {/* Key Elements */}
-                    {aiAnalysis.keyElements.length > 0 && (
-                      <div>
-                        <p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1.5 flex items-center gap-1"><ListChecks className="w-3 h-3" /> Key Elements</p>
-                        <div className="flex flex-wrap gap-1">
-                          {aiAnalysis.keyElements.map((el, i) => (
-                            <span key={i} className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full">{el}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Observations */}
-                    {aiAnalysis.observations.length > 0 && (
-                      <div>
-                        <p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1.5 flex items-center gap-1"><Eye className="w-3 h-3" /> Observations</p>
-                        <div className="space-y-1">
-                          {aiAnalysis.observations.map((obs, i) => (
-                            <div key={i} className="flex items-start gap-1.5">
-                              <span className="w-1 h-1 rounded-full bg-amber-400 mt-1.5 flex-shrink-0" />
-                              <p className="text-[11px] text-gray-600 leading-relaxed">{obs}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Recommendations */}
-                    {aiAnalysis.recommendations.length > 0 && (
-                      <div>
-                        <p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1.5 flex items-center gap-1"><Lightbulb className="w-3 h-3" /> Recommendations</p>
-                        <div className="space-y-1">
-                          {aiAnalysis.recommendations.map((rec, i) => (
-                            <div key={i} className="flex items-start gap-1.5">
-                              <span className="w-1 h-1 rounded-full bg-emerald-500 mt-1.5 flex-shrink-0" />
-                              <p className="text-[11px] text-gray-600 leading-relaxed">{rec}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Engineering Report */}
-                    {aiAnalysis.report && (
-                      <div className="rounded-xl bg-blue-50 border border-blue-200 p-3">
-                        <p className="text-[9px] text-blue-600 uppercase tracking-widest mb-2 flex items-center gap-1">
-                          <FileText className="w-3 h-3" /> Engineering Report
-                        </p>
-                        <p className="text-[11px] text-gray-700 leading-relaxed whitespace-pre-line">{aiAnalysis.report}</p>
-                      </div>
-                    )}
-
-                    {/* Action Plan */}
-                    {aiAnalysis.actionPlan && aiAnalysis.actionPlan.length > 0 && (
-                      <div className="rounded-xl bg-orange-50 border border-orange-200 p-3">
-                        <p className="text-[9px] text-orange-600 uppercase tracking-widest mb-2 flex items-center gap-1">
-                          <ListChecks className="w-3 h-3" /> Action Plan
-                        </p>
-                        <div className="space-y-2">
-                          {aiAnalysis.actionPlan.map((item, i) => {
-                            const isHigh = item.startsWith("[HIGH]");
-                            const isMed = item.startsWith("[MEDIUM]");
-                            const dotColor = isHigh ? "bg-red-500" : isMed ? "bg-amber-500" : "bg-blue-400";
-                            const textColor = isHigh ? "text-red-700" : isMed ? "text-amber-700" : "text-gray-600";
-                            return (
-                              <div key={i} className="flex items-start gap-2">
-                                <span className={`w-2 h-2 rounded-full ${dotColor} mt-1.5 flex-shrink-0`} />
-                                <p className={`text-[11px] ${textColor} leading-relaxed`}>{item}</p>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+            </div>
           </div>
+
         </div>
       </div>
     </div>
