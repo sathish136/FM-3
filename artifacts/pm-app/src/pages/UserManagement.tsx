@@ -2,7 +2,7 @@ import { Layout } from "@/components/Layout";
 import {
   Users, Search, Shield, ShieldOff, Save,
   RefreshCw, ChevronRight, Loader2, Lock, Unlock, Eye, Pencil, Ban,
-  KeyRound, SunMedium, Moon, Monitor, LayoutDashboard, PanelLeftClose, Layers,
+  KeyRound, SunMedium, Moon, Monitor, LayoutDashboard, PanelLeftClose, Layers, Copy, LayoutGrid,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -72,7 +72,7 @@ interface ErpUser {
 }
 
 type ThemeOption = "light" | "dark" | "system";
-type NavbarStyleOption = "full" | "mini" | "auto";
+type NavbarStyleOption = "full" | "mini" | "auto" | "launcher";
 
 interface Permission {
   email: string;
@@ -228,6 +228,8 @@ export function UserManagementContent() {
   const [draftTheme, setDraftTheme]           = useState<ThemeOption>("system");
   const [draftNavbarStyle, setDraftNavbarStyle] = useState<NavbarStyleOption>("full");
   const [projSearch, setProjSearch]           = useState("");
+  const [copyFromOpen, setCopyFromOpen]       = useState(false);
+  const [copyFromSearch, setCopyFromSearch]   = useState("");
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -311,6 +313,20 @@ export function UserManagementContent() {
     setDraftProjects(prev =>
       prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]
     );
+  }
+
+  function copyFromUser(email: string) {
+    const p = perms[email];
+    if (!p) return;
+    setDraftAccess(p.hasAccess);
+    setDraftRoles(rolesFromPermission(p));
+    setDraftProjects((() => { try { return JSON.parse(p.allowedProjects || "[]"); } catch { return []; } })());
+    setDraftTwoFa(p.twoFaEnabled ?? false);
+    setDraftTheme(p.theme ?? "system");
+    setDraftNavbarStyle(p.navbarStyle ?? "full");
+    setCopyFromOpen(false);
+    setCopyFromSearch("");
+    toast({ title: `Copied settings from ${p.fullName || email}`, description: "Review and save to apply." });
   }
 
   const filtered = users.filter(u =>
@@ -479,6 +495,57 @@ export function UserManagementContent() {
                 <Toggle on={draftAccess} onChange={setDraftAccess} />
               </div>
 
+              {/* Copy from user */}
+              <div className="relative">
+                <button onClick={() => { setCopyFromOpen(o => !o); setCopyFromSearch(""); }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border bg-card hover:bg-muted text-foreground text-xs font-semibold transition-colors">
+                  <Copy className="w-3.5 h-3.5 text-violet-500" />
+                  Copy from…
+                </button>
+                {copyFromOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setCopyFromOpen(false)} />
+                  <div className="absolute right-0 top-full mt-2 w-72 bg-popover border border-border rounded-xl shadow-2xl z-50 overflow-hidden">
+                    <div className="p-2 border-b border-border">
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                        <input
+                          autoFocus
+                          value={copyFromSearch}
+                          onChange={e => setCopyFromSearch(e.target.value)}
+                          placeholder="Search users…"
+                          className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-border bg-muted focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        />
+                      </div>
+                    </div>
+                    <div className="max-h-56 overflow-y-auto">
+                      {users
+                        .filter(u => u.email !== selected?.email && perms[u.email] && (
+                          u.full_name.toLowerCase().includes(copyFromSearch.toLowerCase()) ||
+                          u.email.toLowerCase().includes(copyFromSearch.toLowerCase())
+                        ))
+                        .map(u => (
+                          <button key={u.email} onClick={() => copyFromUser(u.email)}
+                            className="w-full flex items-center gap-3 px-3 py-2 hover:bg-accent text-left transition-colors">
+                            <UserAvatar user={u} size="sm" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold truncate text-foreground">{u.full_name}</p>
+                              <p className="text-[10px] text-muted-foreground truncate">{u.email}</p>
+                            </div>
+                          </button>
+                        ))}
+                      {users.filter(u => u.email !== selected?.email && perms[u.email] && (
+                        u.full_name.toLowerCase().includes(copyFromSearch.toLowerCase()) ||
+                        u.email.toLowerCase().includes(copyFromSearch.toLowerCase())
+                      )).length === 0 && (
+                        <p className="text-xs text-muted-foreground text-center py-6">No configured users found</p>
+                      )}
+                    </div>
+                  </div>
+                  </>
+                )}
+              </div>
+
               <button onClick={save} disabled={saving}
                 className="flex items-center gap-2 px-5 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold shadow-sm transition-colors disabled:opacity-60">
                 {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
@@ -644,9 +711,10 @@ export function UserManagementContent() {
                   </div>
                   <div className="space-y-1.5">
                     {([
-                      { value: "full", label: "Full Sidebar",  desc: "Expanded with labels",  icon: <Layers className="w-3.5 h-3.5" />,          active: "bg-teal-50 border-teal-300 text-teal-700" },
-                      { value: "mini", label: "Mini Sidebar",  desc: "Icons only, compact",   icon: <PanelLeftClose className="w-3.5 h-3.5" />,   active: "bg-teal-50 border-teal-300 text-teal-700" },
-                      { value: "auto", label: "Auto",          desc: "Collapses on small screens", icon: <Monitor className="w-3.5 h-3.5" />,      active: "bg-teal-50 border-teal-300 text-teal-700" },
+                      { value: "full",     label: "Full Sidebar",  desc: "Expanded with labels",      icon: <Layers className="w-3.5 h-3.5" />,       active: "bg-teal-50 border-teal-300 text-teal-700" },
+                      { value: "mini",     label: "Mini Sidebar",  desc: "Icons only, compact",       icon: <PanelLeftClose className="w-3.5 h-3.5" />,active: "bg-teal-50 border-teal-300 text-teal-700" },
+                      { value: "auto",     label: "Auto",          desc: "Collapses on small screens", icon: <Monitor className="w-3.5 h-3.5" />,      active: "bg-teal-50 border-teal-300 text-teal-700" },
+                      { value: "launcher", label: "Launcher",      desc: "App icon grid, no sidebar", icon: <LayoutGrid className="w-3.5 h-3.5" />,   active: "bg-violet-50 border-violet-300 text-violet-700" },
                     ] as { value: NavbarStyleOption; label: string; desc: string; icon: React.ReactNode; active: string }[]).map(opt => (
                       <button key={opt.value} onClick={() => setDraftNavbarStyle(opt.value)}
                         className={`w-full flex items-start gap-2.5 px-3 py-2 rounded-xl border text-left transition-all ${

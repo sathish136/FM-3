@@ -37,12 +37,22 @@ async function applyUserSettingsFromDb(email: string) {
     }
 
     // Always apply DB navbarStyle on login/session restore (admin-configured).
-    // Dispatch a custom event so Layout.tsx can update React state immediately.
+    // Dispatch custom events so Layout.tsx can update React state immediately.
     const sidebarKey = "fm_sidebar_collapsed";
-    if (settings.navbarStyle === "mini") {
+    if (settings.navbarStyle === "launcher") {
+      // Switch to launcher mode (icon grid nav)
+      localStorage.setItem("fm_nav_style", "launcher");
+      window.dispatchEvent(new CustomEvent("fm_nav_style_change", { detail: "launcher" }));
+    } else if (settings.navbarStyle === "mini") {
+      // Ensure sidebar mode, collapsed
+      localStorage.setItem("fm_nav_style", "sidebar");
+      window.dispatchEvent(new CustomEvent("fm_nav_style_change", { detail: "sidebar" }));
       localStorage.setItem(sidebarKey, "true");
       window.dispatchEvent(new CustomEvent("fm_sidebar_change", { detail: { collapsed: true } }));
     } else if (settings.navbarStyle === "full" || settings.navbarStyle === "auto") {
+      // Ensure sidebar mode, expanded
+      localStorage.setItem("fm_nav_style", "sidebar");
+      window.dispatchEvent(new CustomEvent("fm_nav_style_change", { detail: "sidebar" }));
       localStorage.setItem(sidebarKey, "false");
       window.dispatchEvent(new CustomEvent("fm_sidebar_change", { detail: { collapsed: false } }));
     }
