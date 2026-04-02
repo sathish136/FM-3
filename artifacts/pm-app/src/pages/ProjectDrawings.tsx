@@ -296,20 +296,6 @@ function PdfWatermark({
   const font = "'Trebuchet MS', 'Century Gothic', 'Gill Sans', Arial, sans-serif";
   const color = statusColor[status];
 
-  const armStyle = (deg: number): React.CSSProperties => ({
-    position: "absolute",
-    top: "50%",
-    left: "50%",
-    transform: `translate(-50%, -50%) rotate(${deg}deg)`,
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: "4px",
-    whiteSpace: "nowrap",
-    pointerEvents: "none",
-    userSelect: "none",
-  });
-
   return (
     <div
       style={{
@@ -319,33 +305,25 @@ function PdfWatermark({
         pointerEvents: "none",
         userSelect: "none",
         overflow: "hidden",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
       }}
     >
-      {/* Arm 1: bottom-left → top-right (+45°) */}
-      <div style={armStyle(45)}>
-        <span style={{ fontSize: "26px", fontFamily: font, fontWeight: 900, letterSpacing: "0.22em", textTransform: "uppercase", color }}>
-          WTT INTERNATIONAL
-        </span>
-        <span style={{ fontSize: "13px", fontFamily: font, fontWeight: 700, letterSpacing: "0.28em", textTransform: "uppercase", color }}>
-          {statusText}
-        </span>
-        <span style={{ fontSize: "10px", fontFamily: font, fontWeight: 400, letterSpacing: "0.14em", fontStyle: "italic", textTransform: "uppercase", color, opacity: 0.7 }}>
-          Water Loving Technology
-        </span>
-      </div>
-
-      {/* Arm 2: top-left → bottom-right (−45°) */}
-      <div style={armStyle(-45)}>
-        <span style={{ fontSize: "26px", fontFamily: font, fontWeight: 900, letterSpacing: "0.22em", textTransform: "uppercase", color }}>
-          WTT INTERNATIONAL
-        </span>
-        <span style={{ fontSize: "13px", fontFamily: font, fontWeight: 700, letterSpacing: "0.28em", textTransform: "uppercase", color }}>
-          {statusText}
-        </span>
-        <span style={{ fontSize: "10px", fontFamily: font, fontWeight: 400, letterSpacing: "0.14em", fontStyle: "italic", textTransform: "uppercase", color, opacity: 0.7 }}>
-          Water Loving Technology
-        </span>
-      </div>
+      <span
+        style={{
+          fontSize: "48px",
+          fontFamily: font,
+          fontWeight: 900,
+          letterSpacing: "0.25em",
+          textTransform: "uppercase",
+          color,
+          transform: "rotate(-45deg)",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {statusText}
+      </span>
     </div>
   );
 }
