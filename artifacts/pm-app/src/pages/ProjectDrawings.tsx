@@ -1060,7 +1060,18 @@ function UploadModal({
   onSubmit,
 }: UploadModalProps) {
   const [project, setProject] = useState("");
-  const [department, setDepartment] = useState(userDept || "Mechanical");
+  // Ensure the initial department is always one of the standard department values.
+  // ERPNext profile departments (e.g. "Design - Mechanical - WTT") don't match the
+  // standard list, so we find the first standard dept that appears in the profile dept
+  // string, or fall back to "Mechanical".
+  const resolvedDept = (() => {
+    if (!userDept) return "Mechanical";
+    const exact = DEPARTMENTS.find(d => d === userDept);
+    if (exact) return exact;
+    const partial = DEPARTMENTS.find(d => userDept.toLowerCase().includes(d.toLowerCase()));
+    return partial || "Mechanical";
+  })();
+  const [department, setDepartment] = useState(resolvedDept);
   const [note, setNote] = useState("");
   const [noteError, setNoteError] = useState(false);
   const [files, setFiles] = useState<FileEntry[]>([]);
@@ -1831,10 +1842,17 @@ export default function ProjectDrawings() {
     saveDrawings(updated);
   };
 
+  // Helper: check if a drawing's department matches an allowed dept (exact OR partial,
+  // to handle ERPNext dept strings like "Design - Mechanical - WTT" matching "Mechanical")
+  const deptAllowed = (drawingDept: string) =>
+    allowedDrawingDepts.some(
+      (a) => a === drawingDept || drawingDept.toLowerCase().includes(a.toLowerCase())
+    );
+
   // Only show departments the user is allowed to see (if restriction is set)
   const allDepts = Array.from(
     new Set(drawings.map((d) => d.department).filter(Boolean)),
-  ).sort().filter(dept => allowedDrawingDepts.length === 0 || allowedDrawingDepts.includes(dept));
+  ).sort().filter(dept => allowedDrawingDepts.length === 0 || deptAllowed(dept));
 
   const allProjects = Array.from(
     new Set(drawings.map((d) => d.project).filter(Boolean)),
@@ -1842,7 +1860,7 @@ export default function ProjectDrawings() {
 
   const filtered = drawings.filter((d) => {
     // Enforce drawing department permissions
-    if (allowedDrawingDepts.length > 0 && !allowedDrawingDepts.includes(d.department)) return false;
+    if (allowedDrawingDepts.length > 0 && !deptAllowed(d.department)) return false;
     const q = search.toLowerCase();
     const matchSearch =
       !q ||
@@ -2012,11 +2030,16 @@ export default function ProjectDrawings() {
     }
   }, [viewerIdx]);
 
+  // Base set respecting department permissions (for accurate counts)
+  const permittedDrawings = allowedDrawingDepts.length > 0
+    ? drawings.filter((d) => deptAllowed(d.department))
+    : drawings;
+
   const counts = {
-    all: drawings.length,
-    draft: drawings.filter((d) => d.status === "draft").length,
-    revision: drawings.filter((d) => d.status === "revision").length,
-    final: drawings.filter((d) => d.status === "final").length,
+    all: permittedDrawings.length,
+    draft: permittedDrawings.filter((d) => d.status === "draft").length,
+    revision: permittedDrawings.filter((d) => d.status === "revision").length,
+    final: permittedDrawings.filter((d) => d.status === "final").length,
   };
 
   return (
