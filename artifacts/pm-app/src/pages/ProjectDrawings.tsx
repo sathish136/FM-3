@@ -27,6 +27,7 @@ import {
   ChevronDown,
   Briefcase,
   UserCheck,
+  AlertTriangle,
   ThumbsUp,
   AlertCircle,
   Users,
@@ -2080,6 +2081,11 @@ export default function ProjectDrawings() {
   const [viewerIdx, setViewerIdx] = useState<number | null>(null);
   const [modal, setModal] = useState<ModalState>({ type: "none" });
   const [sendModal, setSendModal] = useState<ProjectDrawing | null>(null);
+  const [validationMsg, setValidationMsg] = useState<string | null>(null);
+  const showValidationError = (msg: string) => {
+    setValidationMsg(msg);
+    setTimeout(() => setValidationMsg(null), 4000);
+  };
   const [userProfile, setUserProfile] = useState<{
     department: string | null;
     designation: string | null;
@@ -2315,6 +2321,10 @@ export default function ProjectDrawings() {
   };
 
   const handleFinal = async (drawing: ProjectDrawing) => {
+    if (!drawing.approvedBy) {
+      showValidationError("Drawing must be approved before it can be marked as Final Copy.");
+      return;
+    }
     const historyEntry: RevisionEntry = {
       revisionLabel: drawing.revisionLabel,
       uploadedAt: drawing.uploadedAt,
@@ -2350,6 +2360,10 @@ export default function ProjectDrawings() {
   };
 
   const handleApprove = async (drawing: ProjectDrawing) => {
+    if (!drawing.checkedBy) {
+      showValidationError("Drawing must be checked (FST validated) before it can be approved.");
+      return;
+    }
     const updated: ProjectDrawing = {
       ...drawing,
       approvedBy: {
@@ -2837,10 +2851,29 @@ export default function ProjectDrawings() {
               <strong>{modal.drawing.drawingNo}</strong>
               {modal.drawing.title ? ` — ${modal.drawing.title}` : ""}
             </p>
-            <p className="text-xs text-gray-400 text-center mb-6">
+            <p className="text-xs text-gray-400 text-center mb-4">
               This will apply a <strong>FINAL COPY</strong> watermark when the
               PDF is viewed.
             </p>
+            {/* Validation: must be approved first */}
+            {!modal.drawing.approvedBy && (
+              <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
+                <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-xs font-semibold text-amber-700">Cannot finalize — Approval required</p>
+                  <p className="text-xs text-amber-600 mt-0.5">This drawing has not been approved yet. Mark it as <strong>Checked</strong> and then <strong>Approved</strong> before finalizing.</p>
+                </div>
+              </div>
+            )}
+            {modal.drawing.approvedBy && !modal.drawing.checkedBy && (
+              <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
+                <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-xs font-semibold text-amber-700">Note: Not checked (FST)</p>
+                  <p className="text-xs text-amber-600 mt-0.5">This drawing was approved without a check mark. Proceeding is allowed but not recommended.</p>
+                </div>
+              </div>
+            )}
             <div className="flex gap-3">
               <button
                 onClick={() => setModal({ type: "none" })}
@@ -2850,7 +2883,8 @@ export default function ProjectDrawings() {
               </button>
               <button
                 onClick={() => handleFinal(modal.drawing)}
-                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2"
+                disabled={!modal.drawing.approvedBy}
+                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <CheckCircle2 className="w-4 h-4" /> Confirm Final
               </button>
@@ -2858,6 +2892,14 @@ export default function ProjectDrawings() {
           </div>
         </div>
       )}
+      {/* Validation toast */}
+      {validationMsg && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 bg-gray-900 text-white text-sm font-medium px-5 py-3 rounded-2xl shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+          {validationMsg}
+        </div>
+      )}
+
       {sendModal && (
         <SendApprovalModal
           drawing={sendModal}
