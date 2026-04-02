@@ -371,6 +371,7 @@ function PdfViewer({
   const [activeTab, setActiveTab] = useState<PanelTab>("info");
   const [showCheckConfirm, setShowCheckConfirm] = useState(false);
   const cfg = STATUS_CONFIG[drawing.status];
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const allRevisionNotes: Array<{
     label: string;
@@ -396,6 +397,38 @@ function PdfViewer({
   const hasSummaryPage = drawing.history.length > 0 || !!drawing.note;
   const totalPages = numPages ? numPages + (hasSummaryPage ? 1 : 0) : null;
   const isOnSummaryPage = hasSummaryPage && totalPages !== null && pageNumber === totalPages;
+
+  // Navigate to a page and reset scroll to top
+  const goToPage = useCallback((n: number) => {
+    if (!totalPages) return;
+    setPageNumber(Math.max(1, Math.min(totalPages, n)));
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [totalPages]);
+
+  // Navigate to a page and scroll to bottom (going back)
+  const goToPageBottom = useCallback((n: number) => {
+    if (!totalPages) return;
+    setPageNumber(Math.max(1, Math.min(totalPages, n)));
+    requestAnimationFrame(() => {
+      if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    });
+  }, [totalPages]);
+
+  // Wheel: at bottom edge scroll down → next page; at top edge scroll up → prev page
+  const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    if (!totalPages) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 6;
+    const atTop = el.scrollTop <= 6;
+    if (e.deltaY > 0 && atBottom && pageNumber < totalPages) {
+      e.preventDefault();
+      goToPage(pageNumber + 1);
+    } else if (e.deltaY < 0 && atTop && pageNumber > 1) {
+      e.preventDefault();
+      goToPageBottom(pageNumber - 1);
+    }
+  }, [totalPages, pageNumber, goToPage, goToPageBottom]);
 
   useEffect(() => {
     setPageNumber(1);
@@ -520,7 +553,7 @@ function PdfViewer({
         {totalPages && (
           <div className="flex items-center gap-0.5">
             <button
-              onClick={() => setPageNumber((p) => Math.max(1, p - 1))}
+              onClick={() => goToPage(pageNumber - 1)}
               disabled={pageNumber <= 1}
               className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-colors"
             >
@@ -531,8 +564,8 @@ function PdfViewer({
               {isOnSummaryPage && <span className="text-blue-400 ml-1">★</span>}
             </span>
             <button
-              onClick={() => setPageNumber((p) => Math.min(totalPages!, p + 1))}
-              disabled={pageNumber >= totalPages}
+              onClick={() => goToPage(pageNumber + 1)}
+              disabled={pageNumber >= (totalPages ?? 1)}
               className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-colors"
             >
               <ChevronRight className="w-4 h-4" />
@@ -551,6 +584,8 @@ function PdfViewer({
       {/* Body */}
       <div className="flex-1 flex overflow-hidden">
         <div
+          ref={scrollRef}
+          onWheel={handleWheel}
           className={`flex-1 overflow-auto bg-gray-900 flex items-start justify-center p-6 relative ${highlightMode ? "select-text cursor-text" : "select-none"}`}
         >
           {pdfError ? (
@@ -1024,7 +1059,7 @@ function PdfViewer({
                           (pg) => (
                             <button
                               key={pg}
-                              onClick={() => setPageNumber(pg)}
+                              onClick={() => goToPage(pg)}
                               className={`w-full rounded-lg overflow-hidden border-2 transition-colors text-left ${pg === pageNumber ? "border-blue-500" : "border-transparent hover:border-gray-700"}`}
                             >
                               <div className="bg-white overflow-hidden flex items-center justify-center relative">
