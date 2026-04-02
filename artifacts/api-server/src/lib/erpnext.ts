@@ -1338,6 +1338,35 @@ export async function createErpNextExpenseClaim(payload: {
 
 export async function fetchErpNextUsers(): Promise<ErpUser[]> {
   if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
+
+  // Build a set of user emails linked to blocked employees
+  const blockedUserIds = new Set<string>();
+  try {
+    const empFields = JSON.stringify(["name", "user_id", "department", "status"]);
+    const empParams = new URLSearchParams({ fields: empFields, limit_page_length: "2000" });
+    const empRes = await fetch(`${ERPNEXT_URL}/api/resource/Employee?${empParams}`, {
+      headers: { Authorization: authHeader() },
+    });
+    if (empRes.ok) {
+      const empData = await empRes.json();
+      const allEmps: { name: string; user_id?: string | null; department?: string | null }[] =
+        empData.data ?? [];
+      // Apply the same visibility filter used for employees
+      const allowedEmps = applyEmployeeFilter(allEmps);
+      const allowedUserIds = new Set(
+        allowedEmps.filter(e => e.user_id).map(e => e.user_id as string),
+      );
+      // Any employee whose user_id is NOT in the allowed set → block that user
+      for (const e of allEmps) {
+        if (e.user_id && !allowedUserIds.has(e.user_id)) {
+          blockedUserIds.add(e.user_id);
+        }
+      }
+    }
+  } catch {
+    // If employee fetch fails, skip filtering — show all users
+  }
+
   const fields = JSON.stringify(["name", "full_name", "user_image", "enabled"]);
   const filters = JSON.stringify([
     ["User", "user_type", "=", "System User"],
@@ -1348,12 +1377,14 @@ export async function fetchErpNextUsers(): Promise<ErpUser[]> {
   const res = await fetch(url, { headers: { Authorization: authHeader() } });
   if (!res.ok) throw new Error(`ERPNext users: ${res.status}`);
   const data = await res.json();
-  return (data.data ?? []).map((u: any) => ({
-    email: u.name,
-    full_name: u.full_name || u.name,
-    user_image: u.user_image || null,
-    enabled: u.enabled ?? 1,
-  }));
+  return (data.data ?? [])
+    .filter((u: any) => !blockedUserIds.has(u.name))
+    .map((u: any) => ({
+      email: u.name,
+      full_name: u.full_name || u.name,
+      user_image: u.user_image || null,
+      enabled: u.enabled ?? 1,
+    }));
 }
 
 export interface LatestActivity {

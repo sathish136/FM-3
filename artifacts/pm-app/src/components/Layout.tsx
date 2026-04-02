@@ -794,7 +794,10 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
     if (isAdmin || moduleRoles === null) return true;
     const key = PATH_TO_MODULE[path];
     if (!key) return true;
-    const role = moduleRoles[key] ?? "none";
+    const role = moduleRoles[key];
+    // If the module key is not present in saved roles (e.g. newly added module),
+    // default to allowed so new features are visible without re-saving permissions.
+    if (role === undefined) return true;
     return role === "read" || role === "write";
   }
 
