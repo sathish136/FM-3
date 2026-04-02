@@ -393,7 +393,7 @@ function PdfViewer({
   const [scale, setScale] = useState(1.2);
   const [highlightMode, setHighlightMode] = useState(false);
   const [showPanel, setShowPanel] = useState(true);
-  const [activeTab, setActiveTab] = useState<PanelTab>("info");
+  const [activeTab, setActiveTab] = useState<PanelTab>("ai");
   const [showCheckConfirm, setShowCheckConfirm] = useState(false);
   const cfg = STATUS_CONFIG[drawing.status];
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -407,9 +407,13 @@ function PdfViewer({
     keyElements: string[];
     observations: string[];
     recommendations: string[];
+    report: string;
+    actionPlan: string[];
+    isElectrical: boolean;
   } | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const autoAnalyzedRef = useRef(false);
 
   const allRevisionNotes: Array<{
     label: string;
@@ -521,6 +525,7 @@ function PdfViewer({
     setAiError(null);
     scrollToBottomRef.current = false;
     isTransitioningRef.current = false;
+    autoAnalyzedRef.current = false;
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [drawing.id]);
 
@@ -565,6 +570,23 @@ function PdfViewer({
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [onClose, onPrev, onNext, hasPrev, hasNext]);
+
+  // Auto-analyze when PDF canvas is ready (after page renders)
+  useEffect(() => {
+    if (autoAnalyzedRef.current) return;
+    if (aiAnalysis || aiLoading) return;
+    const tryAnalyze = () => {
+      const canvas = scrollRef.current?.querySelector("canvas");
+      if (canvas) {
+        autoAnalyzedRef.current = true;
+        handleAnalyze();
+      }
+    };
+    const timer = setInterval(tryAnalyze, 800);
+    const timeout = setTimeout(() => clearInterval(timer), 12000);
+    return () => { clearInterval(timer); clearTimeout(timeout); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawing.id]);
 
   const tabs: { key: PanelTab; label: string; icon: React.ElementType }[] = [
     { key: "info", label: "Info", icon: Info },
@@ -1339,6 +1361,46 @@ function PdfViewer({
                               </div>
                             ))}
                           </div>
+                        </div>
+                      )}
+
+                      {/* Engineering Report */}
+                      {aiAnalysis.report && (
+                        <div className="rounded-lg bg-gray-800/60 border border-gray-700/50 p-3">
+                          <p className="text-[9px] text-blue-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+                            <FileText className="w-3 h-3" /> Engineering Report
+                          </p>
+                          <p className="text-[11px] text-gray-300 leading-relaxed whitespace-pre-line">{aiAnalysis.report}</p>
+                        </div>
+                      )}
+
+                      {/* Action Plan */}
+                      {aiAnalysis.actionPlan && aiAnalysis.actionPlan.length > 0 && (
+                        <div className="rounded-lg bg-gray-800/60 border border-gray-700/50 p-3">
+                          <p className="text-[9px] text-orange-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+                            <ListChecks className="w-3 h-3" /> Action Plan
+                          </p>
+                          <div className="space-y-1.5">
+                            {aiAnalysis.actionPlan.map((item, i) => {
+                              const isHigh = item.startsWith("[HIGH]");
+                              const isMed = item.startsWith("[MEDIUM]");
+                              const dotColor = isHigh ? "bg-red-400" : isMed ? "bg-amber-400" : "bg-blue-400";
+                              return (
+                                <div key={i} className="flex items-start gap-1.5">
+                                  <span className={`w-1.5 h-1.5 rounded-full ${dotColor} mt-1.5 flex-shrink-0`} />
+                                  <p className="text-[11px] text-gray-300 leading-relaxed">{item}</p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Electrical badge */}
+                      {aiAnalysis.isElectrical && (
+                        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-yellow-900/30 border border-yellow-700/40">
+                          <Sparkles className="w-3 h-3 text-yellow-400" />
+                          <p className="text-[10px] text-yellow-300 font-medium">Full electrical engineering analysis applied</p>
                         </div>
                       )}
 
@@ -2921,9 +2983,8 @@ export default function ProjectDrawings() {
             </div>
           ) : (
             <div className="grid gap-2.5">
-              <div className="hidden md:grid grid-cols-[1.5fr_2fr_2fr_1.5fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 px-4 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-200">
-                <span>Drawing No.</span>
-                <span>Title</span>
+              <div className="hidden md:grid grid-cols-[2.5fr_2fr_1.5fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 px-4 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-200">
+                <span>Drawing No. / Title</span>
                 <span>Project</span>
                 <span>System</span>
                 <span>Department</span>
@@ -2938,19 +2999,12 @@ export default function ProjectDrawings() {
                   key={drawing.id}
                   className="bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-blue-300 hover:shadow-sm transition-all group"
                 >
-                  <div className="hidden md:grid grid-cols-[1.5fr_2fr_2fr_1.5fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 items-center">
-                    <div
-                      className="font-mono text-sm font-semibold text-gray-900 truncate"
-                      title={drawing.drawingNo}
-                    >
-                      {drawing.drawingNo}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
-                        {drawing.title || (
-                          <span className="text-gray-400 italic">—</span>
-                        )}
-                      </p>
+                  <div className="hidden md:grid grid-cols-[2.5fr_2fr_1.5fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 items-center">
+                    <div className="min-w-0" title={drawing.title || drawing.drawingNo}>
+                      <p className="font-mono text-sm font-semibold text-gray-900 truncate">{drawing.drawingNo}</p>
+                      {drawing.title && (
+                        <p className="text-xs text-gray-500 truncate mt-0.5">{drawing.title}</p>
+                      )}
                     </div>
                     <div
                       className="text-xs text-gray-600 truncate"

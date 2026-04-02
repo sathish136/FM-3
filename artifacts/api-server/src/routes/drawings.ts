@@ -129,23 +129,39 @@ router.delete("/project-drawings/:id", async (req, res) => {
 
 // ── AI Drawing Analysis ───────────────────────────────────────────────────────
 
-const DRAWING_ANALYSIS_PROMPT = `You are an expert engineering drawing reviewer with deep knowledge of process, mechanical, electrical, civil, and instrumentation drawings.
+const DRAWING_ANALYSIS_PROMPT = `You are a senior engineering drawing reviewer and technical auditor with deep expertise in process, mechanical, electrical, civil, and instrumentation drawings.
 
-Analyze this engineering drawing image carefully and return a JSON object with this exact structure:
+Analyze this engineering drawing image carefully and return a JSON object with this EXACT structure:
 {
   "detectedType": "The most likely drawing type (e.g. P&ID, PFD, General Arrangement, Electrical SLD, Civil Drawing, Isometric, Layout, Instrument Drawing, etc.)",
   "suggestedDepartment": "One of: Mechanical | Electrical | Civil | Instrumentation | Process | Project | Quality | HSE",
-  "summary": "2-3 sentence summary of what this drawing shows",
-  "keyElements": ["List of key equipment, components, or systems visible in the drawing"],
-  "observations": ["Technical observations about the drawing — scale, standards, completeness, etc."],
-  "recommendations": ["Any issues, missing info, or improvements to note"]
+  "summary": "3-5 sentence technical summary of what this drawing shows, including scope and purpose",
+  "keyElements": ["Comprehensive list of key equipment, components, systems, tags, and references visible"],
+  "observations": ["Detailed technical observations — scale, standards compliance, title block completeness, revision status, symbology, drawing conventions, legibility, etc."],
+  "recommendations": ["Specific actionable improvements, missing information, non-conformances, or safety concerns to address"],
+  "report": "A detailed professional engineering review report (minimum 150 words) covering: drawing scope and purpose, design intent, technical correctness, standards compliance (IEC/IS/BS/ASME as applicable), completeness of information, revision control, and overall quality assessment",
+  "actionPlan": ["Prioritized list of action items with clear owner responsibility — each item should start with a priority indicator: [HIGH], [MEDIUM], or [LOW]"]
 }
+
+For ELECTRICAL drawings (SLD, layout, wiring, panel, distribution), additionally analyse and include in report and observations:
+- Voltage levels and system configuration (LT/HT/EHT)
+- Protection scheme and relay coordination
+- Cable sizing and routing adequacy
+- Panel/switchgear specification and make
+- Earthing and grounding arrangements
+- Compliance with IE Rules, IEC 60364, or applicable standards
+- Energy metering and power factor correction
+- Emergency / safety circuits (fire alarm, UPS, DG hookup)
 
 Rules:
 - Return ONLY valid JSON, no markdown, no extra text
-- Be specific and technical
-- keyElements should have 5-15 items
-- observations and recommendations should each have 2-6 items`;
+- Be specific and technical — use actual equipment names, tag numbers, and values if visible
+- keyElements should have 8-20 items
+- observations and recommendations should each have 4-8 items
+- actionPlan should have 5-10 prioritized items
+- report must be a single detailed string (not array)`;
+
+const ELECTRICAL_CONTEXT = `This is an ELECTRICAL drawing. Provide exhaustive electrical engineering analysis including protection schemes, voltage levels, cable sizing, panel specs, earthing, and all applicable IEC/IE Rules compliance checks.`;
 
 router.post("/drawings/analyze-page", async (req, res) => {
   try {
@@ -160,11 +176,16 @@ router.post("/drawings/analyze-page", async (req, res) => {
       return res.status(400).json({ error: "imageBase64 is required" });
     }
 
-    const context = [
+    const isElectrical = department?.toLowerCase().includes("electrical") ?? false;
+
+    const contextParts = [
       drawingNo ? `Drawing No: ${drawingNo}` : null,
       title ? `Title: ${title}` : null,
       department ? `Department: ${department}` : null,
-    ].filter(Boolean).join(" | ");
+      isElectrical ? ELECTRICAL_CONTEXT : null,
+    ].filter(Boolean);
+
+    const context = contextParts.join(" | ");
 
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
       {
@@ -197,6 +218,8 @@ router.post("/drawings/analyze-page", async (req, res) => {
       keyElements?: string[];
       observations?: string[];
       recommendations?: string[];
+      report?: string;
+      actionPlan?: string[];
     };
     try {
       const cleaned = raw.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
@@ -212,6 +235,9 @@ router.post("/drawings/analyze-page", async (req, res) => {
       keyElements: Array.isArray(parsed.keyElements) ? parsed.keyElements : [],
       observations: Array.isArray(parsed.observations) ? parsed.observations : [],
       recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations : [],
+      report: typeof parsed.report === "string" ? parsed.report : "",
+      actionPlan: Array.isArray(parsed.actionPlan) ? parsed.actionPlan : [],
+      isElectrical,
     });
   } catch (e: any) {
     console.error("Drawing analyze error:", e);
