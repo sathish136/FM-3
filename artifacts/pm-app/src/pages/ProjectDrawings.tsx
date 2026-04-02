@@ -372,6 +372,8 @@ function PdfViewer({
   const [showCheckConfirm, setShowCheckConfirm] = useState(false);
   const cfg = STATUS_CONFIG[drawing.status];
   const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollToBottomRef = useRef(false);
+  const isTransitioningRef = useRef(false);
 
   const allRevisionNotes: Array<{
     label: string;
@@ -401,40 +403,87 @@ function PdfViewer({
   // Navigate to a page and reset scroll to top
   const goToPage = useCallback((n: number) => {
     if (!totalPages) return;
+    scrollToBottomRef.current = false;
+    isTransitioningRef.current = true;
     setPageNumber(Math.max(1, Math.min(totalPages, n)));
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    setTimeout(() => { isTransitioningRef.current = false; }, 800);
   }, [totalPages]);
 
   // Navigate to a page and scroll to bottom (going back)
   const goToPageBottom = useCallback((n: number) => {
     if (!totalPages) return;
+    scrollToBottomRef.current = true;
+    isTransitioningRef.current = true;
     setPageNumber(Math.max(1, Math.min(totalPages, n)));
-    requestAnimationFrame(() => {
-      if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    });
+    setTimeout(() => { isTransitioningRef.current = false; }, 800);
   }, [totalPages]);
 
-  // Wheel: at bottom edge scroll down → next page; at top edge scroll up → prev page
-  const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
-    if (!totalPages) return;
+  // Use refs for wheel handler to always have latest values without re-adding listener
+  const pageNumberRef = useRef(pageNumber);
+  const totalPagesRef = useRef(totalPages);
+  const goToPageRef = useRef(goToPage);
+  const goToPageBottomRef = useRef(goToPageBottom);
+  useEffect(() => { pageNumberRef.current = pageNumber; }, [pageNumber]);
+  useEffect(() => { totalPagesRef.current = totalPages; }, [totalPages]);
+  useEffect(() => { goToPageRef.current = goToPage; }, [goToPage]);
+  useEffect(() => { goToPageBottomRef.current = goToPageBottom; }, [goToPageBottom]);
+
+  // After pageNumber changes, scroll to top or bottom once the new page renders
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    const el = scrollRef.current;
+    if (scrollToBottomRef.current) {
+      // Poll until the content is fully rendered (scrollHeight grows)
+      let attempts = 0;
+      const tryScroll = () => {
+        if (el.scrollHeight > el.clientHeight + 10) {
+          el.scrollTop = el.scrollHeight;
+          scrollToBottomRef.current = false;
+        } else if (attempts < 20) {
+          attempts++;
+          requestAnimationFrame(tryScroll);
+        }
+      };
+      requestAnimationFrame(tryScroll);
+    } else {
+      el.scrollTop = 0;
+    }
+  }, [pageNumber]);
+
+  // Add non-passive wheel listener so preventDefault() actually works
+  useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 6;
-    const atTop = el.scrollTop <= 6;
-    if (e.deltaY > 0 && atBottom && pageNumber < totalPages) {
-      e.preventDefault();
-      goToPage(pageNumber + 1);
-    } else if (e.deltaY < 0 && atTop && pageNumber > 1) {
-      e.preventDefault();
-      goToPageBottom(pageNumber - 1);
-    }
-  }, [totalPages, pageNumber, goToPage, goToPageBottom]);
+    const onWheel = (e: WheelEvent) => {
+      if (isTransitioningRef.current) {
+        e.preventDefault();
+        return;
+      }
+      const tp = totalPagesRef.current;
+      const pn = pageNumberRef.current;
+      if (!tp) return;
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
+      const atTop = el.scrollTop <= 8;
+      if (e.deltaY > 0 && atBottom && pn < tp) {
+        e.preventDefault();
+        goToPageRef.current(pn + 1);
+      } else if (e.deltaY < 0 && atTop && pn > 1) {
+        e.preventDefault();
+        goToPageBottomRef.current(pn - 1);
+      }
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []); // mount once — refs stay current
 
   useEffect(() => {
     setPageNumber(1);
     setNumPages(null);
     setPdfError(false);
     setShowCheckConfirm(false);
+    scrollToBottomRef.current = false;
+    isTransitioningRef.current = false;
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [drawing.id]);
 
   useEffect(() => {
@@ -585,7 +634,6 @@ function PdfViewer({
       <div className="flex-1 flex overflow-hidden">
         <div
           ref={scrollRef}
-          onWheel={handleWheel}
           className={`flex-1 overflow-auto bg-gray-900 flex items-start justify-center p-6 relative ${highlightMode ? "select-text cursor-text" : "select-none"}`}
         >
           {pdfError ? (
