@@ -1,4 +1,5 @@
 import { Router } from "express";
+import nodemailer from "nodemailer";
 import { db, pool } from "@workspace/db";
 import {
   projectsTable,
@@ -53,6 +54,16 @@ pool
   ALTER TABLE user_permissions ADD COLUMN IF NOT EXISTS two_fa_enabled BOOLEAN NOT NULL DEFAULT false;
   ALTER TABLE user_permissions ADD COLUMN IF NOT EXISTS theme TEXT NOT NULL DEFAULT 'system';
   ALTER TABLE user_permissions ADD COLUMN IF NOT EXISTS navbar_style TEXT NOT NULL DEFAULT 'full';
+  CREATE TABLE IF NOT EXISTS drawing_approval_recipients (
+    id SERIAL PRIMARY KEY,
+    employee_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL DEFAULT '',
+    company_email TEXT NOT NULL DEFAULT '',
+    official_mobile TEXT NOT NULL DEFAULT '',
+    notify_email BOOLEAN NOT NULL DEFAULT true,
+    notify_whatsapp BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
   CREATE TABLE IF NOT EXISTS project_drawings (
     id TEXT PRIMARY KEY,
     drawing_no TEXT NOT NULL,
@@ -101,6 +112,152 @@ import {
 } from "../lib/erpnext";
 
 const router = Router();
+
+// ─── Notification helpers ────────────────────────────────────────────────────
+
+const ULTRAMSG_INSTANCE = "instance149987";
+const ULTRAMSG_TOKEN = "6baxh4iuxajibxez";
+const ULTRAMSG_BASE = `https://api.ultramsg.com/${ULTRAMSG_INSTANCE}`;
+const GMAIL_USER = process.env.GMAIL_USER || "noreply@wttint.com";
+const GMAIL_PASS = process.env.GMAIL_APP_PASSWORD || "ejjjsfufipqmvpuh";
+const ERP_URL = (process.env.ERPNEXT_URL || "https://erp.wttint.com").replace(/\/$/, "");
+const ERP_AUTH = () => `token ${process.env.ERPNEXT_API_KEY || ""}:${process.env.ERPNEXT_API_SECRET || ""}`;
+
+async function sendWhatsAppMsg(to: string, body: string) {
+  const params = new URLSearchParams({ token: ULTRAMSG_TOKEN, to, body, priority: "10" });
+  await fetch(`${ULTRAMSG_BASE}/messages/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params.toString(),
+  });
+}
+
+async function sendEmailMsg(to: string, subject: string, html: string) {
+  const transporter = nodemailer.createTransport({
+    host: "smtp.gmail.com", port: 587, secure: false,
+    auth: { user: GMAIL_USER, pass: GMAIL_PASS },
+  });
+  await transporter.sendMail({ from: `"WTT International" <${GMAIL_USER}>`, to, subject, html });
+}
+
+async function getApprovalRecipients() {
+  const rows = await pool.query("SELECT * FROM drawing_approval_recipients ORDER BY created_at");
+  return rows.rows;
+}
+
+async function fetchErpEmployee(employeeId: string) {
+  const fields = encodeURIComponent('["name","employee_name","company_email","cell_number","prefered_contact_email","personal_email","user_id"]');
+  const r = await fetch(`${ERP_URL}/api/resource/Employee/${encodeURIComponent(employeeId)}?fields=${fields}`, {
+    headers: { Authorization: ERP_AUTH(), Accept: "application/json" },
+  });
+  if (!r.ok) throw new Error(`ERPNext ${r.status}`);
+  const d: any = await r.json();
+  return d.data || d;
+}
+
+async function triggerDrawingApprovalNotifications(drawing: any) {
+  const recipients = await getApprovalRecipients();
+  if (!recipients.length) return;
+
+  const drawingNo = drawing.drawing_no || drawing.drawingNo || "";
+  const title = drawing.title || "";
+  const project = drawing.project || "";
+  const approvedBy = drawing.approved_by?.name || drawing.approvedBy?.name || "Admin";
+  const approvedAt = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+  const subject = `Drawing Approved: ${drawingNo}${title ? " — " + title : ""}`;
+  const emailHtml = `
+    <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;background:#f8fafc;border-radius:12px;">
+      <div style="background:#1e3a5f;color:#fff;padding:20px 24px;border-radius:8px 8px 0 0;">
+        <h2 style="margin:0;font-size:18px;">Drawing Approved ✓</h2>
+        <p style="margin:4px 0 0;opacity:.8;font-size:13px;">WTT International — FlowMatriX</p>
+      </div>
+      <div style="background:#fff;padding:24px;border-radius:0 0 8px 8px;border:1px solid #e2e8f0;border-top:none;">
+        <table style="width:100%;border-collapse:collapse;font-size:14px;">
+          <tr><td style="padding:8px 0;color:#6b7280;width:130px;">Drawing No.</td><td style="padding:8px 0;font-weight:700;color:#111827;">${drawingNo}</td></tr>
+          ${title ? `<tr><td style="padding:8px 0;color:#6b7280;">Title</td><td style="padding:8px 0;color:#111827;">${title}</td></tr>` : ""}
+          ${project ? `<tr><td style="padding:8px 0;color:#6b7280;">Project</td><td style="padding:8px 0;color:#111827;">${project}</td></tr>` : ""}
+          <tr><td style="padding:8px 0;color:#6b7280;">Approved By</td><td style="padding:8px 0;color:#111827;">${approvedBy}</td></tr>
+          <tr><td style="padding:8px 0;color:#6b7280;">Date & Time</td><td style="padding:8px 0;color:#111827;">${approvedAt} IST</td></tr>
+        </table>
+        <div style="margin-top:16px;padding:12px 16px;background:#f0fdf4;border-left:4px solid #22c55e;border-radius:4px;">
+          <p style="margin:0;font-size:13px;color:#166534;">This drawing has received Final Approval and is now a <strong>Final Copy</strong>.</p>
+        </div>
+      </div>
+    </div>`;
+
+  const waMsg = `✅ *Drawing Approved — WTT International*\n\n📋 *Drawing No.:* ${drawingNo}${title ? "\n📌 *Title:* " + title : ""}${project ? "\n🏗️ *Project:* " + project : ""}\n👤 *Approved By:* ${approvedBy}\n🕒 *Time:* ${approvedAt} IST\n\nThis drawing is now a *Final Copy*.`;
+
+  for (const r of recipients) {
+    if (r.notify_email && r.company_email) {
+      sendEmailMsg(r.company_email, subject, emailHtml).catch((e: any) =>
+        console.error(`Drawing approval email failed for ${r.company_email}:`, e.message));
+    }
+    if (r.notify_whatsapp && r.official_mobile) {
+      const phone = r.official_mobile.replace(/\D/g, "");
+      const intl = phone.startsWith("91") ? phone : `91${phone}`;
+      sendWhatsAppMsg(`+${intl}`, waMsg).catch((e: any) =>
+        console.error(`Drawing approval WhatsApp failed for ${r.official_mobile}:`, e.message));
+    }
+  }
+}
+
+// ─── Drawing Approval Recipients ─────────────────────────────────────────────
+
+router.get("/drawing-approval-recipients", async (_req, res) => {
+  try {
+    const rows = await pool.query("SELECT * FROM drawing_approval_recipients ORDER BY created_at");
+    res.json(rows.rows);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.post("/drawing-approval-recipients", async (req, res) => {
+  const { employeeId, name, companyEmail, officialMobile, notifyEmail, notifyWhatsapp } = req.body;
+  if (!employeeId) return res.status(400).json({ error: "employeeId is required" });
+  try {
+    const result = await pool.query(
+      `INSERT INTO drawing_approval_recipients (employee_id, name, company_email, official_mobile, notify_email, notify_whatsapp)
+       VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (employee_id) DO UPDATE SET name=$2, company_email=$3, official_mobile=$4, notify_email=$5, notify_whatsapp=$6
+       RETURNING *`,
+      [employeeId, name || "", companyEmail || "", officialMobile || "",
+        notifyEmail !== false, notifyWhatsapp !== false]
+    );
+    res.json(result.rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.put("/drawing-approval-recipients/:id", async (req, res) => {
+  const { notifyEmail, notifyWhatsapp, companyEmail, officialMobile } = req.body;
+  try {
+    const result = await pool.query(
+      `UPDATE drawing_approval_recipients SET notify_email=$1, notify_whatsapp=$2, company_email=COALESCE($3, company_email), official_mobile=COALESCE($4, official_mobile) WHERE id=$5 RETURNING *`,
+      [notifyEmail !== false, notifyWhatsapp !== false, companyEmail || null, officialMobile || null, req.params.id]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: "Not found" });
+    res.json(result.rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.delete("/drawing-approval-recipients/:id", async (req, res) => {
+  try {
+    await pool.query("DELETE FROM drawing_approval_recipients WHERE id=$1", [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// GET /api/erpnext-employee/:id — fetch employee details from ERPNext
+router.get("/erpnext-employee/:id", async (req, res) => {
+  try {
+    const emp = await fetchErpEmployee(req.params.id);
+    res.json({
+      employeeId: emp.name,
+      name: emp.employee_name || "",
+      companyEmail: emp.company_email || emp.prefered_contact_email || "",
+      officialMobile: emp.cell_number || "",
+    });
+  } catch (e: any) {
+    res.status(502).json({ error: e.message });
+  }
+});
 
 // ─── Projects ───────────────────────────────────────────────────────────────
 
