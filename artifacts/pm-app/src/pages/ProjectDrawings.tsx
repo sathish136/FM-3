@@ -31,7 +31,7 @@ import {
   AlertCircle,
   Users,
 } from "lucide-react";
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, CSSProperties } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -1073,6 +1073,8 @@ function UploadModal({
   const [globalSystem, setGlobalSystem] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const projectRef = useRef<HTMLDivElement>(null);
+  const projectDropRef = useRef<HTMLDivElement>(null);
+  const [dropStyle, setDropStyle] = useState<CSSProperties>({});
 
   useEffect(() => {
     const email = (() => { try { const s = localStorage.getItem("wtt_auth_user"); return s ? JSON.parse(s).email || "" : ""; } catch { return ""; } })();
@@ -1084,12 +1086,9 @@ function UploadModal({
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (
-        projectRef.current &&
-        !projectRef.current.contains(e.target as Node)
-      ) {
-        setShowProjectDrop(false);
-      }
+      const inTrigger = projectRef.current?.contains(e.target as Node);
+      const inDrop = projectDropRef.current?.contains(e.target as Node);
+      if (!inTrigger && !inDrop) setShowProjectDrop(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -1216,7 +1215,13 @@ function UploadModal({
                 )}
               </label>
               <div
-                onClick={() => setShowProjectDrop((v) => !v)}
+                onClick={() => {
+                  if (!showProjectDrop && projectRef.current) {
+                    const rect = projectRef.current.getBoundingClientRect();
+                    setDropStyle({ position: "fixed", top: rect.bottom + 4, left: rect.left, width: rect.width, zIndex: 9999 });
+                  }
+                  setShowProjectDrop((v) => !v);
+                }}
                 className={`w-full border rounded-lg px-3 py-2 text-sm cursor-pointer flex items-center justify-between gap-2 ${project ? "border-blue-400 bg-blue-50" : "border-gray-300 bg-white"} focus:outline-none`}
               >
                 {project ? (
@@ -1238,7 +1243,7 @@ function UploadModal({
                 <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
               </div>
               {showProjectDrop && (
-                <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+                <div ref={projectDropRef} style={dropStyle} className="bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
                   <div className="p-2 border-b border-gray-100">
                     <input
                       value={projectSearch}

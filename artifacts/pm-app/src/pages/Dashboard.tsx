@@ -1,8 +1,8 @@
-import { useListProjects, useGetAnalyticsSummary } from "@workspace/api-client-react";
+import { useGetAnalyticsSummary } from "@workspace/api-client-react";
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   FolderOpen, CheckCircle2, RefreshCw,
   LayoutGrid, FileText, ShoppingCart, Users, MessageSquare,
@@ -21,25 +21,27 @@ const STATUS_CONFIG: Record<string, { label: string; textColor: string; badgeBg:
 };
 
 const QUICK_LAUNCH = [
-  { label: "Project Board", icon: LayoutGrid,        path: "/project-board",    color: "#6366f1", desc: "Kanban" },
-  { label: "Projects",      icon: Briefcase,          path: "/projects",         color: "#3b82f6", desc: "All projects" },
-  { label: "Meetings",      icon: FileText,            path: "/meeting-minutes",  color: "#14b8a6", desc: "Minutes" },
-  { label: "Material Req.", icon: ShoppingCart,        path: "/material-request", color: "#f59e0b", desc: "Procurement" },
-  { label: "FlowTalk",      icon: MessageSquare,       path: "/chat",             color: "#a855f7", desc: "Team chat" },
-  { label: "Smart Inbox",   icon: Bot,                 path: "/smart-inbox",      color: "#f97316", desc: "AI Email" },
-  { label: "HRMS",          icon: UserCircle,          path: "/hrms",             color: "#22c55e", desc: "HR & Staff" },
-  { label: "Leads",         icon: Target,              path: "/leads",            color: "#ec4899", desc: "CRM" },
-  { label: "Campaigns",     icon: Megaphone,           path: "/campaigns",        color: "#8b5cf6", desc: "Marketing" },
-  { label: "Purchase",      icon: ShoppingBag,         path: "/purchase-order",   color: "#f59e0b", desc: "Orders" },
-  { label: "Timeline",      icon: GanttChartSquare,    path: "/project-timeline", color: "#06b6d4", desc: "Gantt" },
-  { label: "Bills",         icon: Receipt,             path: "/payment-tracker",  color: "#6366f1", desc: "Recharge" },
-  { label: "Email",         icon: Mail,                path: "/email",            color: "#0ea5e9", desc: "Inbox" },
-  { label: "Site Data",     icon: Activity,            path: "/site-data",        color: "#10b981", desc: "Monitoring" },
-  { label: "Stores",        icon: Warehouse,           path: "/stores-dashboard", color: "#78716c", desc: "Inventory" },
-  { label: "Design 2D",     icon: PenLine,             path: "/design-2d",        color: "#10b981", desc: "CAD" },
-  { label: "CCTV",          icon: MonitorPlay,         path: "/cctv",             color: "#0ea5e9", desc: "Live View" },
-  { label: "Calendar",      icon: CalendarDays,         path: "/calendar",         color: "#3b82f6", desc: "Meetings" },
+  { label: "Project Board", icon: LayoutGrid,     path: "/project-board",    module: "project-board",     color: "#6366f1", desc: "Kanban" },
+  { label: "Projects",      icon: Briefcase,       path: "/projects",         module: "projects",          color: "#3b82f6", desc: "All projects" },
+  { label: "Meetings",      icon: FileText,        path: "/meeting-minutes",  module: "meeting-minutes",   color: "#14b8a6", desc: "Minutes" },
+  { label: "Material Req.", icon: ShoppingCart,    path: "/material-request", module: "material-request",  color: "#f59e0b", desc: "Procurement" },
+  { label: "FlowTalk",      icon: MessageSquare,   path: "/chat",             module: "chat",              color: "#a855f7", desc: "Team chat" },
+  { label: "Smart Inbox",   icon: Bot,             path: "/smart-inbox",      module: "smart-inbox",       color: "#f97316", desc: "AI Email" },
+  { label: "HRMS",          icon: UserCircle,      path: "/hrms",             module: "hrms",              color: "#22c55e", desc: "HR & Staff" },
+  { label: "Leads",         icon: Target,          path: "/leads",            module: "leads",             color: "#ec4899", desc: "CRM" },
+  { label: "Campaigns",     icon: Megaphone,       path: "/campaigns",        module: "campaigns",         color: "#8b5cf6", desc: "Marketing" },
+  { label: "Purchase",      icon: ShoppingBag,     path: "/purchase-order",   module: "purchase-order",    color: "#f59e0b", desc: "Orders" },
+  { label: "Timeline",      icon: GanttChartSquare, path: "/project-timeline", module: "project-timeline", color: "#06b6d4", desc: "Gantt" },
+  { label: "Bills",         icon: Receipt,         path: "/payment-tracker",  module: "payment-tracker",   color: "#6366f1", desc: "Recharge" },
+  { label: "Email",         icon: Mail,            path: "/email",            module: "email",             color: "#0ea5e9", desc: "Inbox" },
+  { label: "Site Data",     icon: Activity,        path: "/site-data",        module: "site-data",         color: "#10b981", desc: "Monitoring" },
+  { label: "Stores",        icon: Warehouse,       path: "/stores-dashboard",  module: "stores-dashboard", color: "#78716c", desc: "Inventory" },
+  { label: "Design 2D",     icon: PenLine,         path: "/design-2d",        module: "design-2d",         color: "#10b981", desc: "CAD" },
+  { label: "CCTV",          icon: MonitorPlay,     path: "/cctv",             module: "cctv",              color: "#0ea5e9", desc: "Live View" },
+  { label: "Calendar",      icon: CalendarDays,    path: "/calendar",         module: "calendar",          color: "#3b82f6", desc: "Meetings" },
 ];
+
+const ADMIN_EMAILS = ["edp@wttindia.com", "venkat@wttindia.com"];
 
 function useNow() {
   const [now, setNow] = useState(new Date());
@@ -59,11 +61,49 @@ function MiniSparkbar({ values, color }: { values: number[]; color: string }) {
 }
 
 export default function Dashboard() {
-  const { data: projects, isLoading: projectsLoading, refetch } = useListProjects();
   const { data: _summary, isLoading: summaryLoading } = useGetAnalyticsSummary();
   const { user } = useAuth();
   const { theme } = useTheme();
   const now = useNow();
+  const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const isAdmin = user ? ADMIN_EMAILS.includes(user.email.toLowerCase()) : false;
+
+  // Fetch projects filtered by user's allowed projects (via email)
+  const [projects, setProjects] = useState<{ id: string; name: string; status: string; progress?: number }[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
+
+  const fetchProjects = useCallback(() => {
+    if (!user?.email) return;
+    setProjectsLoading(true);
+    fetch(`${BASE_URL}/api/projects${user.email ? `?email=${encodeURIComponent(user.email)}` : ""}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => { setProjects(data); setProjectsLoading(false); })
+      .catch(() => setProjectsLoading(false));
+  }, [user?.email, BASE_URL]);
+
+  useEffect(() => { fetchProjects(); }, [fetchProjects]);
+  const refetch = fetchProjects;
+
+  // Fetch permissions to filter Quick Launch
+  const [allowedModules, setAllowedModules] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    if (!user?.email || isAdmin) { setAllowedModules(null); return; }
+    fetch(`${BASE_URL}/api/user-permissions/${encodeURIComponent(user.email)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data?.moduleRoles) { setAllowedModules(new Set()); return; }
+        try {
+          const roles = JSON.parse(data.moduleRoles) as Record<string, string>;
+          setAllowedModules(new Set(Object.entries(roles).filter(([, v]) => v === "read" || v === "write").map(([k]) => k)));
+        } catch { setAllowedModules(new Set()); }
+      })
+      .catch(() => setAllowedModules(null));
+  }, [user?.email, isAdmin, BASE_URL]);
+
+  const visibleQuickLaunch = allowedModules === null
+    ? QUICK_LAUNCH
+    : QUICK_LAUNCH.filter(item => allowedModules.has(item.module));
+
   const isLoading = projectsLoading || summaryLoading;
 
   const total     = projects?.length ?? 0;
@@ -322,7 +362,7 @@ export default function Dashboard() {
               <Zap className="w-4 h-4 text-primary/40" />
             </div>
             <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-8 xl:grid-cols-8 gap-2">
-              {QUICK_LAUNCH.map(({ label, icon: Icon, path, color, desc }) => (
+              {visibleQuickLaunch.map(({ label, icon: Icon, path, color, desc }) => (
                 <Link key={path} href={path}>
                   <div className="group flex flex-col items-center gap-2 py-3 px-2 rounded-2xl hover:bg-muted/60 transition-all cursor-pointer text-center">
                     <div className="w-11 h-11 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm"

@@ -43,7 +43,7 @@ const ALL_PAGES: SearchEntry[] = [
   { path: "/email-settings",       label: "Email Settings",    icon: MailOpen,           group: "Admin",               keywords: "email settings gmail" },
 ];
 
-export function GlobalSearch() {
+export function GlobalSearch({ allowedPaths }: { allowedPaths?: Set<string> }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
@@ -51,14 +51,22 @@ export function GlobalSearch() {
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  const visiblePages = allowedPaths
+    ? ALL_PAGES.filter(p => {
+        // check exact path or parent path (e.g. /drawings/mechanical → /drawings)
+        const parentPath = "/" + p.path.split("/").filter(Boolean)[0];
+        return allowedPaths.has(p.path) || allowedPaths.has(parentPath);
+      })
+    : ALL_PAGES;
+
   const q = query.trim().toLowerCase();
   const results = q
-    ? ALL_PAGES.filter(p =>
+    ? visiblePages.filter(p =>
         p.label.toLowerCase().includes(q) ||
         p.group.toLowerCase().includes(q) ||
         (p.keywords || "").toLowerCase().includes(q)
       )
-    : ALL_PAGES;
+    : visiblePages;
 
   // Reset cursor when results change
   useEffect(() => { setCursor(0); }, [q]);

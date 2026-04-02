@@ -977,7 +977,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
           {/* Center */}
           <div className="flex flex-1 items-center justify-center gap-2 px-4">
             <div className="hidden md:flex flex-1 max-w-sm">
-              <GlobalSearch />
+              <GlobalSearch allowedPaths={isAdmin ? undefined : new Set(visibleAllNavItems.map(i => i.path))} />
             </div>
             <AISearch currentPath={location} forceOpen={aiTrigger} hideTriggerOnMobile />
           </div>
