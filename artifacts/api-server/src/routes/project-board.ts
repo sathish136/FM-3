@@ -79,7 +79,13 @@ router.get("/project-board/projects", async (req, res) => {
     }
 
     let data = await fetchErpNextProjectList();
-    if (allowedProjects.length > 0) data = data.filter(p => allowedProjects.includes(p.name));
+    if (allowedProjects.length > 0) {
+      // Match by ERPNext doc ID (p.name) OR display name (p.project_name) since
+      // User Management saves whichever name format was used at the time of assignment.
+      data = data.filter(p =>
+        allowedProjects.includes(p.name) || allowedProjects.includes(p.project_name)
+      );
+    }
     setCached(cacheKey, data, PROJECTS_TTL_MS);
     res.setHeader("X-Cache", "MISS");
     res.json(data);
