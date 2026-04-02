@@ -312,7 +312,7 @@ function PdfWatermark({
     >
       <span
         style={{
-          fontSize: "28px",
+          fontSize: "72px",
           fontFamily: font,
           fontWeight: 900,
           letterSpacing: "0.25em",
