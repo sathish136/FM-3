@@ -1,4 +1,11 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
+import { PurchaseDashboardContent } from "./PurchaseDashboard";
+import { StoresDashboardContent } from "./StoresDashboard";
+import { LogisticsDashboardContent } from "./LogisticsDashboard";
+import { ProcessProposalDashboardContent } from "./ProcessProposalDashboard";
+import { FinanceDashboardContent } from "./FinanceDashboard";
+import { HrAnalyticsContent } from "./HrAnalytics";
+import { TaskSummaryContent } from "./TaskSummary";
 import { Layout } from "@/components/Layout";
 import { Link, useSearch } from "wouter";
 import {
@@ -182,7 +189,7 @@ function PartyRows({ items, pk, ak = "outstanding", colorText }: { items: any[];
   );
 }
 
-const TABS = ["Overview", "Sales Invoice", "Proposals", "Leads", "Accounts", "Projects", "Procurement", "HR", "Productivity"] as const;
+const TABS = ["Overview", "Sales Invoice", "Proposals", "Leads", "Accounts", "Projects", "Procurement", "HR", "Productivity", "Purchase", "Stores", "Logistics", "Process & Proposal", "Finance", "HR Analytics", "Task Summary"] as const;
 type Tab = typeof TABS[number];
 
 export default function MisReport() {
@@ -1416,6 +1423,70 @@ export default function MisReport() {
                   </div>
                 );
               })()}
+
+              {/* ══ PURCHASE DASHBOARD ══ */}
+              {tab === "Purchase" && (
+                <div className="-mx-5 -my-3">
+                  <Suspense fallback={<div className="flex items-center justify-center h-64 text-gray-400 text-sm">Loading Purchase Dashboard…</div>}>
+                    <PurchaseDashboardContent />
+                  </Suspense>
+                </div>
+              )}
+
+              {/* ══ STORES DASHBOARD ══ */}
+              {tab === "Stores" && (
+                <div className="-mx-5 -my-3">
+                  <Suspense fallback={<div className="flex items-center justify-center h-64 text-gray-400 text-sm">Loading Stores Dashboard…</div>}>
+                    <StoresDashboardContent />
+                  </Suspense>
+                </div>
+              )}
+
+              {/* ══ LOGISTICS DASHBOARD ══ */}
+              {tab === "Logistics" && (
+                <div className="-mx-5 -my-3">
+                  <Suspense fallback={<div className="flex items-center justify-center h-64 text-gray-400 text-sm">Loading Logistics Dashboard…</div>}>
+                    <LogisticsDashboardContent />
+                  </Suspense>
+                </div>
+              )}
+
+              {/* ══ PROCESS & PROPOSAL DASHBOARD ══ */}
+              {tab === "Process & Proposal" && (
+                <div className="-mx-5 -my-3">
+                  <Suspense fallback={<div className="flex items-center justify-center h-64 text-gray-400 text-sm">Loading Process & Proposal Dashboard…</div>}>
+                    <ProcessProposalDashboardContent />
+                  </Suspense>
+                </div>
+              )}
+
+              {/* ══ FINANCE DASHBOARD ══ */}
+              {tab === "Finance" && (
+                <div className="-mx-5 -my-3">
+                  <Suspense fallback={<div className="flex items-center justify-center h-64 text-gray-400 text-sm">Loading Finance Dashboard…</div>}>
+                    <FinanceDashboardContent />
+                  </Suspense>
+                </div>
+              )}
+
+              {/* ══ HR ANALYTICS DASHBOARD ══ */}
+              {tab === "HR Analytics" && (
+                <div className="-mx-5 -my-3">
+                  <Suspense fallback={<div className="flex items-center justify-center h-64 text-gray-400 text-sm">Loading HR Analytics…</div>}>
+                    <HrAnalyticsContent />
+                  </Suspense>
+                </div>
+              )}
+
+              {/* ══ TASK SUMMARY DASHBOARD ══ */}
+              {tab === "Task Summary" && (
+                <div className="-mx-5 -my-3">
+                  <Suspense fallback={<div className="flex items-center justify-center h-64 text-gray-400 text-sm">Loading Task Summary…</div>}>
+                    <TaskSummaryContent />
+                  </Suspense>
+                </div>
+              )}
+
             </div>
           </>
         )}

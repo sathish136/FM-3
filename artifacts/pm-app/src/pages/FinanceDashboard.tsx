@@ -362,7 +362,7 @@ function getDetailConfig(key: string, poView: PO_View, prView: PR_View): DetailC
 
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
-export default function FinanceDashboard() {
+export function FinanceDashboardContent() {
   const [filters, setFilters] = useState<Filters>({ project: DEFAULT_PROJECT, dateFrom: "", dateTo: "", quick: "" });
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [fromInput, setFromInput] = useState("");
@@ -447,7 +447,7 @@ export default function FinanceDashboard() {
   };
 
   return (
-    <Layout>
+    <>
       {/* ── Detail Overlay ── */}
       {detail && (
         <DetailOverlay
@@ -651,6 +651,8 @@ export default function FinanceDashboard() {
           </Panel>
         </div>
       </div>
-    </Layout>
+    </>
   );
 }
+
+export default function FinanceDashboard() { return <Layout><FinanceDashboardContent /></Layout>; }

@@ -424,7 +424,7 @@ function DetailOverlay({ id, project, onClose }: { id: DetailId; project: string
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export default function PurchaseDashboard() {
+export function PurchaseDashboardContent() {
   const [project, setProject] = useState(DEFAULT_PROJECT);
   const [detail, setDetail] = useState<DetailId | null>(null);
 
@@ -485,7 +485,7 @@ export default function PurchaseDashboard() {
   ];
 
   return (
-    <Layout>
+    <>
       {detail && <DetailOverlay id={detail} project={project} onClose={() => setDetail(null)} />}
 
       <div style={{ minHeight:"100vh", background:"#f0f2f5", padding:20, display:"flex", flexDirection:"column", gap:18 }}>
@@ -564,6 +564,8 @@ export default function PurchaseDashboard() {
         </div>
 
       </div>
-    </Layout>
+    </>
   );
 }
+
+export default function PurchaseDashboard() { return <Layout><PurchaseDashboardContent /></Layout>; }

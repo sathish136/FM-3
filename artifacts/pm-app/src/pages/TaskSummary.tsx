@@ -216,7 +216,7 @@ const VIEW_LABELS: Record<ViewMode, string> = {
   "idle-emp":  "Employees with No Tasks",
 };
 
-export default function TaskSummary() {
+export function TaskSummaryContent() {
   const [, navigate] = useLocation();
   const t = today();
   const [from, setFrom] = useState(addDays(t, -6));
@@ -319,7 +319,7 @@ export default function TaskSummary() {
   const eff = stats?.overall_efficiency_rate ?? stats?.efficiency_rate ?? 0;
 
   return (
-    <Layout>
+    <>
       <div className="flex flex-col h-full min-h-screen bg-background text-foreground overflow-auto">
 
         {/* ── Header ── */}
@@ -505,9 +505,11 @@ export default function TaskSummary() {
           </div>
         </div>
       </div>
-    </Layout>
+    </>
   );
 }
+
+export default function TaskSummary() { return <Layout><TaskSummaryContent /></Layout>; }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Department Table

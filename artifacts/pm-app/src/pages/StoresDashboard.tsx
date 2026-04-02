@@ -449,7 +449,7 @@ function StockSummaryPanel({ rows, loading }: { rows: Record<string, any>[]; loa
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export default function StoresDashboard() {
+export function StoresDashboardContent() {
   const [project, setProject] = useState(DEFAULT_PROJECT);
   const [detail, setDetail] = useState<SectionId | null>(null);
 
@@ -495,7 +495,7 @@ export default function StoresDashboard() {
   ];
 
   return (
-    <Layout>
+    <>
       {detail && <DetailOverlay id={detail} project={project} onClose={() => setDetail(null)} />}
 
       <div style={{ minHeight:"100vh", background:"#f0f2f5", padding:20, display:"flex", flexDirection:"column", gap:18 }}>
@@ -556,6 +556,8 @@ export default function StoresDashboard() {
         </div>
 
       </div>
-    </Layout>
+    </>
   );
 }
+
+export default function StoresDashboard() { return <Layout><StoresDashboardContent /></Layout>; }

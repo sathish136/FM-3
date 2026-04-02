@@ -359,7 +359,7 @@ function DetailOverlay({ section, rows, onClose }: {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-export default function LogisticsDashboard() {
+export function LogisticsDashboardContent() {
   const [project, setProject]         = useState(DEFAULT_PROJECT);
   const [detailSection, setDetail]    = useState<Section | null>(null);
 
@@ -412,7 +412,7 @@ export default function LogisticsDashboard() {
   ];
 
   return (
-    <Layout>
+    <>
       {detailSection && (
         <DetailOverlay
           section={detailSection}
@@ -508,6 +508,8 @@ export default function LogisticsDashboard() {
         </div>
 
       </div>
-    </Layout>
+    </>
   );
 }
+
+export default function LogisticsDashboard() { return <Layout><LogisticsDashboardContent /></Layout>; }

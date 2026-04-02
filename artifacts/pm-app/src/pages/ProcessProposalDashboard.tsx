@@ -294,7 +294,7 @@ function PaneLabel({ icon: Icon, label, color }: { icon: React.ElementType; labe
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-export default function ProcessProposalDashboard() {
+export function ProcessProposalDashboardContent() {
   const [detail, setDetail] = useState<AnySection | null>(null);
 
   useEffect(() => {
@@ -354,7 +354,7 @@ export default function ProcessProposalDashboard() {
   const open = (s: AnySection) => () => setDetail(s);
 
   return (
-    <Layout>
+    <>
       {detail && <DetailOverlay section={detail} rows={rowMap[detail]} onClose={() => setDetail(null)} />}
 
       <div style={{ minHeight:"100vh", background:"#f0f2f5", padding:"14px 16px", display:"flex", flexDirection:"column", gap:12 }}>
@@ -445,6 +445,8 @@ export default function ProcessProposalDashboard() {
 
         </div>
       </div>
-    </Layout>
+    </>
   );
 }
+
+export default function ProcessProposalDashboard() { return <Layout><ProcessProposalDashboardContent /></Layout>; }

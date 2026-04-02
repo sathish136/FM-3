@@ -196,7 +196,7 @@ function AnalyticsTable({ columns, rows, emptyMsg = "No data" }: {
 type AbsentTab = "today" | "yesterday" | "month";
 type DrawerView = "headcount" | "absent" | "interviews" | "followups" | "grievance" | "incident" | null;
 
-export default function HrAnalytics() {
+export function HrAnalyticsContent() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -256,7 +256,7 @@ export default function HrAnalytics() {
   // Skeleton / error
   if (loading && !data) {
     return (
-      <Layout>
+      <>
         <div className="flex flex-col h-full min-h-screen bg-background text-foreground overflow-auto">
           <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-border">
             <div>
@@ -271,13 +271,13 @@ export default function HrAnalytics() {
             </div>
           </div>
         </div>
-      </Layout>
+      </>
     );
   }
 
   if (error) {
     return (
-      <Layout>
+      <>
         <div className="flex flex-col h-full min-h-screen bg-background text-foreground overflow-auto">
           <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-border">
             <h1 className="text-lg font-black text-foreground tracking-tight">HR Analytics</h1>
@@ -290,14 +290,14 @@ export default function HrAnalytics() {
             </div>
           </div>
         </div>
-      </Layout>
+      </>
     );
   }
 
   const d = data!;
 
   return (
-    <Layout>
+    <>
       <div className="flex flex-col h-full min-h-screen bg-background text-foreground overflow-auto">
 
         {/* Header */}
@@ -690,6 +690,8 @@ export default function HrAnalytics() {
         </Drawer>
 
       </div>
-    </Layout>
+    </>
   );
 }
+
+export default function HrAnalytics() { return <Layout><HrAnalyticsContent /></Layout>; }
