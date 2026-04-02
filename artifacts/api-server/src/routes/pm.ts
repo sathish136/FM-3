@@ -145,14 +145,59 @@ async function getApprovalRecipients() {
   return rows.rows;
 }
 
-async function fetchErpEmployee(employeeId: string) {
-  const fields = encodeURIComponent('["name","employee_name","company_email","cell_number","prefered_contact_email","personal_email","user_id"]');
-  const r = await fetch(`${ERP_URL}/api/resource/Employee/${encodeURIComponent(employeeId)}?fields=${fields}`, {
-    headers: { Authorization: ERP_AUTH(), Accept: "application/json" },
-  });
-  if (!r.ok) throw new Error(`ERPNext ${r.status}`);
-  const d: any = await r.json();
-  return d.data || d;
+async function fetchErpEmployee(query: string) {
+  const fields = '["name","employee_name","company_email","cell_number","prefered_contact_email","personal_email","user_id"]';
+  const hdr = { Authorization: ERP_AUTH(), Accept: "application/json" };
+
+  // Strategy 1: direct lookup by exact employee ID (e.g. WTT948)
+  const r1 = await fetch(
+    `${ERP_URL}/api/resource/Employee/${encodeURIComponent(query.toUpperCase())}?fields=${encodeURIComponent(fields)}`,
+    { headers: hdr }
+  );
+  if (r1.ok) {
+    const d: any = await r1.json();
+    const emp = d.data || d;
+    if (emp?.name) return emp;
+  }
+
+  // Strategy 2: also try as-is (in case mixed case)
+  if (query !== query.toUpperCase()) {
+    const r1b = await fetch(
+      `${ERP_URL}/api/resource/Employee/${encodeURIComponent(query)}?fields=${encodeURIComponent(fields)}`,
+      { headers: hdr }
+    );
+    if (r1b.ok) {
+      const d: any = await r1b.json();
+      const emp = d.data || d;
+      if (emp?.name) return emp;
+    }
+  }
+
+  // Strategy 3: search by employee_name LIKE %query%
+  const nameFilter = encodeURIComponent(`[["employee_name","like","%${query}%"]]`);
+  const r2 = await fetch(
+    `${ERP_URL}/api/resource/Employee?filters=${nameFilter}&fields=${encodeURIComponent(fields)}&limit=5`,
+    { headers: hdr }
+  );
+  if (r2.ok) {
+    const d: any = await r2.json();
+    const list: any[] = d.data || [];
+    if (list.length > 0) return list[0];
+  }
+
+  // Strategy 4: search by user_id LIKE %query%
+  const emailFilter = encodeURIComponent(`[["user_id","like","%${query}%"]]`);
+  const r3 = await fetch(
+    `${ERP_URL}/api/resource/Employee?filters=${emailFilter}&fields=${encodeURIComponent(fields)}&limit=5`,
+    { headers: hdr }
+  );
+  if (r3.ok) {
+    const d: any = await r3.json();
+    const list: any[] = d.data || [];
+    if (list.length > 0) return list[0];
+  }
+
+  throw new Error("Employee not found. Try the employee ID (e.g. WTT948) or their full name.");
 }
 
 async function triggerDrawingApprovalNotifications(drawing: any) {
@@ -1003,7 +1048,11 @@ router.delete("/project-drawings/:id", async (req, res) => {
 // Manually send drawing approval notification (link only, no file)
 router.post("/project-drawings/:id/send-approval", async (req, res) => {
   try {
-    const { channels = ["email", "whatsapp"], appUrl } = req.body as { channels?: string[]; appUrl?: string };
+    const { channels = ["email", "whatsapp"], appUrl, extraRecipients = [] } = req.body as {
+      channels?: string[];
+      appUrl?: string;
+      extraRecipients?: Array<{ email?: string; phone?: string; notifyEmail?: boolean; notifyWhatsapp?: boolean }>;
+    };
 
     const [drawing] = await db
       .select()
@@ -1073,6 +1122,30 @@ router.post("/project-drawings/:id/send-approval", async (req, res) => {
           sent++;
         } catch (e: any) {
           errors.push(`WhatsApp to ${r.official_mobile}: ${e.message}`);
+        }
+      }
+    }
+
+    // Extra recipients (e.g. admin "also notify me")
+    for (const extra of extraRecipients) {
+      if (extra.notifyEmail !== false && extra.email) {
+        try {
+          await sendEmailMsg(extra.email, subject, emailHtml);
+          sent++;
+        } catch (e: any) {
+          errors.push(`Email to ${extra.email}: ${e.message}`);
+        }
+      }
+      if (extra.notifyWhatsapp !== false && extra.phone) {
+        const phone = extra.phone.replace(/\D/g, "");
+        if (phone) {
+          const intl = phone.startsWith("91") ? phone : `91${phone}`;
+          try {
+            await sendWhatsAppMsg(`+${intl}`, waMsg);
+            sent++;
+          } catch (e: any) {
+            errors.push(`WhatsApp to ${extra.phone}: ${e.message}`);
+          }
         }
       }
     }

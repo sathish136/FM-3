@@ -1804,16 +1804,21 @@ function SendApprovalModal({
   drawing,
   onClose,
   base,
+  adminUser,
 }: {
   drawing: ProjectDrawing;
   onClose: () => void;
   base: string;
+  adminUser?: { email?: string; full_name?: string; mobile_no?: string } | null;
 }) {
   const [recipients, setRecipients] = useState<ApprovalRecipient[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [channels, setChannels] = useState({ email: true, whatsapp: true });
+  const [notifyMe, setNotifyMe] = useState(false);
+  const [notifyMeEmail, setNotifyMeEmail] = useState(true);
+  const [notifyMeWA, setNotifyMeWA] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -1826,15 +1831,24 @@ function SendApprovalModal({
 
   const handleSend = async () => {
     const activeChannels = Object.entries(channels).filter(([, v]) => v).map(([k]) => k);
-    if (!activeChannels.length) { setError("Select at least one channel"); return; }
+    const hasRecipients = recipients.length > 0;
+    const hasSelf = notifyMe && adminUser?.email;
+    if (!activeChannels.length && !hasSelf) { setError("Select at least one channel"); return; }
+    if (!hasRecipients && !hasSelf) { setError("No recipients to send to"); return; }
     setSending(true);
     setError("");
     try {
       const appUrl = window.location.origin;
+      const selfExtra = hasSelf ? [{
+        email: adminUser!.email,
+        phone: adminUser!.mobile_no || "",
+        notifyEmail: notifyMeEmail,
+        notifyWhatsapp: notifyMeWA,
+      }] : [];
       const res = await fetch(`${base}/api/project-drawings/${drawing.id}/send-approval`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channels: activeChannels, appUrl }),
+        body: JSON.stringify({ channels: activeChannels, appUrl, extraRecipients: selfExtra }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -1931,9 +1945,46 @@ function SendApprovalModal({
                 )}
               </div>
 
+              {/* Also notify me */}
+              {adminUser?.email && (
+                <div className={`rounded-xl border-2 transition-all ${notifyMe ? "border-blue-400 bg-blue-50" : "border-gray-200 bg-gray-50"}`}>
+                  <button
+                    onClick={() => setNotifyMe(p => !p)}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left"
+                  >
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${notifyMe ? "bg-blue-600" : "bg-gray-300"}`}>
+                      <span className="text-xs font-bold text-white">{(adminUser.full_name || adminUser.email || "A").charAt(0).toUpperCase()}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-900">Also notify me (Admin)</p>
+                      <p className="text-[10px] text-gray-500 truncate">{adminUser.email}</p>
+                    </div>
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${notifyMe ? "border-blue-600 bg-blue-600" : "border-gray-400"}`}>
+                      {notifyMe && <CheckCircle2 className="w-3 h-3 text-white" />}
+                    </div>
+                  </button>
+                  {notifyMe && (
+                    <div className="flex gap-2 px-4 pb-3">
+                      <button
+                        onClick={() => setNotifyMeEmail(p => !p)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[10px] font-medium transition-all ${notifyMeEmail ? "border-blue-400 bg-white text-blue-700" : "border-gray-300 text-gray-400"}`}
+                      >
+                        <Mail className="w-3 h-3" /> Email {notifyMeEmail ? "✓" : "—"}
+                      </button>
+                      <button
+                        onClick={() => setNotifyMeWA(p => !p)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[10px] font-medium transition-all ${notifyMeWA ? "border-green-400 bg-white text-green-700" : "border-gray-300 text-gray-400"}`}
+                      >
+                        <MessageSquare className="w-3 h-3" /> WhatsApp {notifyMeWA ? "✓" : "—"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Channels */}
               <div>
-                <p className="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">Send via</p>
+                <p className="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">Send recipients via</p>
                 <div className="flex gap-3">
                   <button
                     onClick={() => setChannels(c => ({ ...c, email: !c.email }))}
@@ -1960,7 +2011,7 @@ function SendApprovalModal({
                 </button>
                 <button
                   onClick={handleSend}
-                  disabled={sending || recipients.length === 0}
+                  disabled={sending || (recipients.length === 0 && !notifyMe)}
                   className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
@@ -2623,7 +2674,7 @@ export default function ProjectDrawings() {
                       >
                         <Eye className="w-4 h-4" />
                       </button>
-                      {drawing.approvedBy && (
+                      {(drawing.status === "final" || drawing.approvedBy) && (
                         <button
                           onClick={() => setSendModal(drawing)}
                           title="Send Approval Notification"
@@ -2702,7 +2753,7 @@ export default function ProjectDrawings() {
                       >
                         <Eye className="w-3.5 h-3.5" /> View
                       </button>
-                      {drawing.approvedBy && (
+                      {(drawing.status === "final" || drawing.approvedBy) && (
                         <button
                           onClick={() => setSendModal(drawing)}
                           className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-medium hover:bg-blue-100 transition-colors"
@@ -2812,6 +2863,7 @@ export default function ProjectDrawings() {
           drawing={sendModal}
           onClose={() => setSendModal(null)}
           base={BASE}
+          adminUser={user}
         />
       )}
 

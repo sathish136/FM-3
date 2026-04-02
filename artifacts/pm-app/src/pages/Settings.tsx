@@ -263,7 +263,7 @@ function DrawingRecipientsSettings() {
   const [addMode, setAddMode] = useState(false);
   const [employeeId, setEmployeeId] = useState("");
   const [fetching, setFetching] = useState(false);
-  const [fetchedEmployee, setFetchedEmployee] = useState<{ name: string; companyEmail: string; officialMobile: string } | null>(null);
+  const [fetchedEmployee, setFetchedEmployee] = useState<{ employeeId: string; name: string; companyEmail: string; officialMobile: string } | null>(null);
   const [fetchError, setFetchError] = useState("");
   const [saving, setSaving] = useState(false);
   const [notifyEmail, setNotifyEmail] = useState(true);
@@ -286,10 +286,10 @@ function DrawingRecipientsSettings() {
     setFetchError("");
     setFetchedEmployee(null);
     try {
-      const r = await fetch(`${BASE}/api/erpnext-employee/${encodeURIComponent(employeeId.trim().toUpperCase())}`);
+      const r = await fetch(`${BASE}/api/erpnext-employee/${encodeURIComponent(employeeId.trim())}`);
       const d = await r.json();
       if (r.ok) {
-        setFetchedEmployee({ name: d.name, companyEmail: d.companyEmail, officialMobile: d.officialMobile });
+        setFetchedEmployee({ employeeId: d.employeeId || employeeId.trim().toUpperCase(), name: d.name, companyEmail: d.companyEmail, officialMobile: d.officialMobile });
       } else {
         setFetchError(d.error || "Employee not found");
       }
@@ -308,7 +308,7 @@ function DrawingRecipientsSettings() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          employeeId: employeeId.trim().toUpperCase(),
+          employeeId: fetchedEmployee.employeeId,
           name: fetchedEmployee.name,
           companyEmail: fetchedEmployee.companyEmail,
           officialMobile: fetchedEmployee.officialMobile,
@@ -384,15 +384,15 @@ function DrawingRecipientsSettings() {
             <User className="w-4 h-4 text-primary" />
             <p className="font-semibold text-sm text-foreground">Add ERP Employee</p>
           </div>
-          <p className="text-xs text-muted-foreground">Enter the ERP employee ID (e.g. WTT948) to auto-fill their details from ERPNext.</p>
+          <p className="text-xs text-muted-foreground">Search by employee ID (e.g. WTT948) or full name to auto-fill their details from ERPNext.</p>
 
           <div className="flex gap-2">
             <input
               value={employeeId}
               onChange={e => { setEmployeeId(e.target.value); setFetchedEmployee(null); setFetchError(""); }}
               onKeyDown={e => e.key === "Enter" && fetchEmployee()}
-              placeholder="e.g. WTT948"
-              className="flex-1 px-3 py-2 text-sm border border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 font-mono"
+              placeholder="Employee ID (WTT948) or name"
+              className="flex-1 px-3 py-2 text-sm border border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
             <button
               onClick={fetchEmployee}
@@ -415,7 +415,7 @@ function DrawingRecipientsSettings() {
                 </div>
                 <div>
                   <p className="text-[10px] font-medium text-muted-foreground uppercase mb-0.5">Employee ID</p>
-                  <p className="text-sm font-mono text-foreground">{employeeId.toUpperCase()}</p>
+                  <p className="text-sm font-mono text-foreground">{fetchedEmployee.employeeId}</p>
                 </div>
                 <div>
                   <p className="text-[10px] font-medium text-muted-foreground uppercase mb-0.5">Company Email</p>
