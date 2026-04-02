@@ -90,7 +90,12 @@ router.get("/projects", async (req, res) => {
     }
     if (isErpNextConfigured()) {
       let projects = await fetchErpNextProjects();
-      if (allowedProjects.length > 0) projects = projects.filter(p => allowedProjects.includes(p.name));
+      if (allowedProjects.length > 0) {
+        // Match by display name OR erpnextName (ERP doc code) to handle both save formats
+        projects = projects.filter(p =>
+          allowedProjects.includes(p.name) || allowedProjects.includes(p.erpnextName)
+        );
+      }
       return res.json(projects);
     }
     const rows = await db.select().from(projectsTable).orderBy(projectsTable.createdAt);

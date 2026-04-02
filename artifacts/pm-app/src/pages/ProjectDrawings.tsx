@@ -1257,9 +1257,7 @@ function UploadModal({
                   <div className="max-h-48 overflow-auto">
                     {filteredProjects.length === 0 ? (
                       <p className="text-xs text-gray-400 text-center py-4">
-                        {erpProjects.length === 0
-                          ? "Loading projects…"
-                          : "No projects found"}
+                        No projects found
                       </p>
                     ) : (
                       filteredProjects.map((p) => (

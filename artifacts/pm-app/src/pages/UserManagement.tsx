@@ -688,8 +688,8 @@ export function UserManagementContent() {
                   {filteredProjects.length === 0 ? (
                     <p className="text-[11px] text-muted-foreground text-center py-4">No projects found</p>
                   ) : filteredProjects.map(p => {
-                    const name = p.erpnextName || p.name;
-                    const on = draftProjects.includes(name);
+                    const name = p.name;
+                    const on = draftProjects.includes(name) || draftProjects.includes(p.erpnextName || "");
                     return (
                       <button key={name} onClick={() => toggleProject(name)}
                         className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl border text-left transition-all ${
