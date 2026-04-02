@@ -1,4 +1,7 @@
 import { Router } from "express";
+import { db } from "@workspace/db";
+import { projectDrawingsTable } from "@workspace/db/schema";
+import { eq, desc } from "drizzle-orm";
 
 const ERPNEXT_URL = process.env.ERPNEXT_URL?.replace(/\/$/, "");
 const ERPNEXT_API_KEY = process.env.ERPNEXT_API_KEY;
@@ -9,6 +12,99 @@ function authHeader(): string {
 }
 
 const router = Router();
+
+// ── Project Drawings DB CRUD ──────────────────────────────────────────────────
+
+// GET /api/project-drawings — return all drawings ordered newest first
+router.get("/project-drawings", async (_req, res) => {
+  try {
+    const rows = await db
+      .select()
+      .from(projectDrawingsTable)
+      .orderBy(desc(projectDrawingsTable.createdAt));
+    return res.json(rows);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/project-drawings — create a new drawing
+router.post("/project-drawings", async (req, res) => {
+  try {
+    const body = req.body as any;
+    if (!body.id || !body.drawingNo || !body.uploadedAt) {
+      return res.status(400).json({ error: "id, drawingNo and uploadedAt are required" });
+    }
+    const [row] = await db
+      .insert(projectDrawingsTable)
+      .values({
+        id: body.id,
+        drawingNo: body.drawingNo,
+        title: body.title ?? "",
+        project: body.project ?? "",
+        department: body.department ?? "",
+        systemName: body.systemName ?? "",
+        uploadedAt: body.uploadedAt,
+        status: body.status ?? "draft",
+        revisionNo: body.revisionNo ?? 0,
+        revisionLabel: body.revisionLabel ?? "",
+        fileData: body.fileData ?? "",
+        fileName: body.fileName ?? "",
+        note: body.note ?? "",
+        uploadedBy: body.uploadedBy ?? "",
+        history: body.history ?? [],
+        viewLog: body.viewLog ?? [],
+        checkedBy: body.checkedBy ?? null,
+        approvedBy: body.approvedBy ?? null,
+        erpFileUrl: body.erpFileUrl ?? null,
+      })
+      .returning();
+    return res.json(row);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/project-drawings/:id — partial update (status, revision, view log, approvals…)
+router.patch("/project-drawings/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const body = req.body as any;
+    const updateFields: Partial<typeof projectDrawingsTable.$inferInsert> = {
+      updatedAt: new Date(),
+    };
+    const allowed = [
+      "title","project","department","systemName","status","revisionNo",
+      "revisionLabel","fileData","fileName","note","uploadedBy","history",
+      "viewLog","checkedBy","approvedBy","erpFileUrl",
+    ] as const;
+    for (const key of allowed) {
+      if (key in body) (updateFields as any)[key] = body[key];
+    }
+    const [row] = await db
+      .update(projectDrawingsTable)
+      .set(updateFields)
+      .where(eq(projectDrawingsTable.id, id))
+      .returning();
+    if (!row) return res.status(404).json({ error: "Drawing not found" });
+    return res.json(row);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/project-drawings/:id
+router.delete("/project-drawings/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.delete(projectDrawingsTable).where(eq(projectDrawingsTable.id, id));
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ── ERPNext file helpers ──────────────────────────────────────────────────────
 
 router.post("/drawings/upload-file", async (req, res) => {
   try {

@@ -161,6 +161,31 @@ export const insertEmailAccountSchema = createInsertSchema(emailAccountsTable).o
 export type InsertEmailAccount = z.infer<typeof insertEmailAccountSchema>;
 export type EmailAccount = typeof emailAccountsTable.$inferSelect;
 
+export const projectDrawingsTable = pgTable("project_drawings", {
+  id: text("id").primaryKey(),
+  drawingNo: text("drawing_no").notNull(),
+  title: text("title").notNull().default(""),
+  project: text("project").notNull().default(""),
+  department: text("department").notNull().default(""),
+  systemName: text("system_name").notNull().default(""),
+  uploadedAt: text("uploaded_at").notNull(),
+  status: text("status").notNull().default("draft"),
+  revisionNo: integer("revision_no").notNull().default(0),
+  revisionLabel: text("revision_label").notNull().default(""),
+  fileData: text("file_data").notNull().default(""),
+  fileName: text("file_name").notNull().default(""),
+  note: text("note").notNull().default(""),
+  uploadedBy: text("uploaded_by").notNull().default(""),
+  history: jsonb("history").notNull().default([]),
+  viewLog: jsonb("view_log").notNull().default([]),
+  checkedBy: jsonb("checked_by"),
+  approvedBy: jsonb("approved_by"),
+  erpFileUrl: text("erp_file_url"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type ProjectDrawing = typeof projectDrawingsTable.$inferSelect;
+
 export const resumeAnalysisCacheTable = pgTable("resume_analysis_cache", {
   id: serial("id").primaryKey(),
   fileHash: text("file_hash").notNull().unique(),
