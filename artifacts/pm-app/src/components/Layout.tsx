@@ -783,21 +783,44 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
     fetch(`${BASE_URL}/api/user-permissions/${encodeURIComponent(user.email)}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        if (data?.moduleRoles) {
-          try { setModuleRoles(JSON.parse(data.moduleRoles)); } catch { setModuleRoles(null); }
-        } else { setModuleRoles(null); }
+        if (!data) { setModuleRoles({}); return; }
+        // Try new moduleRoles format first
+        if (data.moduleRoles) {
+          try {
+            const parsed = JSON.parse(data.moduleRoles) as Record<string, string>;
+            if (Object.keys(parsed).length > 0) {
+              setModuleRoles(parsed);
+              return;
+            }
+          } catch {}
+        }
+        // Fall back to old modules array format
+        if (data.modules) {
+          try {
+            const mods = JSON.parse(data.modules) as string[];
+            if (mods.length > 0) {
+              const allKeys = [...new Set(Object.values(PATH_TO_MODULE))];
+              const roles: Record<string, string> = {};
+              allKeys.forEach(key => { roles[key] = mods.includes(key) ? "write" : "none"; });
+              setModuleRoles(roles);
+              return;
+            }
+          } catch {}
+        }
+        // No permissions record or empty — deny all (admin must configure)
+        setModuleRoles({});
       })
       .catch(() => setModuleRoles(null));
   }, [user?.email, isAdmin]);
 
   function isPathAllowed(path: string): boolean {
-    if (isAdmin || moduleRoles === null) return true;
+    if (isAdmin) return true;
+    if (moduleRoles === null) return true; // still loading — show all to avoid flicker
     const key = PATH_TO_MODULE[path];
-    if (!key) return true;
+    if (!key) return true; // unmapped internal routes always allowed
     const role = moduleRoles[key];
-    // If the module key is not present in saved roles (e.g. newly added module),
-    // default to allowed so new features are visible without re-saving permissions.
-    if (role === undefined) return true;
+    // Undefined means the module is not in saved roles — deny by default (whitelist approach)
+    if (role === undefined) return false;
     return role === "read" || role === "write";
   }
 
