@@ -589,6 +589,17 @@ router.get("/user-permissions", async (_req, res) => {
   }
 });
 
+router.get("/user-permissions/:email", async (req, res) => {
+  try {
+    const { email } = req.params;
+    const rows = await db.select().from(userPermissionsTable).where(eq(userPermissionsTable.email, email));
+    if (rows.length === 0) return res.status(404).json({ error: "Not found" });
+    res.json(rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 router.put("/user-permissions/:email", async (req, res) => {
   try {
     const { email } = req.params;

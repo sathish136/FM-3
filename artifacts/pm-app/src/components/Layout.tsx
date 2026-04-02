@@ -310,6 +310,60 @@ const allNavItems: NavItem[] = navGroups.flatMap(g => g.items).filter(
   (item, idx, arr) => arr.findIndex(x => x.path === item.path) === idx
 );
 
+const ADMIN_EMAILS = ["edp@wttindia.com", "venkat@wttindia.com"];
+
+const PATH_TO_MODULE: Record<string, string> = {
+  "/":                      "dashboard",
+  "/calendar":              "calendar",
+  "/tasks":                 "tasks",
+  "/projects":              "projects",
+  "/project-board":         "project-board",
+  "/project-timeline":      "project-timeline",
+  "/meeting-minutes":       "meeting-minutes",
+  "/project-drawings":      "project-drawings",
+  "/presentation":          "presentation",
+  "/drawings":              "drawings",
+  "/drawings/mechanical":   "drawings",
+  "/drawings/electrical":   "drawings",
+  "/drawings/civil":        "drawings",
+  "/design-2d":             "design-2d",
+  "/design-3d":             "design-3d",
+  "/pid":                   "pid",
+  "/nesting":               "nesting",
+  "/material-request":      "material-request",
+  "/purchase-order":        "purchase-order",
+  "/purchase-dashboard":    "purchase-dashboard",
+  "/stores-dashboard":      "stores-dashboard",
+  "/logistics-dashboard":   "logistics-dashboard",
+  "/process-proposal":      "process-proposal",
+  "/finance-dashboard":     "finance-dashboard",
+  "/email":                 "email",
+  "/smart-inbox":           "smart-inbox",
+  "/chat":                  "chat",
+  "/sheets":                "sheets",
+  "/marketing":             "marketing",
+  "/leads":                 "leads",
+  "/campaigns":             "campaigns",
+  "/hrms":                  "hrms",
+  "/hrms/checkin":          "hrms-checkin",
+  "/hrms/leave-request":    "hrms-leave-request",
+  "/hrms/claims":           "hrms-claims",
+  "/hrms/recruitment":      "hrms-recruitment",
+  "/hrms/incidents":        "hrms-incidents",
+  "/hrms/analytics":        "hrms-analytics",
+  "/hrms/performance":      "hrms-performance",
+  "/hrms/team-performance": "hrms-team-performance",
+  "/hrms/task-summary":     "hrms-task-summary",
+  "/hrms/daily-reporting":  "hrms-daily-reporting",
+  "/site-data":             "site-data",
+  "/cctv":                  "cctv",
+  "/mis-report":            "mis-report",
+  "/payment-tracker":       "payment-tracker",
+  "/user-management":       "user-management",
+  "/settings":              "settings",
+  "/email-settings":        "email-settings",
+};
+
 const mobileBottomNav = [
   { path: "/", label: "Home", icon: LayoutDashboard, color: "text-sky-400" },
   { path: "/project-board", label: "Board", icon: LayoutGrid, color: "text-indigo-400" },
@@ -317,11 +371,12 @@ const mobileBottomNav = [
   { path: "/hrms", label: "HRMS", icon: UserCircle, color: "text-emerald-400" },
 ];
 
-function AppLauncher({ open, onClose }: { open: boolean; onClose: () => void }) {
+function AppLauncher({ open, onClose, visibleNavGroups: _visibleNavGroups }: { open: boolean; onClose: () => void; visibleNavGroups?: typeof navGroups }) {
   const [location] = useLocation();
   const { theme } = useTheme();
   const overlayRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState("");
+  const groups = _visibleNavGroups ?? navGroups;
 
   useEffect(() => {
     if (!open) return;
@@ -333,7 +388,7 @@ function AppLauncher({ open, onClose }: { open: boolean; onClose: () => void }) 
 
   if (!open) return null;
 
-  const allItems = navGroups.flatMap(g => g.items.map(i => ({ ...i, group: g.label })));
+  const allItems = groups.flatMap(g => g.items.map(i => ({ ...i, group: g.label })));
   const searchResults = search.trim()
     ? allItems.filter(i => i.label.toLowerCase().includes(search.toLowerCase()))
     : null;
@@ -385,7 +440,7 @@ function AppLauncher({ open, onClose }: { open: boolean; onClose: () => void }) 
               </div>
             </div>
           ) : (
-            navGroups.map((group) => (
+            groups.map((group) => (
               <div key={group.label}>
                 <div className="flex items-center gap-2 mb-3">
                   <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400">{group.label}</p>
@@ -448,8 +503,9 @@ function AppItem({ item, location, theme, onClose }: { item: any; location: stri
   );
 }
 
-function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, toggleGroup, setCollapsed, setMobileSidebarOpen, aiTrigger, setAiTrigger, logout, theme, user, slideshowProps }: any) {
+function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, toggleGroup, setCollapsed, setMobileSidebarOpen, aiTrigger, setAiTrigger, logout, theme, user, slideshowProps, visibleNavGroups: _visibleNavGroups }: any) {
   const ss = slideshowProps ?? {};
+  const groups = (_visibleNavGroups ?? navGroups) as typeof navGroups;
   return (
     <div className="flex flex-col h-full relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-b from-slate-900 via-[#0f172a] to-slate-950 pointer-events-none" />
@@ -476,7 +532,7 @@ function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, to
       </div>
 
       <nav className="relative flex-1 overflow-y-auto py-3 px-2 space-y-0.5 custom-scrollbar">
-        {navGroups.map((group, gi) => {
+        {groups.map((group, gi) => {
           const isGroupExpanded = expandedGroups.includes(group.label);
           const groupHasActive = group.items.some(
             item => item.path === location || item.children?.some((c: any) => c.path === location)
@@ -616,7 +672,8 @@ function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, to
   );
 }
 
-function MiniSidebar({ location, expandedItems, toggleExpand, setCollapsed, aiTrigger, setAiTrigger, logout, theme, user, darkMode, toggleDarkMode, setShowThemePicker }: any) {
+function MiniSidebar({ location, expandedItems, toggleExpand, setCollapsed, aiTrigger, setAiTrigger, logout, theme, user, darkMode, toggleDarkMode, setShowThemePicker, visibleAllNavItems: _visibleAllNavItems }: any) {
+  const navItems = (_visibleAllNavItems ?? allNavItems) as typeof allNavItems;
   return (
     <div className="flex flex-col h-full items-center relative overflow-x-hidden">
       <div className="absolute inset-0 bg-gradient-to-b from-slate-900 via-[#0f172a] to-slate-950 pointer-events-none" />
@@ -627,7 +684,7 @@ function MiniSidebar({ location, expandedItems, toggleExpand, setCollapsed, aiTr
         </span>
       </div>
       <nav className="relative flex flex-col items-center gap-0.5 w-full px-2 flex-1 py-3 overflow-y-auto overflow-x-hidden scrollbar-none">
-        {allNavItems.map((item) => {
+        {navItems.map((item) => {
           const isActive = location === item.path || item.children?.some((c: any) => c.path === location);
           const Icon = item.icon;
           const hasChildren = item.children && item.children.length > 0;
@@ -717,6 +774,38 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   const { user, logout } = useAuth();
   const { theme, themeIndex, setTheme, darkMode, toggleDarkMode } = useTheme();
   const [showThemePicker, setShowThemePicker] = useState(false);
+  const [moduleRoles, setModuleRoles] = useState<Record<string, string> | null>(null);
+  const isAdmin = user ? ADMIN_EMAILS.includes(user.email.toLowerCase()) : false;
+  const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+  useEffect(() => {
+    if (!user || isAdmin) { setModuleRoles(null); return; }
+    fetch(`${BASE_URL}/api/user-permissions/${encodeURIComponent(user.email)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.moduleRoles) {
+          try { setModuleRoles(JSON.parse(data.moduleRoles)); } catch { setModuleRoles(null); }
+        } else { setModuleRoles(null); }
+      })
+      .catch(() => setModuleRoles(null));
+  }, [user?.email, isAdmin]);
+
+  function isPathAllowed(path: string): boolean {
+    if (isAdmin || moduleRoles === null) return true;
+    const key = PATH_TO_MODULE[path];
+    if (!key) return true;
+    const role = moduleRoles[key] ?? "none";
+    return role === "read" || role === "write";
+  }
+
+  const visibleNavGroups = navGroups.map(group => ({
+    ...group,
+    items: group.items.filter(item => isPathAllowed(item.path)),
+  })).filter(group => group.items.length > 0);
+
+  const visibleAllNavItems = visibleNavGroups.flatMap(g => g.items).filter(
+    (item, idx, arr) => arr.findIndex(x => x.path === item.path) === idx
+  );
 
   const setCollapsed = (value: boolean) => {
     setCollapsedState(value);
@@ -770,7 +859,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   const CurrentIcon = currentPage?.icon;
 
   const slideshowProps = useSlideshowContext();
-  const sidebarProps = { location, expandedItems, toggleExpand, expandedGroups, toggleGroup, setCollapsed, setMobileSidebarOpen, aiTrigger, setAiTrigger, logout, theme, user, darkMode, toggleDarkMode, setShowThemePicker, slideshowProps };
+  const sidebarProps = { location, expandedItems, toggleExpand, expandedGroups, toggleGroup, setCollapsed, setMobileSidebarOpen, aiTrigger, setAiTrigger, logout, theme, user, darkMode, toggleDarkMode, setShowThemePicker, slideshowProps, visibleNavGroups, visibleAllNavItems };
 
   if (hideChrome) {
     return <div className="min-h-screen bg-slate-100">{children}</div>;
@@ -781,7 +870,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   return (
     <div className={cn("min-h-screen bg-[#f1f5f9] fm-bg-main overflow-hidden h-screen", isSidebar ? "flex flex-row" : "flex flex-col")}>
       {/* App Launcher overlay (launcher mode) */}
-      {!isSidebar && <AppLauncher open={launcherOpen} onClose={() => setLauncherOpen(false)} />}
+      {!isSidebar && <AppLauncher open={launcherOpen} onClose={() => setLauncherOpen(false)} visibleNavGroups={visibleNavGroups} />}
 
       {/* Sidebar mode */}
       {isSidebar && (
