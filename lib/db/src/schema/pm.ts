@@ -121,6 +121,7 @@ export const userPermissionsTable = pgTable("user_permissions", {
   modules: text("modules").notNull().default("[]"),
   moduleRoles: text("module_roles").notNull().default("{}"),
   allowedProjects: text("allowed_projects").notNull().default("[]"),
+  allowedDrawingDepts: text("allowed_drawing_depts").notNull().default("[]"),
   twoFaEnabled: boolean("two_fa_enabled").notNull().default(false),
   theme: text("theme").notNull().default("system"),
   navbarStyle: text("navbar_style").notNull().default("full"),

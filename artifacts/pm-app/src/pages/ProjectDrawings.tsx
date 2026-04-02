@@ -1788,6 +1788,7 @@ export default function ProjectDrawings() {
     designation: string | null;
   }>({ department: null, designation: null });
   const [erpProjectList, setErpProjectList] = useState<ErpProject[]>([]);
+  const [allowedDrawingDepts, setAllowedDrawingDepts] = useState<string[]>([]);
 
   useEffect(() => {
     const email = (() => { try { const s = localStorage.getItem("wtt_auth_user"); return s ? JSON.parse(s).email || "" : ""; } catch { return ""; } })();
@@ -1795,6 +1796,19 @@ export default function ProjectDrawings() {
       .then((r) => (r.ok ? r.json() : []))
       .then((data: ErpProject[]) => setErpProjectList(data))
       .catch(() => {});
+    if (email) {
+      fetch(`${BASE}/api/user-permissions/${encodeURIComponent(email)}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((perm) => {
+          if (perm?.allowedDrawingDepts) {
+            try {
+              const depts = JSON.parse(perm.allowedDrawingDepts);
+              if (Array.isArray(depts) && depts.length > 0) setAllowedDrawingDepts(depts);
+            } catch {}
+          }
+        })
+        .catch(() => {});
+    }
   }, []);
 
   useEffect(() => {
@@ -1817,14 +1831,18 @@ export default function ProjectDrawings() {
     saveDrawings(updated);
   };
 
+  // Only show departments the user is allowed to see (if restriction is set)
   const allDepts = Array.from(
     new Set(drawings.map((d) => d.department).filter(Boolean)),
-  ).sort();
+  ).sort().filter(dept => allowedDrawingDepts.length === 0 || allowedDrawingDepts.includes(dept));
+
   const allProjects = Array.from(
     new Set(drawings.map((d) => d.project).filter(Boolean)),
   ).sort();
 
   const filtered = drawings.filter((d) => {
+    // Enforce drawing department permissions
+    if (allowedDrawingDepts.length > 0 && !allowedDrawingDepts.includes(d.department)) return false;
     const q = search.toLowerCase();
     const matchSearch =
       !q ||

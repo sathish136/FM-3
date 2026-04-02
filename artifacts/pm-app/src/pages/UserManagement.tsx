@@ -2,7 +2,7 @@ import { Layout } from "@/components/Layout";
 import {
   Users, Search, Shield, ShieldOff, Save,
   RefreshCw, ChevronRight, Loader2, Lock, Unlock, Eye, Pencil, Ban,
-  KeyRound, SunMedium, Moon, Monitor, LayoutDashboard, PanelLeftClose, Layers, Copy, LayoutGrid,
+  KeyRound, SunMedium, Moon, Monitor, LayoutDashboard, PanelLeftClose, Layers, Copy, LayoutGrid, FolderOpen,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -81,6 +81,7 @@ interface Permission {
   modules: string;
   moduleRoles: string;
   allowedProjects: string;
+  allowedDrawingDepts: string;
   twoFaEnabled: boolean;
   theme: ThemeOption;
   navbarStyle: NavbarStyleOption;
@@ -223,11 +224,12 @@ export function UserManagementContent() {
   // Draft state
   const [draftAccess, setDraftAccess]         = useState(true);
   const [draftRoles, setDraftRoles]           = useState<Record<string, ModuleRole>>({});
-  const [draftProjects, setDraftProjects]     = useState<string[]>([]);
-  const [draftTwoFa, setDraftTwoFa]           = useState(false);
-  const [draftTheme, setDraftTheme]           = useState<ThemeOption>("system");
-  const [draftNavbarStyle, setDraftNavbarStyle] = useState<NavbarStyleOption>("full");
-  const [projSearch, setProjSearch]           = useState("");
+  const [draftProjects, setDraftProjects]         = useState<string[]>([]);
+  const [draftDrawingDepts, setDraftDrawingDepts] = useState<string[]>([]);
+  const [draftTwoFa, setDraftTwoFa]               = useState(false);
+  const [draftTheme, setDraftTheme]               = useState<ThemeOption>("system");
+  const [draftNavbarStyle, setDraftNavbarStyle]   = useState<NavbarStyleOption>("full");
+  const [projSearch, setProjSearch]               = useState("");
   const [copyFromOpen, setCopyFromOpen]       = useState(false);
   const [copyFromSearch, setCopyFromSearch]   = useState("");
 
@@ -262,6 +264,7 @@ export function UserManagementContent() {
     setDraftAccess(p ? p.hasAccess : true);
     setDraftRoles(p ? rolesFromPermission(p) : buildDefaultRoles("write"));
     setDraftProjects(p ? JSON.parse(p.allowedProjects || "[]") : []);
+    setDraftDrawingDepts(p ? (() => { try { return JSON.parse(p.allowedDrawingDepts || "[]"); } catch { return []; } })() : []);
     setDraftTwoFa(p ? (p.twoFaEnabled ?? false) : false);
     setDraftTheme(p ? (p.theme ?? "system") : "system");
     setDraftNavbarStyle(p ? (p.navbarStyle ?? "full") : "full");
@@ -280,6 +283,7 @@ export function UserManagementContent() {
           hasAccess: draftAccess,
           moduleRoles: draftRoles,
           allowedProjects: draftProjects,
+          allowedDrawingDepts: draftDrawingDepts,
           twoFaEnabled: draftTwoFa,
           theme: draftTheme,
           navbarStyle: draftNavbarStyle,
@@ -315,12 +319,19 @@ export function UserManagementContent() {
     );
   }
 
+  function toggleDrawingDept(dept: string) {
+    setDraftDrawingDepts(prev =>
+      prev.includes(dept) ? prev.filter(d => d !== dept) : [...prev, dept]
+    );
+  }
+
   function copyFromUser(email: string) {
     const p = perms[email];
     if (!p) return;
     setDraftAccess(p.hasAccess);
     setDraftRoles(rolesFromPermission(p));
     setDraftProjects((() => { try { return JSON.parse(p.allowedProjects || "[]"); } catch { return []; } })());
+    setDraftDrawingDepts((() => { try { return JSON.parse(p.allowedDrawingDepts || "[]"); } catch { return []; } })());
     setDraftTwoFa(p.twoFaEnabled ?? false);
     setDraftTheme(p.theme ?? "system");
     setDraftNavbarStyle(p.navbarStyle ?? "full");
@@ -733,6 +744,51 @@ export function UserManagementContent() {
                     ))}
                   </div>
                 </div>
+              </div>
+
+              {/* ── Drawing Department Access ── */}
+              <div className="w-56 shrink-0">
+                <div className="flex items-center gap-2 mb-3">
+                  <FolderOpen className="w-4 h-4 text-orange-500" />
+                  <h3 className="text-xs font-bold text-foreground/70 uppercase tracking-wider">Drawing Categories</h3>
+                </div>
+                <p className="text-[10px] text-muted-foreground mb-3 leading-relaxed">
+                  Restrict which drawing departments this user can view. Leave all off to allow access to all departments.
+                </p>
+                <div className="space-y-1">
+                  {["Mechanical","Electrical","Civil","Instrumentation","Process","Project","Quality","HSE"].map(dept => {
+                    const on = draftDrawingDepts.includes(dept);
+                    return (
+                      <button key={dept} onClick={() => toggleDrawingDept(dept)}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl border text-left transition-all ${
+                          on ? "bg-orange-50 border-orange-200 text-orange-700" : "bg-card border-border text-muted-foreground hover:border-border/60"
+                        }`}
+                      >
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                          on ? "bg-orange-500 border-orange-500" : "border-border"
+                        }`}>
+                          {on && <span className="w-2 h-2 bg-white rounded-sm" />}
+                        </div>
+                        <span className="text-[11px] font-medium flex-1">{dept}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {draftDrawingDepts.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <p className="text-[10px] text-muted-foreground font-semibold mb-1.5">
+                      Restricted to {draftDrawingDepts.length} dept{draftDrawingDepts.length !== 1 ? "s" : ""}:
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {draftDrawingDepts.map(d => (
+                        <span key={d} className="inline-flex items-center gap-1 text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
+                          {d}
+                          <button onClick={() => toggleDrawingDept(d)} className="hover:text-red-500 transition-colors">×</button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* ── Project access ── */}

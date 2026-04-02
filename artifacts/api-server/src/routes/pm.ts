@@ -608,7 +608,7 @@ router.get("/user-permissions/:email", async (req, res) => {
 router.put("/user-permissions/:email", async (req, res) => {
   try {
     const { email } = req.params;
-    const { fullName, hasAccess, modules, moduleRoles, allowedProjects, twoFaEnabled, theme, navbarStyle } = req.body;
+    const { fullName, hasAccess, modules, moduleRoles, allowedProjects, allowedDrawingDepts, twoFaEnabled, theme, navbarStyle } = req.body;
     const derivedModules = moduleRoles
       ? Object.entries(moduleRoles as Record<string, string>)
           .filter(([, role]) => role !== "none")
@@ -623,6 +623,7 @@ router.put("/user-permissions/:email", async (req, res) => {
         modules: JSON.stringify(derivedModules),
         moduleRoles: JSON.stringify(moduleRoles ?? {}),
         allowedProjects: JSON.stringify(allowedProjects ?? []),
+        allowedDrawingDepts: JSON.stringify(allowedDrawingDepts ?? []),
         twoFaEnabled: twoFaEnabled ?? false,
         theme: theme ?? "system",
         navbarStyle: navbarStyle ?? "full",
@@ -636,6 +637,7 @@ router.put("/user-permissions/:email", async (req, res) => {
           modules: JSON.stringify(derivedModules),
           moduleRoles: JSON.stringify(moduleRoles ?? {}),
           allowedProjects: JSON.stringify(allowedProjects ?? []),
+          allowedDrawingDepts: JSON.stringify(allowedDrawingDepts ?? []),
           twoFaEnabled: twoFaEnabled ?? false,
           theme: theme ?? "system",
           navbarStyle: navbarStyle ?? "full",
