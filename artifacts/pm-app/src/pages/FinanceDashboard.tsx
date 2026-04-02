@@ -177,12 +177,12 @@ function DataTable({ columns, data, colSpan }: {
           </tr>
           <tr className="bg-white">
             {columns.map((_, i) => (
-              <td key={i} style={{ padding:"2px 4px" }}>
+              <td key={i} className="px-2 py-1">
                 <input
                   placeholder="Filter…"
                   value={filters[i]}
                   onChange={e => setFilters(f => f.map((v, j) => j === i ? e.target.value : v))}
-                  style={{ width:"100%", border:"1px solid #e5e7eb", borderRadius:4, padding:"1px 5px", fontSize:10, color:"#374151", background:"#f9fafb", outline:"none", boxSizing:"border-box" }}
+                  className="w-full text-xs border border-slate-200 rounded px-2 py-1 outline-none focus:border-blue-400"
                 />
               </td>
             ))}
@@ -471,7 +471,7 @@ export default function FinanceDashboard() {
             <select
               value={filters.project}
               onChange={e => setFilters(f => ({ ...f, project: e.target.value }))}
-              style={{ background:"#fff", border:"1px solid #d1d5db", borderRadius:8, padding:"6px 12px", fontSize:13, color:"#374151", outline:"none", cursor:"pointer" }}
+              style={{ background:"#fff", border:"1px solid #d1d5db", borderRadius:6, padding:"5px 8px", fontSize:12, color:"#374151", outline:"none", cursor:"pointer" }}
             >
               <option value="">All Projects</option>
               {projects.map(p => (
