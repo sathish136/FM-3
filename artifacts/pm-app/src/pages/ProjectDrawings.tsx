@@ -288,57 +288,64 @@ function PdfWatermark({
       : STATUS_CONFIG[status].watermarkText;
 
   const statusColor: Record<DrawingStatus, string> = {
-    draft:    "rgba(217,119,6,0.55)",
-    revision: "rgba(37,99,235,0.55)",
-    final:    "rgba(5,150,105,0.55)",
+    draft:    "rgba(217,119,6,0.38)",
+    revision: "rgba(37,99,235,0.38)",
+    final:    "rgba(5,150,105,0.38)",
   };
+
+  const font = "'Trebuchet MS', 'Century Gothic', 'Gill Sans', Arial, sans-serif";
+  const color = statusColor[status];
+
+  const armStyle = (deg: number): React.CSSProperties => ({
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    transform: `translate(-50%, -50%) rotate(${deg}deg)`,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "4px",
+    whiteSpace: "nowrap",
+    pointerEvents: "none",
+    userSelect: "none",
+  });
 
   return (
     <div
-      className="absolute top-10 right-10 pointer-events-none select-none flex flex-col items-end gap-0.5"
-      style={{ zIndex: 10 }}
+      style={{
+        position: "absolute",
+        inset: 0,
+        zIndex: 10,
+        pointerEvents: "none",
+        userSelect: "none",
+        overflow: "hidden",
+      }}
     >
-      <span
-        style={{
-          fontSize: "18px",
-          fontFamily: "'Trebuchet MS', 'Century Gothic', 'Gill Sans', Arial, sans-serif",
-          fontWeight: 800,
-          letterSpacing: "0.18em",
-          textTransform: "uppercase",
-          lineHeight: 1.1,
-          opacity: 0.28,
-          color: "#ffffff",
-        }}
-      >
-        WTT INTERNATIONAL
-      </span>
-      <span
-        style={{
-          fontSize: "9px",
-          fontFamily: "'Trebuchet MS', 'Century Gothic', 'Gill Sans', Arial, sans-serif",
-          fontWeight: 400,
-          letterSpacing: "0.12em",
-          fontStyle: "italic",
-          textTransform: "uppercase",
-          opacity: 0.2,
-          color: "#ffffff",
-        }}
-      >
-        Water Loving Technology
-      </span>
-      <span
-        style={{
-          marginTop: "4px",
-          fontSize: "11px",
-          fontFamily: "'Trebuchet MS', 'Century Gothic', 'Gill Sans', Arial, sans-serif",
-          fontWeight: 900,
-          letterSpacing: "0.2em",
-          textTransform: "uppercase",
-          color: statusColor[status],
-        }}
-      >
-        {statusText}
-      </span>
+      {/* Arm 1: bottom-left → top-right (+45°) */}
+      <div style={armStyle(45)}>
+        <span style={{ fontSize: "26px", fontFamily: font, fontWeight: 900, letterSpacing: "0.22em", textTransform: "uppercase", color }}>
+          WTT INTERNATIONAL
+        </span>
+        <span style={{ fontSize: "13px", fontFamily: font, fontWeight: 700, letterSpacing: "0.28em", textTransform: "uppercase", color }}>
+          {statusText}
+        </span>
+        <span style={{ fontSize: "10px", fontFamily: font, fontWeight: 400, letterSpacing: "0.14em", fontStyle: "italic", textTransform: "uppercase", color, opacity: 0.7 }}>
+          Water Loving Technology
+        </span>
+      </div>
+
+      {/* Arm 2: top-left → bottom-right (−45°) */}
+      <div style={armStyle(-45)}>
+        <span style={{ fontSize: "26px", fontFamily: font, fontWeight: 900, letterSpacing: "0.22em", textTransform: "uppercase", color }}>
+          WTT INTERNATIONAL
+        </span>
+        <span style={{ fontSize: "13px", fontFamily: font, fontWeight: 700, letterSpacing: "0.28em", textTransform: "uppercase", color }}>
+          {statusText}
+        </span>
+        <span style={{ fontSize: "10px", fontFamily: font, fontWeight: 400, letterSpacing: "0.14em", fontStyle: "italic", textTransform: "uppercase", color, opacity: 0.7 }}>
+          Water Loving Technology
+        </span>
+      </div>
     </div>
   );
 }
