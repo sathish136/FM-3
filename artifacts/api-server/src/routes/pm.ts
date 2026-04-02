@@ -70,6 +70,7 @@ pool
     title TEXT NOT NULL DEFAULT '',
     project TEXT NOT NULL DEFAULT '',
     department TEXT NOT NULL DEFAULT '',
+    drawing_type TEXT NOT NULL DEFAULT '',
     system_name TEXT NOT NULL DEFAULT '',
     uploaded_at TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'draft',
@@ -87,6 +88,7 @@ pool
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
   );
+  ALTER TABLE project_drawings ADD COLUMN IF NOT EXISTS drawing_type TEXT NOT NULL DEFAULT '';
 `,
   )
   .then(() => console.log("PM tables ready"))
@@ -928,6 +930,7 @@ router.get("/project-drawings", async (_req, res) => {
         title: projectDrawingsTable.title,
         project: projectDrawingsTable.project,
         department: projectDrawingsTable.department,
+        drawingType: projectDrawingsTable.drawingType,
         systemName: projectDrawingsTable.systemName,
         uploadedAt: projectDrawingsTable.uploadedAt,
         status: projectDrawingsTable.status,

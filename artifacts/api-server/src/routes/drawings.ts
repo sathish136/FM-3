@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { projectDrawingsTable } from "@workspace/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, sql } from "drizzle-orm";
 import OpenAI from "openai";
 
 let _openai: OpenAI | null = null;
@@ -55,7 +55,6 @@ router.post("/project-drawings", async (req, res) => {
         title: body.title ?? "",
         project: body.project ?? "",
         department: body.department ?? "",
-        drawingType: body.drawingType ?? "",
         systemName: body.systemName ?? "",
         uploadedAt: body.uploadedAt,
         status: body.status ?? "draft",
@@ -72,6 +71,17 @@ router.post("/project-drawings", async (req, res) => {
         erpFileUrl: body.erpFileUrl ?? null,
       })
       .returning();
+    // Set drawingType via update to work around Drizzle DEFAULT behaviour for this column
+    const drawingType = body.drawingType ?? "";
+    console.log("[POST drawing] drawingType from body:", JSON.stringify(drawingType), "row before patch:", JSON.stringify(row.drawingType));
+    if (drawingType) {
+      const updateResult = await db.execute(
+        sql`UPDATE project_drawings SET drawing_type = ${drawingType} WHERE id = ${body.id}`
+      );
+      console.log("[POST drawing] update result:", JSON.stringify(updateResult));
+      (row as any).drawingType = drawingType;
+      console.log("[POST drawing] row.drawingType after patch:", JSON.stringify((row as any).drawingType));
+    }
     return res.json(row);
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
