@@ -5,7 +5,9 @@ import {
   LayoutDashboard, Box, PenTool, GitBranch, Briefcase, FileText,
   MonitorPlay, Table2, PenLine, Settings, ShoppingCart, UserCircle,
   LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare,
-  Layers, FolderOpen, Activity, Bot,
+  Layers, FolderOpen, Activity, Bot, Users, Target, Megaphone,
+  Image, Calendar, Camera, CreditCard, Package, Truck, TrendingUp,
+  BarChart2, ClipboardList, DollarSign, ClipboardCheck, BarChart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -41,6 +43,36 @@ const ALL_PAGES: SearchEntry[] = [
   { path: "/hrms",                 label: "HRMS",              icon: UserCircle,         group: "HR",                  keywords: "hr employee attendance leave" },
   { path: "/settings",             label: "Settings",          icon: Settings,           group: "Admin",               keywords: "settings config" },
   { path: "/email-settings",       label: "Email Settings",    icon: MailOpen,           group: "Admin",               keywords: "email settings gmail" },
+  { path: "/user-management",      label: "User Management",   icon: Users,              group: "Admin",               keywords: "users roles permissions accounts" },
+  // CRM & Marketing
+  { path: "/leads",                label: "Leads",             icon: Target,             group: "CRM",                 keywords: "leads crm prospects sales" },
+  { path: "/campaigns",            label: "Campaigns",         icon: Megaphone,          group: "CRM",                 keywords: "campaigns marketing email" },
+  { path: "/marketing",            label: "Marketing",         icon: TrendingUp,         group: "CRM",                 keywords: "marketing overview dashboard" },
+  // Finance & Procurement
+  { path: "/purchase-order",       label: "Purchase Order",    icon: ClipboardList,      group: "Finance & Procurement", keywords: "purchase order po procurement" },
+  { path: "/purchase-dashboard",   label: "Purchase Dashboard",icon: BarChart,           group: "Finance & Procurement", keywords: "purchase dashboard procurement summary" },
+  { path: "/payment-tracker",      label: "Payment Tracker",   icon: CreditCard,         group: "Finance & Procurement", keywords: "payment tracker invoice finance" },
+  { path: "/finance-dashboard",    label: "Finance Dashboard", icon: DollarSign,         group: "Finance & Procurement", keywords: "finance dashboard accounts revenue" },
+  { path: "/stores-dashboard",     label: "Stores Dashboard",  icon: Package,            group: "Finance & Procurement", keywords: "stores inventory stock warehouse" },
+  { path: "/mis-report",           label: "MIS Report",        icon: BarChart2,          group: "Finance & Procurement", keywords: "mis management information report" },
+  // Logistics & Operations
+  { path: "/logistics-dashboard",  label: "Logistics Dashboard",icon: Truck,             group: "Operations",          keywords: "logistics transport delivery fleet" },
+  { path: "/process-proposal",     label: "Process Proposal",  icon: ClipboardCheck,     group: "Operations",          keywords: "process proposal workflow operations" },
+  { path: "/calendar",             label: "Calendar",          icon: Calendar,           group: "Operations",          keywords: "calendar schedule events appointments" },
+  { path: "/cctv",                 label: "CCTV",              icon: Camera,             group: "Operations",          keywords: "cctv surveillance camera security" },
+  { path: "/gallery",              label: "Gallery",           icon: Image,              group: "Operations",          keywords: "gallery images photos media" },
+  // Team
+  { path: "/team",                 label: "Team",              icon: Users,              group: "HR",                  keywords: "team members directory" },
+  { path: "/hrms/checkin",         label: "Attendance Check-in",icon: ClipboardCheck,    group: "HR",                  keywords: "attendance checkin checklist" },
+  { path: "/hrms/leave-request",   label: "Leave Request",     icon: FileText,           group: "HR",                  keywords: "leave request holiday absence" },
+  { path: "/hrms/claims",          label: "Claims",            icon: CreditCard,         group: "HR",                  keywords: "claims expense reimbursement" },
+  { path: "/hrms/recruitment",     label: "Recruitment",       icon: Users,              group: "HR",                  keywords: "recruitment hiring jobs candidates" },
+  { path: "/hrms/incidents",       label: "HR Incidents",      icon: Activity,           group: "HR",                  keywords: "incidents issues safety report" },
+  { path: "/hrms/analytics",       label: "HR Analytics",      icon: BarChart2,          group: "HR",                  keywords: "hr analytics workforce data" },
+  { path: "/hrms/performance",     label: "Employee Performance",icon: TrendingUp,       group: "HR",                  keywords: "employee performance kpi review" },
+  { path: "/hrms/team-performance",label: "Team Performance",  icon: BarChart,           group: "HR",                  keywords: "team performance dashboard metrics" },
+  { path: "/hrms/task-summary",    label: "Task Summary",      icon: ClipboardList,      group: "HR",                  keywords: "task summary report hrms" },
+  { path: "/hrms/daily-reporting", label: "Daily Reporting",   icon: FileText,           group: "HR",                  keywords: "daily report log hrms" },
 ];
 
 export function GlobalSearch({ allowedPaths }: { allowedPaths?: Set<string> }) {
