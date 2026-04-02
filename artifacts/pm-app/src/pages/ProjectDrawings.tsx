@@ -387,6 +387,11 @@ function PdfViewer({
     },
   ];
 
+  // Show revision summary as the last virtual page when drawing has any notes/history
+  const hasSummaryPage = drawing.history.length > 0 || !!drawing.note;
+  const totalPages = numPages ? numPages + (hasSummaryPage ? 1 : 0) : null;
+  const isOnSummaryPage = hasSummaryPage && totalPages !== null && pageNumber === totalPages;
+
   useEffect(() => {
     setPageNumber(1);
     setNumPages(null);
@@ -507,7 +512,7 @@ function PdfViewer({
           <Highlighter className="w-3.5 h-3.5" /> Highlight
         </button>
         <div className="flex-1" />
-        {numPages && (
+        {totalPages && (
           <div className="flex items-center gap-0.5">
             <button
               onClick={() => setPageNumber((p) => Math.max(1, p - 1))}
@@ -516,12 +521,13 @@ function PdfViewer({
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="text-xs text-gray-400 w-20 text-center tabular-nums">
-              {pageNumber} / {numPages}
+            <span className="text-xs text-gray-400 w-24 text-center tabular-nums">
+              {pageNumber} / {totalPages}
+              {isOnSummaryPage && <span className="text-blue-400 ml-1">★</span>}
             </span>
             <button
-              onClick={() => setPageNumber((p) => Math.min(numPages!, p + 1))}
-              disabled={pageNumber >= numPages}
+              onClick={() => setPageNumber((p) => Math.min(totalPages!, p + 1))}
+              disabled={pageNumber >= totalPages}
               className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-colors"
             >
               <ChevronRight className="w-4 h-4" />
@@ -559,36 +565,86 @@ function PdfViewer({
               </p>
             </div>
           ) : (
-            <div className="relative">
-              <Document
-                file={fileData}
-                onLoadSuccess={({ numPages }) => {
-                  setNumPages(numPages);
-                  setPageNumber(1);
-                }}
-                onLoadError={() => setPdfError(true)}
-                loading={
-                  <div className="flex items-center gap-2 text-gray-400 mt-20">
-                    <RefreshCw className="w-5 h-5 animate-spin" />
-                    <span className="text-sm">Loading PDF…</span>
+            <>
+              {/* PDF Document — always mounted to preserve numPages */}
+              <div style={{ display: isOnSummaryPage ? "none" : "block" }} className="relative">
+                <Document
+                  file={fileData}
+                  onLoadSuccess={({ numPages }) => {
+                    setNumPages(numPages);
+                    setPageNumber(1);
+                  }}
+                  onLoadError={() => setPdfError(true)}
+                  loading={
+                    <div className="flex items-center gap-2 text-gray-400 mt-20">
+                      <RefreshCw className="w-5 h-5 animate-spin" />
+                      <span className="text-sm">Loading PDF…</span>
+                    </div>
+                  }
+                >
+                  <div className="relative">
+                    <Page
+                      pageNumber={Math.min(pageNumber, numPages ?? 1)}
+                      scale={scale}
+                      renderTextLayer={true}
+                      renderAnnotationLayer={false}
+                      className="shadow-2xl"
+                    />
+                    <PdfWatermark
+                      status={drawing.status}
+                      revisionLbl={drawing.revisionLabel}
+                    />
                   </div>
-                }
-              >
-                <div className="relative">
-                  <Page
-                    pageNumber={pageNumber}
-                    scale={scale}
-                    renderTextLayer={true}
-                    renderAnnotationLayer={false}
-                    className="shadow-2xl"
-                  />
-                  <PdfWatermark
-                    status={drawing.status}
-                    revisionLbl={drawing.revisionLabel}
-                  />
+                </Document>
+              </div>
+
+              {/* Revision Summary Page — shown as the last virtual page */}
+              {isOnSummaryPage && (
+                <div className="bg-white shadow-2xl" style={{ width: `${794 * scale}px`, minHeight: `${1123 * scale}px`, padding: `${40 * scale}px`, boxSizing: "border-box", fontSize: `${scale}em` }}>
+                  <div style={{ borderBottom: "3px solid #1e3a5f", paddingBottom: "16px", marginBottom: "24px" }}>
+                    <p style={{ fontSize: "11px", color: "#6b7280", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: "6px" }}>
+                      {drawing.drawingNo}{drawing.title ? ` — ${drawing.title}` : ""}
+                    </p>
+                    <h2 style={{ fontSize: "22px", fontWeight: 800, color: "#1e3a5f", margin: 0 }}>
+                      Revision Summary
+                    </h2>
+                    <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>
+                      Project: {drawing.project} &nbsp;|&nbsp; Department: {drawing.department}
+                    </p>
+                  </div>
+
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                    <thead>
+                      <tr style={{ background: "#1e3a5f", color: "#fff" }}>
+                        <th style={{ padding: "10px 14px", textAlign: "left", fontWeight: 700, width: "14%" }}>Revision</th>
+                        <th style={{ padding: "10px 14px", textAlign: "left", fontWeight: 700, width: "16%" }}>Date</th>
+                        <th style={{ padding: "10px 14px", textAlign: "left", fontWeight: 700, width: "20%" }}>Revised By</th>
+                        <th style={{ padding: "10px 14px", textAlign: "left", fontWeight: 700 }}>What Was Revised</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {allRevisionNotes.map((r, i) => (
+                        <tr key={i} style={{ background: i % 2 === 0 ? "#f8fafc" : "#ffffff", borderBottom: "1px solid #e2e8f0" }}>
+                          <td style={{ padding: "10px 14px", fontWeight: 700, color: "#1e3a5f" }}>{r.label || "—"}</td>
+                          <td style={{ padding: "10px 14px", color: "#374151" }}>
+                            {r.at ? new Date(r.at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                          </td>
+                          <td style={{ padding: "10px 14px", color: "#374151" }}>{r.by || "—"}</td>
+                          <td style={{ padding: "10px 14px", color: r.note ? "#111827" : "#9ca3af", fontStyle: r.note ? "normal" : "italic" }}>
+                            {r.note || "No note provided"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  <div style={{ marginTop: "32px", borderTop: "1px solid #e2e8f0", paddingTop: "12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: "10px", color: "#9ca3af" }}>WTT International — Auto-generated Revision Summary</span>
+                    <span style={{ fontSize: "10px", color: "#9ca3af" }}>Page {totalPages} of {totalPages}</span>
+                  </div>
                 </div>
-              </Document>
-            </div>
+              )}
+            </>
           )}
         </div>
 
