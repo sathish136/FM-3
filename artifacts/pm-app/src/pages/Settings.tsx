@@ -1,6 +1,6 @@
 import { Layout } from "@/components/Layout";
 import { useState, useEffect } from "react";
-import { Shield, Bell, Palette, Globe, Key, Plus, Trash2, Sun, Moon, Check, PanelLeft, Grid3x3, MessageSquare, Mail, MonitorCheck, Loader2, Send, ChevronRight } from "lucide-react";
+import { Shield, Bell, Palette, Globe, Key, Plus, Trash2, Sun, Moon, Check, PanelLeft, Grid3x3, MessageSquare, Mail, MonitorCheck, Loader2, Send, ChevronRight, FileText, User, Phone, RefreshCw } from "lucide-react";
 import { motion } from "framer-motion";
 import { useTheme, THEME_PRESETS } from "@/hooks/useTheme";
 import { useNavStyle } from "@/hooks/useNavStyle";
@@ -11,6 +11,7 @@ import { toast } from "sonner";
 const settingsSections = [
   { id: "users", label: "User Management", icon: Shield },
   { id: "notifications", label: "Notifications", icon: Bell },
+  { id: "drawing-recipients", label: "Drawing Recipients", icon: FileText },
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "integrations", label: "Integrations", icon: Globe },
   { id: "api", label: "API Keys", icon: Key },
@@ -245,6 +246,298 @@ function NotificationsSettings() {
   );
 }
 
+interface DrawingRecipient {
+  id: number;
+  employee_id: string;
+  name: string;
+  company_email: string;
+  official_mobile: string;
+  notify_email: boolean;
+  notify_whatsapp: boolean;
+}
+
+function DrawingRecipientsSettings() {
+  const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const [recipients, setRecipients] = useState<DrawingRecipient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [addMode, setAddMode] = useState(false);
+  const [employeeId, setEmployeeId] = useState("");
+  const [fetching, setFetching] = useState(false);
+  const [fetchedEmployee, setFetchedEmployee] = useState<{ name: string; companyEmail: string; officialMobile: string } | null>(null);
+  const [fetchError, setFetchError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [notifyEmail, setNotifyEmail] = useState(true);
+  const [notifyWhatsapp, setNotifyWhatsapp] = useState(true);
+
+  const load = () => {
+    setLoading(true);
+    fetch(`${BASE}/api/drawing-approval-recipients`)
+      .then(r => r.ok ? r.json() : [])
+      .then(setRecipients)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const fetchEmployee = async () => {
+    if (!employeeId.trim()) return;
+    setFetching(true);
+    setFetchError("");
+    setFetchedEmployee(null);
+    try {
+      const r = await fetch(`${BASE}/api/erpnext-employee/${encodeURIComponent(employeeId.trim().toUpperCase())}`);
+      const d = await r.json();
+      if (r.ok) {
+        setFetchedEmployee({ name: d.name, companyEmail: d.companyEmail, officialMobile: d.officialMobile });
+      } else {
+        setFetchError(d.error || "Employee not found");
+      }
+    } catch {
+      setFetchError("Failed to fetch employee");
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  const addRecipient = async () => {
+    if (!fetchedEmployee) return;
+    setSaving(true);
+    try {
+      const r = await fetch(`${BASE}/api/drawing-approval-recipients`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employeeId: employeeId.trim().toUpperCase(),
+          name: fetchedEmployee.name,
+          companyEmail: fetchedEmployee.companyEmail,
+          officialMobile: fetchedEmployee.officialMobile,
+          notifyEmail,
+          notifyWhatsapp,
+        }),
+      });
+      if (r.ok) {
+        toast.success("Recipient added");
+        setAddMode(false);
+        setEmployeeId("");
+        setFetchedEmployee(null);
+        setNotifyEmail(true);
+        setNotifyWhatsapp(true);
+        load();
+      } else {
+        const d = await r.json();
+        toast.error(d.error || "Failed to add");
+      }
+    } catch {
+      toast.error("Failed to add recipient");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateRecipient = async (id: number, patch: Partial<DrawingRecipient>) => {
+    try {
+      const r = await fetch(`${BASE}/api/drawing-approval-recipients/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (r.ok) {
+        const updated = await r.json();
+        setRecipients(prev => prev.map(rec => rec.id === id ? { ...rec, ...updated } : rec));
+      }
+    } catch {
+      toast.error("Failed to update");
+    }
+  };
+
+  const deleteRecipient = async (id: number) => {
+    try {
+      await fetch(`${BASE}/api/drawing-approval-recipients/${id}`, { method: "DELETE" });
+      setRecipients(prev => prev.filter(r => r.id !== id));
+      toast.success("Recipient removed");
+    } catch {
+      toast.error("Failed to remove");
+    }
+  };
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">Drawing Approval Recipients</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">People who receive notifications when a drawing is approved. Notifications include a FlowMatriX link — no file attachment.</p>
+        </div>
+        <button
+          onClick={() => setAddMode(true)}
+          className="btn-primary flex items-center gap-2 text-sm flex-shrink-0"
+        >
+          <Plus className="w-4 h-4" /> Add Recipient
+        </button>
+      </div>
+
+      {/* Add form */}
+      {addMode && (
+        <div className="bg-card border border-border rounded-2xl shadow-sm p-5 space-y-4">
+          <div className="flex items-center gap-2 mb-1">
+            <User className="w-4 h-4 text-primary" />
+            <p className="font-semibold text-sm text-foreground">Add ERP Employee</p>
+          </div>
+          <p className="text-xs text-muted-foreground">Enter the ERP employee ID (e.g. WTT948) to auto-fill their details from ERPNext.</p>
+
+          <div className="flex gap-2">
+            <input
+              value={employeeId}
+              onChange={e => { setEmployeeId(e.target.value); setFetchedEmployee(null); setFetchError(""); }}
+              onKeyDown={e => e.key === "Enter" && fetchEmployee()}
+              placeholder="e.g. WTT948"
+              className="flex-1 px-3 py-2 text-sm border border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 font-mono"
+            />
+            <button
+              onClick={fetchEmployee}
+              disabled={fetching || !employeeId.trim()}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-border text-sm font-medium text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+            >
+              {fetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              Fetch
+            </button>
+          </div>
+
+          {fetchError && <p className="text-xs text-destructive">{fetchError}</p>}
+
+          {fetchedEmployee && (
+            <div className="bg-muted/50 rounded-xl p-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase mb-0.5">Name</p>
+                  <p className="text-sm font-semibold text-foreground">{fetchedEmployee.name}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase mb-0.5">Employee ID</p>
+                  <p className="text-sm font-mono text-foreground">{employeeId.toUpperCase()}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase mb-0.5">Company Email</p>
+                  <p className="text-xs text-foreground truncate">{fetchedEmployee.companyEmail || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase mb-0.5">Official Mobile</p>
+                  <p className="text-xs text-foreground">{fetchedEmployee.officialMobile || "—"}</p>
+                </div>
+              </div>
+
+              <div className="border-t border-border pt-3">
+                <p className="text-xs font-medium text-foreground mb-2">Notify via</p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setNotifyEmail(p => !p)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 text-xs font-medium transition-all ${notifyEmail ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground"}`}
+                  >
+                    <Mail className="w-3.5 h-3.5" /> Email
+                    {notifyEmail && <Check className="w-3 h-3 ml-1" />}
+                  </button>
+                  <button
+                    onClick={() => setNotifyWhatsapp(p => !p)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 text-xs font-medium transition-all ${notifyWhatsapp ? "border-green-500 bg-green-50 text-green-700" : "border-border text-muted-foreground"}`}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" /> WhatsApp
+                    {notifyWhatsapp && <Check className="w-3 h-3 ml-1" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={() => { setAddMode(false); setEmployeeId(""); setFetchedEmployee(null); }}
+                  className="flex-1 px-4 py-2 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={addRecipient}
+                  disabled={saving}
+                  className="flex-1 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                  {saving ? "Adding…" : "Add Recipient"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Recipients list */}
+      {loading ? (
+        <div className="flex items-center gap-2 text-muted-foreground text-sm py-8 justify-center">
+          <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+        </div>
+      ) : recipients.length === 0 ? (
+        <div className="text-center py-12 bg-card border border-border rounded-2xl">
+          <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-3">
+            <FileText className="w-6 h-6 text-muted-foreground" />
+          </div>
+          <p className="font-medium text-foreground">No recipients yet</p>
+          <p className="text-sm text-muted-foreground mt-1">Add ERP employees who should receive drawing approval notifications.</p>
+        </div>
+      ) : (
+        <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+          {recipients.map((r, i) => (
+            <div key={r.id} className={`p-5 ${i > 0 ? "border-t border-border" : ""}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <span className="text-sm font-bold text-primary">{(r.name || r.employee_id).charAt(0).toUpperCase()}</span>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-foreground text-sm">{r.name || r.employee_id}</p>
+                    <p className="text-xs text-muted-foreground font-mono">{r.employee_id}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => deleteRecipient(r.id)}
+                  className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors flex-shrink-0"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <div className="flex items-center gap-1.5 text-muted-foreground min-w-0">
+                  <Mail className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span className="truncate">{r.company_email || "No email"}</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Phone className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>{r.official_mobile || "No phone"}</span>
+                </div>
+              </div>
+
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={() => updateRecipient(r.id, { notifyEmail: !r.notify_email, notifyWhatsapp: r.notify_whatsapp })}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${r.notify_email ? "border-primary/40 bg-primary/5 text-primary" : "border-border text-muted-foreground hover:border-muted-foreground/40"}`}
+                >
+                  <Mail className="w-3 h-3" />
+                  Email {r.notify_email ? "ON" : "OFF"}
+                </button>
+                <button
+                  onClick={() => updateRecipient(r.id, { notifyWhatsapp: !r.notify_whatsapp, notifyEmail: r.notify_email })}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${r.notify_whatsapp ? "border-green-500/40 bg-green-50 text-green-700" : "border-border text-muted-foreground hover:border-muted-foreground/40"}`}
+                >
+                  <MessageSquare className="w-3 h-3" />
+                  WhatsApp {r.notify_whatsapp ? "ON" : "OFF"}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function APIKeys() {
   const keys = [
     { name: "Production API Key", key: "pk_live_••••••••••••••••••Kx9m", created: "Jan 12, 2026", lastUsed: "Today" },
@@ -410,6 +703,7 @@ export default function Settings() {
   const renderContent = () => {
     switch (activeSection) {
       case "notifications": return <NotificationsSettings />;
+      case "drawing-recipients": return <DrawingRecipientsSettings />;
       case "appearance": return <AppearanceSettings />;
       case "api": return <APIKeys />;
       default:

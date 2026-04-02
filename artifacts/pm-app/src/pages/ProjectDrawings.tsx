@@ -30,6 +30,10 @@ import {
   ThumbsUp,
   AlertCircle,
   Users,
+  Send,
+  Mail,
+  MessageSquare,
+  Loader2,
 } from "lucide-react";
 import { useState, useRef, useCallback, useEffect, CSSProperties } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
@@ -1786,6 +1790,191 @@ function RevisionModal({ drawing, onClose, onSubmit }: RevisionModalProps) {
   );
 }
 
+interface ApprovalRecipient {
+  id: number;
+  employee_id: string;
+  name: string;
+  company_email: string;
+  official_mobile: string;
+  notify_email: boolean;
+  notify_whatsapp: boolean;
+}
+
+function SendApprovalModal({
+  drawing,
+  onClose,
+  base,
+}: {
+  drawing: ProjectDrawing;
+  onClose: () => void;
+  base: string;
+}) {
+  const [recipients, setRecipients] = useState<ApprovalRecipient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [channels, setChannels] = useState({ email: true, whatsapp: true });
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetch(`${base}/api/drawing-approval-recipients`)
+      .then(r => r.ok ? r.json() : [])
+      .then(setRecipients)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [base]);
+
+  const handleSend = async () => {
+    const activeChannels = Object.entries(channels).filter(([, v]) => v).map(([k]) => k);
+    if (!activeChannels.length) { setError("Select at least one channel"); return; }
+    setSending(true);
+    setError("");
+    try {
+      const appUrl = window.location.origin;
+      const res = await fetch(`${base}/api/project-drawings/${drawing.id}/send-approval`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channels: activeChannels, appUrl }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSent(true);
+      } else {
+        setError(data.error || "Failed to send");
+      }
+    } catch {
+      setError("Network error");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+              <Send className="w-4 h-4 text-blue-600" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Send Approval Notification</h2>
+              <p className="text-xs text-gray-500">Only the FlowMatriX link will be shared</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-6 py-4 space-y-4">
+          {/* Drawing info */}
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
+            <div className="flex items-center gap-2 mb-1">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+              <p className="text-xs font-semibold text-emerald-800">Final Approved Drawing</p>
+            </div>
+            <p className="text-sm font-mono font-bold text-gray-900">{drawing.drawingNo}</p>
+            {drawing.title && <p className="text-xs text-gray-600 mt-0.5">{drawing.title}</p>}
+            {drawing.project && <p className="text-xs text-gray-500 mt-0.5">Project: {drawing.project}</p>}
+          </div>
+
+          {sent ? (
+            <div className="text-center py-6">
+              <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3">
+                <CheckCircle2 className="w-7 h-7 text-emerald-600" />
+              </div>
+              <p className="font-semibold text-gray-900">Notification Sent!</p>
+              <p className="text-xs text-gray-500 mt-1">Recipients have been notified with the FlowMatriX link.</p>
+              <button onClick={onClose} className="mt-4 px-5 py-2 rounded-xl bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 transition-colors">Close</button>
+            </div>
+          ) : (
+            <>
+              {/* Recipients */}
+              <div>
+                <p className="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">Recipients</p>
+                {loading ? (
+                  <div className="flex items-center gap-2 text-gray-400 text-xs py-2">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading recipients…
+                  </div>
+                ) : recipients.length === 0 ? (
+                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    No recipients configured. Go to Settings → Drawing Recipients to add one.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {recipients.map(r => (
+                      <div key={r.id} className="flex items-center gap-3 px-3 py-2 bg-gray-50 rounded-xl border border-gray-200">
+                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                          <span className="text-xs font-bold text-blue-700">{(r.name || r.employee_id).charAt(0).toUpperCase()}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-gray-900 truncate">{r.name || r.employee_id}</p>
+                          <p className="text-[10px] text-gray-500 truncate">{r.company_email}</p>
+                        </div>
+                        <div className="flex gap-1.5 flex-shrink-0">
+                          {r.notify_email && r.company_email && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 text-[9px] border border-blue-200">
+                              <Mail className="w-2.5 h-2.5" /> Email
+                            </span>
+                          )}
+                          {r.notify_whatsapp && r.official_mobile && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-green-50 text-green-700 text-[9px] border border-green-200">
+                              <MessageSquare className="w-2.5 h-2.5" /> WhatsApp
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Channels */}
+              <div>
+                <p className="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">Send via</p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setChannels(c => ({ ...c, email: !c.email }))}
+                    className={`flex-1 flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-xs font-medium transition-all ${channels.email ? "border-blue-500 bg-blue-50 text-blue-700" : "border-gray-200 text-gray-500 hover:border-gray-300"}`}
+                  >
+                    <Mail className="w-4 h-4" /> Email
+                    {channels.email && <CheckCircle2 className="w-3.5 h-3.5 ml-auto" />}
+                  </button>
+                  <button
+                    onClick={() => setChannels(c => ({ ...c, whatsapp: !c.whatsapp }))}
+                    className={`flex-1 flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-xs font-medium transition-all ${channels.whatsapp ? "border-green-500 bg-green-50 text-green-700" : "border-gray-200 text-gray-500 hover:border-gray-300"}`}
+                  >
+                    <MessageSquare className="w-4 h-4" /> WhatsApp
+                    {channels.whatsapp && <CheckCircle2 className="w-3.5 h-3.5 ml-auto" />}
+                  </button>
+                </div>
+              </div>
+
+              {error && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+
+              <div className="flex gap-3 pt-1">
+                <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors">
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSend}
+                  disabled={sending || recipients.length === 0}
+                  className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  {sending ? "Sending…" : "Send Now"}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type ModalState =
   | { type: "none" }
   | { type: "upload" }
@@ -1839,6 +2028,7 @@ export default function ProjectDrawings() {
   const [projectFilter, setProjectFilter] = useState("");
   const [viewerIdx, setViewerIdx] = useState<number | null>(null);
   const [modal, setModal] = useState<ModalState>({ type: "none" });
+  const [sendModal, setSendModal] = useState<ProjectDrawing | null>(null);
   const [userProfile, setUserProfile] = useState<{
     department: string | null;
     designation: string | null;
@@ -2433,6 +2623,15 @@ export default function ProjectDrawings() {
                       >
                         <Eye className="w-4 h-4" />
                       </button>
+                      {drawing.approvedBy && (
+                        <button
+                          onClick={() => setSendModal(drawing)}
+                          title="Send Approval Notification"
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                        >
+                          <Send className="w-4 h-4" />
+                        </button>
+                      )}
                       {drawing.status !== "final" && (
                         <button
                           onClick={() =>
@@ -2491,7 +2690,7 @@ export default function ProjectDrawings() {
                         {formatDate(drawing.uploadedAt)}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 mt-2">
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
                       <button
                         onClick={() => {
                           const idx = filtered.findIndex(
@@ -2503,6 +2702,14 @@ export default function ProjectDrawings() {
                       >
                         <Eye className="w-3.5 h-3.5" /> View
                       </button>
+                      {drawing.approvedBy && (
+                        <button
+                          onClick={() => setSendModal(drawing)}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-medium hover:bg-blue-100 transition-colors"
+                        >
+                          <Send className="w-3.5 h-3.5" /> Send
+                        </button>
+                      )}
                       {drawing.status !== "final" && (
                         <button
                           onClick={() =>
@@ -2600,6 +2807,14 @@ export default function ProjectDrawings() {
           </div>
         </div>
       )}
+      {sendModal && (
+        <SendApprovalModal
+          drawing={sendModal}
+          onClose={() => setSendModal(null)}
+          base={BASE}
+        />
+      )}
+
       {modal.type === "delete" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">

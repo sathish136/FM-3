@@ -999,4 +999,88 @@ router.delete("/project-drawings/:id", async (req, res) => {
   }
 });
 
+// POST /api/project-drawings/:id/send-approval
+// Manually send drawing approval notification (link only, no file)
+router.post("/project-drawings/:id/send-approval", async (req, res) => {
+  try {
+    const { channels = ["email", "whatsapp"], appUrl } = req.body as { channels?: string[]; appUrl?: string };
+
+    const [drawing] = await db
+      .select()
+      .from(projectDrawingsTable)
+      .where(eq(projectDrawingsTable.id, req.params.id));
+
+    if (!drawing) return res.status(404).json({ error: "Drawing not found" });
+
+    const approvedBy = (drawing.approvedBy as any)?.name || "Admin";
+    const drawingNo = drawing.drawingNo || "";
+    const title = drawing.title || "";
+    const project = drawing.project || "";
+    const approvedAt = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+
+    const viewLink = appUrl
+      ? `${appUrl.replace(/\/$/, "")}/pm-app/project-drawings`
+      : "https://flowmatrix.wttint.com/pm-app/project-drawings";
+
+    const recipients = await getApprovalRecipients();
+    if (!recipients.length) return res.json({ success: true, sent: 0, message: "No recipients configured" });
+
+    const subject = `Drawing Approved: ${drawingNo}${title ? " — " + title : ""}`;
+
+    const emailHtml = `
+<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;background:#f8fafc;border-radius:12px;">
+  <div style="background:#1e3a5f;color:#fff;padding:20px 24px;border-radius:8px 8px 0 0;">
+    <h2 style="margin:0;font-size:18px;">Drawing Approved ✓</h2>
+    <p style="margin:4px 0 0;opacity:.8;font-size:13px;">WTT International — FlowMatriX</p>
+  </div>
+  <div style="background:#fff;padding:24px;border-radius:0 0 8px 8px;border:1px solid #e2e8f0;border-top:none;">
+    <table style="width:100%;border-collapse:collapse;font-size:14px;">
+      <tr><td style="padding:8px 0;color:#6b7280;width:130px;">Drawing No.</td><td style="padding:8px 0;font-weight:700;color:#111827;">${drawingNo}</td></tr>
+      ${title ? `<tr><td style="padding:8px 0;color:#6b7280;">Title</td><td style="padding:8px 0;color:#111827;">${title}</td></tr>` : ""}
+      ${project ? `<tr><td style="padding:8px 0;color:#6b7280;">Project</td><td style="padding:8px 0;color:#111827;">${project}</td></tr>` : ""}
+      <tr><td style="padding:8px 0;color:#6b7280;">Approved By</td><td style="padding:8px 0;color:#111827;">${approvedBy}</td></tr>
+      <tr><td style="padding:8px 0;color:#6b7280;">Date &amp; Time</td><td style="padding:8px 0;color:#111827;">${approvedAt} IST</td></tr>
+    </table>
+    <div style="margin-top:16px;padding:12px 16px;background:#f0fdf4;border-left:4px solid #22c55e;border-radius:4px;">
+      <p style="margin:0;font-size:13px;color:#166534;">This drawing has received Final Approval and is now a <strong>Final Copy</strong>.</p>
+    </div>
+    <div style="margin-top:20px;text-align:center;">
+      <a href="${viewLink}" style="display:inline-block;padding:12px 28px;background:#1e3a5f;color:#fff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;">View in FlowMatriX →</a>
+    </div>
+    <p style="margin-top:12px;font-size:11px;color:#9ca3af;text-align:center;">Please do not reply to this email. Log in to FlowMatriX to view the drawing.</p>
+  </div>
+</div>`;
+
+    const waMsg = `✅ *Drawing Approved — WTT International*\n\n📋 *Drawing No.:* ${drawingNo}${title ? "\n📌 *Title:* " + title : ""}${project ? "\n🏗️ *Project:* " + project : ""}\n👤 *Approved By:* ${approvedBy}\n🕒 *Time:* ${approvedAt} IST\n\nThis drawing is now a *Final Copy*.\n\n🔗 View in FlowMatriX:\n${viewLink}`;
+
+    let sent = 0;
+    const errors: string[] = [];
+
+    for (const r of recipients) {
+      if (channels.includes("email") && r.notify_email && r.company_email) {
+        try {
+          await sendEmailMsg(r.company_email, subject, emailHtml);
+          sent++;
+        } catch (e: any) {
+          errors.push(`Email to ${r.company_email}: ${e.message}`);
+        }
+      }
+      if (channels.includes("whatsapp") && r.notify_whatsapp && r.official_mobile) {
+        const phone = r.official_mobile.replace(/\D/g, "");
+        const intl = phone.startsWith("91") ? phone : `91${phone}`;
+        try {
+          await sendWhatsAppMsg(`+${intl}`, waMsg);
+          sent++;
+        } catch (e: any) {
+          errors.push(`WhatsApp to ${r.official_mobile}: ${e.message}`);
+        }
+      }
+    }
+
+    res.json({ success: true, sent, errors });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 export default router;
