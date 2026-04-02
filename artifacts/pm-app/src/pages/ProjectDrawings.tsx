@@ -1804,6 +1804,8 @@ export default function ProjectDrawings() {
   }>({ department: null, designation: null });
   const [erpProjectList, setErpProjectList] = useState<ErpProject[]>([]);
   const [allowedDrawingDepts, setAllowedDrawingDepts] = useState<string[]>([]);
+  // null = not yet loaded, false = no restriction configured, true = restriction active
+  const [drawingDeptsConfigured, setDrawingDeptsConfigured] = useState<boolean | null>(null);
 
   useEffect(() => {
     const email = (() => { try { const s = localStorage.getItem("wtt_auth_user"); return s ? JSON.parse(s).email || "" : ""; } catch { return ""; } })();
@@ -1815,14 +1817,21 @@ export default function ProjectDrawings() {
       fetch(`${BASE}/api/user-permissions/${encodeURIComponent(email)}`)
         .then((r) => (r.ok ? r.json() : null))
         .then((perm) => {
-          if (perm?.allowedDrawingDepts) {
-            try {
-              const depts = JSON.parse(perm.allowedDrawingDepts);
-              if (Array.isArray(depts) && depts.length > 0) setAllowedDrawingDepts(depts);
-            } catch {}
+          if (!perm) {
+            // No permissions record — unrestricted access
+            setDrawingDeptsConfigured(false);
+            return;
           }
+          // Permissions record exists — respect the drawing departments setting
+          setDrawingDeptsConfigured(true);
+          try {
+            const depts = JSON.parse(perm.allowedDrawingDepts || "[]");
+            if (Array.isArray(depts)) setAllowedDrawingDepts(depts);
+          } catch {}
         })
-        .catch(() => {});
+        .catch(() => { setDrawingDeptsConfigured(false); });
+    } else {
+      setDrawingDeptsConfigured(false);
     }
   }, []);
 
@@ -1898,10 +1907,21 @@ export default function ProjectDrawings() {
       (a) => a === drawingDept || drawingDept.toLowerCase().includes(a.toLowerCase())
     );
 
+  // Helper: returns true if this drawing's dept is accessible to the current user
+  const isDeptAccessible = (drawingDept: string) => {
+    // Still loading permissions — allow through (will re-filter when loaded)
+    if (drawingDeptsConfigured === null) return true;
+    // No restrictions configured for this user — full access
+    if (drawingDeptsConfigured === false) return true;
+    // Restrictions configured: empty list means NO departments allowed
+    if (allowedDrawingDepts.length === 0) return false;
+    return deptAllowed(drawingDept);
+  };
+
   // Only show departments the user is allowed to see (if restriction is set)
   const allDepts = Array.from(
     new Set(drawings.map((d) => d.department).filter(Boolean)),
-  ).sort().filter(dept => allowedDrawingDepts.length === 0 || deptAllowed(dept));
+  ).sort().filter(dept => isDeptAccessible(dept));
 
   const allProjects = Array.from(
     new Set(drawings.map((d) => d.project).filter(Boolean)),
@@ -1909,7 +1929,7 @@ export default function ProjectDrawings() {
 
   const filtered = drawings.filter((d) => {
     // Enforce drawing department permissions
-    if (allowedDrawingDepts.length > 0 && !deptAllowed(d.department)) return false;
+    if (!isDeptAccessible(d.department)) return false;
     const q = search.toLowerCase();
     const matchSearch =
       !q ||
@@ -2111,9 +2131,7 @@ export default function ProjectDrawings() {
   }, [viewerIdx]);
 
   // Base set respecting department permissions (for accurate counts)
-  const permittedDrawings = allowedDrawingDepts.length > 0
-    ? drawings.filter((d) => deptAllowed(d.department))
-    : drawings;
+  const permittedDrawings = drawings.filter((d) => isDeptAccessible(d.department));
 
   const counts = {
     all: permittedDrawings.length,

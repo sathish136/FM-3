@@ -753,7 +753,7 @@ export function UserManagementContent() {
                   <h3 className="text-xs font-bold text-foreground/70 uppercase tracking-wider">Drawing Categories</h3>
                 </div>
                 <p className="text-[10px] text-muted-foreground mb-3 leading-relaxed">
-                  Restrict which drawing departments this user can view. Leave all off to allow access to all departments.
+                  Select which drawing departments this user can view. If none are selected, the user cannot view any drawings.
                 </p>
                 <div className="space-y-1">
                   {["Mechanical","Electrical","Civil","Instrumentation","Process","Project","Quality","HSE"].map(dept => {
