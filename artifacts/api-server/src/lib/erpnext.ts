@@ -618,6 +618,31 @@ export interface ErpAttendance {
   department: string | null;
 }
 
+// ── Employee visibility filter ────────────────────────────────────────────────
+const EXCLUDED_EMPLOYEE_DEPARTMENTS = [
+  "Production - WTT", "O & M - WTT", "Project - WTT", "MD - WTT",
+];
+const DEPT_EXCLUSION_ALLOWLIST = new Set([
+  "WTT1348", "WTT1500", "WTT1502", "WTT1575", "WTT1605",
+  "WTT1514", "WTT1619", "WTT827", "WTT1373",
+]);
+const ALWAYS_BLOCKED_EMPLOYEES = new Set([
+  "WTT001", "WTT002", "WTT003", "WTT004", "WTT005",
+  "WTT1392", "WTT1615", "WTT915", "WTT917", "WTT756", "WTT1482",
+]);
+
+export function applyEmployeeFilter<T extends { name: string; department?: string | null }>(employees: T[]): T[] {
+  return employees.filter(e => {
+    if (ALWAYS_BLOCKED_EMPLOYEES.has(e.name)) return false;
+    if (
+      e.department &&
+      EXCLUDED_EMPLOYEE_DEPARTMENTS.includes(e.department) &&
+      !DEPT_EXCLUSION_ALLOWLIST.has(e.name)
+    ) return false;
+    return true;
+  });
+}
+
 export async function fetchErpNextEmployees(filters?: { status?: string; department?: string }): Promise<ErpEmployee[]> {
   if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
   const fields = JSON.stringify([
@@ -634,7 +659,7 @@ export async function fetchErpNextEmployees(filters?: { status?: string; departm
   const res = await fetch(url, { headers: { Authorization: authHeader() } });
   if (!res.ok) throw new Error(`ERPNext employees: ${res.status}`);
   const data = await res.json();
-  return data.data ?? [];
+  return applyEmployeeFilter(data.data ?? []);
 }
 
 export async function fetchErpNextLeaveApplications(filters?: { status?: string; employee?: string }): Promise<ErpLeaveApplication[]> {
