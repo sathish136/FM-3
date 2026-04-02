@@ -35,6 +35,11 @@ import {
   Mail,
   MessageSquare,
   Loader2,
+  Sparkles,
+  Tag,
+  Lightbulb,
+  ListChecks,
+  ScanSearch,
 } from "lucide-react";
 import { useState, useRef, useCallback, useEffect, CSSProperties } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
@@ -84,6 +89,7 @@ interface ProjectDrawing {
   title: string;
   project: string;
   department: string;
+  drawingType: string;
   systemName: string;
   uploadedAt: string;
   status: DrawingStatus;
@@ -146,6 +152,25 @@ const DEPARTMENTS = [
   "Project",
   "Quality",
   "HSE",
+];
+
+const DRAWING_TYPES: { type: string; dept: string }[] = [
+  { type: "P&ID (Piping & Instrumentation Diagram)", dept: "Instrumentation" },
+  { type: "PFD (Process Flow Diagram)", dept: "Process" },
+  { type: "GA (General Arrangement)", dept: "Mechanical" },
+  { type: "Electrical SLD (Single Line Diagram)", dept: "Electrical" },
+  { type: "Electrical Layout Drawing", dept: "Electrical" },
+  { type: "Civil / Structural Drawing", dept: "Civil" },
+  { type: "Isometric Drawing", dept: "Mechanical" },
+  { type: "Layout / Plot Plan", dept: "Civil" },
+  { type: "Instrument Loop / Control Diagram", dept: "Instrumentation" },
+  { type: "Mechanical Drawing", dept: "Mechanical" },
+  { type: "Fire Fighting Drawing", dept: "HSE" },
+  { type: "HVAC Drawing", dept: "Mechanical" },
+  { type: "Process Drawing", dept: "Process" },
+  { type: "Project Drawing", dept: "Project" },
+  { type: "Quality / Inspection Drawing", dept: "Quality" },
+  { type: "Other", dept: "" },
 ];
 
 const SYSTEMS = [
@@ -333,7 +358,7 @@ function PdfWatermark({
   );
 }
 
-type PanelTab = "info" | "history" | "pages";
+type PanelTab = "info" | "history" | "pages" | "ai";
 
 function PdfViewer({
   drawing,
@@ -374,6 +399,17 @@ function PdfViewer({
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollToBottomRef = useRef(false);
   const isTransitioningRef = useRef(false);
+
+  const [aiAnalysis, setAiAnalysis] = useState<{
+    detectedType: string;
+    suggestedDepartment: string;
+    summary: string;
+    keyElements: string[];
+    observations: string[];
+    recommendations: string[];
+  } | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   const allRevisionNotes: Array<{
     label: string;
@@ -481,10 +517,44 @@ function PdfViewer({
     setNumPages(null);
     setPdfError(false);
     setShowCheckConfirm(false);
+    setAiAnalysis(null);
+    setAiError(null);
     scrollToBottomRef.current = false;
     isTransitioningRef.current = false;
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [drawing.id]);
+
+  const handleAnalyze = useCallback(async () => {
+    if (aiLoading) return;
+    setAiLoading(true);
+    setAiError(null);
+    setActiveTab("ai");
+    try {
+      const canvas = scrollRef.current?.querySelector("canvas");
+      if (!canvas) throw new Error("No rendered page available. Please wait for the drawing to load.");
+      const imageBase64 = canvas.toDataURL("image/jpeg", 0.85);
+      const resp = await fetch(`${BASE}/api/drawings/analyze-page`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageBase64,
+          drawingNo: drawing.drawingNo,
+          title: drawing.title,
+          department: drawing.department,
+        }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || "Analysis failed");
+      }
+      const data = await resp.json();
+      setAiAnalysis(data);
+    } catch (e: any) {
+      setAiError(e.message || "Analysis failed");
+    } finally {
+      setAiLoading(false);
+    }
+  }, [aiLoading, drawing.drawingNo, drawing.title, drawing.department]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -500,6 +570,7 @@ function PdfViewer({
     { key: "info", label: "Info", icon: Info },
     { key: "history", label: "History", icon: History },
     { key: "pages", label: "Pages", icon: Layers },
+    { key: "ai", label: "AI", icon: Sparkles },
   ];
 
   return (
@@ -597,6 +668,15 @@ function PdfViewer({
           className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${highlightMode ? "bg-yellow-400 text-gray-900" : "text-gray-400 hover:text-white hover:bg-gray-700"}`}
         >
           <Highlighter className="w-3.5 h-3.5" /> Highlight
+        </button>
+        <div className="h-4 w-px bg-gray-700" />
+        <button
+          onClick={handleAnalyze}
+          disabled={aiLoading}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${aiLoading ? "text-purple-400 bg-purple-900/30 cursor-wait" : "text-purple-300 hover:text-white hover:bg-purple-700/50"}`}
+        >
+          {aiLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+          {aiLoading ? "Analyzing…" : "AI Analyze"}
         </button>
         <div className="flex-1" />
         {totalPages && (
@@ -758,6 +838,7 @@ function PdfViewer({
                     { label: "Drawing No.", value: drawing.drawingNo },
                     { label: "Title", value: drawing.title },
                     { label: "Project", value: drawing.project },
+                    { label: "Drawing Type", value: drawing.drawingType },
                     { label: "System", value: drawing.systemName },
                     { label: "Department", value: drawing.department },
                     { label: "File", value: drawing.fileName },
@@ -1153,6 +1234,124 @@ function PdfViewer({
                   )}
                 </div>
               )}
+
+              {activeTab === "ai" && (
+                <div className="p-4 space-y-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Sparkles className="w-4 h-4 text-purple-400" />
+                    <p className="text-xs font-semibold text-purple-300">AI Drawing Analysis</p>
+                  </div>
+                  {!aiAnalysis && !aiLoading && !aiError && (
+                    <div className="flex flex-col items-center gap-3 py-6 text-center">
+                      <ScanSearch className="w-10 h-10 text-gray-700" />
+                      <p className="text-xs text-gray-500 leading-relaxed max-w-[180px]">
+                        Click <strong className="text-purple-400">AI Analyze</strong> in the toolbar to analyze the current page
+                      </p>
+                      <button
+                        onClick={handleAnalyze}
+                        disabled={aiLoading}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-700/40 text-purple-300 hover:bg-purple-700/70 transition-colors"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" /> Analyze Now
+                      </button>
+                    </div>
+                  )}
+                  {aiLoading && (
+                    <div className="flex flex-col items-center gap-3 py-8 text-center">
+                      <Loader2 className="w-7 h-7 text-purple-400 animate-spin" />
+                      <p className="text-xs text-gray-500">Analyzing drawing with AI…</p>
+                    </div>
+                  )}
+                  {aiError && (
+                    <div className="rounded-lg bg-red-900/30 border border-red-700/50 p-3">
+                      <p className="text-xs text-red-400">{aiError}</p>
+                      <button
+                        onClick={handleAnalyze}
+                        className="mt-2 text-[11px] text-red-300 hover:text-white underline"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  )}
+                  {aiAnalysis && !aiLoading && (
+                    <div className="space-y-4">
+                      {/* Detected type & department */}
+                      <div className="rounded-lg bg-purple-900/20 border border-purple-700/40 p-3 space-y-2">
+                        <div>
+                          <p className="text-[9px] text-purple-400 uppercase tracking-widest mb-0.5 flex items-center gap-1"><Tag className="w-3 h-3" /> Detected Type</p>
+                          <p className="text-xs text-gray-100 font-medium">{aiAnalysis.detectedType || "—"}</p>
+                        </div>
+                        {aiAnalysis.suggestedDepartment && (
+                          <div>
+                            <p className="text-[9px] text-purple-400 uppercase tracking-widest mb-0.5">Suggested Department</p>
+                            <p className="text-xs text-gray-200">{aiAnalysis.suggestedDepartment}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Summary */}
+                      {aiAnalysis.summary && (
+                        <div>
+                          <p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">Summary</p>
+                          <p className="text-xs text-gray-300 leading-relaxed">{aiAnalysis.summary}</p>
+                        </div>
+                      )}
+
+                      {/* Key elements */}
+                      {aiAnalysis.keyElements.length > 0 && (
+                        <div>
+                          <p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1.5 flex items-center gap-1"><ListChecks className="w-3 h-3" /> Key Elements</p>
+                          <div className="space-y-1">
+                            {aiAnalysis.keyElements.map((el, i) => (
+                              <div key={i} className="flex items-start gap-1.5">
+                                <span className="w-1 h-1 rounded-full bg-blue-400 mt-1.5 flex-shrink-0" />
+                                <p className="text-[11px] text-gray-400 leading-relaxed">{el}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Observations */}
+                      {aiAnalysis.observations.length > 0 && (
+                        <div>
+                          <p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1.5 flex items-center gap-1"><Eye className="w-3 h-3" /> Observations</p>
+                          <div className="space-y-1">
+                            {aiAnalysis.observations.map((obs, i) => (
+                              <div key={i} className="flex items-start gap-1.5">
+                                <span className="w-1 h-1 rounded-full bg-amber-400 mt-1.5 flex-shrink-0" />
+                                <p className="text-[11px] text-gray-400 leading-relaxed">{obs}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Recommendations */}
+                      {aiAnalysis.recommendations.length > 0 && (
+                        <div>
+                          <p className="text-[9px] text-gray-500 uppercase tracking-widest mb-1.5 flex items-center gap-1"><Lightbulb className="w-3 h-3" /> Recommendations</p>
+                          <div className="space-y-1">
+                            {aiAnalysis.recommendations.map((rec, i) => (
+                              <div key={i} className="flex items-start gap-1.5">
+                                <span className="w-1 h-1 rounded-full bg-emerald-400 mt-1.5 flex-shrink-0" />
+                                <p className="text-[11px] text-gray-400 leading-relaxed">{rec}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <button
+                        onClick={handleAnalyze}
+                        className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] text-purple-400 hover:text-white border border-purple-700/40 hover:bg-purple-700/30 transition-colors"
+                      >
+                        <RefreshCw className="w-3 h-3" /> Re-analyze
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1184,6 +1383,7 @@ interface UploadModalProps {
       title: string;
       project: string;
       department: string;
+      drawingType: string;
       systemName: string;
       fileData: string;
       fileName: string;
@@ -1212,6 +1412,7 @@ function UploadModal({
     return partial || "Mechanical";
   })();
   const [department, setDepartment] = useState(resolvedDept);
+  const [drawingType, setDrawingType] = useState("");
   const [note, setNote] = useState("");
   const [noteError, setNoteError] = useState(false);
   const [files, setFiles] = useState<FileEntry[]>([]);
@@ -1315,6 +1516,7 @@ function UploadModal({
         title: entry.title,
         project,
         department,
+        drawingType,
         systemName: sameSystem ? globalSystem : entry.systemName || "",
         fileData,
         fileName: entry.file.name,
@@ -1456,6 +1658,32 @@ function UploadModal({
                 ))}
               </select>
             </div>
+          </div>
+
+          {/* Drawing Type */}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1 flex items-center gap-1">
+              <Tag className="w-3.5 h-3.5 text-gray-400" />
+              Drawing Type
+              <span className="text-gray-400 font-normal ml-1">(auto-fills department)</span>
+            </label>
+            <select
+              value={drawingType}
+              onChange={(e) => {
+                const selected = e.target.value;
+                setDrawingType(selected);
+                const match = DRAWING_TYPES.find((dt) => dt.type === selected);
+                if (match && match.dept) setDepartment(match.dept);
+              }}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              <option value="">Select drawing type…</option>
+              {DRAWING_TYPES.map((dt) => (
+                <option key={dt.type} value={dt.type}>
+                  {dt.type}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* System Name */}
@@ -2330,6 +2558,7 @@ export default function ProjectDrawings() {
       title: string;
       project: string;
       department: string;
+      drawingType: string;
       systemName: string;
       fileData: string;
       fileName: string;
@@ -2346,6 +2575,7 @@ export default function ProjectDrawings() {
         title: data.title,
         project: data.project,
         department: data.department,
+        drawingType: data.drawingType || "",
         systemName: data.systemName || "",
         uploadedAt: new Date().toISOString(),
         status: "draft" as DrawingStatus,

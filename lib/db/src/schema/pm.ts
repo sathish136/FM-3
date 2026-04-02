@@ -167,6 +167,7 @@ export const projectDrawingsTable = pgTable("project_drawings", {
   title: text("title").notNull().default(""),
   project: text("project").notNull().default(""),
   department: text("department").notNull().default(""),
+  drawingType: text("drawing_type").notNull().default(""),
   systemName: text("system_name").notNull().default(""),
   uploadedAt: text("uploaded_at").notNull(),
   status: text("status").notNull().default("draft"),

@@ -2,6 +2,18 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { projectDrawingsTable } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
+import OpenAI from "openai";
+
+let _openai: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!_openai) {
+    _openai = new OpenAI({
+      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    });
+  }
+  return _openai;
+}
 
 const ERPNEXT_URL = process.env.ERPNEXT_URL?.replace(/\/$/, "");
 const ERPNEXT_API_KEY = process.env.ERPNEXT_API_KEY;
@@ -43,6 +55,7 @@ router.post("/project-drawings", async (req, res) => {
         title: body.title ?? "",
         project: body.project ?? "",
         department: body.department ?? "",
+        drawingType: body.drawingType ?? "",
         systemName: body.systemName ?? "",
         uploadedAt: body.uploadedAt,
         status: body.status ?? "draft",
@@ -74,7 +87,7 @@ router.patch("/project-drawings/:id", async (req, res) => {
       updatedAt: new Date(),
     };
     const allowed = [
-      "title","project","department","systemName","status","revisionNo",
+      "title","project","department","drawingType","systemName","status","revisionNo",
       "revisionLabel","fileData","fileName","note","uploadedBy","history",
       "viewLog","checkedBy","approvedBy","erpFileUrl",
     ] as const;
@@ -101,6 +114,98 @@ router.delete("/project-drawings/:id", async (req, res) => {
     return res.json({ ok: true });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
+  }
+});
+
+// ── AI Drawing Analysis ───────────────────────────────────────────────────────
+
+const DRAWING_ANALYSIS_PROMPT = `You are an expert engineering drawing reviewer with deep knowledge of process, mechanical, electrical, civil, and instrumentation drawings.
+
+Analyze this engineering drawing image carefully and return a JSON object with this exact structure:
+{
+  "detectedType": "The most likely drawing type (e.g. P&ID, PFD, General Arrangement, Electrical SLD, Civil Drawing, Isometric, Layout, Instrument Drawing, etc.)",
+  "suggestedDepartment": "One of: Mechanical | Electrical | Civil | Instrumentation | Process | Project | Quality | HSE",
+  "summary": "2-3 sentence summary of what this drawing shows",
+  "keyElements": ["List of key equipment, components, or systems visible in the drawing"],
+  "observations": ["Technical observations about the drawing — scale, standards, completeness, etc."],
+  "recommendations": ["Any issues, missing info, or improvements to note"]
+}
+
+Rules:
+- Return ONLY valid JSON, no markdown, no extra text
+- Be specific and technical
+- keyElements should have 5-15 items
+- observations and recommendations should each have 2-6 items`;
+
+router.post("/drawings/analyze-page", async (req, res) => {
+  try {
+    const { imageBase64, drawingNo, title, department } = req.body as {
+      imageBase64: string;
+      drawingNo?: string;
+      title?: string;
+      department?: string;
+    };
+
+    if (!imageBase64) {
+      return res.status(400).json({ error: "imageBase64 is required" });
+    }
+
+    const context = [
+      drawingNo ? `Drawing No: ${drawingNo}` : null,
+      title ? `Title: ${title}` : null,
+      department ? `Department: ${department}` : null,
+    ].filter(Boolean).join(" | ");
+
+    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      {
+        role: "user",
+        content: [
+          ...(context ? [{ type: "text" as const, text: context }] : []),
+          { type: "text" as const, text: DRAWING_ANALYSIS_PROMPT },
+          {
+            type: "image_url" as const,
+            image_url: {
+              url: imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`,
+              detail: "high",
+            },
+          },
+        ],
+      },
+    ];
+
+    const response = await getOpenAI().chat.completions.create({
+      model: "gpt-4o",
+      max_completion_tokens: 4096,
+      messages,
+    });
+
+    const raw = response.choices[0]?.message?.content ?? "{}";
+    let parsed: {
+      detectedType?: string;
+      suggestedDepartment?: string;
+      summary?: string;
+      keyElements?: string[];
+      observations?: string[];
+      recommendations?: string[];
+    };
+    try {
+      const cleaned = raw.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+      parsed = JSON.parse(cleaned);
+    } catch {
+      return res.status(500).json({ error: "AI returned invalid JSON", raw });
+    }
+
+    return res.json({
+      detectedType: parsed.detectedType ?? "",
+      suggestedDepartment: parsed.suggestedDepartment ?? "",
+      summary: parsed.summary ?? "",
+      keyElements: Array.isArray(parsed.keyElements) ? parsed.keyElements : [],
+      observations: Array.isArray(parsed.observations) ? parsed.observations : [],
+      recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations : [],
+    });
+  } catch (e: any) {
+    console.error("Drawing analyze error:", e);
+    return res.status(500).json({ error: e?.message ?? String(e) });
   }
 });
 
