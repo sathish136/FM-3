@@ -2411,7 +2411,7 @@ function SendApprovalModal({
 
 // ─── DrawingDetailPage ────────────────────────────────────────────────────────
 
-type DetailTab = "info" | "revisions" | "ai";
+type DetailTab = "ai" | "suggestions" | "view" | "revisions";
 
 function DrawingDetailPage({
   drawing,
@@ -2650,24 +2650,47 @@ function DrawingDetailPage({
         </div>
       </div>
 
-      {/* Hidden PDF renderer — off-screen, needed only for AI canvas capture */}
+      {/* Hidden PDF renderer for AI canvas capture (off-screen) */}
       {fileData && (
         <div
           ref={scrollRef}
           style={{ position: "absolute", left: -9999, top: -9999, opacity: 0, pointerEvents: "none", width: 800 }}
           aria-hidden="true"
         >
-          <Document file={fileData} onLoadSuccess={({ numPages: n }) => setNumPages(n)} onLoadError={() => setPdfError(true)}>
+          <Document file={fileData} onLoadSuccess={({ numPages: n }) => { setNumPages(n); setPageNumber(1); }} onLoadError={() => setPdfError(true)}>
             <Page pageNumber={1} scale={1} renderTextLayer={false} renderAnnotationLayer={false} />
           </Document>
         </div>
       )}
 
-      {/* ── Body: Full-width report layout ─────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto bg-gray-50">
-        <div className="max-w-7xl mx-auto px-6 py-6 grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6">
+      {/* ── Tab Bar ─────────────────────────────────────────────────────────── */}
+      <div className="flex-shrink-0 flex border-b border-gray-200 bg-white">
+        {([
+          { key: "ai" as DetailTab, label: "AI Analysis", icon: Sparkles },
+          { key: "suggestions" as DetailTab, label: "Suggestions", icon: Lightbulb },
+          { key: "view" as DetailTab, label: "View Drawing", icon: FileText },
+          { key: "revisions" as DetailTab, label: `Revisions (${allRevisions.length})`, icon: History },
+        ] as { key: DetailTab; label: string; icon: React.ElementType }[]).map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`flex items-center gap-1.5 px-5 py-3 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
+              activeTab === key
+                ? "text-blue-600 border-blue-600 bg-blue-50/50"
+                : "text-gray-500 border-transparent hover:text-gray-800 hover:bg-gray-50"
+            }`}
+          >
+            <Icon className="w-4 h-4" /> {label}
+          </button>
+        ))}
+      </div>
 
-          {/* ── Left column: AI Analysis ───────────────────────────────────── */}
+      {/* ── Tab Content ─────────────────────────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto bg-gray-50">
+        <div className="max-w-5xl mx-auto px-6 py-6 space-y-5">
+
+          {/* ══ AI ANALYSIS TAB ══════════════════════════════════════════════ */}
+          {activeTab === "ai" && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -2842,111 +2865,299 @@ function DrawingDetailPage({
               </div>
             )}
           </div>
+          )} {/* end AI Analysis tab */}
 
-          {/* ── Right column: Info + Revisions ─────────────────────────────── */}
+          {/* ══ SUGGESTIONS TAB ══════════════════════════════════════════════ */}
+          {activeTab === "suggestions" && (
           <div className="space-y-5">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-7 h-7 rounded-lg bg-amber-500 flex items-center justify-center">
+                <Lightbulb className="w-4 h-4 text-white" />
+              </div>
+              <h2 className="text-sm font-bold text-gray-900">AI Suggestions & Action Plan</h2>
+            </div>
 
-            {/* Drawing Info */}
-            <div className="bg-white rounded-2xl border border-gray-200 p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <Info className="w-4 h-4 text-gray-500" />
-                <h3 className="text-xs font-bold text-gray-700 uppercase tracking-widest">Drawing Details</h3>
+            {!aiAnalysis && !aiLoading && (
+              <div className="bg-white rounded-2xl border border-dashed border-amber-300 p-10 flex flex-col items-center gap-3 text-center">
+                <Lightbulb className="w-12 h-12 text-amber-200" />
+                <p className="text-sm text-gray-500">No suggestions yet</p>
+                <p className="text-xs text-gray-400">Run AI Analysis first to generate suggestions</p>
+                <button onClick={() => { setActiveTab("ai"); handleAnalyze(); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors">
+                  <Sparkles className="w-3.5 h-3.5" /> Run AI Analysis
+                </button>
               </div>
-              <div className="space-y-2.5">
-                {[
-                  { label: "Drawing No.", value: drawing.drawingNo, mono: true },
-                  { label: "Title", value: drawing.title || "—" },
-                  { label: "Project", value: drawing.project || "—" },
-                  { label: "System", value: drawing.systemName || "—" },
-                  { label: "Department", value: drawing.department || "—" },
-                  { label: "Drawing Type", value: drawing.drawingType || "—" },
-                  { label: "Uploaded By", value: drawing.uploadedBy || "—" },
-                  { label: "Date", value: formatDate(drawing.uploadedAt) },
-                ].map(({ label, value, mono }) => (
-                  <div key={label} className="flex items-start justify-between gap-3">
-                    <span className="text-[10px] text-gray-400 uppercase tracking-widest shrink-0 w-24 pt-0.5">{label}</span>
-                    <span className={`text-xs text-gray-800 font-medium text-right ${mono ? "font-mono" : ""}`}>{value}</span>
+            )}
+
+            {aiLoading && (
+              <div className="bg-white rounded-2xl border border-gray-200 p-10 flex flex-col items-center gap-3 text-center">
+                <Loader2 className="w-10 h-10 text-amber-400 animate-spin" />
+                <p className="text-sm text-gray-500">Generating suggestions…</p>
+              </div>
+            )}
+
+            {aiAnalysis && !aiLoading && (
+              <div className="space-y-5">
+                {/* Recommendations */}
+                {aiAnalysis.recommendations.length > 0 && (
+                  <div className="bg-white rounded-2xl border border-emerald-200 p-6">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Lightbulb className="w-4 h-4 text-emerald-600" />
+                      <h3 className="text-xs font-bold text-emerald-700 uppercase tracking-widest">Recommendations</h3>
+                    </div>
+                    <div className="space-y-3">
+                      {aiAnalysis.recommendations.map((rec, i) => (
+                        <div key={i} className="flex items-start gap-3 p-3 bg-emerald-50 rounded-xl border border-emerald-100">
+                          <span className="w-5 h-5 rounded-full bg-emerald-500 text-white text-[9px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{i + 1}</span>
+                          <p className="text-sm text-gray-700 leading-relaxed">{rec}</p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ))}
-              </div>
-              {/* Approvals */}
-              <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
-                <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-2">Approvals</p>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-500 flex items-center gap-1"><UserCheck className="w-3 h-3" /> Checked</span>
-                  {drawing.checkedBy
-                    ? <span className="text-[11px] text-emerald-700 font-semibold">{drawing.checkedBy.name}</span>
-                    : <span className="text-[11px] text-gray-400 italic">Pending</span>}
+                )}
+
+                {/* Action Plan */}
+                {aiAnalysis.actionPlan && aiAnalysis.actionPlan.length > 0 && (
+                  <div className="bg-white rounded-2xl border border-orange-200 p-6">
+                    <div className="flex items-center gap-2 mb-4">
+                      <ListChecks className="w-4 h-4 text-orange-600" />
+                      <h3 className="text-xs font-bold text-orange-700 uppercase tracking-widest">Prioritized Action Plan</h3>
+                    </div>
+                    <div className="space-y-3">
+                      {aiAnalysis.actionPlan.map((item, i) => {
+                        const isHigh = item.startsWith("[HIGH]");
+                        const isMed = item.startsWith("[MEDIUM]");
+                        const cardBg = isHigh ? "bg-red-50 border-red-200" : isMed ? "bg-amber-50 border-amber-200" : "bg-gray-50 border-gray-200";
+                        const badgeBg = isHigh ? "bg-red-500" : isMed ? "bg-amber-500" : "bg-blue-400";
+                        const badgeLabel = isHigh ? "HIGH" : isMed ? "MEDIUM" : "LOW";
+                        const textColor = isHigh ? "text-red-800" : isMed ? "text-amber-800" : "text-gray-700";
+                        return (
+                          <div key={i} className={`flex items-start gap-3 p-3 rounded-xl border ${cardBg}`}>
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded text-white flex-shrink-0 ${badgeBg}`}>{badgeLabel}</span>
+                            <p className={`text-sm ${textColor} leading-relaxed`}>{item.replace(/^\[(HIGH|MEDIUM|LOW)\]\s*/, "")}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Detected Type info */}
+                <div className="bg-white rounded-2xl border border-purple-200 p-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Tag className="w-4 h-4 text-purple-600" />
+                    <h3 className="text-xs font-bold text-purple-700 uppercase tracking-widest">Drawing Classification</h3>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-500">Detected Type</span>
+                      <span className="text-xs font-semibold text-gray-800">{aiAnalysis.detectedType || "—"}</span>
+                    </div>
+                    {aiAnalysis.suggestedDepartment && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-500">Suggested Department</span>
+                        <span className="text-xs font-semibold text-purple-700">{aiAnalysis.suggestedDepartment}</span>
+                      </div>
+                    )}
+                    {aiAnalysis.isElectrical && (
+                      <div className="flex items-center gap-1.5 mt-2 bg-amber-50 rounded-lg px-3 py-2 border border-amber-200">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                        <span className="text-xs text-amber-700 font-medium">Full electrical standards analysis was applied</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-500 flex items-center gap-1"><ThumbsUp className="w-3 h-3" /> Approved</span>
-                  {drawing.approvedBy
-                    ? <span className="text-[11px] text-blue-700 font-semibold">{drawing.approvedBy.name}</span>
-                    : <span className="text-[11px] text-gray-400 italic">Pending</span>}
+
+                {/* Drawing Details */}
+                <div className="bg-white rounded-2xl border border-gray-200 p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Info className="w-4 h-4 text-gray-500" />
+                    <h3 className="text-xs font-bold text-gray-700 uppercase tracking-widest">Drawing Details</h3>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { label: "Drawing No.", value: drawing.drawingNo },
+                      { label: "Title", value: drawing.title || "—" },
+                      { label: "Project", value: drawing.project || "—" },
+                      { label: "Department", value: drawing.department || "—" },
+                      { label: "Drawing Type", value: drawing.drawingType || "—" },
+                      { label: "System", value: drawing.systemName || "—" },
+                      { label: "Uploaded By", value: drawing.uploadedBy || "—" },
+                      { label: "Date", value: formatDate(drawing.uploadedAt) },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="bg-gray-50 rounded-lg p-3">
+                        <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-0.5">{label}</p>
+                        <p className="text-xs font-semibold text-gray-800 truncate">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <div className={`rounded-lg p-3 border ${drawing.checkedBy ? "bg-emerald-50 border-emerald-200" : "bg-gray-50 border-gray-200"}`}>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-0.5 flex items-center gap-1"><UserCheck className="w-3 h-3" /> Checked</p>
+                      <p className={`text-xs font-semibold ${drawing.checkedBy ? "text-emerald-700" : "text-gray-400 italic"}`}>
+                        {drawing.checkedBy ? drawing.checkedBy.name : "Pending"}
+                      </p>
+                    </div>
+                    <div className={`rounded-lg p-3 border ${drawing.approvedBy ? "bg-blue-50 border-blue-200" : "bg-gray-50 border-gray-200"}`}>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-0.5 flex items-center gap-1"><ThumbsUp className="w-3 h-3" /> Approved</p>
+                      <p className={`text-xs font-semibold ${drawing.approvedBy ? "text-blue-700" : "text-gray-400 italic"}`}>
+                        {drawing.approvedBy ? drawing.approvedBy.name : "Pending"}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
-              {drawing.note && (
-                <div className="mt-4 pt-4 border-t border-gray-100">
-                  <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-1">Note</p>
-                  <p className="text-xs text-gray-700 leading-relaxed">{drawing.note}</p>
+            )}
+          </div>
+          )} {/* end Suggestions tab */}
+
+          {/* ══ VIEW DRAWING TAB ═════════════════════════════════════════════ */}
+          {activeTab === "view" && (
+          <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+            {/* PDF toolbar */}
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-200 bg-gray-50 flex-shrink-0">
+              <button onClick={() => setScale(s => Math.max(0.4, parseFloat((s - 0.2).toFixed(1))))}
+                className="p-1.5 rounded text-gray-500 hover:bg-gray-200 transition-colors"><ZoomOut className="w-3.5 h-3.5" /></button>
+              <button onClick={() => setScale(1.0)} className="px-2 py-1 text-xs text-gray-600 bg-white border border-gray-200 rounded tabular-nums w-14 text-center hover:bg-gray-50">
+                {Math.round(scale * 100)}%
+              </button>
+              <button onClick={() => setScale(s => Math.min(3, parseFloat((s + 0.2).toFixed(1))))}
+                className="p-1.5 rounded text-gray-500 hover:bg-gray-200 transition-colors"><ZoomIn className="w-3.5 h-3.5" /></button>
+              <button onClick={() => setScale(1.0)} title="Reset zoom"
+                className="p-1.5 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 transition-colors"><RotateCcw className="w-3 h-3" /></button>
+              <div className="h-4 w-px bg-gray-300 mx-1" />
+              {numPages && (
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setPageNumber(p => Math.max(1, p - 1))} disabled={pageNumber <= 1}
+                    className="p-1.5 rounded text-gray-400 hover:text-gray-700 disabled:opacity-30 hover:bg-gray-200 transition-colors"><ChevronLeft className="w-3.5 h-3.5" /></button>
+                  <span className="text-xs text-gray-600 tabular-nums px-1">Page {pageNumber} / {numPages}</span>
+                  <button onClick={() => setPageNumber(p => Math.min(numPages!, p + 1))} disabled={pageNumber >= (numPages ?? 1)}
+                    className="p-1.5 rounded text-gray-400 hover:text-gray-700 disabled:opacity-30 hover:bg-gray-200 transition-colors"><ChevronRight className="w-3.5 h-3.5" /></button>
+                </div>
+              )}
+              {viewRevIdx !== null && (
+                <div className="flex items-center gap-2 ml-auto">
+                  <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full">
+                    Viewing: {drawing.history[viewRevIdx]?.revisionLabel || `Rev ${viewRevIdx + 1}`}
+                  </span>
+                  <button onClick={() => setViewRevIdx(null)} className="text-[10px] text-blue-600 hover:text-blue-800 underline">View Current</button>
                 </div>
               )}
             </div>
-
-            {/* Revision History */}
-            <div className="bg-white rounded-2xl border border-gray-200 p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <History className="w-4 h-4 text-gray-500" />
-                  <h3 className="text-xs font-bold text-gray-700 uppercase tracking-widest">Revision History</h3>
+            {/* PDF content */}
+            <div ref={null} className="overflow-auto flex flex-col items-center py-8 px-4 gap-4 bg-gray-100 min-h-[600px]">
+              {!activeFileData ? (
+                <div className="flex flex-col items-center justify-center gap-3 py-16 text-gray-400">
+                  <FileText className="w-16 h-16 text-gray-200" />
+                  <p className="text-sm">{viewRevIdx !== null ? "No file available for this revision" : "No PDF file attached to this drawing"}</p>
                 </div>
-                <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                  {allRevisions.length} version{allRevisions.length !== 1 ? "s" : ""}
-                </span>
+              ) : (
+                <Document
+                  file={activeFileData}
+                  onLoadSuccess={({ numPages: n }) => { setNumPages(n); }}
+                  onLoadError={() => setPdfError(true)}
+                  loading={<div className="flex items-center gap-2 text-gray-400 py-16"><Loader2 className="w-5 h-5 animate-spin" /> Loading PDF…</div>}
+                >
+                  {pdfError ? (
+                    <div className="text-red-500 text-sm py-8">Failed to load PDF</div>
+                  ) : (
+                    <div className="relative shadow-2xl rounded-lg overflow-hidden">
+                      <Page pageNumber={pageNumber} scale={scale} renderTextLayer={false} renderAnnotationLayer={false} />
+                      <PdfWatermark status={activeStatus} revisionLbl={activeRevLabel} />
+                    </div>
+                  )}
+                </Document>
+              )}
+            </div>
+          </div>
+          )} {/* end View Drawing tab */}
+
+          {/* ══ REVISIONS TAB ════════════════════════════════════════════════ */}
+          {activeTab === "revisions" && (
+          <div className="space-y-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center">
+                  <History className="w-4 h-4 text-white" />
+                </div>
+                <h2 className="text-sm font-bold text-gray-900">Revision History</h2>
               </div>
-              <div className="relative">
-                {/* Timeline line */}
-                <div className="absolute left-3 top-2 bottom-2 w-px bg-gray-200" />
-                <div className="space-y-4">
-                  {allRevisions.map((rev, i) => {
-                    const revCfg = STATUS_CONFIG[rev.status as DrawingStatus] || STATUS_CONFIG.draft;
-                    return (
-                      <div key={rev.isCurrent ? "current" : rev.idx} className="flex gap-3 relative">
-                        {/* Timeline dot */}
-                        <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 z-10 border-2 ${
-                          rev.isCurrent
-                            ? "bg-blue-600 border-blue-600"
-                            : "bg-white border-gray-300"
+              <span className="text-sm font-bold text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+                {allRevisions.length} version{allRevisions.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+
+            <div className="space-y-4">
+              {allRevisions.map((rev, i) => {
+                const revCfg = STATUS_CONFIG[rev.status as DrawingStatus] || STATUS_CONFIG.draft;
+                return (
+                  <div key={rev.isCurrent ? "current" : rev.idx}
+                    className={`bg-white rounded-2xl border p-5 transition-all ${rev.isCurrent ? "border-blue-300 shadow-sm ring-1 ring-blue-100" : "border-gray-200"}`}>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-3 flex-1 min-w-0">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 font-bold text-sm ${
+                          rev.isCurrent ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600"
                         }`}>
-                          {rev.isCurrent
-                            ? <CheckCircle2 className="w-3 h-3 text-white" />
-                            : <span className="text-[9px] font-bold text-gray-500">{i + 1}</span>}
+                          {rev.isCurrent ? <CheckCircle2 className="w-5 h-5" /> : i + 1}
                         </div>
-                        <div className="flex-1 min-w-0 pb-2">
-                          <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border ${revCfg.bg} ${revCfg.border} ${revCfg.textColor}`}>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-bold border ${revCfg.bg} ${revCfg.border} ${revCfg.textColor}`}>
                               {rev.revisionLabel}
                             </span>
                             {rev.isCurrent && (
-                              <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">CURRENT</span>
+                              <span className="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+                                CURRENT VERSION
+                              </span>
                             )}
                           </div>
-                          <p className="text-[10px] text-gray-400">{formatDateTime(rev.uploadedAt)}</p>
-                          {rev.revisedBy && <p className="text-[10px] text-gray-500 font-medium">By: {rev.revisedBy}</p>}
-                          {rev.fileName && <p className="text-[10px] text-gray-400 truncate">{rev.fileName}</p>}
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2">
+                            <div>
+                              <p className="text-[10px] text-gray-400 uppercase tracking-widest">Date</p>
+                              <p className="text-xs text-gray-700 font-medium">{formatDateTime(rev.uploadedAt)}</p>
+                            </div>
+                            {rev.revisedBy && (
+                              <div>
+                                <p className="text-[10px] text-gray-400 uppercase tracking-widest">By</p>
+                                <p className="text-xs text-gray-700 font-medium">{rev.revisedBy}</p>
+                              </div>
+                            )}
+                            {rev.fileName && (
+                              <div className="col-span-2">
+                                <p className="text-[10px] text-gray-400 uppercase tracking-widest">File</p>
+                                <p className="text-xs text-gray-600 truncate">{rev.fileName}</p>
+                              </div>
+                            )}
+                          </div>
                           {rev.note && (
-                            <p className="text-[11px] text-gray-600 mt-1 leading-relaxed bg-gray-50 rounded-lg px-2 py-1.5 border border-gray-100">
-                              {rev.note}
-                            </p>
+                            <div className="mt-3 bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100">
+                              <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-1">Change Notes</p>
+                              <p className="text-sm text-gray-700 leading-relaxed">{rev.note}</p>
+                            </div>
                           )}
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
+                      {/* View this revision in the View Drawing tab */}
+                      <button
+                        onClick={() => {
+                          if (rev.isCurrent) { setViewRevIdx(null); } else { loadRevFile(rev.idx); }
+                          setActiveTab("view");
+                        }}
+                        disabled={revFileLoading === rev.idx}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 transition-colors flex-shrink-0"
+                      >
+                        {revFileLoading === rev.idx
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <Eye className="w-3.5 h-3.5" />}
+                        View
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
+          )} {/* end Revisions tab */}
 
         </div>
       </div>
@@ -3211,7 +3422,10 @@ export default function ProjectDrawings() {
         }
       } catch {}
     }
-    if (saved.length > 0) setDrawings((prev) => [...saved, ...prev]);
+    if (saved.length > 0) {
+      setDrawings((prev) => [...saved, ...prev]);
+      setDetailDrawingId(saved[0].id);
+    }
     setModal({ type: "none" });
   };
 
