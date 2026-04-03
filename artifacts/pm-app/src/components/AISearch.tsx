@@ -429,6 +429,7 @@ export function AISearch({ currentPath, forceOpen, hideTriggerOnMobile }: { curr
 
   return (
     <>
+      {/* Trigger button in header */}
       <button
         onClick={() => setOpen(true)}
         className={cn(
@@ -436,224 +437,272 @@ export function AISearch({ currentPath, forceOpen, hideTriggerOnMobile }: { curr
           "bg-gray-50 border-gray-200 text-gray-500 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600",
           hideTriggerOnMobile && "hidden md:flex"
         )}
-        title="AI Search"
+        title="Ask AI"
       >
         <Bot className="w-3.5 h-3.5" />
         <span className="hidden sm:inline">Ask AI</span>
-        <Search className="w-3 h-3 opacity-60" />
       </button>
 
+      {/* Full-height right-side panel */}
       {open && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-start pt-14 px-4">
-          <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setOpen(false)} />
+        <>
+          {/* Backdrop */}
           <div
-            className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden z-10"
-            style={{ maxHeight: "calc(100vh - 80px)" }}
+            className="fixed inset-0 z-40 bg-black/25 backdrop-blur-[2px]"
+            onClick={() => setOpen(false)}
+          />
+
+          {/* Panel */}
+          <div
+            className="fixed top-0 right-0 bottom-0 z-50 flex flex-col bg-white shadow-2xl border-l border-gray-200"
+            style={{ width: "min(480px, 95vw)" }}
           >
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50 shrink-0">
-              <Bot className="w-4 h-4 text-blue-600 shrink-0" />
-              <span className="text-sm font-semibold text-gray-800">AI Assistant</span>
-              {moduleLabel && (
-                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium ml-1">
-                  {moduleLabel}
-                </span>
-              )}
-              <div className="ml-auto flex items-center gap-1">
+            {/* Header */}
+            <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 shrink-0"
+              style={{ background: "linear-gradient(135deg, #eff6ff 0%, #eef2ff 100%)" }}>
+              <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center shrink-0 shadow-sm">
+                <Bot className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-gray-900 leading-tight">FlowAI Assistant</p>
+                {moduleLabel ? (
+                  <p className="text-[11px] text-blue-600 font-medium truncate">📍 {moduleLabel}</p>
+                ) : (
+                  <p className="text-[11px] text-gray-400">Context-aware · Always ready</p>
+                )}
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
                 {messages.length > 0 && (
                   <button
                     onClick={clearChat}
-                    className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-white/60 transition-colors flex items-center gap-1"
+                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700 px-2 py-1.5 rounded-lg hover:bg-white/70 transition-colors"
                   >
-                    <RefreshCw className="w-3 h-3" /> Clear
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">New chat</span>
                   </button>
                 )}
                 <button
                   onClick={() => setOpen(false)}
-                  className="p-1 rounded hover:bg-white/60 text-gray-400 hover:text-gray-600 transition-colors"
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-white/70 transition-colors"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-4.5 h-4.5" />
                 </button>
               </div>
             </div>
 
-            {messages.length === 0 && !loading && (
-              <div className="flex flex-col items-center justify-center py-10 text-center px-6 shrink-0">
-                <div className="w-12 h-12 rounded-2xl bg-blue-100 flex items-center justify-center mb-3">
-                  <Bot className="w-6 h-6 text-blue-600" />
-                </div>
-                <p className="text-sm font-medium text-gray-700 mb-1">
-                  {moduleLabel ? `Ask me anything about ${moduleLabel}` : "How can I help you?"}
-                </p>
-                <p className="text-xs text-gray-400 mb-4">
-                  {moduleHint
-                    ? `You're on: ${moduleHint}`
-                    : "Ask questions, generate reports, create timelines, or anything work-related."}
-                </p>
+            {/* Chat messages */}
+            <div className="flex-1 overflow-y-auto min-h-0">
+              {messages.length === 0 && !loading ? (
+                /* Empty state */
+                <div className="flex flex-col items-center justify-center h-full px-6 py-10 text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center mb-5 shadow-lg">
+                    <Bot className="w-8 h-8 text-white" />
+                  </div>
+                  <h3 className="text-base font-bold text-gray-800 mb-1">
+                    {moduleLabel ? `Ask about ${moduleLabel}` : "How can I help?"}
+                  </h3>
+                  <p className="text-sm text-gray-400 mb-6 leading-relaxed max-w-xs">
+                    {moduleHint
+                      ? `I know everything about: ${moduleHint}`
+                      : "Ask about projects, HR, procurement, drawings, and more."}
+                  </p>
 
-                <div className="flex gap-2 mb-4 w-full justify-center flex-wrap">
-                  {QUICK_ACTIONS.map((action) => (
-                    <button
-                      key={action.label}
-                      onClick={() => sendQuery(action.prompt)}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 transition-colors border border-blue-200 font-medium"
-                    >
-                      <action.icon className="w-3 h-3" />
-                      {action.label}
-                    </button>
-                  ))}
-                </div>
+                  {/* Quick actions */}
+                  <div className="w-full space-y-2 mb-4">
+                    {QUICK_ACTIONS.map((action) => (
+                      <button
+                        key={action.label}
+                        onClick={() => sendQuery(action.prompt)}
+                        className="w-full flex items-center gap-3 text-left px-4 py-3 rounded-xl bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-200 transition-all group"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-blue-100 group-hover:bg-blue-200 flex items-center justify-center shrink-0 transition-colors">
+                          <action.icon className="w-4 h-4 text-blue-600" />
+                        </div>
+                        <span className="text-sm font-medium text-gray-700 group-hover:text-blue-700">{action.label}</span>
+                      </button>
+                    ))}
+                  </div>
 
-                <div className="flex flex-wrap gap-2 justify-center">
-                  {suggestions.map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => sendQuery(s)}
-                      className="text-xs px-3 py-1.5 rounded-full bg-gray-100 hover:bg-blue-100 hover:text-blue-700 text-gray-600 transition-colors border border-gray-200"
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {(messages.length > 0 || loading) && (
-              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-0" style={{ maxHeight: "50vh" }}>
-                {messages.map((msg, i) => {
-                  const isUser = msg.role === "user";
-                  const cleaned = cleanContent(msg.content);
-                  const msgType = msg.type || detectType(msg.content);
-
-                  return (
-                    <div key={i} className={cn("flex gap-2.5", isUser ? "flex-row-reverse" : "flex-row")}>
-                      <div className={cn(
-                        "w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-xs font-bold mt-0.5",
-                        isUser ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600"
-                      )}>
-                        {isUser ? "U" : <Bot className="w-3.5 h-3.5" />}
-                      </div>
-
-                      <div className={cn("flex flex-col gap-1.5", isUser ? "items-end" : "items-start", "max-w-[85%]")}>
-                        {isUser ? (
-                          <div className="bg-blue-600 text-white text-sm px-4 py-2.5 rounded-2xl rounded-tr-sm leading-relaxed">
-                            {msg.content}
-                          </div>
-                        ) : (
-                          <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-3.5 py-2.5 w-full">
-                            {!cleaned && loading && i === messages.length - 1 ? (
-                              <div className="flex items-center gap-2">
-                                <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin" />
-                                <span className="text-xs text-gray-500">Thinking…</span>
-                              </div>
-                            ) : msgType === "timeline" ? (
-                              <>
-                                <div className="flex items-center gap-1.5 mb-2 text-xs font-semibold text-blue-700">
-                                  <Calendar className="w-3.5 h-3.5" />
-                                  Timeline View
-                                </div>
-                                <TimelineView content={cleaned} />
-                              </>
-                            ) : (
-                              <MarkdownView content={cleaned} />
-                            )}
-
-                            {cleaned && !loading && (
-                              <div className="flex items-center gap-1.5 mt-2.5 pt-2 border-t border-gray-100">
-                                <button
-                                  onClick={() => copyMessage(msg.content, i)}
-                                  className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-gray-600 px-1.5 py-0.5 rounded hover:bg-gray-100 transition-colors"
-                                >
-                                  {copiedIndex === i ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
-                                  {copiedIndex === i ? "Copied" : "Copy"}
-                                </button>
-                                {msgType === "report" && (
-                                  <button
-                                    onClick={() => exportToPDF(msg.content)}
-                                    className="flex items-center gap-1 text-[10px] text-blue-500 hover:text-blue-700 px-1.5 py-0.5 rounded hover:bg-blue-50 transition-colors"
-                                  >
-                                    <Download className="w-3 h-3" />
-                                    Download PDF
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {loading && messages[messages.length - 1]?.role !== "assistant" && (
-                  <div className="flex gap-2.5 flex-row">
-                    <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center shrink-0 mt-0.5">
-                      <Bot className="w-3.5 h-3.5 text-gray-500" />
-                    </div>
-                    <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-3.5 py-2.5 flex items-center gap-1.5">
-                      <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin" />
-                      <span className="text-xs text-gray-500">Thinking…</span>
+                  {/* Module suggestions */}
+                  <div className="w-full">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 text-left">Suggestions</p>
+                    <div className="flex flex-col gap-1.5">
+                      {suggestions.map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => sendQuery(s)}
+                          className="text-left text-sm px-4 py-2.5 rounded-xl bg-gray-50 hover:bg-blue-50 hover:text-blue-700 text-gray-600 transition-all border border-gray-100 hover:border-blue-200"
+                        >
+                          {s}
+                        </button>
+                      ))}
                     </div>
                   </div>
-                )}
-                <div ref={chatEndRef} />
-              </div>
-            )}
+                </div>
+              ) : (
+                /* Messages */
+                <div className="px-4 py-4 space-y-4">
+                  {messages.map((msg, i) => {
+                    const isUser = msg.role === "user";
+                    const cleaned = cleanContent(msg.content);
+                    const msgType = msg.type || detectType(msg.content);
 
-            <div className="px-3 py-3 border-t border-gray-100 bg-gray-50 shrink-0">
-              {listening && (
-                <div className="flex items-center gap-2 mb-2 px-1">
-                  <span className="flex gap-1">
-                    {[0, 1, 2].map((i) => (
-                      <span key={i} className="w-1 h-3 bg-red-500 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
-                    ))}
-                  </span>
-                  <span className="text-xs text-red-500 font-medium">Listening… {transcript && `"${transcript}"`}</span>
+                    return (
+                      <div key={i} className={cn("flex gap-3", isUser ? "flex-row-reverse" : "flex-row")}>
+                        {/* Avatar */}
+                        <div className={cn(
+                          "w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold mt-0.5",
+                          isUser
+                            ? "bg-blue-600 text-white"
+                            : "bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-700 border border-blue-200"
+                        )}>
+                          {isUser ? "U" : <Bot className="w-4 h-4" />}
+                        </div>
+
+                        <div className={cn("flex flex-col gap-1", isUser ? "items-end" : "items-start", "max-w-[86%]")}>
+                          <span className="text-[10px] text-gray-400 font-medium px-1">
+                            {isUser ? "You" : "FlowAI"}
+                          </span>
+                          {isUser ? (
+                            <div className="bg-blue-600 text-white text-sm px-4 py-3 rounded-2xl rounded-tr-sm leading-relaxed shadow-sm">
+                              {msg.content}
+                            </div>
+                          ) : (
+                            <div className="bg-gray-50 border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3 w-full shadow-sm">
+                              {!cleaned && loading && i === messages.length - 1 ? (
+                                <div className="flex items-center gap-2 py-1">
+                                  <div className="flex gap-1">
+                                    {[0,1,2].map(j => (
+                                      <span key={j} className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"
+                                        style={{ animationDelay: `${j * 0.15}s` }} />
+                                    ))}
+                                  </div>
+                                  <span className="text-sm text-gray-400">Thinking…</span>
+                                </div>
+                              ) : msgType === "timeline" ? (
+                                <>
+                                  <div className="flex items-center gap-1.5 mb-3 text-xs font-semibold text-blue-700">
+                                    <Calendar className="w-3.5 h-3.5" />
+                                    Timeline View
+                                  </div>
+                                  <TimelineView content={cleaned} />
+                                </>
+                              ) : (
+                                <MarkdownView content={cleaned} />
+                              )}
+
+                              {cleaned && !loading && (
+                                <div className="flex items-center gap-2 mt-3 pt-2 border-t border-gray-100">
+                                  <button
+                                    onClick={() => copyMessage(msg.content, i)}
+                                    className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-700 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors"
+                                  >
+                                    {copiedIndex === i ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                    {copiedIndex === i ? "Copied!" : "Copy"}
+                                  </button>
+                                  {msgType === "report" && (
+                                    <button
+                                      onClick={() => exportToPDF(msg.content)}
+                                      className="flex items-center gap-1 text-[11px] text-blue-500 hover:text-blue-700 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors"
+                                    >
+                                      <Download className="w-3.5 h-3.5" />
+                                      Download PDF
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {loading && messages[messages.length - 1]?.role !== "assistant" && (
+                    <div className="flex gap-3 flex-row">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 border border-blue-200 flex items-center justify-center shrink-0 mt-0.5">
+                        <Bot className="w-4 h-4 text-blue-600" />
+                      </div>
+                      <div className="bg-gray-50 border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-2">
+                        <div className="flex gap-1">
+                          {[0,1,2].map(j => (
+                            <span key={j} className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"
+                              style={{ animationDelay: `${j * 0.15}s` }} />
+                          ))}
+                        </div>
+                        <span className="text-sm text-gray-400">Thinking…</span>
+                      </div>
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
                 </div>
               )}
-              <div className="flex items-center gap-2 bg-white rounded-xl border border-gray-200 shadow-sm px-3 py-2">
+            </div>
+
+            {/* Input area */}
+            <div className="shrink-0 px-4 py-4 border-t border-gray-100 bg-white">
+              {listening && (
+                <div className="flex items-center gap-2 mb-3 px-1">
+                  <span className="flex gap-1">
+                    {[0, 1, 2].map((i) => (
+                      <span key={i} className="w-1.5 h-4 bg-red-500 rounded-full animate-bounce"
+                        style={{ animationDelay: `${i * 0.15}s` }} />
+                    ))}
+                  </span>
+                  <span className="text-sm text-red-500 font-medium">
+                    Listening… {transcript && `"${transcript}"`}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex items-end gap-2 bg-gray-50 rounded-2xl border border-gray-200 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition-all px-4 py-3 shadow-sm">
                 <input
                   ref={inputRef}
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder={moduleLabel ? `Ask about ${moduleLabel}…` : "Type your question or use the mic…"}
-                  className="flex-1 text-sm outline-none bg-transparent text-gray-800 placeholder:text-gray-400"
+                  placeholder={moduleLabel ? `Ask about ${moduleLabel}…` : "Message FlowAI…"}
+                  className="flex-1 text-sm outline-none bg-transparent text-gray-800 placeholder:text-gray-400 resize-none"
                   disabled={loading}
                 />
-                <button
-                  onClick={toggleVoice}
-                  className={cn(
-                    "p-1.5 rounded-lg transition-all",
-                    listening ? "bg-red-100 text-red-500 hover:bg-red-200" : "text-gray-400 hover:bg-gray-100 hover:text-blue-600"
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={toggleVoice}
+                    className={cn(
+                      "p-2 rounded-xl transition-all",
+                      listening
+                        ? "bg-red-100 text-red-500 hover:bg-red-200"
+                        : "text-gray-400 hover:bg-gray-200 hover:text-blue-600"
+                    )}
+                    title={listening ? "Stop listening" : "Voice input"}
+                  >
+                    {listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                  </button>
+                  {loading ? (
+                    <button
+                      onClick={stopGeneration}
+                      className="p-2 rounded-xl bg-red-100 text-red-500 hover:bg-red-200 transition-all"
+                      title="Stop"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => sendQuery(query)}
+                      disabled={!query.trim()}
+                      className="p-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm"
+                      title="Send"
+                    >
+                      <Send className="w-4 h-4" />
+                    </button>
                   )}
-                  title={listening ? "Stop listening" : "Voice input"}
-                >
-                  {listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                </button>
-                {loading ? (
-                  <button
-                    onClick={stopGeneration}
-                    className="p-1.5 rounded-lg bg-red-100 text-red-500 hover:bg-red-200 transition-all"
-                    title="Stop generating"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => sendQuery(query)}
-                    disabled={!query.trim()}
-                    className="p-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                    title="Send"
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
-                )}
+                </div>
               </div>
-              <p className="text-[10px] text-gray-400 text-center mt-1.5">Press Enter to send · Esc to close</p>
+              <p className="text-[10px] text-gray-400 text-center mt-2">Enter to send · Esc to close</p>
             </div>
           </div>
-        </div>
+        </>
       )}
     </>
   );

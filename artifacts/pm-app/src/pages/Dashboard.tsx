@@ -136,7 +136,7 @@ export default function Dashboard() {
   return (
     <Layout>
       <div className="h-full overflow-y-auto bg-background">
-        <div className="p-4 md:p-6 space-y-4 max-w-screen-2xl mx-auto">
+        <div className="p-4 md:p-6 space-y-4">
 
           {/* ── Hero Row ─────────────────────────────────────────────────── */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
