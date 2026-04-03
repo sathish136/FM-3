@@ -440,7 +440,7 @@ function PdfViewer({
     report: string;
     actionPlan: string[];
     isElectrical: boolean;
-  } | null>(null);
+  } | null>((drawing.aiAnalysis as any) ?? null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const autoAnalyzedRef = useRef(false);
@@ -551,7 +551,7 @@ function PdfViewer({
     setNumPages(null);
     setPdfError(false);
     setShowCheckConfirm(false);
-    setAiAnalysis(null);
+    setAiAnalysis((drawing.aiAnalysis as any) ?? null);
     setAiError(null);
     scrollToBottomRef.current = false;
     isTransitioningRef.current = false;
@@ -584,12 +584,18 @@ function PdfViewer({
       }
       const data = await resp.json();
       setAiAnalysis(data);
+      // Save to DB so report is available next time without re-analyzing
+      fetch(`${BASE}/api/project-drawings/${drawing.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aiAnalysis: data }),
+      }).catch(() => {});
     } catch (e: any) {
       setAiError(e.message || "Analysis failed");
     } finally {
       setAiLoading(false);
     }
-  }, [aiLoading, drawing.drawingNo, drawing.title, drawing.department]);
+  }, [aiLoading, drawing.id, drawing.drawingNo, drawing.title, drawing.department]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -601,10 +607,10 @@ function PdfViewer({
     return () => window.removeEventListener("keydown", handler);
   }, [onClose, onPrev, onNext, hasPrev, hasNext]);
 
-  // Auto-analyze when PDF canvas is ready (after page renders)
+  // Auto-analyze only if no saved report exists yet
   useEffect(() => {
     if (autoAnalyzedRef.current) return;
-    if (aiAnalysis || aiLoading) return;
+    if (drawing.aiAnalysis || aiAnalysis || aiLoading) return;
     const tryAnalyze = () => {
       const canvas = scrollRef.current?.querySelector("canvas");
       if (canvas) {
@@ -1981,14 +1987,8 @@ function UploadModal({
           <div className="px-6 py-3 bg-blue-50 border-t border-blue-100 flex items-center gap-3">
             <RefreshCw className="w-4 h-4 animate-spin text-blue-600 flex-shrink-0" />
             <div className="flex-1">
-              <p className="text-xs font-semibold text-blue-800">
-                {uploadStep === "analyzing" ? "AI Analysis in Progress" : "Saving Drawing to Database"}
-              </p>
-              <p className="text-xs text-blue-600 mt-0.5">
-                {uploadStep === "analyzing"
-                  ? "Analyzing drawing with GPT-4o and storing report in database…"
-                  : "Uploading drawing file and metadata…"}
-              </p>
+              <p className="text-xs font-semibold text-blue-800">Saving Drawing to Database</p>
+              <p className="text-xs text-blue-600 mt-0.5">AI analysis will run automatically in the background and be ready when you open the drawing.</p>
             </div>
           </div>
         )}
@@ -2016,7 +2016,7 @@ function UploadModal({
               ) : (
                 <Upload className="w-4 h-4" />
               )}
-              {uploadStep === "uploading" ? "Saving Drawing…" : uploadStep === "analyzing" ? "Running AI Analysis…" : isLoading ? "Processing…" : `Upload ${files.length > 0 ? `${files.length} ` : ""}Drawing${files.length !== 1 ? "s" : ""}`}
+              {isLoading ? "Saving Drawing…" : `Upload ${files.length > 0 ? `${files.length} ` : ""}Drawing${files.length !== 1 ? "s" : ""}`}
             </button>
           </div>
         </div>
@@ -2502,7 +2502,7 @@ function DrawingDetailPage({
   // Tab
   const [activeTab, setActiveTab] = useState<DetailTab>("ai");
 
-  // AI analysis
+  // AI analysis — initialize from saved DB report if available
   const [aiAnalysis, setAiAnalysis] = useState<{
     detectedType: string;
     suggestedDepartment: string;
@@ -2513,17 +2513,17 @@ function DrawingDetailPage({
     report: string;
     actionPlan: string[];
     isElectrical: boolean;
-  } | null>(null);
+  } | null>((drawing.aiAnalysis as any) ?? null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const autoAnalyzedRef = useRef(false);
 
-  // Reset on drawing change
+  // Reset on drawing change — use saved report if available
   useEffect(() => {
     setPageNumber(1);
     setNumPages(null);
     setPdfError(false);
-    setAiAnalysis(null);
+    setAiAnalysis((drawing.aiAnalysis as any) ?? null);
     setAiError(null);
     setViewRevIdx(null);
     autoAnalyzedRef.current = false;
@@ -2555,17 +2555,23 @@ function DrawingDetailPage({
       }
       const data = await resp.json();
       setAiAnalysis(data);
+      // Save to DB so report is available next time without re-analyzing
+      fetch(`${BASE}/api/project-drawings/${drawing.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aiAnalysis: data }),
+      }).catch(() => {});
     } catch (e: any) {
       setAiError(e.message || "Analysis failed");
     } finally {
       setAiLoading(false);
     }
-  }, [aiLoading, drawing.drawingNo, drawing.title, drawing.department]);
+  }, [aiLoading, drawing.id, drawing.drawingNo, drawing.title, drawing.department]);
 
-  // Auto-analyze when PDF canvas is ready
+  // Auto-analyze only if no saved report exists yet
   useEffect(() => {
     if (autoAnalyzedRef.current) return;
-    if (aiAnalysis || aiLoading) return;
+    if (drawing.aiAnalysis || aiAnalysis || aiLoading) return;
     const tryAnalyze = () => {
       const canvas = scrollRef.current?.querySelector("canvas");
       if (canvas) {
@@ -3474,39 +3480,39 @@ export default function ProjectDrawings() {
         });
         if (res.ok) {
           if (data.fileData) setFileDataCache(prev => ({ ...prev, [id]: data.fileData }));
-          // Run AI analysis immediately on upload (foreground, not background)
-          if (data.fileData) {
-            setUploadStep("analyzing");
-            try {
-              const imageBase64 = await renderPdfFirstPageToBase64(data.fileData);
-              const aiRes = await fetch(`${BASE}/api/drawings/analyze-page`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  imageBase64,
-                  drawingNo: data.drawingNo,
-                  title: data.title,
-                  department: data.department,
-                }),
-              });
-              if (aiRes.ok) {
-                const aiData = await aiRes.json();
-                // Save analysis result to backend DB
-                await fetch(`${BASE}/api/project-drawings/${id}`, {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ aiAnalysis: aiData }),
-                });
-                newDrawing.aiAnalysis = aiData;
-              } else {
-                console.warn("AI analysis returned error:", await aiRes.text());
-              }
-            } catch (err) {
-              console.warn("AI analysis failed:", err);
-            }
-            setUploadStep("uploading");
-          }
           saved.push(newDrawing);
+          // Run AI analysis in background — does not block modal close
+          if (data.fileData) {
+            const fileDataCopy = data.fileData;
+            const drawingId = id;
+            (async () => {
+              try {
+                const imageBase64 = await renderPdfFirstPageToBase64(fileDataCopy);
+                const aiRes = await fetch(`${BASE}/api/drawings/analyze-page`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    imageBase64,
+                    drawingNo: data.drawingNo,
+                    title: data.title,
+                    department: data.department,
+                  }),
+                });
+                if (aiRes.ok) {
+                  const aiData = await aiRes.json();
+                  await fetch(`${BASE}/api/project-drawings/${drawingId}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ aiAnalysis: aiData }),
+                  });
+                  // Update drawing in local state with the completed analysis
+                  setDrawings(prev => prev.map(d => d.id === drawingId ? { ...d, aiAnalysis: aiData } : d));
+                }
+              } catch (err) {
+                console.warn("Background AI analysis failed:", err);
+              }
+            })();
+          }
         }
       } catch (err) {
         console.error("Drawing upload failed:", err);
