@@ -40,8 +40,16 @@ import {
   Lightbulb,
   ListChecks,
   ScanSearch,
+  Pen,
+  Type,
+  Circle,
+  Square,
+  Eraser,
+  Undo2,
+  MousePointer2,
 } from "lucide-react";
-import { useState, useRef, useCallback, useEffect, CSSProperties } from "react";
+import { useState, useRef, useCallback, useEffect, CSSProperties, ElementType } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -75,6 +83,161 @@ function generateUUID(): string {
     const v = c === "x" ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
+}
+
+// ──────────────────────────────────────────────
+// Annotation types
+// ──────────────────────────────────────────────
+type AnnotationTool = "select" | "highlight" | "pen" | "text" | "circle" | "rect";
+
+interface BaseAnnotation { id: string; page: number; color: string; }
+interface PenAnnotation extends BaseAnnotation { type: "pen"; points: number[]; }
+interface HighlightAnnotation extends BaseAnnotation { type: "highlight"; x: number; y: number; w: number; h: number; }
+interface TextAnnotation extends BaseAnnotation { type: "text"; x: number; y: number; text: string; }
+interface CircleAnnotation extends BaseAnnotation { type: "circle"; cx: number; cy: number; rx: number; ry: number; }
+interface RectAnnotation extends BaseAnnotation { type: "rect"; x: number; y: number; w: number; h: number; }
+type Annotation = PenAnnotation | HighlightAnnotation | TextAnnotation | CircleAnnotation | RectAnnotation;
+
+const ANNOT_COLORS = ["#FBBF24", "#3B82F6", "#EF4444", "#22C55E", "#A855F7", "#000000"];
+
+function AnnotationLayer({
+  width,
+  height,
+  activeTool,
+  color,
+  annotations,
+  onAdd,
+  onUndo,
+}: {
+  width: number;
+  height: number;
+  activeTool: AnnotationTool;
+  color: string;
+  annotations: Annotation[];
+  onAdd: (a: Annotation) => void;
+  onUndo: () => void;
+}) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const drawing = useRef(false);
+  const startPt = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [draft, setDraft] = useState<Annotation | null>(null);
+
+  const getSVGPt = (e: ReactMouseEvent): { x: number; y: number } => {
+    const rect = svgRef.current!.getBoundingClientRect();
+    return {
+      x: ((e.clientX - rect.left) / rect.width) * width,
+      y: ((e.clientY - rect.top) / rect.height) * height,
+    };
+  };
+
+  const onMouseDown = (e: ReactMouseEvent) => {
+    if (activeTool === "select") return;
+    if (activeTool === "text") {
+      const pt = getSVGPt(e);
+      const text = prompt("Enter annotation text:");
+      if (text) onAdd({ id: generateUUID(), page: 0, type: "text", color, x: pt.x, y: pt.y, text });
+      return;
+    }
+    drawing.current = true;
+    const pt = getSVGPt(e);
+    startPt.current = pt;
+    if (activeTool === "pen") {
+      setDraft({ id: generateUUID(), page: 0, type: "pen", color, points: [pt.x, pt.y] });
+    } else if (activeTool === "highlight") {
+      setDraft({ id: generateUUID(), page: 0, type: "highlight", color, x: pt.x, y: pt.y, w: 0, h: 0 });
+    } else if (activeTool === "circle") {
+      setDraft({ id: generateUUID(), page: 0, type: "circle", color, cx: pt.x, cy: pt.y, rx: 0, ry: 0 });
+    } else if (activeTool === "rect") {
+      setDraft({ id: generateUUID(), page: 0, type: "rect", color, x: pt.x, y: pt.y, w: 0, h: 0 });
+    }
+  };
+
+  const onMouseMove = (e: ReactMouseEvent) => {
+    if (!drawing.current || !draft) return;
+    const pt = getSVGPt(e);
+    if (draft.type === "pen") {
+      setDraft(d => d && d.type === "pen" ? { ...d, points: [...d.points, pt.x, pt.y] } : d);
+    } else if (draft.type === "highlight") {
+      setDraft(d => d && d.type === "highlight" ? { ...d, w: pt.x - startPt.current.x, h: pt.y - startPt.current.y } : d);
+    } else if (draft.type === "circle") {
+      const rx = Math.abs(pt.x - startPt.current.x);
+      const ry = Math.abs(pt.y - startPt.current.y);
+      setDraft(d => d && d.type === "circle" ? { ...d, cx: startPt.current.x, cy: startPt.current.y, rx, ry } : d);
+    } else if (draft.type === "rect") {
+      setDraft(d => d && d.type === "rect" ? { ...d, w: pt.x - startPt.current.x, h: pt.y - startPt.current.y } : d);
+    }
+  };
+
+  const onMouseUp = () => {
+    if (!drawing.current || !draft) return;
+    drawing.current = false;
+    onAdd(draft);
+    setDraft(null);
+  };
+
+  const renderAnnotation = (a: Annotation, idx: number, isDraft = false) => {
+    const key = isDraft ? "draft" : a.id ?? idx;
+    const strokeW = 2.5;
+    if (a.type === "pen") {
+      if (a.points.length < 4) return null;
+      const d = `M ${a.points[0]} ${a.points[1]} ` + a.points.slice(2).reduce((acc, v, i) =>
+        i % 2 === 0 ? acc + `L ${v} ` : acc + `${v} `, "");
+      return <path key={key} d={d} stroke={a.color} strokeWidth={strokeW} fill="none" strokeLinecap="round" strokeLinejoin="round" />;
+    }
+    if (a.type === "highlight") {
+      const x = a.w < 0 ? a.x + a.w : a.x;
+      const y = a.h < 0 ? a.y + a.h : a.y;
+      return <rect key={key} x={x} y={y} width={Math.abs(a.w)} height={Math.abs(a.h)} fill={a.color} fillOpacity={0.3} stroke={a.color} strokeWidth={1} />;
+    }
+    if (a.type === "text") {
+      return <text key={key} x={a.x} y={a.y} fill={a.color} fontSize={14} fontFamily="sans-serif" fontWeight="bold" style={{ userSelect: "none" }}>{a.text}</text>;
+    }
+    if (a.type === "circle") {
+      return <ellipse key={key} cx={a.cx} cy={a.cy} rx={Math.max(1, a.rx)} ry={Math.max(1, a.ry)} stroke={a.color} strokeWidth={strokeW} fill="none" />;
+    }
+    if (a.type === "rect") {
+      const x = a.w < 0 ? a.x + a.w : a.x;
+      const y = a.h < 0 ? a.y + a.h : a.y;
+      return <rect key={key} x={x} y={y} width={Math.abs(a.w)} height={Math.abs(a.h)} stroke={a.color} strokeWidth={strokeW} fill="none" />;
+    }
+    return null;
+  };
+
+  const cursorMap: Record<AnnotationTool, string> = {
+    select: "default",
+    highlight: "crosshair",
+    pen: "crosshair",
+    text: "text",
+    circle: "crosshair",
+    rect: "crosshair",
+  };
+
+  if (width === 0 || height === 0) return null;
+
+  return (
+    <svg
+      ref={svgRef}
+      viewBox={`0 0 ${width} ${height}`}
+      width={width}
+      height={height}
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        cursor: cursorMap[activeTool],
+        pointerEvents: activeTool === "select" ? "none" : "all",
+        zIndex: 10,
+        touchAction: "none",
+      }}
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMove}
+      onMouseUp={onMouseUp}
+      onMouseLeave={onMouseUp}
+    >
+      {annotations.map((a, i) => renderAnnotation(a, i))}
+      {draft && renderAnnotation(draft, -1, true)}
+    </svg>
+  );
 }
 
 type DrawingStatus = "draft" | "revision" | "final";
@@ -421,7 +584,10 @@ function PdfViewer({
   const [pageNumber, setPageNumber] = useState(1);
   const [pdfError, setPdfError] = useState(false);
   const [scale, setScale] = useState(1.2);
-  const [highlightMode, setHighlightMode] = useState(false);
+  const [annotTool, setAnnotTool] = useState<AnnotationTool>("select");
+  const [annotColor, setAnnotColor] = useState("#3B82F6");
+  const [annotations, setAnnotations] = useState<Record<number, Annotation[]>>({});
+  const [pageDims, setPageDims] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   const [showPanel, setShowPanel] = useState(true);
   const [activeTab, setActiveTab] = useState<PanelTab>("info");
   const [showCheckConfirm, setShowCheckConfirm] = useState(false);
@@ -553,6 +719,9 @@ function PdfViewer({
     setShowCheckConfirm(false);
     setAiAnalysis((drawing.aiAnalysis as any) ?? null);
     setAiError(null);
+    setAnnotations({});
+    setAnnotTool("select");
+    setPageDims({ width: 0, height: 0 });
     scrollToBottomRef.current = false;
     isTransitioningRef.current = false;
     autoAnalyzedRef.current = false;
@@ -672,27 +841,27 @@ function PdfViewer({
       </div>
 
       {/* PDF Toolbar */}
-      <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-900 border-b border-gray-800 flex-shrink-0">
+      <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-900 border-b border-gray-800 flex-shrink-0 flex-wrap">
+        {/* Zoom */}
         <div className="flex items-center gap-0.5 bg-gray-800 rounded-lg px-0.5">
           <button
-            onClick={() =>
-              setScale((s) => Math.max(0.4, parseFloat((s - 0.2).toFixed(1))))
-            }
+            onClick={() => setScale((s) => Math.max(0.4, parseFloat((s - 0.2).toFixed(1))))}
             className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+            title="Zoom out"
           >
             <ZoomOut className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={() => setScale(1.2)}
             className="px-2 text-xs text-gray-300 tabular-nums w-12 text-center"
+            title="Reset zoom"
           >
             {Math.round(scale * 100)}%
           </button>
           <button
-            onClick={() =>
-              setScale((s) => Math.min(3, parseFloat((s + 0.2).toFixed(1))))
-            }
+            onClick={() => setScale((s) => Math.min(3, parseFloat((s + 0.2).toFixed(1))))}
             className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+            title="Zoom in"
           >
             <ZoomIn className="w-3.5 h-3.5" />
           </button>
@@ -700,26 +869,94 @@ function PdfViewer({
         <button
           onClick={() => setScale(1.2)}
           className="flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+          title="Fit to window"
         >
           <RotateCcw className="w-3 h-3" /> Fit
         </button>
+
         <div className="h-4 w-px bg-gray-700" />
+
+        {/* Annotation Tools */}
+        {(
+          [
+            { tool: "select" as AnnotationTool, Icon: MousePointer2, label: "Select" },
+            { tool: "highlight" as AnnotationTool, Icon: Highlighter, label: "Highlight" },
+            { tool: "pen" as AnnotationTool, Icon: Pen, label: "Draw" },
+            { tool: "text" as AnnotationTool, Icon: Type, label: "Write" },
+            { tool: "circle" as AnnotationTool, Icon: Circle, label: "Circle" },
+            { tool: "rect" as AnnotationTool, Icon: Square, label: "Rectangle" },
+          ] as { tool: AnnotationTool; Icon: React.ElementType; label: string }[]
+        ).map(({ tool, Icon, label }) => (
+          <button
+            key={tool}
+            onClick={() => setAnnotTool(tool)}
+            title={label}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
+              annotTool === tool
+                ? tool === "highlight"
+                  ? "bg-yellow-400 text-gray-900"
+                  : "bg-blue-600 text-white"
+                : "text-gray-400 hover:text-white hover:bg-gray-700"
+            }`}
+          >
+            <Icon className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{label}</span>
+          </button>
+        ))}
+
+        {/* Color palette */}
+        <div className="flex items-center gap-1 ml-1">
+          {ANNOT_COLORS.map((c) => (
+            <button
+              key={c}
+              onClick={() => setAnnotColor(c)}
+              title={c}
+              style={{ background: c }}
+              className={`w-4 h-4 rounded-full border-2 transition-transform ${annotColor === c ? "border-white scale-125" : "border-transparent"}`}
+            />
+          ))}
+        </div>
+
+        {/* Undo */}
         <button
-          onClick={() => setHighlightMode((h) => !h)}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${highlightMode ? "bg-yellow-400 text-gray-900" : "text-gray-400 hover:text-white hover:bg-gray-700"}`}
+          onClick={() =>
+            setAnnotations((prev) => {
+              const pg = pageNumber;
+              const cur = prev[pg] ?? [];
+              if (!cur.length) return prev;
+              return { ...prev, [pg]: cur.slice(0, -1) };
+            })
+          }
+          title="Undo last annotation"
+          className="flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
         >
-          <Highlighter className="w-3.5 h-3.5" /> Highlight
+          <Undo2 className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Undo</span>
         </button>
+
+        {/* Clear page annotations */}
+        <button
+          onClick={() => setAnnotations((prev) => ({ ...prev, [pageNumber]: [] }))}
+          title="Clear all marks on this page"
+          className="flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-400 hover:text-red-400 hover:bg-gray-700 transition-colors"
+        >
+          <Eraser className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Clear</span>
+        </button>
+
         <div className="h-4 w-px bg-gray-700" />
+
         <button
           onClick={handleAnalyze}
           disabled={aiLoading}
           className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${aiLoading ? "text-purple-400 bg-purple-900/30 cursor-wait" : "text-purple-300 hover:text-white hover:bg-purple-700/50"}`}
         >
           {aiLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-          {aiLoading ? "Analyzing…" : "AI Analyze"}
+          <span className="hidden sm:inline">{aiLoading ? "Analyzing…" : "AI Analyze"}</span>
         </button>
+
         <div className="flex-1" />
+
         {totalPages && (
           <div className="flex items-center gap-0.5">
             <button
@@ -755,7 +992,7 @@ function PdfViewer({
       <div className="flex-1 flex overflow-hidden">
         <div
           ref={scrollRef}
-          className={`flex-1 overflow-auto bg-gray-900 flex items-start justify-center p-6 relative ${highlightMode ? "select-text cursor-text" : "select-none"}`}
+          className={`flex-1 overflow-auto bg-gray-900 flex items-start justify-center p-6 relative ${annotTool === "select" ? "select-text" : "select-none"}`}
         >
           {pdfError ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3 pt-20">
@@ -795,13 +1032,35 @@ function PdfViewer({
                     <Page
                       pageNumber={Math.min(pageNumber, numPages ?? 1)}
                       scale={scale}
-                      renderTextLayer={true}
+                      renderTextLayer={annotTool === "select"}
                       renderAnnotationLayer={false}
                       className="shadow-2xl"
+                      onRenderSuccess={(page) => {
+                        setPageDims({ width: page.width, height: page.height });
+                      }}
                     />
                     <PdfWatermark
                       status={drawing.status}
                       revisionLbl={drawing.revisionLabel}
+                    />
+                    <AnnotationLayer
+                      width={pageDims.width}
+                      height={pageDims.height}
+                      activeTool={annotTool}
+                      color={annotColor}
+                      annotations={(annotations[pageNumber] ?? []).filter(a => a.page === pageNumber)}
+                      onAdd={(a) => {
+                        setAnnotations((prev) => ({
+                          ...prev,
+                          [pageNumber]: [...(prev[pageNumber] ?? []), { ...a, page: pageNumber }],
+                        }));
+                      }}
+                      onUndo={() =>
+                        setAnnotations((prev) => {
+                          const cur = prev[pageNumber] ?? [];
+                          return { ...prev, [pageNumber]: cur.slice(0, -1) };
+                        })
+                      }
                     />
                   </div>
                 </Document>
