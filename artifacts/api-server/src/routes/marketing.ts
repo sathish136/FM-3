@@ -6,7 +6,8 @@ const router = Router();
 const ERP_BASE = "https://erp.wttint.com";
 const ERP_API_KEY = process.env.ERPNEXT_API_KEY || "";
 const ERP_API_SECRET = process.env.ERPNEXT_API_SECRET || "";
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
+const OPENAI_API_KEY = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY || "";
+const OPENAI_BASE_URL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
 
 // Fetch ERP with SSL verification disabled (self-signed cert on ERP server)
 function erpFetch(url: string): Promise<any> {
