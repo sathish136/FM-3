@@ -259,10 +259,7 @@ function AnnotationLayer({
     }
     if (a.type === "text") {
       return (
-        <g key={key} style={eraserStyle}>
-          <rect x={a.x - 2} y={a.y - 16} width={Math.max(60, a.text.length * 8 + 4)} height={22} fill="rgba(0,0,0,0.55)" rx={3} />
-          <text x={a.x} y={a.y} fill={a.color} fontSize={14} fontFamily="sans-serif" fontWeight="600" style={{ userSelect: "none" }}>{a.text}</text>
-        </g>
+        <text key={key} x={a.x} y={a.y} fill={a.color} fontSize={14} fontFamily="sans-serif" fontWeight="700" style={{ userSelect: "none", ...eraserStyle }}>{a.text}</text>
       );
     }
     if (a.type === "circle") {
