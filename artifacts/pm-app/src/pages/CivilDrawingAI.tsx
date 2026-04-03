@@ -703,13 +703,18 @@ export default function CivilDrawingAI() {
           params: genResult.params,
         }),
       });
-      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || "Correction failed"); }
+      if (!res.ok) {
+        let errMsg = `Server error ${res.status}`;
+        try { const err = await res.json(); errMsg = err.error || errMsg; } catch {}
+        throw new Error(errMsg);
+      }
       const data = await res.json();
+      if (!data.layout?.components) throw new Error("AI returned an incomplete layout — try rephrasing your correction.");
       const rec: ETPRecord = { ...genResult, id: Date.now().toString(), layout: data.layout, generatedAt: new Date().toISOString() };
       setGenResult(rec);
       setCorrectionPrompt("");
       const newH = [rec, ...genHistory]; setGenHistory(newH); saveGen(newH);
-    } catch (e: any) { setCorrectionError(e.message ?? "Correction failed"); }
+    } catch (e: any) { setCorrectionError(e.message ?? "Correction failed — please try again."); }
     finally { setCorrecting(false); }
   };
 
