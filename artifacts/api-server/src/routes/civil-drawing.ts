@@ -79,59 +79,111 @@ Return ONLY a valid JSON object with this EXACT structure (no markdown, no extra
 }`;
 
 const LAYOUT_RULES = `
-Rules:
-- ALL component coordinates (x, y, w, h) MUST be in METERS
-- ALL components must fit INSIDE the site boundary (site is 0,0 to siteLength, siteWidth)
-- Leave 2m clearance from each site boundary edge for access road
-- Leave minimum 1.5m gap between adjacent structures
-- Arrange components in logical process flow sequence
-- Size each component proportionally — larger tanks for bigger processes
-- Use colors: blue=water/tanks, teal=biological, green=treated/storage, amber=sludge, orange=chemical, red=emergency, gray=buildings, purple=advanced treatment (RO/MEE/ATFD)
-- Include ALL selected process stages in the layout
-- The outlet should be the final treated water storage or outlet structure
-- "level" field: negative = underground slab level (e.g. -4.0m), positive = top of structure above ground
-- "isUnderground": true if tank slab is below ground level
-- "hasManholes": true for buried tanks that need access manholes
-- "manholeCount": number of manholes on top of buried tank (1 per 50m²)
-- "hasSlope": true if floor is sloped (common in ZLD collection pits)
-- "slopeFrom" / "slopeTo": start and end levels of sloped floor`;
+CRITICAL RULES — follow exactly:
 
-function buildLayoutPrompt(plantType: string): string {
+1. ALL coordinates (x, y, w, h) are in METRES. Origin is top-left corner of site (0,0).
+2. Site boundary: x from 0 to siteLength, y from 0 to siteWidth. ALL components must stay INSIDE.
+3. Keep 2m clearance from every site boundary edge (access road). So usable area: x from 2 to (siteLength-2), y from 2 to (siteWidth-2).
+4. NO OVERLAPPING: Two components must not share any area. For any two components A and B, at least ONE of these must be true:
+   A.x + A.w + 2 <= B.x   (A is left of B)
+   B.x + B.w + 2 <= A.x   (B is left of A)
+   A.y + A.h + 2 <= B.y   (A is above B)
+   B.y + B.h + 2 <= A.y   (B is above A)
+   The "2" means at least 2m gap in every direction.
+5. GRID PLACEMENT STRATEGY — divide usable area into rows and columns, place one component per cell:
+   - Calculate usable width = siteLength - 4, usable height = siteWidth - 4
+   - Decide on columns (typically 3-5) and rows (typically 2-4) based on component count
+   - Each cell has padding: component starts at cell_x + 0.5, cell_y + 0.5; width = cell_w - 1, height = cell_h - 1
+   - Fill cells left-to-right, top-to-bottom, in process flow order
+   - Large tanks (biological, equalization, clarifier) occupy 2 cells wide or 2 cells tall
+6. SIZING — size components realistically based on flow rate and HRT:
+   - Equalization tank: 4-12m wide, 4-10m tall (depending on flow)
+   - Biological/Aeration: typically the LARGEST tank, 8-18m wide
+   - Secondary clarifier: 4-8m diameter (use square footprint)
+   - Pump room / blower room: 4-6m × 3-5m (building)
+   - Collection pits: 0.5-2m × 0.5-2m (small)
+7. Colors: blue=water/liquid tanks, teal=biological treatment, green=treated water storage, amber=sludge handling, orange=chemical dosing, purple=advanced treatment (RO/MEE/ATFD), gray=buildings/rooms
+8. Level annotations: "level" = base slab level (negative = below ground, e.g. -4.0; positive = above ground structure top)
+9. isUnderground: true for tanks with negative slab levels
+10. hasManholes: true for buried tanks; manholeCount = 1 per 50m² floor area
+11. hasSlope / slopeFrom / slopeTo: for sloped-floor collection pits`;
+
+// Post-process: fix any remaining overlaps by spreading components apart
+function fixOverlaps(components: any[], siteL: number, siteW: number): any[] {
+  const MARGIN = 2;
+  const BOUNDARY = 2;
+  const result = components.map(c => ({ ...c }));
+
+  for (let pass = 0; pass < 30; pass++) {
+    let changed = false;
+    for (let i = 0; i < result.length; i++) {
+      for (let j = i + 1; j < result.length; j++) {
+        const a = result[i], b = result[j];
+        const overlapX = Math.min(a.x + a.w + MARGIN, b.x + b.w + MARGIN) - Math.max(a.x, b.x);
+        const overlapY = Math.min(a.y + a.h + MARGIN, b.y + b.h + MARGIN) - Math.max(a.y, b.y);
+        if (overlapX > 0 && overlapY > 0) {
+          // Push the second component in the direction of least resistance
+          if (overlapX < overlapY) {
+            b.x = a.x + a.w + MARGIN;
+          } else {
+            b.y = a.y + a.h + MARGIN;
+          }
+          // Clamp to boundary
+          b.x = Math.max(BOUNDARY, Math.min(b.x, siteL - BOUNDARY - b.w));
+          b.y = Math.max(BOUNDARY, Math.min(b.y, siteW - BOUNDARY - b.h));
+          changed = true;
+        }
+      }
+    }
+    if (!changed) break;
+  }
+  return result;
+}
+
+function buildLayoutPrompt(plantType: string, siteL: number, siteW: number, count: number): string {
   const isZLD = plantType === "ZLD";
   const isSTP = plantType === "STP";
 
+  const cols = count <= 4 ? 2 : count <= 9 ? 3 : 4;
+  const rows = Math.ceil(count / cols);
+  const cellW = ((siteL - 4) / cols).toFixed(1);
+  const cellH = ((siteW - 4) / rows).toFixed(1);
+
+  const gridExample = `GRID EXAMPLE for this site (${siteL}m × ${siteW}m, ${cols} columns × ${rows} rows):
+Each cell is approximately ${cellW}m wide × ${cellH}m tall.
+Cell positions (top-left corners):
+${Array.from({ length: Math.min(count, cols * rows) }, (_, i) => {
+  const col = i % cols;
+  const row = Math.floor(i / cols);
+  const cx = (2 + col * (siteL - 4) / cols).toFixed(1);
+  const cy = (2 + row * (siteW - 4) / rows).toFixed(1);
+  return `  Cell ${i + 1}: x=${cx}, y=${cy} (component occupies ~${(parseFloat(cellW) - 1).toFixed(1)}m × ${(parseFloat(cellH) - 1).toFixed(1)}m)`;
+}).join("\n")}`;
+
   const specialNotes = isZLD
-    ? `ZLD-SPECIFIC RULES:
-- Include underground/RCC tanks (negative levels like -1.50m, -4.00m)
-- Include elevated platforms (Lvl: +2.65m, +3.15m) above structures
-- Include sludge collection pits with small footprints (0.5m×0.5m to 1m×1.8m)
-- Include slope annotations on sloped floors (e.g., -2.50 to -4.00m)
-- Include manholes (Ø750×750mm) on top of buried tanks — set hasManholes:true, manholeCount appropriately
-- Include DAF/Lamella Clarifloculator units
-- Include chemical dosing area and bulk storage
-- Include multi-effect evaporator / RO / ATFD / agitated thin-film dryer (color: purple)
-- Mark underground structures with isUnderground:true and negative level (e.g. level: -4.0)
-- Each component should have "level" field for base slab level
-- Each component with platform access should have "platform" field for top platform level`
+    ? `ZLD-SPECIFIC:
+- Underground tanks (level: -4.00, isUnderground: true, hasManholes: true)
+- Elevated platforms (platform: 2.65 or 3.15 on distribution and blower room)
+- Collection pits: very small (w=0.5-1m, h=0.5-1.8m), place near edges
+- Slope on collection pit floors (hasSlope:true, slopeFrom:-2.50, slopeTo:-4.00)
+- DAF, Lamella Clarifloculator, MEE (color:purple), ATFD (color:purple), RO (color:purple)
+- Chemical bulk storage (color:orange), Biological Blower Room (color:gray), Electrical Panel Room (color:gray)`
     : isSTP
-    ? `STP-SPECIFIC RULES:
-- Include screening chamber, grit trap, SBR/MBR/FAB tanks
-- Include sludge digester and drying beds
-- Include treated water storage and reuse tanks
-- color: blue=water, teal=biological treatment, green=storage`
-    : `ETP-SPECIFIC RULES:
-- Include inlet chamber, equalization, biological treatment
-- Include chemical dosing, clarifier, and treated water storage`;
+    ? `STP-SPECIFIC: Screening, grit trap, SBR/FAB tanks (teal), sludge drying beds (amber), treated UGT (green), pump room (gray)`
+    : `ETP-SPECIFIC: Inlet chamber, equalization (blue), aeration/biological (teal), clarifier (blue), treated storage (green), pump/blower rooms (gray)`;
 
-  return `You are a senior civil engineer specializing in ${plantType} (${
-    isZLD ? "Zero Liquid Discharge" : isSTP ? "Sewage Treatment Plant" : "Effluent Treatment Plant"
-  }) design and layout.
-
-Generate a detailed ${plantType} layout plan for the given parameters. Arrange all components within the site boundary following standard ${plantType} civil engineering design principles.
+  return `You are a senior civil engineer designing a ${plantType} plant layout.
+Your output is fed directly into a CAD renderer — coordinate accuracy and NO OVERLAPPING is critical.
 
 ${LAYOUT_JSON_SCHEMA}
+
 ${LAYOUT_RULES}
-${specialNotes}`;
+
+${gridExample}
+
+${specialNotes}
+
+VERIFICATION STEP: After placing all components, check every pair for overlap using rule #4. If any overlap exists, adjust coordinates before returning JSON.`;
 }
 
 // ─── Layout Generation ────────────────────────────────────────────────────────
@@ -161,7 +213,7 @@ router.post("/civil-drawing/generate", async (req, res) => {
     const response = await getOpenAI().chat.completions.create({
       model: "gpt-4o",
       max_completion_tokens: 6000,
-      messages: [{ role: "user", content: `${userContext}\n\n${buildLayoutPrompt(pType)}` }],
+      messages: [{ role: "user", content: `${userContext}\n\n${buildLayoutPrompt(pType, siteLength, siteWidth, processSteps.length)}` }],
     });
 
     const raw = response.choices[0]?.message?.content ?? "";
@@ -170,6 +222,10 @@ router.post("/civil-drawing/generate", async (req, res) => {
     catch (parseErr: any) {
       console.error("Generate parse error. Raw:", raw.slice(0, 500));
       return res.status(500).json({ error: parseErr.message ?? "AI returned invalid JSON" });
+    }
+    // Post-process: fix any AI-generated overlaps
+    if (Array.isArray(layout?.components)) {
+      layout.components = fixOverlaps(layout.components, siteLength, siteWidth);
     }
     return res.json({ layout, params: { projectName, siteLength, siteWidth, tankHeight, processSteps, inletFlow, additionalNotes, plantType: pType } });
   } catch (e: any) {
@@ -239,6 +295,9 @@ Return COMPLETE corrected JSON only — no extra text.`;
     catch (parseErr: any) {
       console.error("Correct parse error. Raw:", raw.slice(0, 500));
       return res.status(500).json({ error: parseErr.message ?? "AI returned invalid JSON" });
+    }
+    if (Array.isArray(layout?.components)) {
+      layout.components = fixOverlaps(layout.components, params.siteLength, params.siteWidth);
     }
     return res.json({ layout, params });
   } catch (e: any) {
