@@ -224,14 +224,17 @@ export default function SiteData() {
 
   const d = apiData?.data;
   const ageSeconds = apiData?.timing?.data_age_seconds ?? 9999;
-  const isLive = ageSeconds < 120;
-  const isStale = ageSeconds >= 120 && ageSeconds < 600;
-  const isOffline = ageSeconds >= 600;
 
-  const statusLabel = isOffline ? "Offline" : isStale ? "Stale Data" : "Live";
-  const statusDot = isOffline ? "bg-red-500" : isStale ? "bg-amber-400" : "bg-emerald-500";
-  const statusText = isOffline ? "text-red-600" : isStale ? "text-amber-600" : "text-emerald-600";
-  const statusBorder = isOffline ? "border-red-200 bg-red-50" : isStale ? "border-amber-200 bg-amber-50" : "border-emerald-200 bg-emerald-50";
+  // Connection status is based on whether we can reach our proxy, not the PLC age
+  // data_age_seconds reflects PLC-to-API lag; we show it as info only
+  const isConnected = !!apiData && !error;
+  const isLive = isConnected && ageSeconds < 300;
+  const isStale = isConnected && ageSeconds >= 300;
+
+  const statusLabel = !isConnected ? "Offline" : isStale ? "Stale PLC" : "Live";
+  const statusDot = !isConnected ? "bg-red-500" : isStale ? "bg-amber-400" : "bg-emerald-500";
+  const statusText = !isConnected ? "text-red-600" : isStale ? "text-amber-600" : "text-emerald-600";
+  const statusBorder = !isConnected ? "border-red-200 bg-red-50" : isStale ? "border-amber-200 bg-amber-50" : "border-emerald-200 bg-emerald-50";
 
   const stages = d ? [
     { stage: "1st Pass", stageNum: 1, data: { reco: d.ro_1st_reco, dp: d.ro_1st_stg_dp, fm: d.ro_1st_stg_fm, stg_in: d.ro_1st_stg_in, stg_out: d.ro_1st_stg_out, tot_fm: d.ro_stg1_tot_fm } },
