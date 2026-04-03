@@ -2465,7 +2465,7 @@ function DrawingDetailPage({
   onRevisionUpload: () => void;
   onMarkFinal: () => void;
   onDelete: () => void;
-  onAnalysisSaved: (id: string, analysis: AiAnalysisResult) => void;
+  onAnalysisSaved?: (id: string, analysis: AiAnalysisResult) => void;
   currentUserName: string;
 }) {
   const cfg = STATUS_CONFIG[drawing.status];
@@ -2546,6 +2546,8 @@ function DrawingDetailPage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ aiAnalysis: dataWithTimestamp }),
       }).catch(() => {});
+      // Update parent state so reopening the drawing doesn't re-trigger auto-analyze
+      onAnalysisSaved?.(drawing.id, dataWithTimestamp as AiAnalysisResult);
     } catch (e: any) {
       setAiError(e.message || "Analysis failed");
     } finally {
@@ -2773,8 +2775,8 @@ function DrawingDetailPage({
               </div>
             )}
 
-            {/* Error state */}
-            {aiError && !aiLoading && (
+            {/* Error state — only show if there's no existing report to display */}
+            {aiError && !aiLoading && !aiAnalysis && (
               <div className="bg-red-50 rounded-2xl border border-red-200 p-5 flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
                 <div>
@@ -3699,6 +3701,9 @@ export default function ProjectDrawings() {
           onRevisionUpload={() => setModal({ type: "revision", drawing: detailDrawing })}
           onMarkFinal={() => setModal({ type: "final", drawing: detailDrawing })}
           onDelete={() => { setDetailDrawingId(null); setModal({ type: "delete", drawing: detailDrawing }); }}
+          onAnalysisSaved={(id, analysis) => {
+            setDrawings(prev => prev.map(d => d.id === id ? { ...d, aiAnalysis: analysis } : d));
+          }}
           currentUserName={user?.full_name || ""}
         />
       ) : (
