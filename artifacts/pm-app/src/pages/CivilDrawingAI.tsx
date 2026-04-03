@@ -74,111 +74,335 @@ interface ETPLayout { components: ETPComponent[]; flowArrows: FlowArrow[]; inlet
 interface ETPRecord { id: string; params: { projectName: string; siteLength: number; siteWidth: number; tankHeight: number; inletFlow: string; processSteps: string[]; additionalNotes: string; }; layout: ETPLayout; generatedAt: string; }
 
 // ─────────────────────────────────────────────────────────
-// AutoCAD SVG renderer (ETP mode)
+// WTT Engineering Drawing Style (matches WTT-XXXX-C100B format)
+// White background · Concrete hatch walls · Grid refs · WTT title block
 // ─────────────────────────────────────────────────────────
 function AutoCADDrawing({ layout, siteLength, siteWidth, projectName, tankHeight, inletFlow }: {
   layout: ETPLayout; siteLength: number; siteWidth: number;
   projectName: string; tankHeight: number; inletFlow?: string;
 }) {
-  const BG = "#0D1117"; const DIM_COLOR = "#AAAAAA"; const FLOW_COLOR = "#00BFFF"; const SITE_COLOR = "#FF4500";
-  const PAD_L = 70; const PAD_T = 30; const PAD_R = 30; const TITLE_H = 100;
-  const DRAW_W = 1060; const DRAW_H = 640;
-  const SVG_W = PAD_L + DRAW_W + PAD_R; const SVG_H = PAD_T + DRAW_H + TITLE_H;
-  const PLAN_X = PAD_L; const PLAN_Y = PAD_T; const PLAN_W = DRAW_W; const PLAN_H = DRAW_H;
-  const sl = Math.max(siteLength, 1); const sw = Math.max(siteWidth, 1);
-  const scaleX = PLAN_W / sl; const scaleY = PLAN_H / sw;
-  const px = (m: number) => PLAN_X + m * scaleX; const py = (m: number) => PLAN_Y + m * scaleY;
-  const pw = (m: number) => m * scaleX; const ph = (m: number) => m * scaleY;
-  const getCenter = (c: ETPComponent) => ({ cx: px(c.x + c.w / 2), cy: py(c.y + c.h / 2) });
+  // ── Canvas constants ──
+  const SVG_W = 1280;
+  const SVG_H = 860;
+  const BORDER = 28;        // grid-reference strip width
+  const TITLE_W = 210;      // right-side title block
+  const DIM_MARGIN = 44;    // space for dimension lines (left + bottom)
+  const INNER_PAD = 10;     // inner margin after border strip
+
+  // Plan drawing extents
+  const PLAN_X = BORDER + DIM_MARGIN;
+  const PLAN_Y = BORDER + INNER_PAD;
+  const PLAN_W = SVG_W - BORDER * 2 - DIM_MARGIN - INNER_PAD - TITLE_W;
+  const PLAN_H = SVG_H - BORDER * 2 - INNER_PAD - DIM_MARGIN;
+
+  const sl = Math.max(siteLength, 1);
+  const sw = Math.max(siteWidth, 1);
+  const scaleX = PLAN_W / sl;
+  const scaleY = PLAN_H / sw;
+
+  const px = (m: number) => PLAN_X + m * scaleX;
+  const py = (m: number) => PLAN_Y + m * scaleY;
+  const pw = (m: number) => m * scaleX;
+  const ph = (m: number) => m * scaleY;
+
+  // Wall thickness: 0.3 m min 5px
+  const WT = Math.max(5, 0.3 * Math.min(scaleX, scaleY));
+
+  // Grid references
+  const GRID_COLS = 8;
+  const GRID_ROWS = 5;
+  const COL_NUMS = Array.from({ length: GRID_COLS }, (_, i) => i + 1);
+  const ROW_LETS = ["A", "B", "C", "D", "E"];
+  const cellW = PLAN_W / GRID_COLS;
+  const cellH = PLAN_H / GRID_ROWS;
+
+  // Scale bar
+  const sbMeters = sl <= 20 ? 5 : sl <= 50 ? 10 : 20;
+  const sbPx = pw(sbMeters);
+
+  // Date
   const dateStr = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-  const gridSpacing = sl <= 30 ? 5 : sl <= 80 ? 10 : 20;
-  const gridX: number[] = []; const gridY: number[] = [];
-  for (let x = 0; x <= sl; x += gridSpacing) gridX.push(x);
-  for (let y = 0; y <= sw; y += gridSpacing) gridY.push(y);
-  const sbPx = pw(gridSpacing);
+
+  // Flow arrow centres
+  const gc = (c: ETPComponent) => ({ cx: px(c.x + c.w / 2), cy: py(c.y + c.h / 2) });
+
+  // Title block geometry
+  const TB_X = SVG_W - BORDER - TITLE_W;
+  const TB_Y = BORDER;
+  const TB_H = SVG_H - BORDER * 2;
+
+  // Helper: horizontal divider inside title block
+  const tbLine = (yOff: number) => (
+    <line x1={TB_X} y1={TB_Y + yOff} x2={TB_X + TITLE_W} y2={TB_Y + yOff} stroke="#000" strokeWidth="0.7" />
+  );
+  // Helper: vertical divider inside title block
+  const tbVLine = (xOff: number, yStart: number, yEnd: number) => (
+    <line x1={TB_X + xOff} y1={TB_Y + yStart} x2={TB_X + xOff} y2={TB_Y + yEnd} stroke="#000" strokeWidth="0.7" />
+  );
+
   return (
-    <svg viewBox={`0 0 ${SVG_W} ${SVG_H}`} className="w-full h-auto" style={{ fontFamily: "'Courier New', monospace", background: BG }}>
+    <svg
+      viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+      className="w-full h-auto"
+      style={{ fontFamily: "Arial, sans-serif", background: "white" }}
+    >
       <defs>
-        <marker id="af" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,1 L0,7 L7,4 z" fill={FLOW_COLOR} /></marker>
-        <marker id="ad" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L0,6 L5,3 z" fill={DIM_COLOR} /></marker>
-        <marker id="adr" markerWidth="6" markerHeight="6" refX="2" refY="3" orient="auto-start-reverse"><path d="M0,0 L0,6 L5,3 z" fill={DIM_COLOR} /></marker>
+        {/* Concrete hatch — 45° diagonal lines */}
+        <pattern id="concrete" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="5" stroke="#555" strokeWidth="0.9" />
+        </pattern>
+        {/* Room/building hatch — cross lines */}
+        <pattern id="building" patternUnits="userSpaceOnUse" width="8" height="8">
+          <line x1="0" y1="0" x2="8" y2="8" stroke="#888" strokeWidth="0.6" />
+          <line x1="8" y1="0" x2="0" y2="8" stroke="#888" strokeWidth="0.6" />
+        </pattern>
+        {/* Flow pipe arrow */}
+        <marker id="flowA" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+          <path d="M0,0 L7,3.5 L0,7 Z" fill="#000" />
+        </marker>
+        {/* Dim arrows */}
+        <marker id="da" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">
+          <path d="M0,0 L5,2.5 L0,5 Z" fill="#000" />
+        </marker>
+        <marker id="dar" markerWidth="5" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+          <path d="M0,0 L5,2.5 L0,5 Z" fill="#000" />
+        </marker>
       </defs>
-      <rect width={SVG_W} height={SVG_H} fill={BG} />
-      <rect x={PLAN_X} y={PLAN_Y} width={PLAN_W} height={PLAN_H} fill="#050810" />
-      {gridX.map(x => <line key={`gx${x}`} x1={px(x)} y1={PLAN_Y} x2={px(x)} y2={PLAN_Y + PLAN_H} stroke="#1A2332" strokeWidth="0.5" />)}
-      {gridY.map(y => <line key={`gy${y}`} x1={PLAN_X} y1={py(y)} x2={PLAN_X + PLAN_W} y2={py(y)} stroke="#1A2332" strokeWidth="0.5" />)}
-      {gridX.map(x => <text key={`glx${x}`} x={px(x)} y={PLAN_Y - 6} fill={DIM_COLOR} fontSize="8" textAnchor="middle">{x}</text>)}
-      {gridY.map(y => <text key={`gly${y}`} x={PLAN_X - 8} y={py(y) + 3} fill={DIM_COLOR} fontSize="8" textAnchor="end">{y}</text>)}
-      <rect x={PLAN_X} y={PLAN_Y} width={PLAN_W} height={PLAN_H} fill="none" stroke={SITE_COLOR} strokeWidth="1.5" strokeDasharray="12,6" />
-      <text x={PLAN_X + 6} y={PLAN_Y + 13} fill={SITE_COLOR} fontSize="8" fontWeight="bold" letterSpacing="1">SITE BOUNDARY</text>
+
+      {/* ── WHITE BACKGROUND ── */}
+      <rect width={SVG_W} height={SVG_H} fill="white" />
+
+      {/* ── OUTER DOUBLE BORDER ── */}
+      <rect x={3} y={3} width={SVG_W - 6} height={SVG_H - 6} fill="none" stroke="#000" strokeWidth="2.5" />
+      <rect x={BORDER} y={BORDER} width={SVG_W - BORDER * 2} height={SVG_H - BORDER * 2} fill="none" stroke="#000" strokeWidth="0.8" />
+
+      {/* ── GRID REFERENCE STRIPS ── */}
+      {/* Column numbers top */}
+      {COL_NUMS.map((n, i) => {
+        const cx = PLAN_X + i * cellW + cellW / 2;
+        return (
+          <g key={`cn${n}`}>
+            <line x1={cx} y1={BORDER} x2={cx} y2={PLAN_Y} stroke="#000" strokeWidth="0.4" />
+            <line x1={cx} y1={PLAN_Y + PLAN_H} x2={cx} y2={SVG_H - BORDER} stroke="#000" strokeWidth="0.4" />
+            <text x={cx} y={BORDER + 17} textAnchor="middle" fontSize="11" fontWeight="bold" fill="#000">{n}</text>
+            <text x={cx} y={SVG_H - BORDER - 5} textAnchor="middle" fontSize="11" fontWeight="bold" fill="#000">{n}</text>
+          </g>
+        );
+      })}
+      {/* Row letters left */}
+      {ROW_LETS.map((l, i) => {
+        const cy = PLAN_Y + i * cellH + cellH / 2;
+        return (
+          <g key={`rl${l}`}>
+            <line x1={BORDER} y1={cy} x2={PLAN_X - DIM_MARGIN} y2={cy} stroke="#000" strokeWidth="0.4" />
+            <text x={BORDER + 14} y={cy + 4} textAnchor="middle" fontSize="11" fontWeight="bold" fill="#000">{l}</text>
+          </g>
+        );
+      })}
+
+      {/* ── PLAN AREA ── */}
+      <rect x={PLAN_X} y={PLAN_Y} width={PLAN_W} height={PLAN_H} fill="white" />
+
+      {/* Light grid inside plan */}
+      {COL_NUMS.slice(0, -1).map((_, i) => {
+        const x = PLAN_X + (i + 1) * cellW;
+        return <line key={`gl${i}`} x1={x} y1={PLAN_Y} x2={x} y2={PLAN_Y + PLAN_H} stroke="#DDDDDD" strokeWidth="0.4" />;
+      })}
+      {ROW_LETS.slice(0, -1).map((_, i) => {
+        const y = PLAN_Y + (i + 1) * cellH;
+        return <line key={`gr${i}`} x1={PLAN_X} y1={y} x2={PLAN_X + PLAN_W} y2={y} stroke="#DDDDDD" strokeWidth="0.4" />;
+      })}
+
+      {/* Plan border */}
+      <rect x={PLAN_X} y={PLAN_Y} width={PLAN_W} height={PLAN_H} fill="none" stroke="#000" strokeWidth="1" />
+
+      {/* ── FLOW PIPES (thin solid lines) ── */}
       {layout.flowArrows?.map((arrow, i) => {
         const fc = layout.components?.find(c => c.id === arrow.from);
         const tc = layout.components?.find(c => c.id === arrow.to);
         if (!fc || !tc) return null;
-        const f = getCenter(fc); const t = getCenter(tc);
-        return <g key={i}><line x1={f.cx} y1={f.cy} x2={t.cx} y2={t.cy} stroke={FLOW_COLOR} strokeWidth="1.2" strokeDasharray="6,4" markerEnd="url(#af)" opacity="0.8" />{arrow.label && <text x={(f.cx + t.cx) / 2} y={(f.cy + t.cy) / 2 - 5} fill={FLOW_COLOR} fontSize="7" textAnchor="middle" opacity="0.9">{arrow.label}</text>}</g>;
-      })}
-      {layout.components?.map((comp) => {
-        const col = AC_COLOR[comp.color] ?? "#00BFFF";
-        const cx = px(comp.x); const cy = py(comp.y); const cw = pw(comp.w); const ch = ph(comp.h);
-        const midX = cx + cw / 2; const midY = cy + ch / 2;
-        const textFits = cw > 50 && ch > 20;
-        const words = comp.label.split(" ");
-        const l1 = words.slice(0, Math.ceil(words.length / 2)).join(" ");
-        const l2 = words.slice(Math.ceil(words.length / 2)).join(" ");
+        const f = gc(fc); const t = gc(tc);
+        const mx = (f.cx + t.cx) / 2; const my = (f.cy + t.cy) / 2;
         return (
-          <g key={comp.id}>
-            <rect x={cx} y={cy} width={cw} height={ch} fill={col + "18"} stroke={col} strokeWidth="1.5" />
-            {cw > 20 && ch > 20 && <line x1={cx} y1={cy + ch * 0.4} x2={cx + cw * 0.4} y2={cy} stroke={col} strokeWidth="0.4" opacity="0.25" />}
-            {textFits ? (<><text x={midX} y={midY - (comp.sublabel ? 8 : 4)} fill={col} fontSize="8.5" fontWeight="bold" textAnchor="middle" dominantBaseline="middle">{l1}</text>{l2 && <text x={midX} y={midY + (comp.sublabel ? 2 : 8)} fill={col} fontSize="8.5" fontWeight="bold" textAnchor="middle" dominantBaseline="middle">{l2}</text>}{comp.sublabel && <text x={midX} y={midY + 16} fill={col} fontSize="7" textAnchor="middle" opacity="0.75">{comp.sublabel}</text>}</>) : (<text x={midX} y={midY + 4} fill={col} fontSize="7" textAnchor="middle">{comp.label.slice(0, 8)}</text>)}
-            <text x={cx + cw - 2} y={cy + ch - 2} fill={col} fontSize="6" textAnchor="end" opacity="0.65">{comp.w.toFixed(1)}×{comp.h.toFixed(1)}m</text>
+          <g key={i}>
+            <line x1={f.cx} y1={f.cy} x2={t.cx} y2={t.cy}
+              stroke="#000" strokeWidth="1.2" markerEnd="url(#flowA)" />
+            {arrow.label && (
+              <text x={mx} y={my - 5} fill="#000" fontSize="6.5" textAnchor="middle" fontStyle="italic">{arrow.label}</text>
+            )}
           </g>
         );
       })}
-      <line x1={PLAN_X} y1={PLAN_Y + PLAN_H + 20} x2={PLAN_X + PLAN_W} y2={PLAN_Y + PLAN_H + 20} stroke={DIM_COLOR} strokeWidth="0.8" markerStart="url(#adr)" markerEnd="url(#ad)" />
-      <line x1={PLAN_X} y1={PLAN_Y + PLAN_H} x2={PLAN_X} y2={PLAN_Y + PLAN_H + 28} stroke={DIM_COLOR} strokeWidth="0.8" />
-      <line x1={PLAN_X + PLAN_W} y1={PLAN_Y + PLAN_H} x2={PLAN_X + PLAN_W} y2={PLAN_Y + PLAN_H + 28} stroke={DIM_COLOR} strokeWidth="0.8" />
-      <text x={PLAN_X + PLAN_W / 2} y={PLAN_Y + PLAN_H + 38} fill={DIM_COLOR} fontSize="10" textAnchor="middle" fontWeight="bold">{siteLength}.000 m</text>
-      <line x1={PLAN_X - 20} y1={PLAN_Y} x2={PLAN_X - 20} y2={PLAN_Y + PLAN_H} stroke={DIM_COLOR} strokeWidth="0.8" markerStart="url(#adr)" markerEnd="url(#ad)" />
-      <line x1={PLAN_X - 28} y1={PLAN_Y} x2={PLAN_X} y2={PLAN_Y} stroke={DIM_COLOR} strokeWidth="0.8" />
-      <line x1={PLAN_X - 28} y1={PLAN_Y + PLAN_H} x2={PLAN_X} y2={PLAN_Y + PLAN_H} stroke={DIM_COLOR} strokeWidth="0.8" />
-      <text x={PLAN_X - 44} y={PLAN_Y + PLAN_H / 2} fill={DIM_COLOR} fontSize="10" textAnchor="middle" fontWeight="bold" transform={`rotate(-90,${PLAN_X - 44},${PLAN_Y + PLAN_H / 2})`}>{siteWidth}.000 m</text>
+
+      {/* ── STRUCTURAL COMPONENTS (concrete wall plan view) ── */}
+      {layout.components?.map((comp) => {
+        const isBuilding = comp.type === "pump_station" || comp.type === "building" || comp.color === "gray";
+        const cx = px(comp.x); const cy = py(comp.y);
+        const cw = pw(comp.w); const ch = ph(comp.h);
+        const midX = cx + cw / 2; const midY = cy + ch / 2;
+        const wt = WT;
+        const hasRoom = cw > wt * 3 && ch > wt * 3;
+
+        // Split label into two lines
+        const words = comp.label.split(" ");
+        const half = Math.ceil(words.length / 2);
+        const ln1 = words.slice(0, half).join(" ").toUpperCase();
+        const ln2 = words.slice(half).join(" ").toUpperCase();
+
+        // Level: positive = above ground, negative = below ground
+        const lvlStr = tankHeight >= 0 ? `Lvl: +${tankHeight.toFixed(2)}m` : `Lvl: ${tankHeight.toFixed(2)}m`;
+
+        return (
+          <g key={comp.id}>
+            {/* Concrete wall (hatched) */}
+            <rect x={cx} y={cy} width={cw} height={ch}
+              fill={isBuilding ? "url(#building)" : "url(#concrete)"}
+              stroke="#000" strokeWidth="1.5" />
+            {/* Clear interior */}
+            {hasRoom && (
+              <rect x={cx + wt} y={cy + wt} width={cw - wt * 2} height={ch - wt * 2}
+                fill="white" stroke="#000" strokeWidth="0.8" />
+            )}
+            {/* Component label — uppercase */}
+            {hasRoom && (
+              <>
+                <text x={midX} y={midY - (comp.sublabel ? 12 : 5)} fill="#000" fontSize="8"
+                  fontWeight="bold" textAnchor="middle">{ln1}</text>
+                {ln2 && <text x={midX} y={midY + (comp.sublabel ? 1 : 8)} fill="#000" fontSize="8"
+                  fontWeight="bold" textAnchor="middle">{ln2}</text>}
+                {/* Level annotation */}
+                <text x={midX} y={midY + (comp.sublabel ? 14 : 20)} fill="#333" fontSize="6.5" textAnchor="middle">
+                  {lvlStr}
+                </text>
+                {/* Capacity / sublabel */}
+                {comp.sublabel && (
+                  <text x={midX} y={midY + 25} fill="#555" fontSize="6" textAnchor="middle" fontStyle="italic">
+                    {comp.sublabel}
+                  </text>
+                )}
+                {/* Dimension tag bottom-left inside */}
+                <text x={cx + wt + 2} y={cy + ch - wt - 3} fill="#333" fontSize="5.5">
+                  ({comp.w.toFixed(1)}m×{comp.h.toFixed(1)}m)
+                </text>
+              </>
+            )}
+            {/* Manhole symbol (small square) for chamber types */}
+            {comp.type === "chamber" && hasRoom && (
+              <rect x={midX - 5} y={midY - 5} width={10} height={10} fill="none" stroke="#000" strokeWidth="0.8" />
+            )}
+          </g>
+        );
+      })}
+
+      {/* ── DIMENSION LINES ── */}
+      {/* Bottom — site width */}
+      <line x1={PLAN_X} y1={PLAN_Y + PLAN_H + 14} x2={PLAN_X + PLAN_W} y2={PLAN_Y + PLAN_H + 14}
+        stroke="#000" strokeWidth="0.8" markerStart="url(#dar)" markerEnd="url(#da)" />
+      <line x1={PLAN_X} y1={PLAN_Y + PLAN_H} x2={PLAN_X} y2={PLAN_Y + PLAN_H + 22} stroke="#000" strokeWidth="0.8" />
+      <line x1={PLAN_X + PLAN_W} y1={PLAN_Y + PLAN_H} x2={PLAN_X + PLAN_W} y2={PLAN_Y + PLAN_H + 22} stroke="#000" strokeWidth="0.8" />
+      <text x={PLAN_X + PLAN_W / 2} y={PLAN_Y + PLAN_H + 34} fill="#000" fontSize="10" textAnchor="middle" fontWeight="bold">
+        {siteLength.toFixed(3)} m
+      </text>
+      {/* Left — site depth */}
+      <line x1={PLAN_X - 14} y1={PLAN_Y} x2={PLAN_X - 14} y2={PLAN_Y + PLAN_H}
+        stroke="#000" strokeWidth="0.8" markerStart="url(#dar)" markerEnd="url(#da)" />
+      <line x1={PLAN_X - 22} y1={PLAN_Y} x2={PLAN_X} y2={PLAN_Y} stroke="#000" strokeWidth="0.8" />
+      <line x1={PLAN_X - 22} y1={PLAN_Y + PLAN_H} x2={PLAN_X} y2={PLAN_Y + PLAN_H} stroke="#000" strokeWidth="0.8" />
+      <text x={PLAN_X - 34} y={PLAN_Y + PLAN_H / 2} fill="#000" fontSize="10" textAnchor="middle" fontWeight="bold"
+        transform={`rotate(-90,${PLAN_X - 34},${PLAN_Y + PLAN_H / 2})`}>
+        {siteWidth.toFixed(3)} m
+      </text>
+
+      {/* ── NORTH ARROW (top-right of plan) ── */}
       <g transform={`translate(${PLAN_X + PLAN_W - 36}, ${PLAN_Y + 40})`}>
-        <circle cx="0" cy="0" r="18" fill="none" stroke="#FFFFFF" strokeWidth="1" opacity="0.6" />
-        <path d="M0,-16 L5,0 L0,-4 L-5,0 Z" fill="#FFFFFF" opacity="0.9" />
-        <path d="M0,16 L5,0 L0,4 L-5,0 Z" fill="#555" opacity="0.9" />
-        <text x="0" y="-20" fill="#FFFFFF" fontSize="9" fontWeight="bold" textAnchor="middle">N</text>
+        <circle cx="0" cy="0" r="22" fill="none" stroke="#000" strokeWidth="1" />
+        {/* North half — filled black */}
+        <path d="M0,-20 L6,0 L0,-6 L-6,0 Z" fill="#000" />
+        {/* South half — white outline */}
+        <path d="M0,20 L6,0 L0,6 L-6,0 Z" fill="white" stroke="#000" strokeWidth="1" />
+        <text x="0" y="-24" fill="#000" fontSize="10" fontWeight="bold" textAnchor="middle">N</text>
       </g>
-      <g transform={`translate(${PLAN_X + 10}, ${PLAN_Y + PLAN_H - 20})`}>
-        <rect width={sbPx} height="6" fill={DIM_COLOR} opacity="0.4" />
-        <rect width={sbPx / 2} height="6" fill={DIM_COLOR} opacity="0.8" />
-        <line x1="0" y1="0" x2="0" y2="10" stroke={DIM_COLOR} strokeWidth="0.8" />
-        <line x1={sbPx} y1="0" x2={sbPx} y2="10" stroke={DIM_COLOR} strokeWidth="0.8" />
-        <text x="0" y="17" fill={DIM_COLOR} fontSize="7" textAnchor="start">0</text>
-        <text x={sbPx} y="17" fill={DIM_COLOR} fontSize="7" textAnchor="end">{gridSpacing}m</text>
-        <text x={sbPx / 2} y="17" fill={DIM_COLOR} fontSize="7" textAnchor="middle">SCALE: NTS</text>
+
+      {/* ── SCALE BAR (bottom-left of plan) ── */}
+      <g transform={`translate(${PLAN_X + 12}, ${PLAN_Y + PLAN_H - 22})`}>
+        {/* Alternating black/white blocks */}
+        <rect x={0}          y={0} width={sbPx / 2} height={8} fill="#000" stroke="#000" strokeWidth="0.8" />
+        <rect x={sbPx / 2}   y={0} width={sbPx / 2} height={8} fill="white" stroke="#000" strokeWidth="0.8" />
+        <text x={0}      y={18} fill="#000" fontSize="7" textAnchor="start">0</text>
+        <text x={sbPx}   y={18} fill="#000" fontSize="7" textAnchor="end">{sbMeters}m</text>
+        <text x={sbPx / 2} y={-4} fill="#000" fontSize="7" textAnchor="middle">SCALE : NTS</text>
       </g>
-      <rect x={PAD_L} y={PAD_T + PLAN_H + 50} width={DRAW_W} height={TITLE_H - 10} fill="#050810" stroke="#FFFFFF" strokeWidth="1" />
-      <line x1={PAD_L + 420} y1={PAD_T + PLAN_H + 50} x2={PAD_L + 420} y2={PAD_T + PLAN_H + 140} stroke="#FFFFFF" strokeWidth="0.8" />
-      <line x1={PAD_L + 700} y1={PAD_T + PLAN_H + 50} x2={PAD_L + 700} y2={PAD_T + PLAN_H + 140} stroke="#FFFFFF" strokeWidth="0.8" />
-      <line x1={PAD_L + 840} y1={PAD_T + PLAN_H + 50} x2={PAD_L + 840} y2={PAD_T + PLAN_H + 140} stroke="#FFFFFF" strokeWidth="0.8" />
-      <line x1={PAD_L + 420} y1={PAD_T + PLAN_H + 95} x2={PAD_L + DRAW_W} y2={PAD_T + PLAN_H + 95} stroke="#FFFFFF" strokeWidth="0.8" />
-      <text x={PAD_L + 10} y={PAD_T + PLAN_H + 68} fill="#AAAAAA" fontSize="7.5" letterSpacing="1">PROJECT NAME</text>
-      <text x={PAD_L + 10} y={PAD_T + PLAN_H + 84} fill="#00FFFF" fontSize="13" fontWeight="bold">{projectName || "ETP PROJECT"}</text>
-      <text x={PAD_L + 10} y={PAD_T + PLAN_H + 98} fill="#FFFFFF" fontSize="8.5">ETP LAYOUT PLAN — PLAN VIEW</text>
-      <text x={PAD_L + 10} y={PAD_T + PLAN_H + 114} fill="#AAAAAA" fontSize="7.5">Flow: {inletFlow || "—"} | Tank Ht: {tankHeight}m | Site: {siteLength}m × {siteWidth}m</text>
-      <text x={PAD_L + 430} y={PAD_T + PLAN_H + 65} fill="#AAAAAA" fontSize="7">DRAWING TITLE</text>
-      <text x={PAD_L + 430} y={PAD_T + PLAN_H + 82} fill="#FFFFFF" fontSize="9" fontWeight="bold">SITE LAYOUT — PLAN VIEW</text>
-      <text x={PAD_L + 430} y={PAD_T + PLAN_H + 110} fill="#AAAAAA" fontSize="7">PREPARED BY</text>
-      <text x={PAD_L + 430} y={PAD_T + PLAN_H + 125} fill="#FFFFFF" fontSize="8.5">FlowMatriX AI Civil</text>
-      <text x={PAD_L + 710} y={PAD_T + PLAN_H + 65} fill="#AAAAAA" fontSize="7">SCALE</text>
-      <text x={PAD_L + 710} y={PAD_T + PLAN_H + 82} fill="#FFFFFF" fontSize="9">NTS</text>
-      <text x={PAD_L + 710} y={PAD_T + PLAN_H + 110} fill="#AAAAAA" fontSize="7">DWG NO.</text>
-      <text x={PAD_L + 710} y={PAD_T + PLAN_H + 125} fill="#FFFFFF" fontSize="8.5">CV-ETP-001</text>
-      <text x={PAD_L + 850} y={PAD_T + PLAN_H + 65} fill="#AAAAAA" fontSize="7">DATE</text>
-      <text x={PAD_L + 850} y={PAD_T + PLAN_H + 82} fill="#FFFFFF" fontSize="8.5">{dateStr}</text>
-      <text x={PAD_L + 850} y={PAD_T + PLAN_H + 110} fill="#AAAAAA" fontSize="7">REVISION</text>
-      <text x={PAD_L + 850} y={PAD_T + PLAN_H + 125} fill="#FFFFFF" fontSize="9" fontWeight="bold">REV - A</text>
+
+      {/* ══════════════════════════════════════════
+          WTT TITLE BLOCK (right-side vertical strip)
+          Matches WTT-XXXX-C100B-REV01 format
+      ══════════════════════════════════════════ */}
+      {/* Title block outer box */}
+      <rect x={TB_X} y={TB_Y} width={TITLE_W} height={TB_H} fill="white" stroke="#000" strokeWidth="1.2" />
+
+      {/* ── Company header (top 60px) ── */}
+      {tbLine(60)}
+      {/* WTT logo text */}
+      <text x={TB_X + TITLE_W / 2} y={TB_Y + 18} fill="#000" fontSize="16" fontWeight="bold" textAnchor="middle" letterSpacing="2">WTT</text>
+      <text x={TB_X + TITLE_W / 2} y={TB_Y + 33} fill="#000" fontSize="8" fontWeight="bold" textAnchor="middle">INTERNATIONAL INDIA PVT. LTD.</text>
+      <text x={TB_X + TITLE_W / 2} y={TB_Y + 46} fill="#555" fontSize="7" textAnchor="middle" fontStyle="italic">Water Loving Technology</text>
+      <text x={TB_X + TITLE_W / 2} y={TB_Y + 57} fill="#555" fontSize="6.5" textAnchor="middle">www.wttindia.com</text>
+
+      {/* ── Project name (60-120) ── */}
+      {tbLine(120)}
+      <text x={TB_X + 6} y={TB_Y + 73} fill="#888" fontSize="6.5" fontWeight="bold">PROJECT :</text>
+      <text x={TB_X + 6} y={TB_Y + 86} fill="#000" fontSize="8.5" fontWeight="bold">{(projectName || "ETP PROJECT").toUpperCase()}</text>
+      <text x={TB_X + 6} y={TB_Y + 99} fill="#000" fontSize="7">{inletFlow ? `Flow : ${inletFlow}` : "Flow : —"}</text>
+      <text x={TB_X + 6} y={TB_Y + 111} fill="#555" fontSize="6.5">Site : {siteLength}m × {siteWidth}m · H = {tankHeight}m</text>
+
+      {/* ── Drawing title (120-180) ── */}
+      {tbLine(180)}
+      <text x={TB_X + 6} y={TB_Y + 133} fill="#888" fontSize="6.5" fontWeight="bold">DRAWING TITLE :</text>
+      <text x={TB_X + 6} y={TB_Y + 147} fill="#000" fontSize="9" fontWeight="bold">ETP LAYOUT PLAN</text>
+      <text x={TB_X + 6} y={TB_Y + 160} fill="#000" fontSize="8">PLAN VIEW (CIVIL)</text>
+      <text x={TB_X + 6} y={TB_Y + 172} fill="#555" fontSize="7">TREATED EFFLUENT PLANT</text>
+
+      {/* ── DWG No / Scale / Rev / Date (180-340) ── */}
+      {tbLine(230)} {tbLine(260)} {tbLine(290)} {tbLine(340)}
+      {/* Scale */}
+      <text x={TB_X + 6} y={TB_Y + 198} fill="#888" fontSize="6">SCALE :</text>
+      <text x={TB_X + 6} y={TB_Y + 212} fill="#000" fontSize="9" fontWeight="bold">NTS</text>
+      {/* DWG No */}
+      <text x={TB_X + 6} y={TB_Y + 245} fill="#888" fontSize="6">DWG. NO. :</text>
+      <text x={TB_X + 6} y={TB_Y + 258} fill="#000" fontSize="8" fontWeight="bold">CV-ETP-C100-REV01</text>
+      {/* Revision */}
+      <text x={TB_X + 6} y={TB_Y + 275} fill="#888" fontSize="6">REVISION :</text>
+      <text x={TB_X + 6} y={TB_Y + 288} fill="#000" fontSize="9" fontWeight="bold">REV - A</text>
+      {/* Date */}
+      <text x={TB_X + 6} y={TB_Y + 307} fill="#888" fontSize="6">DATE :</text>
+      <text x={TB_X + 6} y={TB_Y + 320} fill="#000" fontSize="8" fontWeight="bold">{dateStr}</text>
+      <text x={TB_X + 6} y={TB_Y + 334} fill="#555" fontSize="6.5">GENERATED BY FlowMatriX AI</text>
+
+      {/* ── Drawn / Checked / Approved (340-440) ── */}
+      {tbLine(390)} {tbLine(440)}
+      {tbVLine(TITLE_W / 2, 340, 440)}
+      <text x={TB_X + 6}              y={TB_Y + 356} fill="#888" fontSize="6">DRAWN BY :</text>
+      <text x={TB_X + TITLE_W / 2 + 6} y={TB_Y + 356} fill="#888" fontSize="6">CHK. BY :</text>
+      <text x={TB_X + 6}              y={TB_Y + 378} fill="#000" fontSize="7.5">FlowMatriX AI</text>
+      <text x={TB_X + TITLE_W / 2 + 6} y={TB_Y + 378} fill="#000" fontSize="7.5">—</text>
+      <text x={TB_X + 6}              y={TB_Y + 393} fill="#888" fontSize="6">DATE : {dateStr.split(" ")[2]}</text>
+      <text x={TB_X + TITLE_W / 2 + 6} y={TB_Y + 393} fill="#888" fontSize="6">DATE :</text>
+      <text x={TB_X + 6}              y={TB_Y + 420} fill="#888" fontSize="6">APPROVED BY :</text>
+      <text x={TB_X + 6}              y={TB_Y + 436} fill="#000" fontSize="7.5">—</text>
+
+      {/* ── Revision history table (440-end) ── */}
+      {tbLine(470)} {tbLine(490)}
+      {tbVLine(22, 440, TB_H)} {tbVLine(80, 440, TB_H)} {tbVLine(130, 440, TB_H)}
+      {/* Header */}
+      <text x={TB_X + 6}   y={TB_Y + 455} fill="#888" fontSize="6">REV</text>
+      <text x={TB_X + 26}  y={TB_Y + 455} fill="#888" fontSize="6">DESCRIPTION</text>
+      <text x={TB_X + 84}  y={TB_Y + 455} fill="#888" fontSize="6">DATE</text>
+      <text x={TB_X + 134} y={TB_Y + 455} fill="#888" fontSize="6">BY</text>
+      {/* Rev A row */}
+      <text x={TB_X + 8}   y={TB_Y + 482} fill="#000" fontSize="7">A</text>
+      <text x={TB_X + 26}  y={TB_Y + 482} fill="#000" fontSize="6.5">Initial Issue</text>
+      <text x={TB_X + 84}  y={TB_Y + 482} fill="#000" fontSize="6.5">{dateStr}</text>
+      <text x={TB_X + 134} y={TB_Y + 482} fill="#000" fontSize="6.5">AI</text>
     </svg>
   );
 }
