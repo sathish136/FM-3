@@ -2,42 +2,29 @@ import { Layout } from "@/components/Layout";
 import { useState, useRef, useCallback } from "react";
 import {
   Upload, X, FileImage, Sparkles, ChevronDown, ChevronUp,
-  Plus, Trash2, Download, RefreshCw, Building2, ArrowRight,
+  Plus, Download, RefreshCw, Building2,
   CheckCircle2, AlertCircle, Loader2, ZoomIn, ZoomOut, RotateCcw,
-  FileText, Settings, Layers, Ruler, Hash, AreaChart, Maximize2,
-  ClipboardList, Search, History, ChevronRight, Eye, Droplets, Factory,
+  Ruler, Hash, AreaChart, Maximize2,
+  ClipboardList, Search, History, ChevronRight,
+  Droplets, Factory, Pencil, Send,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-// ─────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────
 type Mode = "analyze" | "generate";
 type PlantType = "ETP" | "STP" | "ZLD";
 
 interface Measurement {
-  item: string;
-  type: "area" | "length" | "count" | "volume" | "dimension";
-  value: number;
-  unit: string;
-  notes?: string;
+  item: string; type: "area" | "length" | "count" | "volume" | "dimension";
+  value: number; unit: string; notes?: string;
 }
 interface AnalysisResult {
-  measurements: Measurement[];
-  summary: string;
-  keyFindings: string[];
-  drawingType: string;
-  scale: string;
-  disclaimer?: string;
+  measurements: Measurement[]; summary: string; keyFindings: string[];
+  drawingType: string; scale: string; disclaimer?: string;
 }
 interface AnalysisRecord {
-  id: string;
-  projectName: string;
-  instruction: string;
-  imageDataUrl: string;
-  result: AnalysisResult;
-  createdAt: string;
+  id: string; projectName: string; instruction: string; imageDataUrl: string;
+  result: AnalysisResult; createdAt: string;
 }
 
 const ETP_PROCESS_OPTIONS = [
@@ -62,7 +49,6 @@ const ETP_PROCESS_OPTIONS = [
   { id: "chemical_room",       label: "Chemical Storage Room" },
   { id: "blower_room",         label: "Blower / Compressor Room" },
 ];
-
 const STP_PROCESS_OPTIONS = [
   { id: "screening_chamber",   label: "Screening Chamber" },
   { id: "grit_trap",           label: "Grit Trap / Oil Grease Trap" },
@@ -77,7 +63,6 @@ const STP_PROCESS_OPTIONS = [
   { id: "filter_stp",          label: "Polishing Filters" },
   { id: "pump_room",           label: "Pump Room / MCC" },
 ];
-
 const ZLD_PROCESS_OPTIONS = [
   { id: "inlet_sump",          label: "Inlet Collection Sump" },
   { id: "bar_screen_zld",      label: "Bar Screen & Grit Chamber" },
@@ -102,37 +87,45 @@ const ZLD_PROCESS_OPTIONS = [
   { id: "electrical_room",     label: "Electrical Panel Room" },
   { id: "pump_station",        label: "Pump Station / MCC Room" },
 ];
-
 const PROCESS_OPTIONS_MAP: Record<PlantType, typeof ETP_PROCESS_OPTIONS> = {
-  ETP: ETP_PROCESS_OPTIONS,
-  STP: STP_PROCESS_OPTIONS,
-  ZLD: ZLD_PROCESS_OPTIONS,
+  ETP: ETP_PROCESS_OPTIONS, STP: STP_PROCESS_OPTIONS, ZLD: ZLD_PROCESS_OPTIONS,
 };
-
 const DEFAULT_STEPS_MAP: Record<PlantType, string[]> = {
   ETP: ["inlet_chamber", "bar_screen", "equalization", "aeration", "secondary_clarifier", "chlorination", "treated_storage", "pump_station"],
   STP: ["screening_chamber", "grit_trap", "equalization_stp", "aeration_stp", "secondary_clarifier", "chlorination_stp", "treated_ugt", "pump_room"],
   ZLD: ["inlet_sump", "bar_screen_zld", "equalization_zld", "daf_tank", "lamella_clariflocc", "biological_tank", "filtration_room", "ro_system", "mee", "collection_pit", "chemical_bulk", "blower_room", "electrical_room", "pump_station"],
 };
 
-const AC_COLOR: Record<string, string> = {
-  blue: "#00BFFF", teal: "#00FF7F", green: "#ADFF2F",
-  amber: "#FFD700", orange: "#FFA500", red: "#FF6347",
-  purple: "#DA70D6", gray: "#B0C4DE",
+// Civil drawing color fills (light wash, like AutoCAD layer colors)
+const CIVIL_FILL: Record<string, string> = {
+  blue:   "#D6EAF8",   // water / liquid tanks — sky blue
+  teal:   "#D5F5E3",   // biological treatment — light green
+  green:  "#EAFAF1",   // treated water storage — pale green
+  amber:  "#FEF9E7",   // sludge — pale yellow
+  orange: "#FDEBD0",   // chemical — pale orange
+  red:    "#FDEDEC",   // emergency / hazardous — pale red
+  purple: "#F4ECF7",   // advanced treatment (RO/MEE/ATFD) — pale purple
+  gray:   "#F2F3F4",   // buildings / rooms — off-white
+};
+// Darker border color per type
+const CIVIL_STROKE: Record<string, string> = {
+  blue:   "#2E86C1",
+  teal:   "#1E8449",
+  green:  "#27AE60",
+  amber:  "#B7950B",
+  orange: "#CA6F1E",
+  red:    "#922B21",
+  purple: "#6C3483",
+  gray:   "#626567",
 };
 
 interface ETPComponent {
   id: string; label: string; sublabel?: string;
   x: number; y: number; w: number; h: number;
   type: string; color: string;
-  level?: number;
-  platform?: number;
-  isUnderground?: boolean;
-  hasManholes?: boolean;
-  manholeCount?: number;
-  hasSlope?: boolean;
-  slopeFrom?: number;
-  slopeTo?: number;
+  level?: number; platform?: number; isUnderground?: boolean;
+  hasManholes?: boolean; manholeCount?: number;
+  hasSlope?: boolean; slopeFrom?: number; slopeTo?: number;
 }
 interface FlowArrow { from: string; to: string; label?: string; }
 interface ETPLayout { components: ETPComponent[]; flowArrows: FlowArrow[]; inlet?: any; outlet?: any; summary: string; capacity: string; designNotes: string[]; }
@@ -146,19 +139,20 @@ interface ETPRecord {
   generatedAt: string;
 }
 
-// ─────────────────────────────────────────────────────────
-// WTT Engineering Drawing Style — Enhanced with ZLD elements
-// ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Civil Engineering Drawing SVG Component
+// Matches WTT-style: white background, colored fills per layer, concrete walls
+// ─────────────────────────────────────────────────────────────────────────────
 function AutoCADDrawing({ layout, siteLength, siteWidth, projectName, tankHeight, inletFlow, plantType }: {
   layout: ETPLayout; siteLength: number; siteWidth: number;
   projectName: string; tankHeight: number; inletFlow?: string; plantType?: string;
 }) {
-  const SVG_W = 1320;
-  const SVG_H = 880;
-  const BORDER = 28;
-  const TITLE_W = 218;
-  const DIM_MARGIN = 48;
-  const INNER_PAD = 10;
+  const SVG_W = 1400;
+  const SVG_H = 900;
+  const BORDER = 30;
+  const TITLE_W = 225;
+  const DIM_MARGIN = 52;
+  const INNER_PAD = 8;
 
   const PLAN_X = BORDER + DIM_MARGIN;
   const PLAN_Y = BORDER + INNER_PAD;
@@ -175,7 +169,8 @@ function AutoCADDrawing({ layout, siteLength, siteWidth, projectName, tankHeight
   const pw = (m: number) => m * scaleX;
   const ph = (m: number) => m * scaleY;
 
-  const WT = Math.max(5, 0.3 * Math.min(scaleX, scaleY));
+  // Wall thickness proportional to scale, min 6px
+  const WT = Math.max(6, 0.3 * Math.min(scaleX, scaleY));
 
   const GRID_COLS = 8;
   const GRID_ROWS = 5;
@@ -187,7 +182,8 @@ function AutoCADDrawing({ layout, siteLength, siteWidth, projectName, tankHeight
   const sbMeters = sl <= 20 ? 5 : sl <= 50 ? 10 : 20;
   const sbPx = pw(sbMeters);
   const dateStr = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-  const gc = (c: ETPComponent) => ({ cx: px(c.x + c.w / 2), cy: py(c.y + c.h / 2) });
+
+  const centroid = (c: ETPComponent) => ({ cx: px(c.x + c.w / 2), cy: py(c.y + c.h / 2) });
 
   const TB_X = SVG_W - BORDER - TITLE_W;
   const TB_Y = BORDER;
@@ -200,67 +196,58 @@ function AutoCADDrawing({ layout, siteLength, siteWidth, projectName, tankHeight
     <line x1={TB_X + xOff} y1={TB_Y + yStart} x2={TB_X + xOff} y2={TB_Y + yEnd} stroke="#000" strokeWidth="0.7" />
   );
 
-  const dwgTitle = plantType === "ZLD"
-    ? "ZLD LAYOUT PLAN"
-    : plantType === "STP"
-    ? "STP LAYOUT PLAN"
-    : "ETP LAYOUT PLAN";
+  const dwgTitle  = plantType === "ZLD" ? "ZLD LAYOUT PLAN"  : plantType === "STP" ? "STP LAYOUT PLAN"  : "ETP LAYOUT PLAN";
+  const dwgSub    = plantType === "ZLD" ? "ZERO LIQUID DISCHARGE PLANT" : plantType === "STP" ? "SEWAGE TREATMENT PLANT" : "TREATED EFFLUENT PLANT";
+  const dwgNo     = plantType === "ZLD" ? "CV-ZLD-C100-REV01" : plantType === "STP" ? "CV-STP-C100-REV01" : "CV-ETP-C100-REV01";
 
-  const dwgSubTitle = plantType === "ZLD"
-    ? "ZERO LIQUID DISCHARGE PLANT"
-    : plantType === "STP"
-    ? "SEWAGE TREATMENT PLANT"
-    : "EFFLUENT TREATMENT PLANT";
-
-  const dwgNo = plantType === "ZLD"
-    ? "CV-ZLD-C100-REV01"
-    : plantType === "STP"
-    ? "CV-STP-C100-REV01"
-    : "CV-ETP-C100-REV01";
+  const hasUnderground = layout.components?.some(c => c.isUnderground || (typeof c.level === "number" && c.level < 0));
 
   return (
-    <svg
-      viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-      className="w-full h-auto"
-      style={{ fontFamily: "Arial, sans-serif", background: "white" }}
-    >
+    <svg viewBox={`0 0 ${SVG_W} ${SVG_H}`} className="w-full h-auto"
+      style={{ fontFamily: "Arial, sans-serif", background: "white" }}>
       <defs>
-        <pattern id="concrete" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(45)">
-          <line x1="0" y1="0" x2="0" y2="5" stroke="#555" strokeWidth="0.9" />
+        {/* Concrete hatch 45° for RCC walls */}
+        <pattern id="cwall" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="5" stroke="#666" strokeWidth="1" />
         </pattern>
-        <pattern id="building" patternUnits="userSpaceOnUse" width="8" height="8">
-          <line x1="0" y1="0" x2="8" y2="8" stroke="#888" strokeWidth="0.6" />
-          <line x1="8" y1="0" x2="0" y2="8" stroke="#888" strokeWidth="0.6" />
+        {/* Cross hatch for buildings */}
+        <pattern id="bwall" patternUnits="userSpaceOnUse" width="7" height="7">
+          <line x1="0" y1="0" x2="7" y2="7" stroke="#888" strokeWidth="0.7" />
+          <line x1="7" y1="0" x2="0" y2="7" stroke="#888" strokeWidth="0.7" />
         </pattern>
-        <pattern id="underground" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(-45)">
-          <line x1="0" y1="0" x2="0" y2="6" stroke="#446" strokeWidth="0.8" />
+        {/* Dotted fill for collection pits */}
+        <pattern id="pit_fill" patternUnits="userSpaceOnUse" width="5" height="5">
+          <circle cx="2.5" cy="2.5" r="0.8" fill="#8B6914" opacity="0.6" />
         </pattern>
-        <pattern id="sludge" patternUnits="userSpaceOnUse" width="6" height="6">
-          <circle cx="3" cy="3" r="1" fill="#8B6914" />
-        </pattern>
-        <marker id="flowA" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
-          <path d="M0,0 L7,3.5 L0,7 Z" fill="#000" />
+        {/* Flow arrow */}
+        <marker id="fArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#1A5276" />
         </marker>
-        <marker id="da" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">
-          <path d="M0,0 L5,2.5 L0,5 Z" fill="#000" />
+        {/* Dimension arrow */}
+        <marker id="dArrow" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">
+          <path d="M0,0 L5,2.5 L0,5 Z" fill="#333" />
         </marker>
-        <marker id="dar" markerWidth="5" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
-          <path d="M0,0 L5,2.5 L0,5 Z" fill="#000" />
+        <marker id="dArrowR" markerWidth="5" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+          <path d="M0,0 L5,2.5 L0,5 Z" fill="#333" />
         </marker>
       </defs>
 
+      {/* ── BACKGROUND ── */}
       <rect width={SVG_W} height={SVG_H} fill="white" />
-      <rect x={3} y={3} width={SVG_W - 6} height={SVG_H - 6} fill="none" stroke="#000" strokeWidth="2.5" />
-      <rect x={BORDER} y={BORDER} width={SVG_W - BORDER * 2} height={SVG_H - BORDER * 2} fill="none" stroke="#000" strokeWidth="0.8" />
 
+      {/* ── OUTER BORDERS ── */}
+      <rect x={2} y={2} width={SVG_W - 4} height={SVG_H - 4} fill="none" stroke="#000" strokeWidth="3" />
+      <rect x={BORDER} y={BORDER} width={SVG_W - BORDER * 2} height={SVG_H - BORDER * 2} fill="none" stroke="#000" strokeWidth="0.9" />
+
+      {/* ── GRID REFERENCE STRIPS ── */}
       {COL_NUMS.map((n, i) => {
         const cx = PLAN_X + i * cellW + cellW / 2;
         return (
           <g key={`cn${n}`}>
-            <line x1={cx} y1={BORDER} x2={cx} y2={PLAN_Y} stroke="#000" strokeWidth="0.4" />
-            <line x1={cx} y1={PLAN_Y + PLAN_H} x2={cx} y2={SVG_H - BORDER} stroke="#000" strokeWidth="0.4" />
-            <text x={cx} y={BORDER + 17} textAnchor="middle" fontSize="11" fontWeight="bold" fill="#000">{n}</text>
-            <text x={cx} y={SVG_H - BORDER - 5} textAnchor="middle" fontSize="11" fontWeight="bold" fill="#000">{n}</text>
+            <line x1={cx} y1={BORDER} x2={cx} y2={PLAN_Y} stroke="#333" strokeWidth="0.4" />
+            <line x1={cx} y1={PLAN_Y + PLAN_H} x2={cx} y2={SVG_H - BORDER} stroke="#333" strokeWidth="0.4" />
+            <text x={cx} y={BORDER + 18} textAnchor="middle" fontSize="12" fontWeight="bold" fill="#000">{n}</text>
+            <text x={cx} y={SVG_H - BORDER - 4} textAnchor="middle" fontSize="12" fontWeight="bold" fill="#000">{n}</text>
           </g>
         );
       })}
@@ -268,282 +255,306 @@ function AutoCADDrawing({ layout, siteLength, siteWidth, projectName, tankHeight
         const cy = PLAN_Y + i * cellH + cellH / 2;
         return (
           <g key={`rl${l}`}>
-            <line x1={BORDER} y1={cy} x2={PLAN_X - DIM_MARGIN} y2={cy} stroke="#000" strokeWidth="0.4" />
-            <text x={BORDER + 14} y={cy + 4} textAnchor="middle" fontSize="11" fontWeight="bold" fill="#000">{l}</text>
+            <line x1={BORDER} y1={cy} x2={PLAN_X - DIM_MARGIN} y2={cy} stroke="#333" strokeWidth="0.4" />
+            <text x={BORDER + 15} y={cy + 4} textAnchor="middle" fontSize="12" fontWeight="bold" fill="#000">{l}</text>
           </g>
         );
       })}
 
-      <rect x={PLAN_X} y={PLAN_Y} width={PLAN_W} height={PLAN_H} fill="white" />
+      {/* ── PLAN AREA ── */}
+      <rect x={PLAN_X} y={PLAN_Y} width={PLAN_W} height={PLAN_H} fill="#FAFAFA" />
 
-      {COL_NUMS.slice(0, -1).map((_, i) => {
-        const x = PLAN_X + (i + 1) * cellW;
-        return <line key={`gl${i}`} x1={x} y1={PLAN_Y} x2={x} y2={PLAN_Y + PLAN_H} stroke="#DDDDDD" strokeWidth="0.4" />;
-      })}
-      {ROW_LETS.slice(0, -1).map((_, i) => {
-        const y = PLAN_Y + (i + 1) * cellH;
-        return <line key={`gr${i}`} x1={PLAN_X} y1={y} x2={PLAN_X + PLAN_W} y2={y} stroke="#DDDDDD" strokeWidth="0.4" />;
-      })}
-      <rect x={PLAN_X} y={PLAN_Y} width={PLAN_W} height={PLAN_H} fill="none" stroke="#000" strokeWidth="1" />
+      {/* Light grid */}
+      {COL_NUMS.slice(0, -1).map((_, i) => (
+        <line key={`gc${i}`} x1={PLAN_X + (i + 1) * cellW} y1={PLAN_Y} x2={PLAN_X + (i + 1) * cellW} y2={PLAN_Y + PLAN_H} stroke="#DDD" strokeWidth="0.4" />
+      ))}
+      {ROW_LETS.slice(0, -1).map((_, i) => (
+        <line key={`gr${i}`} x1={PLAN_X} y1={PLAN_Y + (i + 1) * cellH} x2={PLAN_X + PLAN_W} y2={PLAN_Y + (i + 1) * cellH} stroke="#DDD" strokeWidth="0.4" />
+      ))}
+      <rect x={PLAN_X} y={PLAN_Y} width={PLAN_W} height={PLAN_H} fill="none" stroke="#000" strokeWidth="1.2" />
 
-      {/* Flow pipes */}
+      {/* ── FLOW PIPES ── */}
       {layout.flowArrows?.map((arrow, i) => {
         const fc = layout.components?.find(c => c.id === arrow.from);
         const tc = layout.components?.find(c => c.id === arrow.to);
         if (!fc || !tc) return null;
-        const f = gc(fc); const t = gc(tc);
+        const f = centroid(fc); const t = centroid(tc);
         const mx = (f.cx + t.cx) / 2; const my = (f.cy + t.cy) / 2;
+        const dx = t.cx - f.cx; const dy = t.cy - f.cy;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        // Shorten line to not overlap component centers
+        const shrink = 18;
+        const sx = f.cx + (dx / len) * shrink;
+        const sy = f.cy + (dy / len) * shrink;
+        const ex = t.cx - (dx / len) * shrink;
+        const ey = t.cy - (dy / len) * shrink;
         return (
           <g key={i}>
-            <line x1={f.cx} y1={f.cy} x2={t.cx} y2={t.cy}
-              stroke="#000" strokeWidth="1.2" markerEnd="url(#flowA)" />
-            {arrow.label && (
-              <text x={mx} y={my - 5} fill="#000" fontSize="6.5" textAnchor="middle" fontStyle="italic">{arrow.label}</text>
+            <line x1={sx} y1={sy} x2={ex} y2={ey}
+              stroke="#1A5276" strokeWidth="1.4" strokeDasharray="none" markerEnd="url(#fArrow)" />
+            {arrow.label && len > 60 && (
+              <text x={mx} y={my - 6} fill="#1A5276" fontSize="6.5" textAnchor="middle" fontStyle="italic">{arrow.label}</text>
             )}
           </g>
         );
       })}
 
-      {/* Structural components */}
+      {/* ── STRUCTURAL COMPONENTS ── */}
       {layout.components?.map((comp) => {
-        const isBuilding = comp.type === "pump_station" || comp.type === "building" || comp.color === "gray";
-        const isUnderground = comp.isUnderground || (typeof comp.level === "number" && comp.level < 0);
-        const isSludge = comp.color === "amber" || comp.type === "pit";
-        const isPit = comp.type === "pit";
+        const color    = comp.color || "blue";
+        const fill     = CIVIL_FILL[color]  ?? "#F0F0F0";
+        const stroke   = CIVIL_STROKE[color] ?? "#444";
+        const isUnder  = comp.isUnderground || (typeof comp.level === "number" && comp.level < 0);
+        const isBuilding = comp.type === "pump_station" || comp.type === "building" || color === "gray";
+        const isPit    = comp.type === "pit" || (comp.w < 2 && comp.h < 2);
 
         const cx = px(comp.x); const cy = py(comp.y);
         const cw = pw(comp.w); const ch = ph(comp.h);
         const midX = cx + cw / 2; const midY = cy + ch / 2;
-        const wt = isPit ? Math.max(3, WT * 0.6) : WT;
-        const hasRoom = cw > wt * 3 && ch > wt * 3;
+        const wt   = isPit ? Math.max(3, WT * 0.5) : WT;
+        const hasRoom = cw > wt * 3.5 && ch > wt * 3.5;
 
+        // Label lines
         const words = comp.label.split(" ");
-        const half = Math.ceil(words.length / 2);
-        const ln1 = words.slice(0, half).join(" ").toUpperCase();
-        const ln2 = words.slice(half).join(" ").toUpperCase();
+        const half  = Math.ceil(words.length / 2);
+        const ln1   = words.slice(0, half).join(" ").toUpperCase();
+        const ln2   = words.slice(half).join(" ").toUpperCase();
 
-        const lvl = typeof comp.level === "number" ? comp.level : tankHeight;
-        const lvlStr = lvl >= 0 ? `Lvl: +${Math.abs(lvl).toFixed(2)}m` : `Lvl: -${Math.abs(lvl).toFixed(2)}m`;
-        const platStr = typeof comp.platform === "number"
-          ? (comp.platform >= 0 ? `Plat form\nLvl: +${comp.platform.toFixed(2)}m` : `Lvl: -${comp.platform.toFixed(2)}m`)
-          : null;
+        // Level annotation
+        const lvl    = typeof comp.level === "number" ? comp.level : (isUnder ? -tankHeight : tankHeight);
+        const lvlStr = lvl < 0 ? `Lvl: -${Math.abs(lvl).toFixed(2)}m` : `Lvl: +${Math.abs(lvl).toFixed(2)}m`;
 
-        const fillPat = isUnderground
-          ? "url(#underground)"
-          : isSludge
-          ? "url(#sludge)"
-          : isBuilding
-          ? "url(#building)"
-          : "url(#concrete)";
-
-        const manholeCount = comp.manholeCount || (comp.hasManholes ? Math.max(1, Math.round((comp.w * comp.h) / 50)) : 0);
+        // Manholes on top of buried tanks
+        const mhCount = comp.manholeCount ?? (comp.hasManholes ? Math.max(1, Math.round((comp.w * comp.h) / 50)) : 0);
         const manholes: { mx: number; my: number }[] = [];
-        if (manholeCount > 0 && hasRoom) {
-          const mhSize = Math.min(cw * 0.15, ch * 0.15, 18);
-          const cols = Math.min(manholeCount, 3);
-          const rows = Math.ceil(manholeCount / cols);
-          for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-              if (manholes.length >= manholeCount) break;
-              manholes.push({
-                mx: cx + wt + mhSize / 2 + c * (cw - wt * 2 - mhSize) / Math.max(cols - 1, 1),
-                my: cy + wt + mhSize / 2 + r * (ch - wt * 2 - mhSize) / Math.max(rows - 1, 1),
-              });
-            }
+        if (mhCount > 0 && hasRoom) {
+          const cols = Math.min(mhCount, 3);
+          const rows = Math.ceil(mhCount / cols);
+          const mhSize = Math.min(cw * 0.12, ch * 0.12, 14);
+          for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+            if (manholes.length >= mhCount) break;
+            manholes.push({
+              mx: cx + wt + (c + 0.5) * (cw - wt * 2) / cols,
+              my: cy + wt + (r + 0.5) * (ch - wt * 2) / rows,
+            });
           }
         }
 
         return (
           <g key={comp.id}>
-            {/* Underground indicator border (dashed blue) */}
-            {isUnderground && (
+            {/* Underground dashed border indicator */}
+            {isUnder && (
               <rect x={cx - 3} y={cy - 3} width={cw + 6} height={ch + 6}
-                fill="none" stroke="#4466AA" strokeWidth="1" strokeDasharray="4 3" />
+                fill="none" stroke={stroke} strokeWidth="1.2" strokeDasharray="5 3" opacity="0.7" />
             )}
-            {/* Concrete wall */}
-            <rect x={cx} y={cy} width={cw} height={ch} fill={fillPat} stroke="#000" strokeWidth={isPit ? 1 : 1.5} />
-            {/* Interior */}
+
+            {/* ── OUTER WALL (concrete hatch) ── */}
+            <rect x={cx} y={cy} width={cw} height={ch}
+              fill={isBuilding ? "url(#bwall)" : "url(#cwall)"}
+              stroke={stroke} strokeWidth={isPit ? 1.2 : 2} />
+
+            {/* ── INTERIOR FILL (colored by type) ── */}
             {hasRoom && (
               <rect x={cx + wt} y={cy + wt} width={cw - wt * 2} height={ch - wt * 2}
-                fill="white" stroke="#000" strokeWidth="0.8" />
+                fill={isPit ? "url(#pit_fill)" : fill}
+                stroke={stroke} strokeWidth="1" opacity={isUnder ? 0.85 : 1} />
             )}
-            {/* Slope diagonal line */}
+
+            {/* ── SLOPE INDICATOR ── */}
             {comp.hasSlope && hasRoom && (
-              <line x1={cx + wt} y1={cy + ch - wt} x2={cx + cw - wt} y2={cy + wt}
-                stroke="#666" strokeWidth="0.8" strokeDasharray="3 2" />
+              <line x1={cx + wt + 4} y1={cy + ch - wt - 4}
+                x2={cx + cw - wt - 4} y2={cy + wt + 4}
+                stroke={stroke} strokeWidth="0.9" strokeDasharray="4 2" />
             )}
-            {/* Component label */}
-            {hasRoom && (
-              <>
-                <text x={midX} y={midY - (comp.sublabel || platStr ? 16 : comp.level !== undefined ? 10 : 5)}
-                  fill="#000" fontSize={cw < 40 ? "6" : "8"} fontWeight="bold" textAnchor="middle">{ln1}</text>
-                {ln2 && <text x={midX} y={midY - (comp.sublabel || platStr ? 5 : comp.level !== undefined ? -1 : 8)}
-                  fill="#000" fontSize={cw < 40 ? "6" : "8"} fontWeight="bold" textAnchor="middle">{ln2}</text>}
-                {/* Level annotation */}
-                <text x={midX} y={midY + (comp.sublabel ? 6 : 10)} fill={isUnderground ? "#4455AA" : "#333"} fontSize="6.5" textAnchor="middle" fontWeight={isUnderground ? "bold" : "normal"}>
-                  {lvlStr}
-                </text>
-                {/* Platform level */}
-                {platStr && (
-                  <text x={midX} y={midY + 20} fill="#666" fontSize="6" textAnchor="middle">{platStr.replace("\n", " ")}</text>
-                )}
-                {/* Slope annotation */}
-                {comp.hasSlope && comp.slopeFrom !== undefined && comp.slopeTo !== undefined && (
-                  <text x={cx + wt + 4} y={cy + ch - wt - 6} fill="#666" fontSize="5.5" fontStyle="italic">
-                    {`Slope:${comp.slopeFrom.toFixed(2)} to ${comp.slopeTo.toFixed(2)}m`}
+
+            {/* ── LABELS ── */}
+            {hasRoom && (() => {
+              const fs = cw < 50 ? "6.5" : cw < 90 ? "7.5" : "9";
+              const lineH = parseFloat(fs) + 3;
+              const totalLines = [ln1, ln2, lvlStr, comp.platform ? `Plat:+${comp.platform.toFixed(2)}m` : "", comp.sublabel || ""].filter(Boolean).length;
+              const startY = midY - (totalLines / 2 - 0.5) * lineH;
+              let lIdx = 0;
+              return (
+                <>
+                  <text x={midX} y={startY + lineH * lIdx++} fill="#000" fontSize={fs} fontWeight="bold" textAnchor="middle">{ln1}</text>
+                  {ln2 && <text x={midX} y={startY + lineH * lIdx++} fill="#000" fontSize={fs} fontWeight="bold" textAnchor="middle">{ln2}</text>}
+                  <text x={midX} y={startY + lineH * lIdx++} fill={isUnder ? "#1A5276" : "#555"} fontSize={Math.max(5.5, parseFloat(fs) - 1)} textAnchor="middle" fontStyle="italic" fontWeight={isUnder ? "bold" : "normal"}>
+                    {lvlStr}
                   </text>
-                )}
-                {/* Sublabel */}
-                {comp.sublabel && (
-                  <text x={midX} y={midY + 28} fill="#555" fontSize="6" textAnchor="middle" fontStyle="italic">
-                    {comp.sublabel}
+                  {typeof comp.platform === "number" && comp.platform > 0 && (
+                    <text x={midX} y={startY + lineH * lIdx++} fill="#6C3483" fontSize="5.5" textAnchor="middle">Plat: +{comp.platform.toFixed(2)}m</text>
+                  )}
+                  {comp.hasSlope && comp.slopeFrom !== undefined && comp.slopeTo !== undefined && (
+                    <text x={cx + wt + 3} y={cy + ch - wt - 4} fill="#888" fontSize="5" fontStyle="italic">
+                      {`Slope:${comp.slopeFrom.toFixed(2)}→${comp.slopeTo.toFixed(2)}m`}
+                    </text>
+                  )}
+                  {comp.sublabel && (
+                    <text x={midX} y={startY + lineH * lIdx++} fill="#666" fontSize="5.5" textAnchor="middle" fontStyle="italic">{comp.sublabel}</text>
+                  )}
+                  {/* Dimension tag */}
+                  <text x={cx + wt + 2} y={cy + ch - wt - 2} fill="#888" fontSize="5">
+                    {comp.w.toFixed(1)}×{comp.h.toFixed(1)}m
                   </text>
-                )}
-                {/* Dimension tag */}
-                <text x={cx + wt + 2} y={cy + ch - wt - 3} fill="#333" fontSize="5">
-                  ({comp.w.toFixed(1)}m×{comp.h.toFixed(1)}m)
-                </text>
-              </>
-            )}
+                </>
+              );
+            })()}
             {/* Small pit label */}
             {!hasRoom && (
-              <text x={midX} y={midY + 3} fill="#000" fontSize="5" textAnchor="middle" fontWeight="bold">{ln1.slice(0, 8)}</text>
+              <text x={midX} y={midY + 3} fill="#000" fontSize="5" textAnchor="middle" fontWeight="bold">{ln1.slice(0, 10)}</text>
             )}
-            {/* Manholes */}
+
+            {/* ── MANHOLES ── */}
             {manholes.map((mh, mi) => (
-              <g key={mi}>
-                <rect x={mh.mx - 6} y={mh.my - 6} width={12} height={12}
-                  fill="white" stroke="#000" strokeWidth="0.8" />
-                <text x={mh.mx} y={mh.my + 10} fill="#000" fontSize="5" textAnchor="middle">MH</text>
-                {/* Manhole size note for first one */}
-                {mi === 0 && cw > 50 && (
-                  <text x={mh.mx} y={mh.my - 8} fill="#666" fontSize="5" textAnchor="middle">Ø750×750mm</text>
+              <g key={`mh_${mi}`}>
+                <rect x={mh.mx - 7} y={mh.my - 7} width={14} height={14}
+                  fill="white" stroke="#333" strokeWidth="1" />
+                <circle cx={mh.mx} cy={mh.my} r="4" fill="none" stroke="#333" strokeWidth="0.8" />
+                {mi === 0 && cw > 55 && (
+                  <text x={mh.mx} y={mh.my - 10} fill="#333" fontSize="5" textAnchor="middle">Ø750×750</text>
                 )}
               </g>
             ))}
-            {/* Chamber symbol */}
-            {comp.type === "chamber" && hasRoom && (
-              <rect x={midX - 6} y={midY - 6} width={12} height={12} fill="none" stroke="#000" strokeWidth="0.8" />
-            )}
-            {/* Platform elevation tag (top of structure) */}
-            {typeof comp.platform === "number" && comp.platform > 0 && hasRoom && (
-              <g>
-                <line x1={cx + 2} y1={cy + 2} x2={cx + Math.min(cw * 0.4, 30)} y2={cy + 2} stroke="#555" strokeWidth="0.7" />
-                <text x={cx + 4} y={cy + 10} fill="#444" fontSize="5.5" fontWeight="bold">{`Plat form\nLvl: +${comp.platform.toFixed(2)}m`}</text>
-              </g>
-            )}
           </g>
         );
       })}
 
-      {/* Underground legend marker (bottom left of plan) */}
-      {layout.components?.some(c => c.isUnderground || (typeof c.level === "number" && c.level < 0)) && (
-        <g transform={`translate(${PLAN_X + 12}, ${PLAN_Y + PLAN_H - 50})`}>
-          <rect x={0} y={0} width={10} height={10} fill="none" stroke="#4466AA" strokeWidth="1" strokeDasharray="3 2" />
-          <text x={14} y={9} fill="#4466AA" fontSize="7">= Underground / Below GL</text>
-        </g>
-      )}
+      {/* ── LEGEND (bottom-left of plan area) ── */}
+      <g transform={`translate(${PLAN_X + 8}, ${PLAN_Y + PLAN_H - 64})`}>
+        <rect x={0} y={0} width={190} height={60} fill="white" stroke="#CCC" strokeWidth="0.7" rx="2" opacity="0.92" />
+        <text x={5} y={12} fill="#333" fontSize="7" fontWeight="bold">LEGEND</text>
+        {[
+          { fill: CIVIL_FILL.blue,   stroke: CIVIL_STROKE.blue,   label: "Water / Liquid Tanks" },
+          { fill: CIVIL_FILL.teal,   stroke: CIVIL_STROKE.teal,   label: "Biological Treatment" },
+          { fill: CIVIL_FILL.amber,  stroke: CIVIL_STROKE.amber,  label: "Sludge Handling" },
+          { fill: CIVIL_FILL.orange, stroke: CIVIL_STROKE.orange, label: "Chemical / Dosing" },
+          { fill: CIVIL_FILL.purple, stroke: CIVIL_STROKE.purple, label: "Advanced Treatment (RO/MEE)" },
+        ].map((leg, li) => (
+          <g key={li} transform={`translate(5, ${18 + li * 9})`}>
+            <rect x={0} y={0} width={10} height={7} fill={leg.fill} stroke={leg.stroke} strokeWidth="0.8" />
+            <text x={14} y={6.5} fill="#444" fontSize="6">{leg.label}</text>
+          </g>
+        ))}
+        {hasUnderground && (
+          <g transform={`translate(5, 63)`}>
+            <rect x={0} y={0} width={10} height={7} fill="none" stroke="#2E86C1" strokeWidth="1" strokeDasharray="3 2" />
+            <text x={14} y={6.5} fill="#1A5276" fontSize="6" fontWeight="bold">Underground / Below GL</text>
+          </g>
+        )}
+      </g>
 
-      {/* Dimension lines */}
-      <line x1={PLAN_X} y1={PLAN_Y + PLAN_H + 14} x2={PLAN_X + PLAN_W} y2={PLAN_Y + PLAN_H + 14}
-        stroke="#000" strokeWidth="0.8" markerStart="url(#dar)" markerEnd="url(#da)" />
-      <line x1={PLAN_X} y1={PLAN_Y + PLAN_H} x2={PLAN_X} y2={PLAN_Y + PLAN_H + 22} stroke="#000" strokeWidth="0.8" />
-      <line x1={PLAN_X + PLAN_W} y1={PLAN_Y + PLAN_H} x2={PLAN_X + PLAN_W} y2={PLAN_Y + PLAN_H + 22} stroke="#000" strokeWidth="0.8" />
-      <text x={PLAN_X + PLAN_W / 2} y={PLAN_Y + PLAN_H + 34} fill="#000" fontSize="10" textAnchor="middle" fontWeight="bold">
+      {/* ── NORTH ARROW ── */}
+      <g transform={`translate(${PLAN_X + PLAN_W - 40}, ${PLAN_Y + 44})`}>
+        <circle cx="0" cy="0" r="24" fill="white" stroke="#000" strokeWidth="1.2" />
+        <path d="M0,-22 L7,0 L0,-7 L-7,0 Z" fill="#000" />
+        <path d="M0,22 L7,0 L0,7 L-7,0 Z" fill="white" stroke="#000" strokeWidth="1.2" />
+        <text x="0" y="-26" fill="#000" fontSize="11" fontWeight="bold" textAnchor="middle">N</text>
+      </g>
+
+      {/* ── SCALE BAR ── */}
+      <g transform={`translate(${PLAN_X + PLAN_W - 120}, ${PLAN_Y + PLAN_H - 24})`}>
+        <rect x={0} y={0} width={sbPx / 2} height={9} fill="#333" />
+        <rect x={sbPx / 2} y={0} width={sbPx / 2} height={9} fill="white" stroke="#333" strokeWidth="0.8" />
+        <rect x={0} y={0} width={sbPx} height={9} fill="none" stroke="#333" strokeWidth="0.8" />
+        <text x={0} y={20} fill="#333" fontSize="7" textAnchor="start">0</text>
+        <text x={sbPx} y={20} fill="#333" fontSize="7" textAnchor="end">{sbMeters}m</text>
+        <text x={sbPx / 2} y={-3} fill="#333" fontSize="7" textAnchor="middle">SCALE : NTS</text>
+      </g>
+
+      {/* ── DIMENSION LINES ── */}
+      {/* Bottom — site length */}
+      <line x1={PLAN_X} y1={PLAN_Y + PLAN_H + 16} x2={PLAN_X + PLAN_W} y2={PLAN_Y + PLAN_H + 16}
+        stroke="#333" strokeWidth="0.9" markerStart="url(#dArrowR)" markerEnd="url(#dArrow)" />
+      <line x1={PLAN_X} y1={PLAN_Y + PLAN_H} x2={PLAN_X} y2={PLAN_Y + PLAN_H + 25} stroke="#333" strokeWidth="0.8" />
+      <line x1={PLAN_X + PLAN_W} y1={PLAN_Y + PLAN_H} x2={PLAN_X + PLAN_W} y2={PLAN_Y + PLAN_H + 25} stroke="#333" strokeWidth="0.8" />
+      <text x={PLAN_X + PLAN_W / 2} y={PLAN_Y + PLAN_H + 36} fill="#000" fontSize="11" textAnchor="middle" fontWeight="bold">
         {siteLength.toFixed(3)} m
       </text>
-      <line x1={PLAN_X - 14} y1={PLAN_Y} x2={PLAN_X - 14} y2={PLAN_Y + PLAN_H}
-        stroke="#000" strokeWidth="0.8" markerStart="url(#dar)" markerEnd="url(#da)" />
-      <line x1={PLAN_X - 22} y1={PLAN_Y} x2={PLAN_X} y2={PLAN_Y} stroke="#000" strokeWidth="0.8" />
-      <line x1={PLAN_X - 22} y1={PLAN_Y + PLAN_H} x2={PLAN_X} y2={PLAN_Y + PLAN_H} stroke="#000" strokeWidth="0.8" />
-      <text x={PLAN_X - 36} y={PLAN_Y + PLAN_H / 2} fill="#000" fontSize="10" textAnchor="middle" fontWeight="bold"
-        transform={`rotate(-90,${PLAN_X - 36},${PLAN_Y + PLAN_H / 2})`}>
+      {/* Left — site width */}
+      <line x1={PLAN_X - 16} y1={PLAN_Y} x2={PLAN_X - 16} y2={PLAN_Y + PLAN_H}
+        stroke="#333" strokeWidth="0.9" markerStart="url(#dArrowR)" markerEnd="url(#dArrow)" />
+      <line x1={PLAN_X - 25} y1={PLAN_Y} x2={PLAN_X} y2={PLAN_Y} stroke="#333" strokeWidth="0.8" />
+      <line x1={PLAN_X - 25} y1={PLAN_Y + PLAN_H} x2={PLAN_X} y2={PLAN_Y + PLAN_H} stroke="#333" strokeWidth="0.8" />
+      <text x={PLAN_X - 38} y={PLAN_Y + PLAN_H / 2} fill="#000" fontSize="11" textAnchor="middle" fontWeight="bold"
+        transform={`rotate(-90,${PLAN_X - 38},${PLAN_Y + PLAN_H / 2})`}>
         {siteWidth.toFixed(3)} m
       </text>
 
-      {/* North Arrow */}
-      <g transform={`translate(${PLAN_X + PLAN_W - 38}, ${PLAN_Y + 42})`}>
-        <circle cx="0" cy="0" r="22" fill="none" stroke="#000" strokeWidth="1" />
-        <path d="M0,-20 L6,0 L0,-6 L-6,0 Z" fill="#000" />
-        <path d="M0,20 L6,0 L0,6 L-6,0 Z" fill="white" stroke="#000" strokeWidth="1" />
-        <text x="0" y="-24" fill="#000" fontSize="10" fontWeight="bold" textAnchor="middle">N</text>
-      </g>
+      {/* ═══════════════════════════════
+          WTT TITLE BLOCK (right panel)
+      ═══════════════════════════════ */}
+      <rect x={TB_X} y={TB_Y} width={TITLE_W} height={TB_H} fill="white" stroke="#000" strokeWidth="1.5" />
 
-      {/* Scale bar */}
-      <g transform={`translate(${PLAN_X + 12}, ${PLAN_Y + PLAN_H - 22})`}>
-        <rect x={0} y={0} width={sbPx / 2} height={8} fill="#000" stroke="#000" strokeWidth="0.8" />
-        <rect x={sbPx / 2} y={0} width={sbPx / 2} height={8} fill="white" stroke="#000" strokeWidth="0.8" />
-        <text x={0} y={18} fill="#000" fontSize="7" textAnchor="start">0</text>
-        <text x={sbPx} y={18} fill="#000" fontSize="7" textAnchor="end">{sbMeters}m</text>
-        <text x={sbPx / 2} y={-4} fill="#000" fontSize="7" textAnchor="middle">SCALE : NTS</text>
-      </g>
+      {/* Company header band */}
+      <rect x={TB_X} y={TB_Y} width={TITLE_W} height={62} fill="#1A3A5C" />
+      <text x={TB_X + TITLE_W / 2} y={TB_Y + 20} fill="white" fontSize="18" fontWeight="bold" textAnchor="middle" letterSpacing="3">WTT</text>
+      <text x={TB_X + TITLE_W / 2} y={TB_Y + 36} fill="#AED6F1" fontSize="8.5" fontWeight="bold" textAnchor="middle">INTERNATIONAL INDIA PVT. LTD.</text>
+      <text x={TB_X + TITLE_W / 2} y={TB_Y + 50} fill="#85C1E9" fontSize="7" textAnchor="middle" fontStyle="italic">Water Loving Technology</text>
+      {tbLine(62)}
 
-      {/* WTT Title Block */}
-      <rect x={TB_X} y={TB_Y} width={TITLE_W} height={TB_H} fill="white" stroke="#000" strokeWidth="1.2" />
-      {tbLine(60)}
-      <text x={TB_X + TITLE_W / 2} y={TB_Y + 18} fill="#000" fontSize="16" fontWeight="bold" textAnchor="middle" letterSpacing="2">WTT</text>
-      <text x={TB_X + TITLE_W / 2} y={TB_Y + 33} fill="#000" fontSize="8" fontWeight="bold" textAnchor="middle">INTERNATIONAL INDIA PVT. LTD.</text>
-      <text x={TB_X + TITLE_W / 2} y={TB_Y + 46} fill="#555" fontSize="7" textAnchor="middle" fontStyle="italic">Water Loving Technology</text>
-      <text x={TB_X + TITLE_W / 2} y={TB_Y + 57} fill="#555" fontSize="6.5" textAnchor="middle">www.wttindia.com</text>
+      {/* Project info */}
+      {tbLine(124)}
+      <text x={TB_X + 7} y={TB_Y + 76} fill="#888" fontSize="6.5" fontWeight="bold">PROJECT :</text>
+      <text x={TB_X + 7} y={TB_Y + 90} fill="#000" fontSize="9" fontWeight="bold">{(projectName || `${plantType} PROJECT`).toUpperCase()}</text>
+      <text x={TB_X + 7} y={TB_Y + 104} fill="#333" fontSize="7">{inletFlow ? `Flow : ${inletFlow}` : "Flow : —"}</text>
+      <text x={TB_X + 7} y={TB_Y + 116} fill="#666" fontSize="6.5">Site : {siteLength}m × {siteWidth}m · H = {tankHeight}m</text>
 
-      {tbLine(120)}
-      <text x={TB_X + 6} y={TB_Y + 73} fill="#888" fontSize="6.5" fontWeight="bold">PROJECT :</text>
-      <text x={TB_X + 6} y={TB_Y + 86} fill="#000" fontSize="8.5" fontWeight="bold">{(projectName || `${plantType} PROJECT`).toUpperCase()}</text>
-      <text x={TB_X + 6} y={TB_Y + 99} fill="#000" fontSize="7">{inletFlow ? `Flow : ${inletFlow}` : "Flow : —"}</text>
-      <text x={TB_X + 6} y={TB_Y + 111} fill="#555" fontSize="6.5">Site : {siteLength}m × {siteWidth}m · H = {tankHeight}m</text>
+      {/* Drawing title */}
+      {tbLine(184)}
+      <text x={TB_X + 7} y={TB_Y + 138} fill="#888" fontSize="6.5" fontWeight="bold">DRAWING TITLE :</text>
+      <text x={TB_X + 7} y={TB_Y + 153} fill="#000" fontSize="10" fontWeight="bold">{dwgTitle}</text>
+      <text x={TB_X + 7} y={TB_Y + 167} fill="#000" fontSize="8.5">PLAN VIEW (CIVIL)</text>
+      <text x={TB_X + 7} y={TB_Y + 178} fill="#555" fontSize="7">{dwgSub}</text>
 
-      {tbLine(180)}
-      <text x={TB_X + 6} y={TB_Y + 133} fill="#888" fontSize="6.5" fontWeight="bold">DRAWING TITLE :</text>
-      <text x={TB_X + 6} y={TB_Y + 147} fill="#000" fontSize="9" fontWeight="bold">{dwgTitle}</text>
-      <text x={TB_X + 6} y={TB_Y + 160} fill="#000" fontSize="8">PLAN VIEW (CIVIL)</text>
-      <text x={TB_X + 6} y={TB_Y + 172} fill="#555" fontSize="7">{dwgSubTitle}</text>
+      {/* DWG info grid */}
+      {tbLine(234)} {tbLine(264)} {tbLine(296)} {tbLine(348)}
+      <text x={TB_X + 7} y={TB_Y + 203} fill="#888" fontSize="6">SCALE :</text>
+      <text x={TB_X + 7} y={TB_Y + 218} fill="#000" fontSize="10" fontWeight="bold">NTS</text>
+      <text x={TB_X + 7} y={TB_Y + 250} fill="#888" fontSize="6">DWG. NO. :</text>
+      <text x={TB_X + 7} y={TB_Y + 263} fill="#000" fontSize="8" fontWeight="bold">{dwgNo}</text>
+      <text x={TB_X + 7} y={TB_Y + 280} fill="#888" fontSize="6">REVISION :</text>
+      <text x={TB_X + 7} y={TB_Y + 294} fill="#000" fontSize="10" fontWeight="bold">REV - A</text>
+      <text x={TB_X + 7} y={TB_Y + 315} fill="#888" fontSize="6">DATE :</text>
+      <text x={TB_X + 7} y={TB_Y + 329} fill="#000" fontSize="8" fontWeight="bold">{dateStr}</text>
+      <text x={TB_X + 7} y={TB_Y + 342} fill="#888" fontSize="6.5">GENERATED BY FlowMatriX AI</text>
 
-      {tbLine(230)} {tbLine(260)} {tbLine(290)} {tbLine(340)}
-      <text x={TB_X + 6} y={TB_Y + 198} fill="#888" fontSize="6">SCALE :</text>
-      <text x={TB_X + 6} y={TB_Y + 212} fill="#000" fontSize="9" fontWeight="bold">NTS</text>
-      <text x={TB_X + 6} y={TB_Y + 245} fill="#888" fontSize="6">DWG. NO. :</text>
-      <text x={TB_X + 6} y={TB_Y + 258} fill="#000" fontSize="8" fontWeight="bold">{dwgNo}</text>
-      <text x={TB_X + 6} y={TB_Y + 275} fill="#888" fontSize="6">REVISION :</text>
-      <text x={TB_X + 6} y={TB_Y + 288} fill="#000" fontSize="9" fontWeight="bold">REV - A</text>
-      <text x={TB_X + 6} y={TB_Y + 307} fill="#888" fontSize="6">DATE :</text>
-      <text x={TB_X + 6} y={TB_Y + 320} fill="#000" fontSize="8" fontWeight="bold">{dateStr}</text>
-      <text x={TB_X + 6} y={TB_Y + 334} fill="#555" fontSize="6.5">GENERATED BY FlowMatriX AI</text>
+      {/* Sign-off */}
+      {tbLine(398)} {tbLine(450)}
+      {tbVLine(TITLE_W / 2, 348, 450)}
+      <text x={TB_X + 7}              y={TB_Y + 364} fill="#888" fontSize="6">DRAWN BY :</text>
+      <text x={TB_X + TITLE_W / 2 + 7} y={TB_Y + 364} fill="#888" fontSize="6">CHK. BY :</text>
+      <text x={TB_X + 7}              y={TB_Y + 384} fill="#000" fontSize="8">FlowMatriX AI</text>
+      <text x={TB_X + TITLE_W / 2 + 7} y={TB_Y + 384} fill="#000" fontSize="8">—</text>
+      <text x={TB_X + 7}              y={TB_Y + 400} fill="#888" fontSize="6">DATE : {dateStr.split(" ")[2]}</text>
+      <text x={TB_X + TITLE_W / 2 + 7} y={TB_Y + 400} fill="#888" fontSize="6">DATE :</text>
+      <text x={TB_X + 7}              y={TB_Y + 428} fill="#888" fontSize="6">APPROVED BY :</text>
+      <text x={TB_X + 7}              y={TB_Y + 444} fill="#000" fontSize="8">—</text>
 
-      {tbLine(390)} {tbLine(440)}
-      {tbVLine(TITLE_W / 2, 340, 440)}
-      <text x={TB_X + 6}              y={TB_Y + 356} fill="#888" fontSize="6">DRAWN BY :</text>
-      <text x={TB_X + TITLE_W / 2 + 6} y={TB_Y + 356} fill="#888" fontSize="6">CHK. BY :</text>
-      <text x={TB_X + 6}              y={TB_Y + 378} fill="#000" fontSize="7.5">FlowMatriX AI</text>
-      <text x={TB_X + TITLE_W / 2 + 6} y={TB_Y + 378} fill="#000" fontSize="7.5">—</text>
-      <text x={TB_X + 6}              y={TB_Y + 393} fill="#888" fontSize="6">DATE : {dateStr.split(" ")[2]}</text>
-      <text x={TB_X + TITLE_W / 2 + 6} y={TB_Y + 393} fill="#888" fontSize="6">DATE :</text>
-      <text x={TB_X + 6}              y={TB_Y + 420} fill="#888" fontSize="6">APPROVED BY :</text>
-      <text x={TB_X + 6}              y={TB_Y + 436} fill="#000" fontSize="7.5">—</text>
-
-      {tbLine(470)} {tbLine(490)}
-      {tbVLine(22, 440, TB_H)} {tbVLine(80, 440, TB_H)} {tbVLine(130, 440, TB_H)}
-      <text x={TB_X + 6}   y={TB_Y + 455} fill="#888" fontSize="6">REV</text>
-      <text x={TB_X + 26}  y={TB_Y + 455} fill="#888" fontSize="6">DESCRIPTION</text>
-      <text x={TB_X + 84}  y={TB_Y + 455} fill="#888" fontSize="6">DATE</text>
-      <text x={TB_X + 134} y={TB_Y + 455} fill="#888" fontSize="6">BY</text>
-      <text x={TB_X + 8}   y={TB_Y + 482} fill="#000" fontSize="7">A</text>
-      <text x={TB_X + 26}  y={TB_Y + 482} fill="#000" fontSize="6.5">Initial Issue</text>
-      <text x={TB_X + 84}  y={TB_Y + 482} fill="#000" fontSize="6.5">{dateStr}</text>
-      <text x={TB_X + 134} y={TB_Y + 482} fill="#000" fontSize="6.5">AI</text>
+      {/* Revision history */}
+      {tbLine(478)} {tbLine(500)}
+      {tbVLine(24, 450, TB_H)} {tbVLine(86, 450, TB_H)} {tbVLine(138, 450, TB_H)}
+      <text x={TB_X + 7}   y={TB_Y + 466} fill="#888" fontSize="6">REV</text>
+      <text x={TB_X + 28}  y={TB_Y + 466} fill="#888" fontSize="6">DESCRIPTION</text>
+      <text x={TB_X + 90}  y={TB_Y + 466} fill="#888" fontSize="6">DATE</text>
+      <text x={TB_X + 142} y={TB_Y + 466} fill="#888" fontSize="6">BY</text>
+      <text x={TB_X + 9}   y={TB_Y + 490} fill="#000" fontSize="7">A</text>
+      <text x={TB_X + 28}  y={TB_Y + 490} fill="#000" fontSize="6.5">Initial Issue</text>
+      <text x={TB_X + 90}  y={TB_Y + 490} fill="#000" fontSize="6.5">{dateStr}</text>
+      <text x={TB_X + 142} y={TB_Y + 490} fill="#000" fontSize="6.5">AI</text>
     </svg>
   );
 }
 
 // ─────────────────────────────────────────────────────────
-// Quick actions
+// Quick actions for analyze mode
 // ─────────────────────────────────────────────────────────
 const QUICK_ACTIONS = [
-  { label: "Measure tank areas",       icon: AreaChart,    prompt: "Identify and measure the area of all tanks, chambers and reservoirs visible in this drawing. Include dimensions if shown." },
-  { label: "Count all elements",       icon: Hash,         prompt: "Count all distinct structural and mechanical elements in this drawing — tanks, pipes, pumps, valves, manholes, columns, etc." },
-  { label: "Extract pipe lengths",     icon: Ruler,        prompt: "Identify all pipe runs and measure their lengths. List each pipe by size/type if indicated." },
-  { label: "Bill of Materials",        icon: ClipboardList, prompt: "Generate a complete bill of materials (BOM) from this drawing — list all items, quantities, sizes and materials visible." },
-  { label: "Check drawing details",    icon: Search,       prompt: "Review this drawing for completeness — check if title block, scale, dimensions, north arrow, revision and material notes are present." },
-  { label: "Earthwork volumes",        icon: Maximize2,    prompt: "Identify all excavation, backfill and earthwork areas. Estimate volumes if levels or depth information is provided." },
+  { label: "Measure tank areas",   icon: AreaChart,    prompt: "Identify and measure the area of all tanks, chambers and reservoirs visible in this drawing." },
+  { label: "Count all elements",   icon: Hash,         prompt: "Count all distinct structural and mechanical elements — tanks, pipes, pumps, valves, manholes, etc." },
+  { label: "Extract pipe lengths", icon: Ruler,        prompt: "Identify all pipe runs and measure their lengths. List each pipe by size/type if indicated." },
+  { label: "Bill of Materials",    icon: ClipboardList, prompt: "Generate a complete bill of materials (BOM) — list all items, quantities, sizes and materials visible." },
+  { label: "Check completeness",   icon: Search,       prompt: "Check if title block, scale, dimensions, north arrow, revision and material notes are present." },
+  { label: "Earthwork volumes",    icon: Maximize2,    prompt: "Identify all excavation, backfill and earthwork areas. Estimate volumes if levels or depth info is provided." },
 ];
 
 const ANA_KEY = "civil_analysis_history";
@@ -554,12 +565,17 @@ const loadGen = (): ETPRecord[] => { try { return JSON.parse(localStorage.getIte
 const saveGen = (h: ETPRecord[]) => { try { localStorage.setItem(GEN_KEY, JSON.stringify(h.slice(0, 10))); } catch {} };
 
 const TYPE_ICON: Record<string, any> = { area: AreaChart, length: Ruler, count: Hash, volume: Maximize2, dimension: Ruler };
-const TYPE_COLOR: Record<string, string> = { area: "text-blue-600 bg-blue-50 border-blue-200", length: "text-emerald-600 bg-emerald-50 border-emerald-200", count: "text-purple-600 bg-purple-50 border-purple-200", volume: "text-amber-600 bg-amber-50 border-amber-200", dimension: "text-rose-600 bg-rose-50 border-rose-200" };
-
-const PLANT_TYPE_CONFIG: Record<PlantType, { label: string; color: string; icon: any; desc: string }> = {
-  ETP: { label: "ETP", color: "blue", icon: Droplets,   desc: "Effluent Treatment Plant" },
-  STP: { label: "STP", color: "teal", icon: Droplets,   desc: "Sewage Treatment Plant" },
-  ZLD: { label: "ZLD", color: "purple", icon: Factory,  desc: "Zero Liquid Discharge" },
+const TYPE_COLOR: Record<string, string> = {
+  area:      "text-blue-600 bg-blue-50 border-blue-200",
+  length:    "text-emerald-600 bg-emerald-50 border-emerald-200",
+  count:     "text-purple-600 bg-purple-50 border-purple-200",
+  volume:    "text-amber-600 bg-amber-50 border-amber-200",
+  dimension: "text-rose-600 bg-rose-50 border-rose-200",
+};
+const PLANT_TYPE_CONFIG: Record<PlantType, { label: string; icon: any; desc: string; accent: string }> = {
+  ETP: { label: "ETP", icon: Droplets, desc: "Effluent Treatment Plant", accent: "blue" },
+  STP: { label: "STP", icon: Droplets, desc: "Sewage Treatment Plant",   accent: "teal" },
+  ZLD: { label: "ZLD", icon: Factory,  desc: "Zero Liquid Discharge",    accent: "purple" },
 };
 
 // ─────────────────────────────────────────────────────────
@@ -599,11 +615,14 @@ export default function CivilDrawingAI() {
   const [zoom, setZoom]                 = useState(1);
   const svgRef = useRef<HTMLDivElement>(null);
 
+  // Correction state
+  const [correctionPrompt, setCorrectionPrompt] = useState("");
+  const [correcting, setCorrecting]     = useState(false);
+  const [correctionError, setCorrectionError] = useState<string | null>(null);
+
   const handleFile = useCallback((file: File) => {
     if (!file.type.startsWith("image/")) { setAnalyzeError("Please upload a JPG, PNG or WebP image."); return; }
-    setAnalyzeError(null);
-    setImageName(file.name);
-    setImageMime(file.type);
+    setAnalyzeError(null); setImageName(file.name); setImageMime(file.type);
     const reader = new FileReader();
     reader.onload = e => setImageDataUrl(e.target?.result as string);
     reader.readAsDataURL(file);
@@ -618,27 +637,20 @@ export default function CivilDrawingAI() {
   const handleAnalyze = async () => {
     if (!imageDataUrl) { setAnalyzeError("Please upload a drawing first."); return; }
     if (!instruction.trim()) { setAnalyzeError("Please enter an instruction."); return; }
-    setAnalyzeError(null);
-    setAnalyzing(true);
+    setAnalyzeError(null); setAnalyzing(true);
     try {
       const base64 = imageDataUrl.split(",")[1];
       const res = await fetch(`${BASE}/api/civil-drawing/analyze`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imageBase64: base64, mimeType: imageMime, instruction, projectName }),
       });
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || "Analysis failed"); }
       const data = await res.json();
       setAnalysisResult(data.analysis);
       const record: AnalysisRecord = { id: Date.now().toString(), projectName, instruction, imageDataUrl, result: data.analysis, createdAt: new Date().toISOString() };
-      const newH = [record, ...anaHistory];
-      setAnaHistory(newH);
-      saveAna(newH);
-    } catch (e: any) {
-      setAnalyzeError(e.message ?? "Analysis failed");
-    } finally {
-      setAnalyzing(false);
-    }
+      const newH = [record, ...anaHistory]; setAnaHistory(newH); saveAna(newH);
+    } catch (e: any) { setAnalyzeError(e.message ?? "Analysis failed"); }
+    finally { setAnalyzing(false); }
   };
 
   const toggleStep = (id: string) => setSelectedSteps(p => p.includes(id) ? p.filter(s => s !== id) : [...p, id]);
@@ -646,20 +658,17 @@ export default function CivilDrawingAI() {
     const idx = selectedSteps.indexOf(id); if (idx < 0) return;
     const n = [...selectedSteps]; const swap = dir === "up" ? idx - 1 : idx + 1;
     if (swap < 0 || swap >= n.length) return;
-    [n[idx], n[swap]] = [n[swap], n[idx]];
-    setSelectedSteps(n);
+    [n[idx], n[swap]] = [n[swap], n[idx]]; setSelectedSteps(n);
   };
 
   const handleChangePlantType = (pt: PlantType) => {
-    setPlantType(pt);
-    setSelectedSteps(DEFAULT_STEPS_MAP[pt]);
-    setGenResult(null);
+    setPlantType(pt); setSelectedSteps(DEFAULT_STEPS_MAP[pt]); setGenResult(null); setCorrectionPrompt("");
   };
 
   const handleGenerate = async () => {
     if (!siteLength || !siteWidth) { setGenError("Enter site dimensions."); return; }
     if (selectedSteps.length < 2) { setGenError("Select at least 2 process steps."); return; }
-    setGenError(null); setGenerating(true);
+    setGenError(null); setGenerating(true); setCorrectionPrompt(""); setCorrectionError(null);
     const opts = PROCESS_OPTIONS_MAP[plantType];
     const labels = selectedSteps.map(id => opts.find(o => o.id === id)?.label ?? id);
     try {
@@ -677,11 +686,31 @@ export default function CivilDrawingAI() {
       const rec: ETPRecord = { id: Date.now().toString(), params: data.params, layout: data.layout, generatedAt: new Date().toISOString() };
       setGenResult(rec);
       const newH = [rec, ...genHistory]; setGenHistory(newH); saveGen(newH);
-    } catch (e: any) {
-      setGenError(e.message ?? "Generation failed");
-    } finally {
-      setGenerating(false);
-    }
+    } catch (e: any) { setGenError(e.message ?? "Generation failed"); }
+    finally { setGenerating(false); }
+  };
+
+  // ── Immediate Correction ──
+  const handleCorrect = async () => {
+    if (!genResult || !correctionPrompt.trim()) return;
+    setCorrectionError(null); setCorrecting(true);
+    try {
+      const res = await fetch(`${BASE}/api/civil-drawing/correct`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          existingLayout: genResult.layout,
+          correctionPrompt: correctionPrompt.trim(),
+          params: genResult.params,
+        }),
+      });
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || "Correction failed"); }
+      const data = await res.json();
+      const rec: ETPRecord = { ...genResult, id: Date.now().toString(), layout: data.layout, generatedAt: new Date().toISOString() };
+      setGenResult(rec);
+      setCorrectionPrompt("");
+      const newH = [rec, ...genHistory]; setGenHistory(newH); saveGen(newH);
+    } catch (e: any) { setCorrectionError(e.message ?? "Correction failed"); }
+    finally { setCorrecting(false); }
   };
 
   const downloadSVG = () => {
@@ -695,6 +724,8 @@ export default function CivilDrawingAI() {
   const processOpts = PROCESS_OPTIONS_MAP[plantType];
   const ptCfg = PLANT_TYPE_CONFIG[plantType];
 
+  const accentBtn = plantType === "ZLD" ? "bg-purple-600 hover:bg-purple-700" : plantType === "STP" ? "bg-teal-600 hover:bg-teal-700" : "bg-blue-600 hover:bg-blue-700";
+
   return (
     <Layout>
       <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -702,7 +733,7 @@ export default function CivilDrawingAI() {
         {/* TOP HEADER */}
         <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center shadow">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-700 to-blue-900 flex items-center justify-center shadow">
               <Building2 className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -711,32 +742,23 @@ export default function CivilDrawingAI() {
             </div>
           </div>
           <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
-            <button
-              onClick={() => setMode("analyze")}
-              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${mode === "analyze" ? "bg-white text-blue-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-            >
-              <Search className="w-3.5 h-3.5" /> Analyze Drawing
-            </button>
-            <button
-              onClick={() => setMode("generate")}
-              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${mode === "generate" ? "bg-white text-blue-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-            >
-              <Building2 className="w-3.5 h-3.5" /> Generate Layout
-            </button>
+            {(["analyze", "generate"] as Mode[]).map(m => (
+              <button key={m} onClick={() => setMode(m)}
+                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${mode === m ? "bg-white text-blue-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+                {m === "analyze" ? <><Search className="w-3.5 h-3.5" /> Analyze Drawing</> : <><Building2 className="w-3.5 h-3.5" /> Generate Layout</>}
+              </button>
+            ))}
           </div>
           <div className="w-40" />
         </div>
 
-        {/* ════════════════════════════════════════════════════════ */}
+        {/* ════════════════ ANALYZE MODE ════════════════ */}
         {mode === "analyze" ? (
-          /* ANALYZE MODE */
           <div className="flex flex-1 overflow-hidden">
             <div className="flex-1 bg-gray-100 flex flex-col overflow-hidden">
               <div className="bg-white border-b border-gray-200 px-4 py-2.5 flex items-center gap-3">
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors"
-                >
+                <button onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg">
                   <Upload className="w-3.5 h-3.5" /> Upload Drawing
                 </button>
                 {imageDataUrl && (
@@ -753,13 +775,8 @@ export default function CivilDrawingAI() {
                 )}
                 <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
               </div>
-
-              <div
-                ref={dropRef}
-                className="flex-1 overflow-auto flex items-center justify-center p-6"
-                onDrop={onDrop}
-                onDragOver={e => e.preventDefault()}
-              >
+              <div ref={dropRef} className="flex-1 overflow-auto flex items-center justify-center p-6"
+                onDrop={onDrop} onDragOver={e => e.preventDefault()}>
                 {imageDataUrl ? (
                   <div className="relative max-w-full max-h-full">
                     <img src={imageDataUrl} alt="Drawing" className="max-w-full max-h-[calc(100vh-220px)] object-contain rounded-xl shadow-xl border border-gray-200" />
@@ -776,8 +793,8 @@ export default function CivilDrawingAI() {
                       <FileImage className="w-8 h-8 text-blue-400" />
                     </div>
                     <h3 className="text-sm font-bold text-gray-700 mb-1">Upload your engineering drawing</h3>
-                    <p className="text-xs text-gray-400 mb-3">Drag & drop or click to upload · JPG, PNG, WebP</p>
-                    <p className="text-[10px] text-gray-400">Works with ETP, STP, ZLD plan views, sections, elevations, P&IDs</p>
+                    <p className="text-xs text-gray-400 mb-3">Drag & drop or click · JPG, PNG, WebP</p>
+                    <p className="text-[10px] text-gray-400">Works with ETP, STP, ZLD plan views, sections, P&IDs</p>
                   </div>
                 )}
               </div>
@@ -787,19 +804,15 @@ export default function CivilDrawingAI() {
               <div className="flex-1 overflow-y-auto p-5 space-y-5">
                 <div>
                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Project (optional)</label>
-                  <input value={projectName} onChange={e => setProjectName(e.target.value)}
-                    placeholder="e.g. WTT — ZLD Plant Phase 2"
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                  <input value={projectName} onChange={e => setProjectName(e.target.value)} placeholder="e.g. WTT — ZLD Plant Phase 2"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
-
                 <div>
                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Instruction *</label>
-                  <textarea value={instruction} onChange={e => setInstruction(e.target.value)}
+                  <textarea value={instruction} onChange={e => setInstruction(e.target.value)} rows={3}
                     placeholder="e.g. Measure all tank areas and return quantities…"
-                    rows={3}
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
                 </div>
-
                 <div>
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Quick Actions</p>
                   <div className="grid grid-cols-2 gap-2">
@@ -815,14 +828,12 @@ export default function CivilDrawingAI() {
                     })}
                   </div>
                 </div>
-
                 {analyzeError && (
                   <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
                     <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
                     <p className="text-xs text-red-600">{analyzeError}</p>
                   </div>
                 )}
-
                 <button onClick={handleAnalyze} disabled={analyzing}
                   className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl transition-colors shadow-sm">
                   {analyzing ? <><Loader2 className="w-4 h-4 animate-spin" /> Analyzing…</> : <><Sparkles className="w-4 h-4" /> Analyze Drawing</>}
@@ -839,7 +850,6 @@ export default function CivilDrawingAI() {
                         <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Scale: {analysisResult.scale}</span>
                       </div>
                     </div>
-
                     <div>
                       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Measurements ({analysisResult.measurements?.length ?? 0})</p>
                       <div className="space-y-1.5">
@@ -862,7 +872,6 @@ export default function CivilDrawingAI() {
                         })}
                       </div>
                     </div>
-
                     {analysisResult.keyFindings?.length > 0 && (
                       <div>
                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Key Findings</p>
@@ -875,7 +884,6 @@ export default function CivilDrawingAI() {
                         </ul>
                       </div>
                     )}
-
                     {analysisResult.disclaimer && (
                       <p className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">{analysisResult.disclaimer}</p>
                     )}
@@ -886,12 +894,13 @@ export default function CivilDrawingAI() {
           </div>
 
         ) : (
-          /* GENERATE MODE */
+          /* ════════════════ GENERATE MODE ════════════════ */
           <div className="flex flex-1 overflow-hidden">
+            {/* Left Form */}
             <div className="w-[340px] flex-shrink-0 bg-white border-r border-gray-200 overflow-y-auto">
               <div className="p-5 space-y-5">
 
-                {/* Plant Type Selector */}
+                {/* Plant Type */}
                 <div>
                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Plant Type *</label>
                   <div className="grid grid-cols-3 gap-2">
@@ -899,39 +908,32 @@ export default function CivilDrawingAI() {
                       const cfg = PLANT_TYPE_CONFIG[pt];
                       const Icon = cfg.icon;
                       const isActive = plantType === pt;
+                      const colors = pt === "ZLD" ? "border-purple-500 bg-purple-50 text-purple-700" : pt === "STP" ? "border-teal-500 bg-teal-50 text-teal-700" : "border-blue-500 bg-blue-50 text-blue-700";
                       return (
                         <button key={pt} onClick={() => handleChangePlantType(pt)}
-                          className={`flex flex-col items-center gap-1 px-2 py-3 rounded-xl border-2 transition-all text-center ${
-                            isActive
-                              ? pt === "ZLD" ? "border-purple-500 bg-purple-50 text-purple-700"
-                              : pt === "STP" ? "border-teal-500 bg-teal-50 text-teal-700"
-                              : "border-blue-500 bg-blue-50 text-blue-700"
-                              : "border-gray-200 text-gray-400 hover:border-gray-300"
-                          }`}>
+                          className={`flex flex-col items-center gap-1 px-2 py-3 rounded-xl border-2 transition-all ${isActive ? colors : "border-gray-200 text-gray-400 hover:border-gray-300"}`}>
                           <Icon className="w-4 h-4" />
                           <span className="text-xs font-bold">{cfg.label}</span>
-                          <span className="text-[9px] leading-tight">{cfg.desc}</span>
+                          <span className="text-[9px] leading-tight text-center">{cfg.desc}</span>
                         </button>
                       );
                     })}
                   </div>
                   {plantType === "ZLD" && (
-                    <div className="mt-2 px-3 py-2 bg-purple-50 border border-purple-200 rounded-xl">
-                      <p className="text-[10px] text-purple-700 font-semibold">ZLD Mode — includes underground tanks, manholes, slopes, platforms, DAF, MEE & ATFD units</p>
-                    </div>
+                    <p className="mt-2 text-[10px] text-purple-700 bg-purple-50 border border-purple-200 rounded-xl px-3 py-2 font-semibold">
+                      ZLD Mode — underground tanks, manholes, slopes, platforms, DAF, MEE & ATFD
+                    </p>
                   )}
                 </div>
 
                 <div>
                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Project Name</label>
-                  <input value={genProjectName} onChange={e => setGenProjectName(e.target.value)}
-                    placeholder={`e.g. WTT — ${plantType} Phase 1`}
+                  <input value={genProjectName} onChange={e => setGenProjectName(e.target.value)} placeholder={`e.g. WTT — ${plantType} Phase 1`}
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Design Flow Rate</label>
-                  <input value={inletFlow} onChange={e => setInletFlow(e.target.value)}
-                    placeholder="e.g. 200 KLD / 8.3 m³/hr"
+                  <input value={inletFlow} onChange={e => setInletFlow(e.target.value)} placeholder="e.g. 200 KLD / 8.3 m³/hr"
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
@@ -945,7 +947,7 @@ export default function CivilDrawingAI() {
                       </div>
                     ))}
                   </div>
-                  {siteLength && siteWidth && <p className="text-[10px] text-blue-600 mt-1">Total area: {(parseFloat(siteLength) * parseFloat(siteWidth)).toFixed(0)} m²</p>}
+                  {siteLength && siteWidth && <p className="text-[10px] text-blue-600 mt-1">Area: {(parseFloat(siteLength) * parseFloat(siteWidth)).toFixed(0)} m²</p>}
                 </div>
 
                 <div>
@@ -981,9 +983,8 @@ export default function CivilDrawingAI() {
 
                 <div>
                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Additional Requirements</label>
-                  <textarea value={addNotes} onChange={e => setAddNotes(e.target.value)}
-                    placeholder={plantType === "ZLD" ? "ZLD target, underground sump depth, MEE capacity…" : "Inlet from north, underground storage, special requirements…"}
-                    rows={2}
+                  <textarea value={addNotes} onChange={e => setAddNotes(e.target.value)} rows={2}
+                    placeholder={plantType === "ZLD" ? "ZLD target, underground sump depth, MEE capacity…" : "Inlet from north, underground storage…"}
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
                 </div>
 
@@ -995,11 +996,7 @@ export default function CivilDrawingAI() {
                 )}
 
                 <button onClick={handleGenerate} disabled={generating}
-                  className={`w-full flex items-center justify-center gap-2 px-4 py-3 disabled:opacity-50 text-white font-bold text-sm rounded-xl transition-colors shadow-sm ${
-                    plantType === "ZLD" ? "bg-purple-600 hover:bg-purple-700"
-                    : plantType === "STP" ? "bg-teal-600 hover:bg-teal-700"
-                    : "bg-blue-600 hover:bg-blue-700"
-                  }`}>
+                  className={`w-full flex items-center justify-center gap-2 px-4 py-3 disabled:opacity-50 text-white font-bold text-sm rounded-xl transition-colors shadow-sm ${accentBtn}`}>
                   {generating ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating…</> : <><Sparkles className="w-4 h-4" /> Generate {plantType} Drawing</>}
                 </button>
                 {generating && <p className="text-[10px] text-gray-400 text-center">AI is designing your {plantType} layout — ~15 seconds</p>}
@@ -1013,10 +1010,11 @@ export default function CivilDrawingAI() {
               </div>
             </div>
 
-            {/* Drawing output */}
-            <div className="flex-1 overflow-auto bg-gray-100 p-4">
+            {/* Right — Drawing Output */}
+            <div className="flex-1 overflow-auto bg-gray-100 p-4 space-y-4">
               {genResult ? (
-                <div className="space-y-4">
+                <>
+                  {/* Toolbar */}
                   <div className="bg-white rounded-2xl border border-gray-200 px-5 py-3 flex items-center justify-between shadow-sm">
                     <div>
                       <p className="text-sm font-bold text-gray-900">{genResult.params.projectName}</p>
@@ -1027,11 +1025,12 @@ export default function CivilDrawingAI() {
                       <span className="text-xs text-gray-500 w-10 text-center">{Math.round(zoom * 100)}%</span>
                       <button onClick={() => setZoom(z => Math.min(3, z + 0.1))} className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500"><ZoomIn className="w-3.5 h-3.5" /></button>
                       <button onClick={() => setZoom(1)} className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500"><RotateCcw className="w-3.5 h-3.5" /></button>
-                      <button onClick={downloadSVG} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg"><Download className="w-3.5 h-3.5" /> Download SVG</button>
-                      <button onClick={() => setGenResult(null)} className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-500 hover:bg-gray-50 text-xs rounded-lg"><RefreshCw className="w-3.5 h-3.5" /> New</button>
+                      <button onClick={downloadSVG} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg"><Download className="w-3.5 h-3.5" /> SVG</button>
+                      <button onClick={() => { setGenResult(null); setCorrectionPrompt(""); }} className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-500 hover:bg-gray-50 text-xs rounded-lg"><RefreshCw className="w-3.5 h-3.5" /> New</button>
                     </div>
                   </div>
 
+                  {/* Drawing SVG */}
                   <div className="bg-white rounded-2xl border border-gray-200 overflow-auto shadow-sm" ref={svgRef}>
                     <div style={{ transform: `scale(${zoom})`, transformOrigin: "top left", display: "inline-block", minWidth: "100%" }}>
                       <AutoCADDrawing
@@ -1046,6 +1045,43 @@ export default function CivilDrawingAI() {
                     </div>
                   </div>
 
+                  {/* ── IMMEDIATE CORRECTION PROMPT ── */}
+                  <div className="bg-white rounded-2xl border-2 border-amber-200 shadow-sm overflow-hidden">
+                    <div className="px-5 py-3 bg-amber-50 border-b border-amber-200 flex items-center gap-2">
+                      <Pencil className="w-4 h-4 text-amber-600" />
+                      <h3 className="text-sm font-bold text-amber-800">Quick Correction</h3>
+                      <span className="text-[10px] text-amber-600 ml-1">— describe any change and AI will update the drawing instantly</span>
+                    </div>
+                    <div className="p-4">
+                      <div className="flex gap-3">
+                        <textarea
+                          value={correctionPrompt}
+                          onChange={e => setCorrectionPrompt(e.target.value)}
+                          placeholder={`e.g. "Move the blower room to the top-right corner" · "Increase RO system width to 8m" · "Add a pump sump near the MEE unit" · "Make the equalization tank larger"`}
+                          rows={2}
+                          className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
+                          onKeyDown={e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handleCorrect(); }}
+                        />
+                        <button
+                          onClick={handleCorrect}
+                          disabled={correcting || !correctionPrompt.trim()}
+                          className="flex-shrink-0 flex flex-col items-center justify-center gap-1.5 px-5 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-white font-bold text-sm rounded-xl transition-colors shadow-sm">
+                          {correcting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                          <span className="text-[10px]">{correcting ? "Applying…" : "Apply"}</span>
+                        </button>
+                      </div>
+                      {correctionError && (
+                        <div className="mt-2 flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                          <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                          <p className="text-xs text-red-600">{correctionError}</p>
+                        </div>
+                      )}
+                      {correcting && <p className="mt-2 text-[10px] text-amber-600 text-center">AI is applying your correction — ~10 seconds</p>}
+                      <p className="mt-2 text-[10px] text-gray-400">Tip: Press Ctrl+Enter to apply · Be specific for best results</p>
+                    </div>
+                  </div>
+
+                  {/* Summary & Design notes */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
                       <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1.5"><Sparkles className="w-3 h-3 text-blue-500" /> AI Summary</h3>
@@ -1064,33 +1100,37 @@ export default function CivilDrawingAI() {
                     </div>
                   </div>
 
+                  {/* Component schedule */}
                   <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
                     <div className="px-5 py-3 border-b border-gray-100"><h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Component Schedule</h3></div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs">
                         <thead className="bg-gray-50">
-                          <tr>{["Component", "L (m)", "W (m)", "Level (m)", "Area (m²)", "Underground", "Manholes", "Notes"].map(h => <th key={h} className="px-4 py-2 text-left text-gray-400 font-semibold">{h}</th>)}</tr>
+                          <tr>{["Component", "L (m)", "W (m)", "Level (m)", "Area (m²)", "Type", "Underground", "Notes"].map(h => <th key={h} className="px-3 py-2 text-left text-gray-400 font-semibold whitespace-nowrap">{h}</th>)}</tr>
                         </thead>
                         <tbody>
                           {genResult.layout.components?.map((comp, i) => (
                             <tr key={comp.id} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                              <td className="px-4 py-2 font-semibold text-gray-800">{comp.label}</td>
-                              <td className="px-4 py-2 text-gray-600">{comp.w.toFixed(1)}</td>
-                              <td className="px-4 py-2 text-gray-600">{comp.h.toFixed(1)}</td>
-                              <td className={`px-4 py-2 font-medium ${typeof comp.level === "number" && comp.level < 0 ? "text-purple-600" : "text-gray-600"}`}>
+                              <td className="px-3 py-2 font-semibold text-gray-800 flex items-center gap-2">
+                                <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: CIVIL_FILL[comp.color] ?? "#eee", border: `1.5px solid ${CIVIL_STROKE[comp.color] ?? "#999"}` }} />
+                                {comp.label}
+                              </td>
+                              <td className="px-3 py-2 text-gray-600">{comp.w.toFixed(1)}</td>
+                              <td className="px-3 py-2 text-gray-600">{comp.h.toFixed(1)}</td>
+                              <td className={`px-3 py-2 font-medium ${typeof comp.level === "number" && comp.level < 0 ? "text-purple-600" : "text-gray-600"}`}>
                                 {typeof comp.level === "number" ? (comp.level >= 0 ? `+${comp.level.toFixed(2)}` : comp.level.toFixed(2)) : "—"}
                               </td>
-                              <td className="px-4 py-2 text-gray-600">{(comp.w * comp.h).toFixed(1)}</td>
-                              <td className="px-4 py-2">{comp.isUnderground ? <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-semibold">Yes</span> : <span className="text-gray-300">—</span>}</td>
-                              <td className="px-4 py-2 text-gray-600">{comp.manholeCount || (comp.hasManholes ? "Yes" : "—")}</td>
-                              <td className="px-4 py-2 text-gray-400 italic">{comp.sublabel || "—"}</td>
+                              <td className="px-3 py-2 text-gray-600">{(comp.w * comp.h).toFixed(1)}</td>
+                              <td className="px-3 py-2 text-gray-500 capitalize">{comp.type}</td>
+                              <td className="px-3 py-2">{comp.isUnderground ? <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-semibold">Yes</span> : <span className="text-gray-300">—</span>}</td>
+                              <td className="px-3 py-2 text-gray-400 italic">{comp.sublabel || "—"}</td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
                   </div>
-                </div>
+                </>
               ) : (
                 <div className="flex flex-col items-center justify-center h-full text-center py-20">
                   <div className="w-20 h-20 rounded-3xl bg-white border-2 border-gray-200 flex items-center justify-center mb-5 shadow-sm">
@@ -1099,8 +1139,8 @@ export default function CivilDrawingAI() {
                   <h2 className="text-base font-bold text-gray-700 mb-2">{ptCfg.desc} Layout Generator</h2>
                   <p className="text-xs text-gray-400 max-w-sm">
                     {plantType === "ZLD"
-                      ? "Enter site dimensions, flow rate and ZLD process stages. AI will generate an AutoCAD-style civil layout with underground tanks, manholes, slopes, platforms and a component schedule."
-                      : `Enter site dimensions, design flow and ${plantType} process stages. AI will generate an AutoCAD-style civil layout drawing with a component schedule.`}
+                      ? "Enter site dimensions, flow rate and ZLD process stages. AI generates an AutoCAD-style civil layout with colored components, underground tanks, manholes, slopes, platforms and a correction prompt."
+                      : `Enter site dimensions, design flow and ${plantType} process stages. AI will generate a color-coded civil layout drawing with a component schedule.`}
                   </p>
                 </div>
               )}
@@ -1108,7 +1148,7 @@ export default function CivilDrawingAI() {
           </div>
         )}
 
-        {/* ANALYSIS HISTORY MODAL */}
+        {/* ── ANALYSIS HISTORY MODAL ── */}
         {showAnaHistory && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowAnaHistory(false)}>
             <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-md mx-4 max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -1131,7 +1171,7 @@ export default function CivilDrawingAI() {
           </div>
         )}
 
-        {/* GENERATE HISTORY MODAL */}
+        {/* ── GENERATE HISTORY MODAL ── */}
         {showGenHistory && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowGenHistory(false)}>
             <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-md mx-4 max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>

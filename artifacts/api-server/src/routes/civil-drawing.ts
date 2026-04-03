@@ -14,40 +14,8 @@ function getOpenAI(): OpenAI {
 
 const router = Router();
 
-// ─── Layout Generation Prompt ─────────────────────────────────────────────────
-function buildLayoutPrompt(plantType: string): string {
-  const isZLD = plantType === "ZLD";
-  const isSTP = plantType === "STP";
-
-  const specialNotes = isZLD
-    ? `ZLD-SPECIFIC RULES:
-- Include underground/RCC tanks (negative levels like -1.50m, -4.00m)
-- Include elevated platforms (Lvl: +2.65m, +3.15m) above structures
-- Include sludge collection pits with small footprints (0.5m×0.5m to 1m×1.8m)
-- Include slope annotations on sloped floors (e.g., -2.50 to -4.00m)
-- Include manholes (Ø750mm × 750mm or as noted) on top of buried tanks
-- Include DAF/Lamella Clarifloculator units
-- Include chemical dosing area and bulk storage
-- Include multi-effect evaporator / RO / ATFD / agitated thin-film dryer if ZLD
-- Mark underground structures with negative level (lvlBelow: true)
-- Each component can have "level" field (e.g. -4.0) for the base slab level
-- Each component can have "platform" field (e.g. +2.65) for top platform level`
-    : isSTP
-    ? `STP-SPECIFIC RULES:
-- Include screening chamber, grit trap, SBR/MBR/FAB tanks
-- Include sludge digester and drying beds
-- Include treated water storage and reuse tanks
-- Color: blue for water, teal for biological treatment, green for storage`
-    : `ETP-SPECIFIC RULES:
-- Include inlet chamber, equalization, biological treatment
-- Include chemical dosing, clarifier, and treated water storage`;
-
-  return `You are a senior civil engineer specializing in ${plantType} (${
-    isZLD ? "Zero Liquid Discharge" : isSTP ? "Sewage Treatment Plant" : "Effluent Treatment Plant"
-  }) design and layout.
-
-Generate a detailed ${plantType} layout plan for the given parameters. Arrange all components within the site boundary following standard ${plantType} design principles.
-
+// ─── Shared JSON schema description ──────────────────────────────────────────
+const LAYOUT_JSON_SCHEMA = `
 Return ONLY a valid JSON object with this EXACT structure (no markdown, no extra text):
 {
   "components": [
@@ -83,8 +51,9 @@ Return ONLY a valid JSON object with this EXACT structure (no markdown, no extra
     "Key design note 2",
     "Key design note 3"
   ]
-}
+}`;
 
+const LAYOUT_RULES = `
 Rules:
 - ALL component coordinates (x, y, w, h) MUST be in METERS
 - ALL components must fit INSIDE the site boundary (site is 0,0 to siteLength, siteWidth)
@@ -92,19 +61,55 @@ Rules:
 - Leave minimum 1.5m gap between adjacent structures
 - Arrange components in logical process flow sequence
 - Size each component proportionally — larger tanks for bigger processes
-- Use colors: blue=water/tanks, teal=biological, green=treated/storage, amber=sludge, orange=chemical, red=emergency, gray=buildings
+- Use colors: blue=water/tanks, teal=biological, green=treated/storage, amber=sludge, orange=chemical, red=emergency, gray=buildings, purple=advanced treatment (RO/MEE/ATFD)
 - Include ALL selected process stages in the layout
 - The outlet should be the final treated water storage or outlet structure
 - "level" field: negative = underground slab level (e.g. -4.0m), positive = top of structure above ground
 - "isUnderground": true if tank slab is below ground level
 - "hasManholes": true for buried tanks that need access manholes
-- "manholeCount": number of manholes needed (1 per 50m² typically)
-- "hasSlope": true if floor is sloped
-- "slopeFrom" / "slopeTo": start and end levels of sloped floor (e.g. -2.5, -4.0)
+- "manholeCount": number of manholes on top of buried tank (1 per 50m²)
+- "hasSlope": true if floor is sloped (common in ZLD collection pits)
+- "slopeFrom" / "slopeTo": start and end levels of sloped floor`;
 
+function buildLayoutPrompt(plantType: string): string {
+  const isZLD = plantType === "ZLD";
+  const isSTP = plantType === "STP";
+
+  const specialNotes = isZLD
+    ? `ZLD-SPECIFIC RULES:
+- Include underground/RCC tanks (negative levels like -1.50m, -4.00m)
+- Include elevated platforms (Lvl: +2.65m, +3.15m) above structures
+- Include sludge collection pits with small footprints (0.5m×0.5m to 1m×1.8m)
+- Include slope annotations on sloped floors (e.g., -2.50 to -4.00m)
+- Include manholes (Ø750×750mm) on top of buried tanks — set hasManholes:true, manholeCount appropriately
+- Include DAF/Lamella Clarifloculator units
+- Include chemical dosing area and bulk storage
+- Include multi-effect evaporator / RO / ATFD / agitated thin-film dryer (color: purple)
+- Mark underground structures with isUnderground:true and negative level (e.g. level: -4.0)
+- Each component should have "level" field for base slab level
+- Each component with platform access should have "platform" field for top platform level`
+    : isSTP
+    ? `STP-SPECIFIC RULES:
+- Include screening chamber, grit trap, SBR/MBR/FAB tanks
+- Include sludge digester and drying beds
+- Include treated water storage and reuse tanks
+- color: blue=water, teal=biological treatment, green=storage`
+    : `ETP-SPECIFIC RULES:
+- Include inlet chamber, equalization, biological treatment
+- Include chemical dosing, clarifier, and treated water storage`;
+
+  return `You are a senior civil engineer specializing in ${plantType} (${
+    isZLD ? "Zero Liquid Discharge" : isSTP ? "Sewage Treatment Plant" : "Effluent Treatment Plant"
+  }) design and layout.
+
+Generate a detailed ${plantType} layout plan for the given parameters. Arrange all components within the site boundary following standard ${plantType} civil engineering design principles.
+
+${LAYOUT_JSON_SCHEMA}
+${LAYOUT_RULES}
 ${specialNotes}`;
 }
 
+// ─── Layout Generation ────────────────────────────────────────────────────────
 router.post("/civil-drawing/generate", async (req, res) => {
   try {
     const { projectName, siteLength, siteWidth, tankHeight, processSteps, inletFlow, additionalNotes, plantType } = req.body as {
@@ -145,6 +150,65 @@ router.post("/civil-drawing/generate", async (req, res) => {
     return res.json({ layout, params: { projectName, siteLength, siteWidth, tankHeight, processSteps, inletFlow, additionalNotes, plantType: pType } });
   } catch (e: any) {
     console.error("Civil drawing generate error:", e);
+    return res.status(500).json({ error: e?.message ?? String(e) });
+  }
+});
+
+// ─── Immediate Correction ─────────────────────────────────────────────────────
+router.post("/civil-drawing/correct", async (req, res) => {
+  try {
+    const { existingLayout, correctionPrompt, params } = req.body as {
+      existingLayout: any;
+      correctionPrompt: string;
+      params: {
+        projectName: string; siteLength: number; siteWidth: number; tankHeight: number;
+        inletFlow?: string; plantType?: string;
+      };
+    };
+
+    if (!existingLayout || !correctionPrompt?.trim()) {
+      return res.status(400).json({ error: "existingLayout and correctionPrompt are required" });
+    }
+
+    const pType = params?.plantType || "ETP";
+
+    const prompt = `You are a senior civil engineer. The user has an existing ${pType} plant layout and wants to make corrections.
+
+EXISTING LAYOUT JSON:
+${JSON.stringify(existingLayout, null, 2)}
+
+SITE CONSTRAINTS:
+- Site Dimensions: ${params.siteLength}m (length) × ${params.siteWidth}m (width)
+- Tank Height: ${params.tankHeight}m
+- Flow Rate: ${params.inletFlow || "Not specified"}
+
+USER CORRECTION REQUEST:
+"${correctionPrompt}"
+
+Apply the requested corrections to the layout. Keep all existing components that are not mentioned in the correction. Maintain logical flow sequence and ensure all components stay within the site boundary.
+
+${LAYOUT_JSON_SCHEMA}
+${LAYOUT_RULES}
+
+Return the COMPLETE corrected layout JSON (not just the changed parts).`;
+
+    const response = await getOpenAI().chat.completions.create({
+      model: "gpt-4o",
+      max_completion_tokens: 6000,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const raw = response.choices[0]?.message?.content ?? "{}";
+    let layout: any;
+    try {
+      const cleaned = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+      layout = JSON.parse(cleaned);
+    } catch {
+      return res.status(500).json({ error: "AI returned invalid JSON", raw });
+    }
+    return res.json({ layout, params });
+  } catch (e: any) {
+    console.error("Civil drawing correct error:", e);
     return res.status(500).json({ error: e?.message ?? String(e) });
   }
 });
