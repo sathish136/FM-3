@@ -46,6 +46,7 @@ import Nesting from "@/pages/Nesting";
 import ProjectDrawings from "@/pages/ProjectDrawings";
 import ProjectTimeline from "@/pages/ProjectTimeline";
 import SiteData from "@/pages/SiteData";
+import PlantOverview from "@/pages/PlantOverview";
 import SmartInbox from "@/pages/SmartInbox";
 import Marketing from "@/pages/Marketing";
 import PurchaseDashboard from "@/pages/PurchaseDashboard";
@@ -189,6 +190,7 @@ function ProtectedRoutes() {
       <Route path="/project-drawings" component={ProjectDrawings} />
       <Route path="/project-timeline" component={ProjectTimeline} />
       <Route path="/site-data" component={SiteData} />
+      <Route path="/plant-overview" component={PlantOverview} />
       <Route path="/smart-inbox" component={SmartInbox} />
       <Route path="/marketing" component={Marketing} />
       <Route path="/purchase-dashboard" component={PurchaseDashboard} />

@@ -285,6 +285,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
   {
     label: "Monitoring",
     items: [
+      { path: "/plant-overview", label: "Plant Overview", icon: Activity, color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
       { path: "/site-data", label: "Site Data", icon: Activity, color: "text-cyan-400", bgColor: "bg-cyan-500/15" },
       { path: "/cctv", label: "CCTV", icon: MonitorPlay, color: "text-sky-400", bgColor: "bg-sky-500/15" },
     ],
@@ -355,6 +356,7 @@ const PATH_TO_MODULE: Record<string, string> = {
   "/hrms/team-performance": "hrms-team-performance",
   "/hrms/task-summary":     "hrms-task-summary",
   "/hrms/daily-reporting":  "hrms-daily-reporting",
+  "/plant-overview":        "plant-overview",
   "/site-data":             "site-data",
   "/cctv":                  "cctv",
   "/mis-report":            "mis-report",
