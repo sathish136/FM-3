@@ -133,6 +133,48 @@ router.get("/stock-reports/projects", async (req, res) => {
   }
 });
 
+// GET /api/stock-reports/stock-summary?from_date=&to_date=
+// Warehouse-wise closing qty + closing amount (runs ERPNext "Stock Summary" report in Summary mode)
+router.get("/stock-reports/stock-summary", async (req, res) => {
+  const from_date = (req.query.from_date as string) || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
+  const to_date = (req.query.to_date as string) || new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().slice(0, 10);
+
+  try {
+    const filters = {
+      company: "WTT INTERNATIONAL PVT LTD",
+      from_date,
+      to_date,
+      view_mode: "Summary",
+      include_child_warehouses: 1,
+    };
+
+    const data = await erpFetch("frappe.desk.query_report.run", {
+      report_name: "Stock Summary",
+      filters: JSON.stringify(filters),
+      ignore_prepared_report: "1",
+    });
+
+    const result = data?.message?.result ?? data?.result ?? [];
+    const columns = data?.message?.columns ?? data?.columns ?? [];
+
+    if (Array.isArray(result) && result.length > 0) {
+      const rows: Record<string, any>[] = result
+        .filter((r: any) => Array.isArray(r) ? r.length >= 2 : typeof r === "object")
+        .map((r: any) => {
+          if (Array.isArray(r)) {
+            return { warehouse: r[0], closing_qty: r[1], closing_amount: r[2] ?? 0 };
+          }
+          return r;
+        });
+      return res.json({ data: rows, columns });
+    }
+
+    return res.json({ data: result, columns });
+  } catch (e: any) {
+    return res.status(502).json({ error: e.message });
+  }
+});
+
 // GET /api/stock-reports/ledger?from_date=&to_date=&item_code=&warehouse=
 // Stock Ledger Entries for movement history
 router.get("/stock-reports/ledger", async (req, res) => {

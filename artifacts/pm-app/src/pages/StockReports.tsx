@@ -175,96 +175,167 @@ function FilterBar({
 }
 
 // ──────────────────────────────────────────
-// Summary Tab (project-level stock from WTT)
+// Stock Summary Tab — warehouse-wise closing stock
 // ──────────────────────────────────────────
-function SummaryTab({ project, warehouses }: { project: string; warehouses: string[] }) {
-  const [warehouse, setWarehouse] = useState("");
+function SummaryTab({ onDrilldown }: { onDrilldown?: (warehouse: string) => void }) {
+  const today = new Date();
+  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+  const lastOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().slice(0, 10);
+
+  const [fromDate, setFromDate] = useState(firstOfMonth);
+  const [toDate, setToDate] = useState(lastOfMonth);
   const [search, setSearch] = useState("");
-  const [, setProject] = useState(project);
 
   const { data, isFetching, refetch } = useQuery({
-    queryKey: ["stock-summary", project],
+    queryKey: ["stock-summary-v2", fromDate, toDate],
     queryFn: () => {
-      const params = new URLSearchParams();
-      if (project) params.set("project", project);
-      return fetch(`${BASE}/api/stock-reports/summary?${params}`).then((r) => r.json());
+      const params = new URLSearchParams({ from_date: fromDate, to_date: toDate });
+      return fetch(`${BASE}/api/stock-reports/stock-summary?${params}`).then((r) => r.json());
     },
     staleTime: 60_000,
   });
 
-  const allRows: Record<string, any>[] = useMemo(() => getRows(data), [data]);
+  const allRows = useMemo<Record<string, any>[]>(() => {
+    const d = data?.data ?? data?.message ?? data ?? [];
+    return Array.isArray(d) ? d : [];
+  }, [data]);
 
-  const filtered = useMemo(() => allRows.filter((r) => {
-    const q = search.toLowerCase();
-    const matchSearch = !q || Object.values(r).some((v) => String(v).toLowerCase().includes(q));
-    const matchWh = !warehouse || String(r.warehouse ?? "").toLowerCase().includes(warehouse.toLowerCase());
-    return matchSearch && matchWh;
-  }), [allRows, search, warehouse]);
+  const dataRows = useMemo(() => allRows.filter((r) => {
+    const wh = String(r.warehouse ?? "").toLowerCase();
+    return wh !== "total" && (!search || wh.includes(search.toLowerCase()));
+  }), [allRows, search]);
 
-  const { sorted, onSort, dir } = useSortable(filtered);
+  const totalRow = useMemo(() => allRows.find((r) => String(r.warehouse ?? "").toLowerCase() === "total"), [allRows]);
 
-  const totalQty = filtered.reduce((s, r) => s + parseFloat(r.actual_qty ?? r.qty ?? 0), 0);
-  const totalVal = filtered.reduce((s, r) => s + parseFloat(r.stock_value ?? r.amount ?? 0), 0);
-  const uniqueItems = new Set(filtered.map((r) => r.item_code)).size;
+  const { sorted, onSort, dir } = useSortable(dataRows);
+
+  const totalQty  = totalRow?.closing_qty    ?? dataRows.reduce((s, r) => s + parseFloat(r.closing_qty    ?? 0), 0);
+  const totalAmt  = totalRow?.closing_amount ?? dataRows.reduce((s, r) => s + parseFloat(r.closing_amount ?? 0), 0);
+  const maxAmt = Math.max(...dataRows.map((r) => parseFloat(r.closing_amount ?? 0)), 1);
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Summary stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard icon={Package} label="Total Items" value={String(uniqueItems)} color="bg-blue-50 text-blue-600" />
-        <StatCard icon={BarChart3} label="Total Qty" value={fmt(totalQty, 1)} color="bg-teal-50 text-teal-600" />
-        <StatCard icon={TrendingUp} label="Stock Value" value={fmtAmt(totalVal)} color="bg-emerald-50 text-emerald-600" />
-        <StatCard icon={Layers} label="Rows" value={String(filtered.length)} color="bg-violet-50 text-violet-600" />
+        <StatCard icon={Warehouse}  label="Warehouses"   value={String(dataRows.length)}   color="bg-blue-50 text-blue-600" />
+        <StatCard icon={BarChart3}  label="Total Qty"    value={fmt(totalQty, 2)}           color="bg-teal-50 text-teal-600" />
+        <StatCard icon={TrendingUp} label="Stock Value"  value={fmtAmt(totalAmt)}           color="bg-emerald-50 text-emerald-600" />
+        <StatCard icon={Layers}     label="Data as of"   value={toDate}                     color="bg-violet-50 text-violet-600" />
       </div>
 
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <FilterBar
-          search={search} setSearch={setSearch}
-          project={project} setProject={setProject} projects={[]}
-          warehouse={warehouse} setWarehouse={setWarehouse} warehouses={warehouses}
-          fromDate="" setFromDate={() => {}} toDate="" setToDate={() => {}}
-        />
+      {/* Filter / action bar */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-4 flex flex-wrap gap-3 items-center justify-between">
+        {/* Company badge */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-xs font-bold text-gray-700 bg-gray-100 px-3 py-1.5 rounded-lg whitespace-nowrap">
+            WTT INTERNATIONAL PVT LTD
+          </span>
+
+          <div className="flex items-center gap-2 border border-gray-300 rounded-xl px-3 py-2 bg-white">
+            <Calendar className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+            <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
+              className="text-xs outline-none text-gray-700 bg-transparent" />
+          </div>
+          <div className="flex items-center gap-2 border border-gray-300 rounded-xl px-3 py-2 bg-white">
+            <Calendar className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+            <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
+              className="text-xs outline-none text-gray-700 bg-transparent" />
+          </div>
+
+          <div className="flex items-center gap-2 border border-gray-300 rounded-xl px-3 py-2 bg-white min-w-[180px]">
+            <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search warehouse…"
+              className="text-xs outline-none text-gray-700 flex-1 placeholder-gray-400" />
+            {search && <button onClick={() => setSearch("")}><X className="w-3 h-3 text-gray-400" /></button>}
+          </div>
+        </div>
+
         <div className="flex items-center gap-2">
           <button onClick={() => refetch()} disabled={isFetching}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50">
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50">
             <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
             Refresh
           </button>
-          <button onClick={() => exportToExcel(sorted, "stock-summary")}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors">
+          <button onClick={() => exportToExcel(sorted.map((r, i) => ({
+            "#": i + 1,
+            "Warehouse": r.warehouse,
+            "Closing Qty": r.closing_qty,
+            "Closing Amount (₹)": r.closing_amount,
+          })), "stock-summary")}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors">
             <Download className="w-3.5 h-3.5" /> Export
           </button>
         </div>
       </div>
 
+      {/* Table */}
       {isFetching ? (
         <LoadingState />
       ) : sorted.length === 0 ? (
-        <EmptyState msg={allRows.length === 0 ? "No stock data available" : "No results match your filters"} />
+        <EmptyState msg={allRows.length === 0 ? "No stock data returned from ERPNext" : "No warehouses match your search"} />
       ) : (
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-8">#</th>
-                  {Object.keys(sorted[0] || {}).slice(0, 8).map((k) => (
-                    <Th key={k} label={k.replace(/_/g, " ")} sortKey={k} onSort={onSort} dir={dir(k)} />
-                  ))}
+                  <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-10">#</th>
+                  <Th label="Warehouse" sortKey="warehouse" onSort={onSort} dir={dir("warehouse")} />
+                  <Th label="Closing Qty" sortKey="closing_qty" onSort={onSort} dir={dir("closing_qty")} />
+                  <Th label="Closing Amount" sortKey="closing_amount" onSort={onSort} dir={dir("closing_amount")} />
+                  <th className="px-4 py-3 w-40" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {sorted.map((row, i) => (
-                  <tr key={i} className="hover:bg-blue-50/40 transition-colors">
-                    <td className="px-4 py-2.5 text-xs text-gray-400">{i + 1}</td>
-                    {Object.keys(sorted[0] || {}).slice(0, 8).map((k) => (
-                      <td key={k} className="px-4 py-2.5 text-gray-700 whitespace-nowrap text-xs">
-                        {String(row[k] ?? "—")}
+                {sorted.map((r, i) => {
+                  const amt = parseFloat(r.closing_amount ?? 0);
+                  const pct = maxAmt > 0 ? Math.round((amt / maxAmt) * 100) : 0;
+                  const isTotal = String(r.warehouse ?? "").toLowerCase() === "total";
+                  return (
+                    <tr key={i} className={`transition-colors ${isTotal ? "bg-gray-50 font-bold" : "hover:bg-blue-50/40"}`}>
+                      <td className="px-5 py-3 text-xs text-gray-400">{isTotal ? "" : i + 1}</td>
+                      <td className="px-4 py-3 text-xs">
+                        {onDrilldown && !isTotal ? (
+                          <button
+                            onClick={() => onDrilldown(r.warehouse)}
+                            className="text-blue-600 hover:underline text-left font-medium"
+                          >
+                            {r.warehouse}
+                          </button>
+                        ) : (
+                          <span className={isTotal ? "text-gray-700 font-bold" : "text-gray-700"}>{r.warehouse}</span>
+                        )}
                       </td>
-                    ))}
-                  </tr>
-                ))}
+                      <td className="px-4 py-3 text-xs text-right tabular-nums text-gray-900">
+                        {fmt(r.closing_qty, 2)}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-right tabular-nums font-semibold text-emerald-700">
+                        {fmtAmt(r.closing_amount)}
+                      </td>
+                      <td className="px-4 py-3">
+                        {!isTotal && (
+                          <div className="w-full bg-gray-100 rounded-full h-1.5">
+                            <div className="bg-emerald-500 h-1.5 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
+              <tfoot className="bg-gray-50 border-t-2 border-gray-300">
+                <tr>
+                  <td className="px-5 py-3" />
+                  <td className="px-4 py-3 text-xs font-bold text-gray-700">Total</td>
+                  <td className="px-4 py-3 text-xs font-bold text-gray-900 text-right tabular-nums">{fmt(totalQty, 2)}</td>
+                  <td className="px-4 py-3 text-xs font-bold text-emerald-700 text-right tabular-nums">{fmtAmt(totalAmt)}</td>
+                  <td />
+                </tr>
+              </tfoot>
             </table>
+          </div>
+          <div className="px-5 py-2.5 bg-gray-50 border-t border-gray-200">
+            <p className="text-[10px] text-gray-400">For comparison, use &gt;5, &lt;10 or =324. For ranges, use 5:10 (for values between 5 &amp; 10).</p>
           </div>
         </div>
       )}
@@ -275,10 +346,17 @@ function SummaryTab({ project, warehouses }: { project: string; warehouses: stri
 // ──────────────────────────────────────────
 // Item-wise Tab (Bin doctype)
 // ──────────────────────────────────────────
-function ItemwiseTab({ warehouses }: { warehouses: string[] }) {
+function ItemwiseTab({ warehouses, presetWarehouse }: { warehouses: string[]; presetWarehouse?: string | null }) {
   const [search, setSearch] = useState("");
-  const [warehouse, setWarehouse] = useState("");
+  const [warehouse, setWarehouse] = useState(presetWarehouse ?? "");
+
   const [, setProject] = useState("");
+
+  useEffect(() => {
+    if (presetWarehouse !== undefined && presetWarehouse !== null) {
+      setWarehouse(presetWarehouse);
+    }
+  }, [presetWarehouse]);
 
   const { data, isFetching, refetch } = useQuery({
     queryKey: ["stock-bin", warehouse, search],
@@ -696,18 +774,12 @@ const TABS: { id: Tab; label: string; icon: React.ElementType; desc: string }[] 
 ];
 
 export default function StockReports() {
-  const [activeTab, setActiveTab] = useState<Tab>("itemwise");
-  const [projectFilter, setProjectFilter] = useState("");
+  const [activeTab, setActiveTab] = useState<Tab>("summary");
+  const [drilldownWarehouse, setDrilldownWarehouse] = useState<string | null>(null);
 
   const { data: warehousesData } = useQuery({
     queryKey: ["stock-warehouses"],
     queryFn: () => fetch(`${BASE}/api/stock-reports/warehouses`).then((r) => r.json()),
-    staleTime: 300_000,
-  });
-
-  const { data: projectsData } = useQuery({
-    queryKey: ["stock-projects"],
-    queryFn: () => fetch(`${BASE}/api/stock-reports/projects`).then((r) => r.json()),
     staleTime: 300_000,
   });
 
@@ -716,36 +788,24 @@ export default function StockReports() {
     return Array.isArray(d) ? d.map((w: any) => w.name ?? w.warehouse_name).filter(Boolean) : [];
   }, [warehousesData]);
 
-  const projects = useMemo<string[]>(() => {
-    const d = projectsData?.data ?? projectsData?.message ?? [];
-    return Array.isArray(d) ? d.map((p: any) => p.name).filter(Boolean) : [];
-  }, [projectsData]);
+  const handleDrilldown = useCallback((wh: string) => {
+    setDrilldownWarehouse(wh);
+    setActiveTab("itemwise");
+  }, []);
 
   return (
     <Layout>
       <div className="flex flex-col h-full">
         {/* Page Header */}
         <div className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-gray-200 bg-white">
-          <div className="flex items-start justify-between gap-4 mb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-teal-600 flex items-center justify-center">
-                <Package className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">Stock Reports</h1>
-                <p className="text-sm text-gray-500">Live inventory data from ERPNext</p>
-              </div>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-teal-600 flex items-center justify-center">
+              <Package className="w-5 h-5 text-white" />
             </div>
-            {activeTab === "summary" && (
-              <select
-                value={projectFilter}
-                onChange={(e) => setProjectFilter(e.target.value)}
-                className="text-sm border border-gray-300 rounded-xl px-3 py-2 bg-white text-gray-700 outline-none cursor-pointer"
-              >
-                <option value="">All Projects</option>
-                {projects.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
-            )}
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">Stock Reports</h1>
+              <p className="text-sm text-gray-500">Live inventory data from ERPNext · WTT INTERNATIONAL PVT LTD</p>
+            </div>
           </div>
 
           {/* Tab bar */}
@@ -769,8 +829,8 @@ export default function StockReports() {
 
         {/* Tab Content */}
         <div className="flex-1 overflow-auto p-6">
-          {activeTab === "summary"       && <SummaryTab project={projectFilter} warehouses={warehouses} />}
-          {activeTab === "itemwise"      && <ItemwiseTab warehouses={warehouses} />}
+          {activeTab === "summary"       && <SummaryTab onDrilldown={handleDrilldown} />}
+          {activeTab === "itemwise"      && <ItemwiseTab warehouses={warehouses} presetWarehouse={drilldownWarehouse} />}
           {activeTab === "warehousewise" && <WarehousewiseTab />}
           {activeTab === "ledger"        && <LedgerTab warehouses={warehouses} />}
         </div>
