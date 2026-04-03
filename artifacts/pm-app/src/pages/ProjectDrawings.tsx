@@ -1829,6 +1829,7 @@ interface FileEntry {
   drawingNo: string;
   title: string;
   systemName: string;
+  customSystemName?: string;
 }
 
 interface ErpProject {
@@ -1842,6 +1843,7 @@ interface UploadModalProps {
   userName: string;
   isLoading?: boolean;
   uploadStep?: "uploading" | "analyzing" | null;
+  uploadProgress?: { current: number; total: number } | null;
   onClose: () => void;
   onSubmit: (
     drawings: Array<{
@@ -1864,6 +1866,7 @@ function UploadModal({
   userName,
   isLoading = false,
   uploadStep = null,
+  uploadProgress = null,
   onClose,
   onSubmit,
 }: UploadModalProps) {
@@ -1881,6 +1884,14 @@ function UploadModal({
   })();
   const [department, setDepartment] = useState(resolvedDept);
   const [drawingType, setDrawingType] = useState("");
+  const [customDrawingTypeInput, setCustomDrawingTypeInput] = useState("");
+  const [customSystemInput, setCustomSystemInput] = useState("");
+  const [savedCustomDrawingTypes] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("wtt_custom_drawing_types") || "[]"); } catch { return []; }
+  });
+  const [savedCustomSystems] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("wtt_custom_systems") || "[]"); } catch { return []; }
+  });
   const [note, setNote] = useState("");
   const [noteError, setNoteError] = useState(false);
   const [files, setFiles] = useState<FileEntry[]>([]);
@@ -1961,6 +1972,49 @@ function UploadModal({
     }
     setNoteError(false);
     setLoading(true);
+
+    // Resolve effective drawing type (handle "Other" custom input)
+    const effectiveDrawingType = drawingType === "Other" && customDrawingTypeInput.trim()
+      ? customDrawingTypeInput.trim()
+      : drawingType;
+
+    // Resolve effective system name helper
+    const resolveSystem = (entry: FileEntry) => {
+      const base = sameSystem ? globalSystem : (entry.systemName || "");
+      if (base === "Others") {
+        return sameSystem ? customSystemInput.trim() : (entry.customSystemName || "").trim();
+      }
+      return base;
+    };
+
+    // Persist custom drawing type to localStorage
+    if (drawingType === "Other" && customDrawingTypeInput.trim()) {
+      try {
+        const existing: string[] = JSON.parse(localStorage.getItem("wtt_custom_drawing_types") || "[]");
+        const updated = Array.from(new Set([...existing, customDrawingTypeInput.trim()]));
+        localStorage.setItem("wtt_custom_drawing_types", JSON.stringify(updated));
+      } catch {}
+    }
+
+    // Persist custom system name to localStorage (global)
+    if (globalSystem === "Others" && customSystemInput.trim()) {
+      try {
+        const existing: string[] = JSON.parse(localStorage.getItem("wtt_custom_systems") || "[]");
+        const updated = Array.from(new Set([...existing, customSystemInput.trim()]));
+        localStorage.setItem("wtt_custom_systems", JSON.stringify(updated));
+      } catch {}
+    }
+    // Persist per-file custom systems to localStorage
+    for (const entry of files) {
+      if (entry.systemName === "Others" && entry.customSystemName?.trim()) {
+        try {
+          const existing: string[] = JSON.parse(localStorage.getItem("wtt_custom_systems") || "[]");
+          const updated = Array.from(new Set([...existing, entry.customSystemName.trim()]));
+          localStorage.setItem("wtt_custom_systems", JSON.stringify(updated));
+        } catch {}
+      }
+    }
+
     const results: Array<{
       drawingNo: string;
       title: string;
@@ -1984,8 +2038,8 @@ function UploadModal({
         title: entry.title,
         project,
         department,
-        drawingType,
-        systemName: sameSystem ? globalSystem : entry.systemName || "",
+        drawingType: effectiveDrawingType,
+        systemName: resolveSystem(entry),
         fileData,
         fileName: entry.file.name,
         note,
@@ -2140,18 +2194,31 @@ function UploadModal({
               onChange={(e) => {
                 const selected = e.target.value;
                 setDrawingType(selected);
+                if (selected !== "Other") setCustomDrawingTypeInput("");
                 const match = DRAWING_TYPES.find((dt) => dt.type === selected);
                 if (match && match.dept) setDepartment(match.dept);
               }}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             >
               <option value="">Select drawing type…</option>
-              {DRAWING_TYPES.map((dt) => (
-                <option key={dt.type} value={dt.type}>
-                  {dt.type}
-                </option>
+              {savedCustomDrawingTypes.map((ct) => (
+                <option key={ct} value={ct}>{ct}</option>
               ))}
+              {DRAWING_TYPES.filter(dt => dt.type !== "Other").map((dt) => (
+                <option key={dt.type} value={dt.type}>{dt.type}</option>
+              ))}
+              <option value="Other">Other…</option>
             </select>
+            {drawingType === "Other" && (
+              <input
+                type="text"
+                value={customDrawingTypeInput}
+                onChange={(e) => setCustomDrawingTypeInput(e.target.value)}
+                placeholder="Enter custom drawing type…"
+                autoFocus
+                className="mt-2 w-full border border-blue-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50 placeholder-blue-300"
+              />
+            )}
           </div>
 
           {/* System Name */}
@@ -2173,18 +2240,35 @@ function UploadModal({
               </label>
             </div>
             {sameSystem ? (
-              <select
-                value={globalSystem}
-                onChange={(e) => setGlobalSystem(e.target.value)}
-                className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${globalSystem ? "border-blue-400 bg-blue-50" : "border-gray-300"}`}
-              >
-                <option value="">Select system…</option>
-                {SYSTEMS.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
+              <>
+                <select
+                  value={globalSystem}
+                  onChange={(e) => {
+                    setGlobalSystem(e.target.value);
+                    if (e.target.value !== "Others") setCustomSystemInput("");
+                  }}
+                  className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${globalSystem ? "border-blue-400 bg-blue-50" : "border-gray-300"}`}
+                >
+                  <option value="">Select system…</option>
+                  {savedCustomSystems.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                  {SYSTEMS.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                  <option value="Others">Others…</option>
+                </select>
+                {globalSystem === "Others" && (
+                  <input
+                    type="text"
+                    value={customSystemInput}
+                    onChange={(e) => setCustomSystemInput(e.target.value)}
+                    placeholder="Enter custom system name…"
+                    autoFocus
+                    className="mt-2 w-full border border-blue-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50 placeholder-blue-300"
+                  />
+                )}
+              </>
             ) : (
               <p className="text-xs text-gray-400 italic">
                 Select system per drawing below
@@ -2321,18 +2405,31 @@ function UploadModal({
                       </label>
                       <select
                         value={entry.systemName}
-                        onChange={(e) =>
-                          updateEntry(idx, "systemName", e.target.value)
-                        }
+                        onChange={(e) => {
+                          updateEntry(idx, "systemName", e.target.value);
+                          if (e.target.value !== "Others") updateEntry(idx, "customSystemName", "");
+                        }}
                         className={`w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${entry.systemName ? "border-blue-400 bg-blue-50" : "border-gray-300"}`}
                       >
                         <option value="">Select system…</option>
-                        {SYSTEMS.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
+                        {savedCustomSystems.map((s) => (
+                          <option key={s} value={s}>{s}</option>
                         ))}
+                        {SYSTEMS.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                        <option value="Others">Others…</option>
                       </select>
+                      {entry.systemName === "Others" && (
+                        <input
+                          type="text"
+                          value={entry.customSystemName || ""}
+                          onChange={(e) => updateEntry(idx, "customSystemName", e.target.value)}
+                          placeholder="Enter custom system name…"
+                          autoFocus
+                          className="mt-1.5 w-full border border-blue-400 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50 placeholder-blue-300"
+                        />
+                      )}
                     </div>
                   )}
                 </div>
@@ -2350,12 +2447,31 @@ function UploadModal({
         </div>
 
         {isLoading && (
-          <div className="px-6 py-3 bg-blue-50 border-t border-blue-100 flex items-center gap-3">
-            <RefreshCw className="w-4 h-4 animate-spin text-blue-600 flex-shrink-0" />
-            <div className="flex-1">
-              <p className="text-xs font-semibold text-blue-800">Saving Drawing to Database</p>
-              <p className="text-xs text-blue-600 mt-0.5">AI analysis will run automatically in the background and be ready when you open the drawing.</p>
+          <div className="px-6 py-4 bg-blue-50 border-t border-blue-100">
+            <div className="flex items-center gap-3 mb-2">
+              <RefreshCw className="w-4 h-4 animate-spin text-blue-600 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-blue-800">
+                  {uploadProgress
+                    ? `Uploading drawing ${uploadProgress.current} of ${uploadProgress.total}…`
+                    : "Saving to database…"}
+                </p>
+                <p className="text-xs text-blue-500 mt-0.5">AI analysis runs in background after upload.</p>
+              </div>
+              {uploadProgress && (
+                <span className="text-xs font-bold text-blue-700 flex-shrink-0">
+                  {Math.round((uploadProgress.current / uploadProgress.total) * 100)}%
+                </span>
+              )}
             </div>
+            {uploadProgress && uploadProgress.total > 0 && (
+              <div className="w-full bg-blue-100 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className="bg-blue-600 h-1.5 rounded-full transition-all duration-500"
+                  style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+                />
+              </div>
+            )}
           </div>
         )}
         <div className="flex items-center justify-between gap-2 px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-2xl flex-shrink-0">
@@ -3655,6 +3771,7 @@ export default function ProjectDrawings() {
   const [modal, setModal] = useState<ModalState>({ type: "none" });
   const [uploadAnalyzing, setUploadAnalyzing] = useState(false);
   const [uploadStep, setUploadStep] = useState<"uploading" | "analyzing" | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [sendModal, setSendModal] = useState<ProjectDrawing | null>(null);
   const [validationMsg, setValidationMsg] = useState<string | null>(null);
   const showValidationError = (msg: string) => {
@@ -3823,8 +3940,11 @@ export default function ProjectDrawings() {
   ) => {
     setUploadAnalyzing(true);
     setUploadStep("uploading");
+    setUploadProgress({ current: 0, total: items.length });
     const saved: ProjectDrawing[] = [];
-    for (const data of items) {
+    for (let i = 0; i < items.length; i++) {
+      const data = items[i];
+      setUploadProgress({ current: i + 1, total: items.length });
       const id = generateUUID();
       const newDrawing: ProjectDrawing = {
         id,
@@ -3897,9 +4017,9 @@ export default function ProjectDrawings() {
     }
     setUploadAnalyzing(false);
     setUploadStep(null);
+    setUploadProgress(null);
     if (saved.length > 0) {
       setDrawings((prev) => [...saved, ...prev]);
-      setDetailDrawingId(saved[0].id);
     }
     setModal({ type: "none" });
   };
@@ -4472,6 +4592,7 @@ export default function ProjectDrawings() {
           userName={user?.full_name || ""}
           isLoading={uploadAnalyzing}
           uploadStep={uploadStep}
+          uploadProgress={uploadProgress}
           onClose={() => { if (!uploadAnalyzing) setModal({ type: "none" }); }}
           onSubmit={handleUpload}
         />
