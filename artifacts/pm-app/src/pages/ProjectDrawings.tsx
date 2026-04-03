@@ -1469,6 +1469,7 @@ interface UploadModalProps {
   userDept: string;
   userName: string;
   isLoading?: boolean;
+  uploadStep?: "uploading" | "analyzing" | null;
   onClose: () => void;
   onSubmit: (
     drawings: Array<{
@@ -1490,6 +1491,7 @@ function UploadModal({
   userDept,
   userName,
   isLoading = false,
+  uploadStep = null,
   onClose,
   onSubmit,
 }: UploadModalProps) {
@@ -1975,6 +1977,21 @@ function UploadModal({
           </div>
         </div>
 
+        {isLoading && (
+          <div className="px-6 py-3 bg-blue-50 border-t border-blue-100 flex items-center gap-3">
+            <RefreshCw className="w-4 h-4 animate-spin text-blue-600 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-xs font-semibold text-blue-800">
+                {uploadStep === "analyzing" ? "AI Analysis in Progress" : "Saving Drawing to Database"}
+              </p>
+              <p className="text-xs text-blue-600 mt-0.5">
+                {uploadStep === "analyzing"
+                  ? "Analyzing drawing with GPT-4o and storing report in database…"
+                  : "Uploading drawing file and metadata…"}
+              </p>
+            </div>
+          </div>
+        )}
         <div className="flex items-center justify-between gap-2 px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-2xl flex-shrink-0">
           <p className="text-xs text-gray-500">
             {files.length === 0
@@ -1999,7 +2016,7 @@ function UploadModal({
               ) : (
                 <Upload className="w-4 h-4" />
               )}
-              {isLoading ? "Analyzing with AI…" : `Upload ${files.length > 0 ? `${files.length} ` : ""}Drawing${files.length !== 1 ? "s" : ""}`}
+              {uploadStep === "uploading" ? "Saving Drawing…" : uploadStep === "analyzing" ? "Running AI Analysis…" : isLoading ? "Processing…" : `Upload ${files.length > 0 ? `${files.length} ` : ""}Drawing${files.length !== 1 ? "s" : ""}`}
             </button>
           </div>
         </div>
@@ -3254,6 +3271,7 @@ export default function ProjectDrawings() {
   const [detailDrawingId, setDetailDrawingId] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalState>({ type: "none" });
   const [uploadAnalyzing, setUploadAnalyzing] = useState(false);
+  const [uploadStep, setUploadStep] = useState<"uploading" | "analyzing" | null>(null);
   const [sendModal, setSendModal] = useState<ProjectDrawing | null>(null);
   const [validationMsg, setValidationMsg] = useState<string | null>(null);
   const showValidationError = (msg: string) => {
@@ -3421,6 +3439,7 @@ export default function ProjectDrawings() {
     }>,
   ) => {
     setUploadAnalyzing(true);
+    setUploadStep("uploading");
     const saved: ProjectDrawing[] = [];
     for (const data of items) {
       const id = generateUUID();
@@ -3457,6 +3476,7 @@ export default function ProjectDrawings() {
           if (data.fileData) setFileDataCache(prev => ({ ...prev, [id]: data.fileData }));
           // Run AI analysis immediately on upload (foreground, not background)
           if (data.fileData) {
+            setUploadStep("analyzing");
             try {
               const imageBase64 = await renderPdfFirstPageToBase64(data.fileData);
               const aiRes = await fetch(`${BASE}/api/drawings/analyze-page`, {
@@ -3478,16 +3498,22 @@ export default function ProjectDrawings() {
                   body: JSON.stringify({ aiAnalysis: aiData }),
                 });
                 newDrawing.aiAnalysis = aiData;
+              } else {
+                console.warn("AI analysis returned error:", await aiRes.text());
               }
-            } catch {
-              // AI analysis failed silently — user can re-run from detail view
+            } catch (err) {
+              console.warn("AI analysis failed:", err);
             }
+            setUploadStep("uploading");
           }
           saved.push(newDrawing);
         }
-      } catch {}
+      } catch (err) {
+        console.error("Drawing upload failed:", err);
+      }
     }
     setUploadAnalyzing(false);
+    setUploadStep(null);
     if (saved.length > 0) {
       setDrawings((prev) => [...saved, ...prev]);
       setDetailDrawingId(saved[0].id);
@@ -4057,6 +4083,7 @@ export default function ProjectDrawings() {
           userDept={userProfile.department || "Mechanical"}
           userName={user?.full_name || ""}
           isLoading={uploadAnalyzing}
+          uploadStep={uploadStep}
           onClose={() => { if (!uploadAnalyzing) setModal({ type: "none" }); }}
           onSubmit={handleUpload}
         />
