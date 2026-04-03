@@ -2483,7 +2483,7 @@ function DrawingDetailPage({
   const [revFileLoading, setRevFileLoading] = useState<number | null>(null);
 
   // Tab
-  const [activeTab, setActiveTab] = useState<DetailTab>("info");
+  const [activeTab, setActiveTab] = useState<DetailTab>("ai");
 
   // AI analysis — initialize from saved DB report if available
   const [aiAnalysis, setAiAnalysis] = useState<{
