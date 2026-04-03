@@ -504,4 +504,48 @@ router.get("/kanchan/ro-live", async (_req, res) => {
   }
 });
 
+// ── Kanchan RO SSE Stream ────────────────────────────────────────────────────
+// Server-Sent Events: pushes live data to the browser continuously, no polling
+router.get("/kanchan/ro-stream", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  let closed = false;
+
+  const send = (event: string, data: unknown) => {
+    if (!closed) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  const fetchAndSend = async () => {
+    if (closed) return;
+    try {
+      const r = await fetch("http://api.wttint.com/api/all-values", { signal: AbortSignal.timeout(8000) });
+      if (!r.ok) { send("error", { error: `Upstream error ${r.status}` }); return; }
+      const data = await r.json();
+      send("data", data);
+    } catch (err: any) {
+      send("error", { error: err.message || "Upstream unreachable" });
+    }
+  };
+
+  // Immediate first push
+  fetchAndSend();
+
+  // Push every 2 seconds
+  const timer = setInterval(fetchAndSend, 2000);
+
+  // Heartbeat every 15s to keep connection alive through proxies
+  const heartbeat = setInterval(() => { if (!closed) res.write(": heartbeat\n\n"); }, 15000);
+
+  req.on("close", () => {
+    closed = true;
+    clearInterval(timer);
+    clearInterval(heartbeat);
+    res.end();
+  });
+});
+
 export default router;

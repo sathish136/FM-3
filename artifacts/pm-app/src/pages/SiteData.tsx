@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Layout } from "@/components/Layout";
 import {
-  Wifi, WifiOff, RefreshCw, Clock, Activity, Droplets,
+  Clock, Activity, Droplets,
   Gauge, ThermometerSun, FlaskConical, BarChart3, Timer,
-  AlertTriangle, CheckCircle2, ChevronDown,
+  AlertTriangle, CheckCircle2, ChevronDown, Wifi, WifiOff,
 } from "lucide-react";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "").replace(/\/pm-app$/, "");
@@ -180,47 +180,53 @@ function KpiCard({ label, value, unit, icon: Icon, color, bg }: {
   );
 }
 
-const REFRESH_INTERVAL_MS = 10_000;
-
 export default function SiteData() {
   const [apiData, setApiData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastFetched, setLastFetched] = useState<Date | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [countdown, setCountdown] = useState(REFRESH_INTERVAL_MS / 1000);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const fetchData = useCallback(async (manual = false) => {
-    if (manual) setRefreshing(true);
-    try {
-      const r = await fetch(`${API_BASE}/api/kanchan/ro-live`);
-      if (!r.ok) throw new Error(`Server error ${r.status}`);
-      const json: ApiResponse = await r.json();
-      setApiData(json);
-      setError(null);
-      setLastFetched(new Date());
-    } catch (e: any) {
-      setError(e.message || "Failed to fetch");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-      setCountdown(REFRESH_INTERVAL_MS / 1000);
-    }
-  }, []);
+  const [streaming, setStreaming] = useState(false);
+  const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    fetchData();
-    intervalRef.current = setInterval(() => fetchData(), REFRESH_INTERVAL_MS);
-    countdownRef.current = setInterval(() => {
-      setCountdown(c => (c <= 1 ? REFRESH_INTERVAL_MS / 1000 : c - 1));
-    }, 1000);
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      if (countdownRef.current) clearInterval(countdownRef.current);
+    const es = new EventSource(`${API_BASE}/api/kanchan/ro-stream`);
+    esRef.current = es;
+    setStreaming(false);
+
+    es.addEventListener("data", (e: MessageEvent) => {
+      try {
+        const json: ApiResponse = JSON.parse(e.data);
+        setApiData(json);
+        setError(null);
+        setLastFetched(new Date());
+        setLoading(false);
+        setStreaming(true);
+      } catch {
+        setError("Parse error");
+      }
+    });
+
+    es.addEventListener("error", (e: MessageEvent) => {
+      try {
+        const parsed = JSON.parse(e.data);
+        setError(parsed.error || "Stream error");
+      } catch {
+        // connection-level error – SSE will auto-reconnect
+        setError("Connection lost — reconnecting…");
+        setStreaming(false);
+      }
+    });
+
+    es.onerror = () => {
+      setStreaming(false);
+      setError("Connection lost — reconnecting…");
     };
-  }, [fetchData]);
+
+    return () => {
+      es.close();
+      esRef.current = null;
+    };
+  }, []);
 
   const d = apiData?.data;
   const ageSeconds = apiData?.timing?.data_age_seconds ?? 9999;
@@ -275,24 +281,21 @@ export default function SiteData() {
           <div className="flex items-center gap-2 shrink-0">
             {/* Status badge */}
             <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-bold ${statusBorder}`}>
-              <div className={`w-2 h-2 rounded-full ${statusDot} ${isLive ? "animate-pulse" : ""}`} />
+              <div className={`w-2 h-2 rounded-full ${statusDot} ${streaming ? "animate-pulse" : ""}`} />
               <span className={statusText}>{statusLabel}</span>
             </div>
-            {/* Countdown ring */}
-            <div className="relative w-8 h-8 flex items-center justify-center">
-              <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 32 32">
-                <circle cx="16" cy="16" r="13" stroke="#e5e7eb" strokeWidth="2.5" fill="none" />
-                <circle cx="16" cy="16" r="13" stroke="#3b82f6" strokeWidth="2.5" fill="none"
-                  strokeDasharray={`${2 * Math.PI * 13}`}
-                  strokeDashoffset={`${2 * Math.PI * 13 * (1 - countdown / (REFRESH_INTERVAL_MS / 1000))}`}
-                  strokeLinecap="round" style={{ transition: "stroke-dashoffset 1s linear" }} />
-              </svg>
-              <span className="text-[9px] font-bold text-blue-600 tabular-nums">{countdown}</span>
-            </div>
-            <button onClick={() => fetchData(true)} disabled={refreshing}
-              className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 transition-colors disabled:opacity-50" title="Refresh now">
-              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
-            </button>
+            {/* Live stream indicator */}
+            {streaming ? (
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-blue-50 border border-blue-200">
+                <Wifi className="w-3.5 h-3.5 text-blue-500" />
+                <span className="text-[10px] font-bold text-blue-600">LIVE</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-gray-50 border border-gray-200">
+                <WifiOff className="w-3.5 h-3.5 text-gray-400" />
+                <span className="text-[10px] font-bold text-gray-400">CONNECTING</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -300,7 +303,7 @@ export default function SiteData() {
         {error && (
           <div className="bg-red-50 border-b border-red-200 px-5 py-2 flex items-center gap-2 text-xs text-red-600 shrink-0">
             <AlertTriangle className="w-3.5 h-3.5" />
-            <span>Connection error: {error}. Retrying in {countdown}s.</span>
+            <span>Connection error: {error} — reconnecting automatically.</span>
           </div>
         )}
 
