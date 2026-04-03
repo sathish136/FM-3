@@ -1,10 +1,10 @@
 import { Layout } from "@/components/Layout";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Building2, Users, CheckCircle2, Clock, TrendingUp,
   AlertTriangle, UserX, RefreshCw, Download, X,
   BarChart3, ListChecks, Activity, CalendarDays, Zap, Award,
-  ExternalLink,
+  ExternalLink, MessageSquare, ChevronDown, Send, User, Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
