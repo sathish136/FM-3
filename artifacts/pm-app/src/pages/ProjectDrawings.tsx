@@ -838,7 +838,12 @@ function PdfViewer({
     setShowCheckConfirm(false);
     setAiAnalysis((drawing.aiAnalysis as any) ?? null);
     setAiError(null);
-    setAnnotations({});
+    try {
+      const stored = localStorage.getItem(`wtt_annot_${drawing.id}`);
+      setAnnotations(stored ? JSON.parse(stored) : {});
+    } catch {
+      setAnnotations({});
+    }
     setAnnotTool("select");
     setPageDims({ width: 0, height: 0 });
     scrollToBottomRef.current = false;
@@ -846,6 +851,14 @@ function PdfViewer({
     autoAnalyzedRef.current = false;
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [drawing.id]);
+
+  // Auto-save annotations to localStorage whenever they change
+  useEffect(() => {
+    if (!drawing.id) return;
+    try {
+      localStorage.setItem(`wtt_annot_${drawing.id}`, JSON.stringify(annotations));
+    } catch {}
+  }, [annotations, drawing.id]);
 
   const handleAnalyze = useCallback(async () => {
     if (aiLoading) return;
