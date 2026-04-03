@@ -3917,7 +3917,12 @@ export default function ProjectDrawings() {
   ).sort().filter(dept => isDeptAccessible(dept));
 
   const allProjects = Array.from(
-    new Set(drawings.map((d) => d.project).filter(Boolean)),
+    new Set(
+      drawings
+        .filter((d) => isDeptAccessible(d.department))
+        .map((d) => d.project)
+        .filter(Boolean),
+    ),
   ).sort();
 
   const filtered = drawings.filter((d) => {
