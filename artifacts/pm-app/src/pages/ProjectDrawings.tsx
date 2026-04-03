@@ -51,6 +51,23 @@ pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.vers
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+async function renderPdfFirstPageToBase64(fileData: string): Promise<string> {
+  const dataUrl = fileData.startsWith("data:") ? fileData : `data:application/pdf;base64,${fileData}`;
+  const base64 = dataUrl.split(",")[1];
+  const binaryStr = atob(base64);
+  const bytes = new Uint8Array(binaryStr.length);
+  for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+  const pdf = await pdfjs.getDocument({ data: bytes }).promise;
+  const page = await pdf.getPage(1);
+  const viewport = page.getViewport({ scale: 2.0 });
+  const canvas = document.createElement("canvas");
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  const ctx = canvas.getContext("2d")!;
+  await page.render({ canvasContext: ctx as any, viewport }).promise;
+  return canvas.toDataURL("image/jpeg", 0.85);
+}
+
 // Browser-compatible UUID generator
 function generateUUID(): string {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
@@ -83,6 +100,18 @@ interface RevisionEntry {
   erpFileUrl?: string;
 }
 
+interface AiAnalysisResult {
+  detectedType: string;
+  suggestedDepartment: string;
+  summary: string;
+  keyElements: string[];
+  observations: string[];
+  recommendations: string[];
+  report: string;
+  actionPlan: string[];
+  isElectrical: boolean;
+}
+
 interface ProjectDrawing {
   id: string;
   drawingNo: string;
@@ -104,6 +133,7 @@ interface ProjectDrawing {
   checkedBy: ApprovalEntry | null;
   approvedBy: ApprovalEntry | null;
   erpFileUrl: string | null;
+  aiAnalysis: AiAnalysisResult | null;
 }
 
 const STATUS_CONFIG: Record<
@@ -1438,6 +1468,7 @@ interface ErpProject {
 interface UploadModalProps {
   userDept: string;
   userName: string;
+  isLoading?: boolean;
   onClose: () => void;
   onSubmit: (
     drawings: Array<{
@@ -1458,6 +1489,7 @@ interface UploadModalProps {
 function UploadModal({
   userDept,
   userName,
+  isLoading = false,
   onClose,
   onSubmit,
 }: UploadModalProps) {
@@ -1952,22 +1984,22 @@ function UploadModal({
           <div className="flex gap-2">
             <button
               onClick={onClose}
-              className="px-4 py-2 rounded-lg text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-200 transition-colors"
+              disabled={isLoading}
+              className="px-4 py-2 rounded-lg text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-200 transition-colors disabled:opacity-40 disabled:pointer-events-none"
             >
               Cancel
             </button>
             <button
               onClick={handleSubmit}
-              disabled={files.length === 0 || !project || loading}
+              disabled={files.length === 0 || !project || loading || isLoading}
               className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:pointer-events-none transition-colors"
             >
-              {loading ? (
+              {(loading || isLoading) ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />
               ) : (
                 <Upload className="w-4 h-4" />
               )}
-              Upload {files.length > 0 ? `${files.length} ` : ""}Drawing
-              {files.length !== 1 ? "s" : ""}
+              {isLoading ? "Analyzing with AI…" : `Upload ${files.length > 0 ? `${files.length} ` : ""}Drawing${files.length !== 1 ? "s" : ""}`}
             </button>
           </div>
         </div>
@@ -2422,6 +2454,7 @@ function DrawingDetailPage({
   onRevisionUpload,
   onMarkFinal,
   onDelete,
+  onAnalysisSaved,
   currentUserName,
 }: {
   drawing: ProjectDrawing;
@@ -2432,6 +2465,7 @@ function DrawingDetailPage({
   onRevisionUpload: () => void;
   onMarkFinal: () => void;
   onDelete: () => void;
+  onAnalysisSaved: (id: string, analysis: AiAnalysisResult) => void;
   currentUserName: string;
 }) {
   const cfg = STATUS_CONFIG[drawing.status];
@@ -3219,6 +3253,7 @@ export default function ProjectDrawings() {
   const [viewerIdx, setViewerIdx] = useState<number | null>(null);
   const [detailDrawingId, setDetailDrawingId] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalState>({ type: "none" });
+  const [uploadAnalyzing, setUploadAnalyzing] = useState(false);
   const [sendModal, setSendModal] = useState<ProjectDrawing | null>(null);
   const [validationMsg, setValidationMsg] = useState<string | null>(null);
   const showValidationError = (msg: string) => {
@@ -3385,6 +3420,7 @@ export default function ProjectDrawings() {
       uploadedBy: string;
     }>,
   ) => {
+    setUploadAnalyzing(true);
     const saved: ProjectDrawing[] = [];
     for (const data of items) {
       const id = generateUUID();
@@ -3409,6 +3445,7 @@ export default function ProjectDrawings() {
         checkedBy: null,
         approvedBy: null,
         erpFileUrl: null,
+        aiAnalysis: null,
       };
       try {
         const res = await fetch(`${BASE}/api/project-drawings`, {
@@ -3418,10 +3455,39 @@ export default function ProjectDrawings() {
         });
         if (res.ok) {
           if (data.fileData) setFileDataCache(prev => ({ ...prev, [id]: data.fileData }));
+          // Run AI analysis immediately on upload (foreground, not background)
+          if (data.fileData) {
+            try {
+              const imageBase64 = await renderPdfFirstPageToBase64(data.fileData);
+              const aiRes = await fetch(`${BASE}/api/drawings/analyze-page`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  imageBase64,
+                  drawingNo: data.drawingNo,
+                  title: data.title,
+                  department: data.department,
+                }),
+              });
+              if (aiRes.ok) {
+                const aiData = await aiRes.json();
+                // Save analysis result to backend DB
+                await fetch(`${BASE}/api/project-drawings/${id}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ aiAnalysis: aiData }),
+                });
+                newDrawing.aiAnalysis = aiData;
+              }
+            } catch {
+              // AI analysis failed silently — user can re-run from detail view
+            }
+          }
           saved.push(newDrawing);
         }
       } catch {}
     }
+    setUploadAnalyzing(false);
     if (saved.length > 0) {
       setDrawings((prev) => [...saved, ...prev]);
       setDetailDrawingId(saved[0].id);
@@ -3990,7 +4056,8 @@ export default function ProjectDrawings() {
         <UploadModal
           userDept={userProfile.department || "Mechanical"}
           userName={user?.full_name || ""}
-          onClose={() => setModal({ type: "none" })}
+          isLoading={uploadAnalyzing}
+          onClose={() => { if (!uploadAnalyzing) setModal({ type: "none" }); }}
           onSubmit={handleUpload}
         />
       )}

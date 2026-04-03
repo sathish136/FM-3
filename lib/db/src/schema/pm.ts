@@ -182,6 +182,7 @@ export const projectDrawingsTable = pgTable("project_drawings", {
   checkedBy: jsonb("checked_by"),
   approvedBy: jsonb("approved_by"),
   erpFileUrl: text("erp_file_url"),
+  aiAnalysis: jsonb("ai_analysis"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

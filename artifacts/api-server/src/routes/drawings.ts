@@ -99,7 +99,7 @@ router.patch("/project-drawings/:id", async (req, res) => {
     const allowed = [
       "title","project","department","drawingType","systemName","status","revisionNo",
       "revisionLabel","fileData","fileName","note","uploadedBy","history",
-      "viewLog","checkedBy","approvedBy","erpFileUrl",
+      "viewLog","checkedBy","approvedBy","erpFileUrl","aiAnalysis",
     ] as const;
     for (const key of allowed) {
       if (key in body) (updateFields as any)[key] = body[key];
