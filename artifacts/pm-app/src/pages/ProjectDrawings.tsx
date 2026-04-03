@@ -2496,6 +2496,7 @@ function DrawingDetailPage({
     report: string;
     actionPlan: string[];
     isElectrical: boolean;
+    generatedAt?: string;
   } | null>((drawing.aiAnalysis as any) ?? null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -2537,12 +2538,13 @@ function DrawingDetailPage({
         throw new Error(err.error || "Analysis failed");
       }
       const data = await resp.json();
-      setAiAnalysis(data);
-      // Save to DB so report is available next time without re-analyzing
+      const dataWithTimestamp = { ...data, generatedAt: new Date().toISOString() };
+      setAiAnalysis(dataWithTimestamp);
+      // Save to DB with timestamp so report is available next time without re-analyzing
       fetch(`${BASE}/api/project-drawings/${drawing.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ aiAnalysis: data }),
+        body: JSON.stringify({ aiAnalysis: dataWithTimestamp }),
       }).catch(() => {});
     } catch (e: any) {
       setAiError(e.message || "Analysis failed");
@@ -2550,6 +2552,23 @@ function DrawingDetailPage({
       setAiLoading(false);
     }
   }, [aiLoading, drawing.id, drawing.drawingNo, drawing.title, drawing.department]);
+
+  // Auto-generate report when detail view opens — only if no saved report exists
+  useEffect(() => {
+    if (autoAnalyzedRef.current) return;
+    if (drawing.aiAnalysis || aiAnalysis || aiLoading) return;
+    const tryAnalyze = () => {
+      const canvas = scrollRef.current?.querySelector("canvas");
+      if (canvas) {
+        autoAnalyzedRef.current = true;
+        handleAnalyze();
+      }
+    };
+    const timer = setInterval(tryAnalyze, 800);
+    const timeout = setTimeout(() => clearInterval(timer), 20000);
+    return () => { clearInterval(timer); clearTimeout(timeout); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawing.id]);
 
   // Load revision file
   const loadRevFile = async (revIdx: number) => {
@@ -2772,8 +2791,8 @@ function DrawingDetailPage({
             {!aiAnalysis && !aiLoading && !aiError && (
               <div className="bg-white rounded-2xl border border-dashed border-purple-300 p-10 flex flex-col items-center gap-3 text-center">
                 <ScanSearch className="w-12 h-12 text-purple-200" />
-                <p className="text-sm text-gray-500">Loading drawing for analysis…</p>
-                <p className="text-xs text-gray-400">AI analysis starts automatically once the drawing file is ready</p>
+                <p className="text-sm text-gray-500">Preparing AI analysis…</p>
+                <p className="text-xs text-gray-400">Analysis will start automatically once the drawing renders</p>
               </div>
             )}
 
@@ -2790,6 +2809,11 @@ function DrawingDetailPage({
                     <p className="text-sm font-bold text-gray-900 mt-0.5">{aiAnalysis.detectedType || "—"}</p>
                     {aiAnalysis.suggestedDepartment && (
                       <p className="text-xs text-purple-600 font-medium">{aiAnalysis.suggestedDepartment} Department</p>
+                    )}
+                    {aiAnalysis.generatedAt && (
+                      <p className="text-[10px] text-gray-400 mt-1">
+                        Report generated: {new Date(aiAnalysis.generatedAt).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </p>
                     )}
                   </div>
                 </div>
