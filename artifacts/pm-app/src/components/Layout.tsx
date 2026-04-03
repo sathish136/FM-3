@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Box, PenTool, GitBranch,
   Briefcase, FileText,
   LogOut, ChevronDown, ChevronRight as ChevronRightIcon, Menu, MoreHorizontal,
-  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp, ListChecks, ClipboardList, Truck, Building2,
+  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp, ListChecks, ClipboardList, Truck, Building2, Package,
   Play, Square,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -244,6 +244,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { path: "/purchase-order",     label: "Purchase Order",     icon: ShoppingBag,  color: "text-orange-400", bgColor: "bg-orange-500/15" },
       { path: "/purchase-dashboard",   label: "Purchase Dashboard",   icon: BarChart3,    color: "text-blue-400",   bgColor: "bg-blue-500/15" },
       { path: "/stores-dashboard",     label: "Stores Dashboard",     icon: Warehouse,    color: "text-teal-400",   bgColor: "bg-teal-500/15" },
+      { path: "/stock-reports",        label: "Stock Reports",        icon: Package,      color: "text-cyan-400",   bgColor: "bg-cyan-500/15" },
       { path: "/process-proposal",      label: "Process & Proposal",       icon: Layers,    color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
       { path: "/finance-dashboard",     label: "Finance Dashboard",        icon: Receipt,   color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
     ],
@@ -335,6 +336,7 @@ const PATH_TO_MODULE: Record<string, string> = {
   "/purchase-order":        "purchase-order",
   "/purchase-dashboard":    "purchase-dashboard",
   "/stores-dashboard":      "stores-dashboard",
+  "/stock-reports":         "stock-reports",
   "/logistics-dashboard":   "logistics-dashboard",
   "/process-proposal":      "process-proposal",
   "/finance-dashboard":     "finance-dashboard",

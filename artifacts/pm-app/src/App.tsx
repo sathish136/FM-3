@@ -63,6 +63,7 @@ import DailyReporting from "@/pages/DailyReporting";
 import LogisticsDashboard from "@/pages/LogisticsDashboard";
 import ProcessProposalDashboard from "@/pages/ProcessProposalDashboard";
 import FinanceDashboard from "@/pages/FinanceDashboard";
+import StockReports from "@/pages/StockReports";
 import { SlideshowProvider } from "@/contexts/SlideshowContext";
 
 const queryClient = new QueryClient({
@@ -208,6 +209,7 @@ function ProtectedRoutes() {
       <Route path="/logistics-dashboard" component={LogisticsDashboard} />
       <Route path="/process-proposal" component={ProcessProposalDashboard} />
       <Route path="/finance-dashboard" component={FinanceDashboard} />
+      <Route path="/stock-reports" component={StockReports} />
       <Route component={NotFound} />
     </Switch>
   );
