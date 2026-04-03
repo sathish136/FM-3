@@ -4252,7 +4252,8 @@ export default function ProjectDrawings() {
             </div>
           ) : (
             <div className="grid gap-2.5">
-              <div className="hidden md:grid grid-cols-[2.5fr_2fr_1.5fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 px-4 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-200">
+              <div className="hidden md:grid grid-cols-[32px_2.5fr_2fr_1.5fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 px-4 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-200">
+                <span>S.No</span>
                 <span>Drawing No. / Title</span>
                 <span>Project</span>
                 <span>System</span>
@@ -4263,13 +4264,14 @@ export default function ProjectDrawings() {
                 <span />
               </div>
 
-              {filtered.map((drawing) => (
+              {filtered.map((drawing, idx) => (
                 <div
                   key={drawing.id}
                   onClick={() => setDetailDrawingId(drawing.id)}
                   className="bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-blue-400 hover:shadow-md transition-all group cursor-pointer"
                 >
-                  <div className="hidden md:grid grid-cols-[2.5fr_2fr_1.5fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 items-center">
+                  <div className="hidden md:grid grid-cols-[32px_2.5fr_2fr_1.5fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 items-center">
+                    <div className="text-xs font-semibold text-gray-400 tabular-nums">{idx + 1}</div>
                     <div className="min-w-0" title={drawing.title || drawing.drawingNo}>
                       <p className="font-mono text-sm font-semibold text-gray-900 truncate">{drawing.drawingNo}</p>
                       {drawing.title && (
