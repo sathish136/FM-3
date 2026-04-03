@@ -2559,14 +2559,16 @@ function DrawingDetailPage({
   useEffect(() => {
     if (autoAnalyzedRef.current) return;
     if (drawing.aiAnalysis || aiAnalysis || aiLoading) return;
+    let timer: ReturnType<typeof setInterval>;
     const tryAnalyze = () => {
       const canvas = scrollRef.current?.querySelector("canvas");
       if (canvas) {
+        clearInterval(timer); // stop polling immediately — only analyze once
         autoAnalyzedRef.current = true;
         handleAnalyze();
       }
     };
-    const timer = setInterval(tryAnalyze, 800);
+    timer = setInterval(tryAnalyze, 800);
     const timeout = setTimeout(() => clearInterval(timer), 20000);
     return () => { clearInterval(timer); clearTimeout(timeout); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
