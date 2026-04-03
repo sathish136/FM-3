@@ -4330,7 +4330,7 @@ export default function ProjectDrawings() {
       final: pDrawings.filter(d => d.status === "final").length,
       systems,
     };
-  });
+  }).filter(p => p.total > 0);
 
   // ── System tabs for selected project ────────────────────────
   const projectDrawingsAll = selectedProject
