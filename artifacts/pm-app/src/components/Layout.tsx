@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Box, PenTool, GitBranch,
   Briefcase, FileText,
   LogOut, ChevronDown, ChevronRight as ChevronRightIcon, Menu, MoreHorizontal,
-  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp, ListChecks, ClipboardList, Truck,
+  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp, ListChecks, ClipboardList, Truck, Building2,
   Play, Square,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -230,10 +230,11 @@ const navGroups: { label: string; items: NavItem[] }[] = [
           { path: "/drawings/civil",      label: "Civil" },
         ],
       },
-      { path: "/design-2d", label: "Design 2D",    icon: PenLine,   color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
-      { path: "/design-3d", label: "Design 3D",    icon: Box,       color: "text-violet-400",  bgColor: "bg-violet-500/15" },
-      { path: "/pid",       label: "P&ID Process", icon: GitBranch, color: "text-rose-400",    bgColor: "bg-rose-500/15" },
-      { path: "/nesting",   label: "Nesting",      icon: Layers,    color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
+      { path: "/design-2d",        label: "Design 2D",          icon: PenLine,    color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
+      { path: "/design-3d",        label: "Design 3D",          icon: Box,        color: "text-violet-400",  bgColor: "bg-violet-500/15" },
+      { path: "/pid",              label: "P&ID Process",       icon: GitBranch,  color: "text-rose-400",    bgColor: "bg-rose-500/15" },
+      { path: "/nesting",          label: "Nesting",            icon: Layers,     color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
+      { path: "/civil-drawing-ai", label: "Civil Drawing AI",   icon: Building2,  color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
     ],
   },
   {
@@ -329,6 +330,7 @@ const PATH_TO_MODULE: Record<string, string> = {
   "/design-3d":             "design-3d",
   "/pid":                   "pid",
   "/nesting":               "nesting",
+  "/civil-drawing-ai":      "civil-drawing-ai",
   "/material-request":      "material-request",
   "/purchase-order":        "purchase-order",
   "/purchase-dashboard":    "purchase-dashboard",

@@ -30,6 +30,7 @@ import dailyReportingRouter from "./daily-reporting";
 import logisticsDashboardRouter from "./logistics-dashboard";
 import processProposalRouter from "./process-proposal";
 import financeDashboardRouter from "./finance-dashboard";
+import civilDrawingRouter from "./civil-drawing";
 
 const router: IRouter = Router();
 
@@ -64,5 +65,6 @@ router.use(dailyReportingRouter);
 router.use(logisticsDashboardRouter);
 router.use(processProposalRouter);
 router.use(financeDashboardRouter);
+router.use(civilDrawingRouter);
 
 export default router;

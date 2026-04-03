@@ -44,6 +44,7 @@ import HRIncidents from "@/pages/HRIncidents";
 import HrAnalytics from "@/pages/HrAnalytics";
 import Nesting from "@/pages/Nesting";
 import ProjectDrawings from "@/pages/ProjectDrawings";
+import CivilDrawingAI from "@/pages/CivilDrawingAI";
 import ProjectTimeline from "@/pages/ProjectTimeline";
 import SiteData from "@/pages/SiteData";
 import PlantOverview from "@/pages/PlantOverview";
@@ -188,6 +189,7 @@ function ProtectedRoutes() {
       <Route path="/hrms/analytics" component={HrAnalytics} />
       <Route path="/nesting" component={Nesting} />
       <Route path="/project-drawings" component={ProjectDrawings} />
+      <Route path="/civil-drawing-ai" component={CivilDrawingAI} />
       <Route path="/project-timeline" component={ProjectTimeline} />
       <Route path="/site-data" component={SiteData} />
       <Route path="/plant-overview" component={PlantOverview} />
