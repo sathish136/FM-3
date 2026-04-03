@@ -63,9 +63,12 @@ const MODULE_HINTS: Record<string, string> = {
 };
 
 const QUICK_ACTIONS = [
-  { label: "Generate PDF Report", prompt: "Generate a comprehensive project status report that I can export as PDF. Include executive summary, key milestones, risks, and next steps.", icon: FileText },
-  { label: "Create Timeline", prompt: "Create a detailed project timeline with milestones, tasks, and deadlines for a typical 6-month engineering project.", icon: Calendar },
-  { label: "Summarize Module", prompt: "Explain what this module does and give me a quick-start guide for using it effectively.", icon: Bot },
+  { label: "Active Projects", prompt: "Show me all active projects from ERPNext with their status, progress and due dates.", icon: FileText },
+  { label: "Employee Summary", prompt: "How many active employees do we have? Show a summary by department.", icon: Bot },
+  { label: "Leave & Attendance", prompt: "Show me the attendance and leave summary for the last 7 days.", icon: Calendar },
+  { label: "Task Allocations", prompt: "Show me recent task allocations — who has tasks assigned and who is idle.", icon: FileText },
+  { label: "Material Requests", prompt: "List all open material requests with their status and project.", icon: Bot },
+  { label: "Project Report PDF", prompt: "Generate a comprehensive WTT project status report I can export as PDF. Include all active projects, progress, and key milestones.", icon: FileText },
 ];
 
 function detectType(content: string): MessageType {
