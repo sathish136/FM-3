@@ -3846,8 +3846,8 @@ export default function ProjectDrawings() {
                     </div>
                     <div className="flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
                       <button
-                        onClick={(e) => { e.stopPropagation(); setDetailDrawingId(drawing.id); }}
-                        title="Open Detailed View"
+                        onClick={(e) => { e.stopPropagation(); const idx = filtered.findIndex(d => d.id === drawing.id); setViewerIdx(idx); }}
+                        title="View PDF"
                         className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                       >
                         <Eye className="w-4 h-4" />
