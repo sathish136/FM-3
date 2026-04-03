@@ -88,7 +88,7 @@ function generateUUID(): string {
 // ──────────────────────────────────────────────
 // Annotation types
 // ──────────────────────────────────────────────
-type AnnotationTool = "select" | "highlight" | "pen" | "text" | "circle" | "rect";
+type AnnotationTool = "select" | "highlight" | "pen" | "text" | "circle" | "rect" | "eraser";
 
 interface BaseAnnotation { id: string; page: number; color: string; }
 interface PenAnnotation extends BaseAnnotation { type: "pen"; points: number[]; }
@@ -100,6 +100,35 @@ type Annotation = PenAnnotation | HighlightAnnotation | TextAnnotation | CircleA
 
 const ANNOT_COLORS = ["#FBBF24", "#3B82F6", "#EF4444", "#22C55E", "#A855F7", "#000000"];
 
+function hitTest(a: Annotation, px: number, py: number): boolean {
+  const pad = 12;
+  if (a.type === "highlight" || a.type === "rect") {
+    const x = a.w < 0 ? a.x + a.w : a.x;
+    const y = a.h < 0 ? a.y + a.h : a.y;
+    return px >= x - pad && px <= x + Math.abs(a.w) + pad && py >= y - pad && py <= y + Math.abs(a.h) + pad;
+  }
+  if (a.type === "circle") {
+    const dx = (px - a.cx) / Math.max(1, a.rx + pad);
+    const dy = (py - a.cy) / Math.max(1, a.ry + pad);
+    return dx * dx + dy * dy <= 1.2;
+  }
+  if (a.type === "text") {
+    return Math.abs(px - a.x) < 80 && Math.abs(py - a.y) < 20;
+  }
+  if (a.type === "pen") {
+    for (let i = 0; i < a.points.length - 2; i += 2) {
+      const ax = a.points[i], ay = a.points[i + 1];
+      const bx = a.points[i + 2], by = a.points[i + 3];
+      const dx = bx - ax, dy = by - ay;
+      const len2 = dx * dx + dy * dy;
+      const t = len2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
+      const nx = ax + t * dx - px, ny = ay + t * dy - py;
+      if (nx * nx + ny * ny < (pad + 6) * (pad + 6)) return true;
+    }
+  }
+  return false;
+}
+
 function AnnotationLayer({
   width,
   height,
@@ -107,7 +136,7 @@ function AnnotationLayer({
   color,
   annotations,
   onAdd,
-  onUndo,
+  onRemove,
 }: {
   width: number;
   height: number;
@@ -115,12 +144,19 @@ function AnnotationLayer({
   color: string;
   annotations: Annotation[];
   onAdd: (a: Annotation) => void;
-  onUndo: () => void;
+  onRemove: (id: string) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const drawing = useRef(false);
   const startPt = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const [draft, setDraft] = useState<Annotation | null>(null);
+  const [textInput, setTextInput] = useState<{ svgX: number; svgY: number; value: string } | null>(null);
+  const textInputRef = useRef<HTMLInputElement>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (textInput) setTimeout(() => textInputRef.current?.focus(), 30);
+  }, [textInput]);
 
   const getSVGPt = (e: ReactMouseEvent): { x: number; y: number } => {
     const rect = svgRef.current!.getBoundingClientRect();
@@ -130,21 +166,41 @@ function AnnotationLayer({
     };
   };
 
+  const commitText = (value: string) => {
+    if (!textInput) return;
+    if (value.trim()) {
+      onAdd({ id: generateUUID(), page: 0, type: "text", color, x: textInput.svgX, y: textInput.svgY, text: value.trim() });
+    }
+    setTextInput(null);
+  };
+
   const onMouseDown = (e: ReactMouseEvent) => {
     if (activeTool === "select") return;
-    if (activeTool === "text") {
-      const pt = getSVGPt(e);
-      const text = prompt("Enter annotation text:");
-      if (text) onAdd({ id: generateUUID(), page: 0, type: "text", color, x: pt.x, y: pt.y, text });
+    if (textInput) { commitText(textInput.value); return; }
+
+    const pt = getSVGPt(e);
+
+    if (activeTool === "eraser") {
+      for (let i = annotations.length - 1; i >= 0; i--) {
+        if (hitTest(annotations[i], pt.x, pt.y)) {
+          onRemove(annotations[i].id);
+          return;
+        }
+      }
       return;
     }
+
+    if (activeTool === "text") {
+      setTextInput({ svgX: pt.x, svgY: pt.y, value: "" });
+      return;
+    }
+
     drawing.current = true;
-    const pt = getSVGPt(e);
     startPt.current = pt;
     if (activeTool === "pen") {
       setDraft({ id: generateUUID(), page: 0, type: "pen", color, points: [pt.x, pt.y] });
     } else if (activeTool === "highlight") {
-      setDraft({ id: generateUUID(), page: 0, type: "highlight", color, x: pt.x, y: pt.y, w: 0, h: 0 });
+      setDraft({ id: generateUUID(), page: 0, type: "highlight", color: "#FBBF24", x: pt.x, y: pt.y, w: 0, h: 0 });
     } else if (activeTool === "circle") {
       setDraft({ id: generateUUID(), page: 0, type: "circle", color, cx: pt.x, cy: pt.y, rx: 0, ry: 0 });
     } else if (activeTool === "rect") {
@@ -153,6 +209,12 @@ function AnnotationLayer({
   };
 
   const onMouseMove = (e: ReactMouseEvent) => {
+    if (activeTool === "eraser") {
+      const pt = getSVGPt(e);
+      const hit = [...annotations].reverse().find(a => hitTest(a, pt.x, pt.y));
+      setHoveredId(hit?.id ?? null);
+      return;
+    }
     if (!drawing.current || !draft) return;
     const pt = getSVGPt(e);
     if (draft.type === "pen") {
@@ -171,34 +233,45 @@ function AnnotationLayer({
   const onMouseUp = () => {
     if (!drawing.current || !draft) return;
     drawing.current = false;
-    onAdd(draft);
+    const minSize = 4;
+    if (draft.type === "pen" && draft.points.length >= 4) onAdd(draft);
+    else if (draft.type === "highlight" && (Math.abs((draft as HighlightAnnotation).w) > minSize || Math.abs((draft as HighlightAnnotation).h) > minSize)) onAdd(draft);
+    else if (draft.type === "circle" && ((draft as CircleAnnotation).rx > minSize || (draft as CircleAnnotation).ry > minSize)) onAdd(draft);
+    else if (draft.type === "rect" && (Math.abs((draft as RectAnnotation).w) > minSize || Math.abs((draft as RectAnnotation).h) > minSize)) onAdd(draft);
     setDraft(null);
   };
 
   const renderAnnotation = (a: Annotation, idx: number, isDraft = false) => {
     const key = isDraft ? "draft" : a.id ?? idx;
     const strokeW = 2.5;
+    const isHovered = !isDraft && hoveredId === a.id && activeTool === "eraser";
+    const eraserStyle = isHovered ? { opacity: 0.4, filter: "url(#eraser-hover)" } : {};
     if (a.type === "pen") {
       if (a.points.length < 4) return null;
       const d = `M ${a.points[0]} ${a.points[1]} ` + a.points.slice(2).reduce((acc, v, i) =>
         i % 2 === 0 ? acc + `L ${v} ` : acc + `${v} `, "");
-      return <path key={key} d={d} stroke={a.color} strokeWidth={strokeW} fill="none" strokeLinecap="round" strokeLinejoin="round" />;
+      return <path key={key} d={d} stroke={a.color} strokeWidth={strokeW} fill="none" strokeLinecap="round" strokeLinejoin="round" style={eraserStyle} />;
     }
     if (a.type === "highlight") {
       const x = a.w < 0 ? a.x + a.w : a.x;
       const y = a.h < 0 ? a.y + a.h : a.y;
-      return <rect key={key} x={x} y={y} width={Math.abs(a.w)} height={Math.abs(a.h)} fill={a.color} fillOpacity={0.3} stroke={a.color} strokeWidth={1} />;
+      return <rect key={key} x={x} y={y} width={Math.abs(a.w)} height={Math.abs(a.h)} fill={a.color} fillOpacity={isHovered ? 0.1 : 0.35} stroke={a.color} strokeWidth={1} strokeDasharray={isHovered ? "4 2" : undefined} />;
     }
     if (a.type === "text") {
-      return <text key={key} x={a.x} y={a.y} fill={a.color} fontSize={14} fontFamily="sans-serif" fontWeight="bold" style={{ userSelect: "none" }}>{a.text}</text>;
+      return (
+        <g key={key} style={eraserStyle}>
+          <rect x={a.x - 2} y={a.y - 16} width={Math.max(60, a.text.length * 8 + 4)} height={22} fill="rgba(0,0,0,0.55)" rx={3} />
+          <text x={a.x} y={a.y} fill={a.color} fontSize={14} fontFamily="sans-serif" fontWeight="600" style={{ userSelect: "none" }}>{a.text}</text>
+        </g>
+      );
     }
     if (a.type === "circle") {
-      return <ellipse key={key} cx={a.cx} cy={a.cy} rx={Math.max(1, a.rx)} ry={Math.max(1, a.ry)} stroke={a.color} strokeWidth={strokeW} fill="none" />;
+      return <ellipse key={key} cx={a.cx} cy={a.cy} rx={Math.max(1, a.rx)} ry={Math.max(1, a.ry)} stroke={a.color} strokeWidth={strokeW} fill="none" style={eraserStyle} />;
     }
     if (a.type === "rect") {
       const x = a.w < 0 ? a.x + a.w : a.x;
       const y = a.h < 0 ? a.y + a.h : a.y;
-      return <rect key={key} x={x} y={y} width={Math.abs(a.w)} height={Math.abs(a.h)} stroke={a.color} strokeWidth={strokeW} fill="none" />;
+      return <rect key={key} x={x} y={y} width={Math.abs(a.w)} height={Math.abs(a.h)} stroke={a.color} strokeWidth={strokeW} fill="none" style={eraserStyle} />;
     }
     return null;
   };
@@ -210,6 +283,7 @@ function AnnotationLayer({
     text: "text",
     circle: "crosshair",
     rect: "crosshair",
+    eraser: "cell",
   };
 
   if (width === 0 || height === 0) return null;
@@ -224,18 +298,66 @@ function AnnotationLayer({
         position: "absolute",
         top: 0,
         left: 0,
-        cursor: cursorMap[activeTool],
+        cursor: textInput ? "text" : cursorMap[activeTool],
         pointerEvents: activeTool === "select" ? "none" : "all",
         zIndex: 10,
         touchAction: "none",
+        overflow: "visible",
       }}
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
       onMouseUp={onMouseUp}
-      onMouseLeave={onMouseUp}
+      onMouseLeave={() => { onMouseUp(); setHoveredId(null); }}
     >
+      <defs>
+        <filter id="eraser-hover">
+          <feColorMatrix type="saturate" values="0" />
+        </filter>
+      </defs>
       {annotations.map((a, i) => renderAnnotation(a, i))}
       {draft && renderAnnotation(draft, -1, true)}
+
+      {/* Inline text input */}
+      {textInput && (
+        <foreignObject
+          x={textInput.svgX}
+          y={textInput.svgY - 28}
+          width={220}
+          height={38}
+          style={{ overflow: "visible" }}
+        >
+          <div
+            style={{ display: "flex", alignItems: "center", gap: 4 }}
+          >
+            <input
+              ref={textInputRef}
+              type="text"
+              value={textInput.value}
+              placeholder="Type your note…"
+              onChange={(e) => setTextInput(t => t ? { ...t, value: e.target.value } : t)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { commitText(textInput.value); }
+                if (e.key === "Escape") { setTextInput(null); }
+                e.stopPropagation();
+              }}
+              onBlur={() => commitText(textInput.value)}
+              style={{
+                width: 200,
+                padding: "4px 8px",
+                fontSize: 13,
+                fontFamily: "sans-serif",
+                fontWeight: 600,
+                color: color,
+                background: "rgba(10,10,20,0.85)",
+                border: `2px solid ${color}`,
+                borderRadius: 5,
+                outline: "none",
+                boxShadow: `0 0 0 3px ${color}33`,
+              }}
+            />
+          </div>
+        </foreignObject>
+      )}
     </svg>
   );
 }
@@ -885,6 +1007,7 @@ function PdfViewer({
             { tool: "text" as AnnotationTool, Icon: Type, label: "Write" },
             { tool: "circle" as AnnotationTool, Icon: Circle, label: "Circle" },
             { tool: "rect" as AnnotationTool, Icon: Square, label: "Rectangle" },
+            { tool: "eraser" as AnnotationTool, Icon: Eraser, label: "Eraser" },
           ] as { tool: AnnotationTool; Icon: React.ElementType; label: string }[]
         ).map(({ tool, Icon, label }) => (
           <button
@@ -895,7 +1018,9 @@ function PdfViewer({
               annotTool === tool
                 ? tool === "highlight"
                   ? "bg-yellow-400 text-gray-900"
-                  : "bg-blue-600 text-white"
+                  : tool === "eraser"
+                    ? "bg-red-600 text-white"
+                    : "bg-blue-600 text-white"
                 : "text-gray-400 hover:text-white hover:bg-gray-700"
             }`}
           >
@@ -904,18 +1029,20 @@ function PdfViewer({
           </button>
         ))}
 
-        {/* Color palette */}
-        <div className="flex items-center gap-1 ml-1">
-          {ANNOT_COLORS.map((c) => (
-            <button
-              key={c}
-              onClick={() => setAnnotColor(c)}
-              title={c}
-              style={{ background: c }}
-              className={`w-4 h-4 rounded-full border-2 transition-transform ${annotColor === c ? "border-white scale-125" : "border-transparent"}`}
-            />
-          ))}
-        </div>
+        {/* Color palette — hidden when eraser active */}
+        {annotTool !== "eraser" && (
+          <div className="flex items-center gap-1 ml-1">
+            {ANNOT_COLORS.map((c) => (
+              <button
+                key={c}
+                onClick={() => setAnnotColor(c)}
+                title={c}
+                style={{ background: c }}
+                className={`w-4 h-4 rounded-full border-2 transition-transform ${annotColor === c ? "border-white scale-125" : "border-transparent"}`}
+              />
+            ))}
+          </div>
+        )}
 
         {/* Undo */}
         <button
@@ -934,14 +1061,14 @@ function PdfViewer({
           <span className="hidden sm:inline">Undo</span>
         </button>
 
-        {/* Clear page annotations */}
+        {/* Clear ALL marks on this page */}
         <button
           onClick={() => setAnnotations((prev) => ({ ...prev, [pageNumber]: [] }))}
           title="Clear all marks on this page"
           className="flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-400 hover:text-red-400 hover:bg-gray-700 transition-colors"
         >
-          <Eraser className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Clear</span>
+          <Trash2 className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Clear All</span>
         </button>
 
         <div className="h-4 w-px bg-gray-700" />
@@ -1032,7 +1159,7 @@ function PdfViewer({
                     <Page
                       pageNumber={Math.min(pageNumber, numPages ?? 1)}
                       scale={scale}
-                      renderTextLayer={annotTool === "select"}
+                      renderTextLayer={annotTool === "select" || annotTool === "highlight"}
                       renderAnnotationLayer={false}
                       className="shadow-2xl"
                       onRenderSuccess={(page) => {
@@ -1055,11 +1182,11 @@ function PdfViewer({
                           [pageNumber]: [...(prev[pageNumber] ?? []), { ...a, page: pageNumber }],
                         }));
                       }}
-                      onUndo={() =>
-                        setAnnotations((prev) => {
-                          const cur = prev[pageNumber] ?? [];
-                          return { ...prev, [pageNumber]: cur.slice(0, -1) };
-                        })
+                      onRemove={(id) =>
+                        setAnnotations((prev) => ({
+                          ...prev,
+                          [pageNumber]: (prev[pageNumber] ?? []).filter(a => a.id !== id),
+                        }))
                       }
                     />
                   </div>
