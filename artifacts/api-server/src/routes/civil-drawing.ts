@@ -14,6 +14,7 @@ function getOpenAI(): OpenAI {
 
 const router = Router();
 
+// ─── ETP Layout Generation ───────────────────────────────────────────────────
 const LAYOUT_PROMPT = `You are a senior civil engineer specializing in Effluent Treatment Plant (ETP) design and layout.
 
 Generate a detailed ETP layout plan for the given parameters. You must arrange all components within the site boundary, following standard ETP design principles.
@@ -60,22 +61,9 @@ Rules:
 
 router.post("/civil-drawing/generate", async (req, res) => {
   try {
-    const {
-      projectName,
-      siteLength,
-      siteWidth,
-      tankHeight,
-      processSteps,
-      inletFlow,
-      additionalNotes,
-    } = req.body as {
-      projectName: string;
-      siteLength: number;
-      siteWidth: number;
-      tankHeight: number;
-      processSteps: string[];
-      inletFlow?: string;
-      additionalNotes?: string;
+    const { projectName, siteLength, siteWidth, tankHeight, processSteps, inletFlow, additionalNotes } = req.body as {
+      projectName: string; siteLength: number; siteWidth: number; tankHeight: number;
+      processSteps: string[]; inletFlow?: string; additionalNotes?: string;
     };
 
     if (!siteLength || !siteWidth || !processSteps?.length) {
@@ -91,17 +79,10 @@ router.post("/civil-drawing/generate", async (req, res) => {
       additionalNotes ? `Additional Requirements: ${additionalNotes}` : null,
     ].filter(Boolean).join("\n");
 
-    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-      {
-        role: "user",
-        content: `${userContext}\n\n${LAYOUT_PROMPT}`,
-      },
-    ];
-
     const response = await getOpenAI().chat.completions.create({
       model: "gpt-4o",
       max_completion_tokens: 4096,
-      messages,
+      messages: [{ role: "user", content: `${userContext}\n\n${LAYOUT_PROMPT}` }],
     });
 
     const raw = response.choices[0]?.message?.content ?? "{}";
@@ -112,13 +93,85 @@ router.post("/civil-drawing/generate", async (req, res) => {
     } catch {
       return res.status(500).json({ error: "AI returned invalid JSON", raw });
     }
-
-    return res.json({
-      layout,
-      params: { projectName, siteLength, siteWidth, tankHeight, processSteps, inletFlow, additionalNotes },
-    });
+    return res.json({ layout, params: { projectName, siteLength, siteWidth, tankHeight, processSteps, inletFlow, additionalNotes } });
   } catch (e: any) {
     console.error("Civil drawing generate error:", e);
+    return res.status(500).json({ error: e?.message ?? String(e) });
+  }
+});
+
+// ─── Drawing Analysis (Vision) ────────────────────────────────────────────────
+const ANALYSIS_SYSTEM = `You are an expert civil/structural/MEP engineer and quantity surveyor with 20+ years experience analyzing engineering drawings.
+Analyze the provided engineering drawing image based on the user's instruction.
+Return ONLY a valid JSON object (no markdown, no extra text):
+{
+  "measurements": [
+    {
+      "item": "Element name",
+      "type": "area|length|count|volume|dimension",
+      "value": 0.0,
+      "unit": "m²|m|nos|m³|mm",
+      "notes": "optional clarification"
+    }
+  ],
+  "summary": "2-3 sentence technical summary of findings",
+  "keyFindings": [
+    "Finding 1",
+    "Finding 2"
+  ],
+  "drawingType": "plan|section|elevation|detail|schematic|unknown",
+  "scale": "detected scale if visible or 'Not detected'",
+  "disclaimer": "Note any assumptions made due to image resolution or missing information"
+}`;
+
+router.post("/civil-drawing/analyze", async (req, res) => {
+  try {
+    const { imageBase64, mimeType, instruction, projectName } = req.body as {
+      imageBase64: string;
+      mimeType: string;
+      instruction: string;
+      projectName?: string;
+    };
+
+    if (!imageBase64 || !instruction) {
+      return res.status(400).json({ error: "imageBase64 and instruction are required" });
+    }
+
+    const validMime = mimeType?.startsWith("image/") ? mimeType : "image/jpeg";
+
+    const response = await getOpenAI().chat.completions.create({
+      model: "gpt-4o",
+      max_completion_tokens: 2048,
+      messages: [
+        { role: "system", content: ANALYSIS_SYSTEM },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `Project: ${projectName || "Engineering Drawing"}\nInstruction: ${instruction}\n\nAnalyze the drawing above and return the JSON result.`,
+            },
+            {
+              type: "image_url",
+              image_url: { url: `data:${validMime};base64,${imageBase64}`, detail: "high" },
+            },
+          ],
+        },
+      ],
+    });
+
+    const raw = response.choices[0]?.message?.content ?? "{}";
+    let analysis: any;
+    try {
+      const cleaned = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+      analysis = JSON.parse(cleaned);
+    } catch {
+      return res.status(500).json({ error: "AI returned invalid JSON", raw });
+    }
+
+    return res.json({ analysis, projectName, instruction });
+  } catch (e: any) {
+    console.error("Civil drawing analyze error:", e);
     return res.status(500).json({ error: e?.message ?? String(e) });
   }
 });
