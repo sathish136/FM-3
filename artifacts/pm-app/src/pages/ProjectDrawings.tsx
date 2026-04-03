@@ -607,23 +607,6 @@ function PdfViewer({
     return () => window.removeEventListener("keydown", handler);
   }, [onClose, onPrev, onNext, hasPrev, hasNext]);
 
-  // Auto-analyze only if no saved report exists yet
-  useEffect(() => {
-    if (autoAnalyzedRef.current) return;
-    if (drawing.aiAnalysis || aiAnalysis || aiLoading) return;
-    const tryAnalyze = () => {
-      const canvas = scrollRef.current?.querySelector("canvas");
-      if (canvas) {
-        autoAnalyzedRef.current = true;
-        handleAnalyze();
-      }
-    };
-    const timer = setInterval(tryAnalyze, 800);
-    const timeout = setTimeout(() => clearInterval(timer), 12000);
-    return () => { clearInterval(timer); clearTimeout(timeout); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drawing.id]);
-
   const tabs: { key: PanelTab; label: string; icon: React.ElementType }[] = [
     { key: "info", label: "Info", icon: Info },
     { key: "history", label: "History", icon: History },
@@ -2567,23 +2550,6 @@ function DrawingDetailPage({
       setAiLoading(false);
     }
   }, [aiLoading, drawing.id, drawing.drawingNo, drawing.title, drawing.department]);
-
-  // Auto-analyze only if no saved report exists yet
-  useEffect(() => {
-    if (autoAnalyzedRef.current) return;
-    if (drawing.aiAnalysis || aiAnalysis || aiLoading) return;
-    const tryAnalyze = () => {
-      const canvas = scrollRef.current?.querySelector("canvas");
-      if (canvas) {
-        autoAnalyzedRef.current = true;
-        handleAnalyze();
-      }
-    };
-    const timer = setInterval(tryAnalyze, 800);
-    const timeout = setTimeout(() => clearInterval(timer), 15000);
-    return () => { clearInterval(timer); clearTimeout(timeout); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drawing.id]);
 
   // Load revision file
   const loadRevFile = async (revIdx: number) => {
