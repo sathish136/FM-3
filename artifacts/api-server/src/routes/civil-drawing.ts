@@ -1,15 +1,40 @@
 import { Router } from "express";
 import OpenAI from "openai";
 
-let _openai: OpenAI | null = null;
+// Always create a fresh client — env vars may be refreshed between restarts
 function getOpenAI(): OpenAI {
-  if (!_openai) {
-    _openai = new OpenAI({
-      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-    });
+  return new OpenAI({
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  });
+}
+
+// Robust JSON extractor — handles markdown fences, leading/trailing prose, etc.
+function extractJSON(raw: string): any {
+  if (!raw?.trim()) throw new Error("AI returned an empty response.");
+
+  // 1. Direct parse
+  try { return JSON.parse(raw.trim()); } catch {}
+
+  // 2. Strip ```json ... ``` or ``` ... ``` fences
+  const fenceStrip = raw.replace(/^```(?:json)?\s*/i, "").replace(/```[\s\S]*$/i, "").trim();
+  try { return JSON.parse(fenceStrip); } catch {}
+
+  // 3. Extract the LARGEST {...} block from anywhere in the text
+  let depth = 0, start = -1, best = "";
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] === "{") { if (depth === 0) start = i; depth++; }
+    else if (raw[i] === "}") {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        const candidate = raw.slice(start, i + 1);
+        if (candidate.length > best.length) best = candidate;
+      }
+    }
   }
-  return _openai;
+  if (best) { try { return JSON.parse(best); } catch {} }
+
+  throw new Error("AI returned an unreadable response — please try again.");
 }
 
 const router = Router();
@@ -139,13 +164,12 @@ router.post("/civil-drawing/generate", async (req, res) => {
       messages: [{ role: "user", content: `${userContext}\n\n${buildLayoutPrompt(pType)}` }],
     });
 
-    const raw = response.choices[0]?.message?.content ?? "{}";
+    const raw = response.choices[0]?.message?.content ?? "";
     let layout: any;
-    try {
-      const cleaned = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
-      layout = JSON.parse(cleaned);
-    } catch {
-      return res.status(500).json({ error: "AI returned invalid JSON", raw });
+    try { layout = extractJSON(raw); }
+    catch (parseErr: any) {
+      console.error("Generate parse error. Raw:", raw.slice(0, 500));
+      return res.status(500).json({ error: parseErr.message ?? "AI returned invalid JSON" });
     }
     return res.json({ layout, params: { projectName, siteLength, siteWidth, tankHeight, processSteps, inletFlow, additionalNotes, plantType: pType } });
   } catch (e: any) {
@@ -172,25 +196,36 @@ router.post("/civil-drawing/correct", async (req, res) => {
 
     const pType = params?.plantType || "ETP";
 
-    const prompt = `You are a senior civil engineer. The user has an existing ${pType} plant layout and wants to make corrections.
+    // Send a compact layout summary to stay within token budget
+    const compactLayout = {
+      components: (existingLayout.components ?? []).map((c: any) => ({
+        id: c.id, label: c.label, x: c.x, y: c.y, w: c.w, h: c.h,
+        type: c.type, color: c.color,
+        ...(c.level !== undefined ? { level: c.level } : {}),
+        ...(c.isUnderground ? { isUnderground: true } : {}),
+        ...(c.hasManholes ? { hasManholes: true, manholeCount: c.manholeCount } : {}),
+      })),
+      flowArrows: existingLayout.flowArrows ?? [],
+      summary: existingLayout.summary ?? "",
+    };
 
-EXISTING LAYOUT JSON:
-${JSON.stringify(existingLayout, null, 2)}
+    const prompt = `You are a senior civil engineer. Correct the ${pType} plant layout below.
 
-SITE CONSTRAINTS:
-- Site Dimensions: ${params.siteLength}m (length) × ${params.siteWidth}m (width)
-- Tank Height: ${params.tankHeight}m
-- Flow Rate: ${params.inletFlow || "Not specified"}
+EXISTING LAYOUT (compact):
+${JSON.stringify(compactLayout)}
 
-USER CORRECTION REQUEST:
-"${correctionPrompt}"
+SITE: ${params.siteLength}m × ${params.siteWidth}m · Wall H: ${params.tankHeight}m · Flow: ${params.inletFlow || "N/A"}
 
-Apply the requested corrections to the layout. Keep all existing components that are not mentioned in the correction. Maintain logical flow sequence and ensure all components stay within the site boundary.
+CORRECTION REQUEST: "${correctionPrompt}"
+
+Rules:
+- Apply ONLY the requested change(s). Keep everything else identical.
+- All coordinates in metres, all components inside the site boundary.
+- Use colors: blue=water, teal=biological, green=storage, amber=sludge, orange=chemical, purple=RO/MEE/ATFD, gray=buildings.
 
 ${LAYOUT_JSON_SCHEMA}
-${LAYOUT_RULES}
 
-Return the COMPLETE corrected layout JSON (not just the changed parts).`;
+Return COMPLETE corrected JSON only — no extra text.`;
 
     const response = await getOpenAI().chat.completions.create({
       model: "gpt-4o",
@@ -198,13 +233,12 @@ Return the COMPLETE corrected layout JSON (not just the changed parts).`;
       messages: [{ role: "user", content: prompt }],
     });
 
-    const raw = response.choices[0]?.message?.content ?? "{}";
+    const raw = response.choices[0]?.message?.content ?? "";
     let layout: any;
-    try {
-      const cleaned = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
-      layout = JSON.parse(cleaned);
-    } catch {
-      return res.status(500).json({ error: "AI returned invalid JSON", raw });
+    try { layout = extractJSON(raw); }
+    catch (parseErr: any) {
+      console.error("Correct parse error. Raw:", raw.slice(0, 500));
+      return res.status(500).json({ error: parseErr.message ?? "AI returned invalid JSON" });
     }
     return res.json({ layout, params });
   } catch (e: any) {
@@ -273,13 +307,12 @@ router.post("/civil-drawing/analyze", async (req, res) => {
       ],
     });
 
-    const raw = response.choices[0]?.message?.content ?? "{}";
+    const raw = response.choices[0]?.message?.content ?? "";
     let analysis: any;
-    try {
-      const cleaned = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
-      analysis = JSON.parse(cleaned);
-    } catch {
-      return res.status(500).json({ error: "AI returned invalid JSON", raw });
+    try { analysis = extractJSON(raw); }
+    catch (parseErr: any) {
+      console.error("Analyze parse error. Raw:", raw.slice(0, 500));
+      return res.status(500).json({ error: parseErr.message ?? "AI returned invalid JSON" });
     }
 
     return res.json({ analysis, projectName, instruction });
