@@ -958,7 +958,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
             {/* Page breadcrumb */}
             {isSidebar ? (
               <div className="hidden md:flex items-center gap-1.5 text-xs text-gray-400">
-                <span className="font-medium text-gray-300">FlowMatriX</span>
+                <Link href="/" className="font-medium text-gray-300 hover:text-indigo-400 transition-colors cursor-pointer">FlowMatriX</Link>
                 <ChevronRightIcon className="w-3 h-3 text-gray-300" />
                 <span className="font-semibold text-gray-700 fm-text-main">{pageTitle}</span>
               </div>
