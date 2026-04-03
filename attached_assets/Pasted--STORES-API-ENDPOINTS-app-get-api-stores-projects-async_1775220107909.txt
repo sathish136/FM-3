@@ -1,0 +1,177 @@
+# ===== STORES API ENDPOINTS =====
+
+@app.get("/api/stores/projects")
+async def get_stores_projects():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_project"
+
+    headers = get_auth_headers()
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(url, headers=headers)
+            data = response.json()
+
+            raw = data.get("message", "")
+            projects = []
+
+            for line in raw.strip().split("\n"):
+                parts = line.split(" - ", 1)
+                code = parts[0].strip()
+                name = parts[1].strip() if len(parts) > 1 else code
+
+                projects.append({
+                    "code": code,
+                    "name": name,
+                    "label": f"{code} - {name}"
+                })
+
+            return {"projects": projects}
+
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/api/stores/dashboard-counts")
+async def get_stores_dashboard_counts(project: str = None):
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_dashboard_counts_store"
+
+    params = {"project": project} if project else {}
+
+    headers = get_auth_headers()
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(url, params=params, headers=headers)
+            return response.json()
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/api/stores/gate-entry-pr-pending")
+async def get_gate_entry_pr_pending():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_gate_entry_made_pr_pending"
+
+    headers = get_auth_headers()
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(url, headers=headers)
+            return response.json()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/stores/dc-gateout-pending")
+async def get_dc_gateout_pending():
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_dc_aging_data"
+
+    headers = get_auth_headers()
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(url, headers=headers)
+            return response.json()
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/api/stores/pr-bill-pending")
+async def get_pr_bill_pending(project: str = None):
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_pr_made_to_bill_pending"
+    
+    params = {"project": project} if project else {}
+
+    headers = get_auth_headers()
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(url, params=params, headers=headers)
+            return response.json()
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/api/stores/stock-summary")
+async def get_stock_summary(project: str = None):
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_stock_summary"
+    params = {"project": project} if project else {}
+
+    headers = get_auth_headers()
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(url, params=params, headers=headers)
+            return response.json()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/stores/direct-site-delivery")
+async def get_direct_site_delivery(project: str = None):
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_direct_site_delivery"
+    params = {"project": project} if project else {}
+
+    headers = get_auth_headers()
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(url, params=params, headers=headers)
+            return response.json()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/stores/delivery-note-pending")
+async def get_delivery_note_pending(project: str = None):
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_delivery_note_pending"
+    params = {"project": project} if project else {}
+
+    headers = get_auth_headers()
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(url, params=params, headers=headers)
+            return response.json()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/stores/stock-indent-pending")
+async def get_stock_indent_pending(project: str = None):
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_stock_indent_pending"
+    params = {"project": project} if project else {}
+
+    headers = get_auth_headers()
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(url, params=params, headers=headers)
+            return response.json()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/stores/material-issue-pending")
+async def get_material_issue_pending(project: str = None):
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.material_issue_request_made_issue_pending"
+    params = {"project": project} if project else {}
+
+    headers = get_auth_headers()
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(url, params=params, headers=headers)
+            return response.json()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/stores/project-dispute")
+async def get_project_dispute(project: str = None):
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.rfq.get_project_wise_dispute"
+    params = {"project": project} if project else {}
+
+    headers = get_auth_headers()
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(url, params=params, headers=headers)
+            return response.json()
+    except Exception as e:
+        return {"error": str(e)}

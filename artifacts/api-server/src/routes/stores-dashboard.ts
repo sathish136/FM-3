@@ -29,7 +29,7 @@ router.get("/stores-dashboard/gate-entry-pr-pending", async (req, res) => {
 router.get("/stores-dashboard/dc-gateout-pending", async (req, res) => {
   const project = req.query.project as string | undefined;
   try {
-    const data = await erpFetch("wtt_module.customization.custom.rfq.get_dc_gateout_pen", projectParams(project));
+    const data = await erpFetch("wtt_module.customization.custom.rfq.get_dc_aging_data", projectParams(project));
     return res.json(data);
   } catch (e: any) {
     return res.status(502).json({ error: e.message });
