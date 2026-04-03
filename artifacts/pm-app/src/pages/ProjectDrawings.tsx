@@ -3906,8 +3906,8 @@ export default function ProjectDrawings() {
     if (drawingDeptsConfigured === null) return true;
     // No restrictions configured for this user — full access
     if (drawingDeptsConfigured === false) return true;
-    // Restrictions configured: empty list means NO departments allowed
-    if (allowedDrawingDepts.length === 0) return false;
+    // Restrictions configured but empty list means no specific departments were set — full access
+    if (allowedDrawingDepts.length === 0) return true;
     return deptAllowed(drawingDept);
   };
 
