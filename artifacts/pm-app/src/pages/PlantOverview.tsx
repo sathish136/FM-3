@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import Layout from "@/components/Layout";
+import { Layout } from "@/components/Layout";
 import { Activity, Wifi, WifiOff, Radio, AlertTriangle, CheckCircle2, Circle } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
