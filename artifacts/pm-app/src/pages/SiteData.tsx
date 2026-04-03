@@ -186,7 +186,21 @@ export default function SiteData() {
   const [error, setError] = useState<string | null>(null);
   const [lastFetched, setLastFetched] = useState<Date | null>(null);
   const [streaming, setStreaming] = useState(false);
+  const [pushCount, setPushCount] = useState(0);
+  const [secAgo, setSecAgo] = useState(0);
+  const [flash, setFlash] = useState(false);
   const esRef = useRef<EventSource | null>(null);
+  const lastFetchedRef = useRef<Date | null>(null);
+
+  // Live "X s ago" ticker
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (lastFetchedRef.current) {
+        setSecAgo(Math.floor((Date.now() - lastFetchedRef.current.getTime()) / 1000));
+      }
+    }, 500);
+    return () => clearInterval(t);
+  }, []);
 
   useEffect(() => {
     const es = new EventSource(`${API_BASE}/api/kanchan/ro-stream`);
@@ -198,9 +212,16 @@ export default function SiteData() {
         const json: ApiResponse = JSON.parse(e.data);
         setApiData(json);
         setError(null);
-        setLastFetched(new Date());
+        const now = new Date();
+        setLastFetched(now);
+        lastFetchedRef.current = now;
+        setSecAgo(0);
         setLoading(false);
         setStreaming(true);
+        setPushCount(c => c + 1);
+        // Brief flash to show data arrived
+        setFlash(true);
+        setTimeout(() => setFlash(false), 400);
       } catch {
         setError("Parse error");
       }
@@ -211,7 +232,6 @@ export default function SiteData() {
         const parsed = JSON.parse(e.data);
         setError(parsed.error || "Stream error");
       } catch {
-        // connection-level error – SSE will auto-reconnect
         setError("Connection lost — reconnecting…");
         setStreaming(false);
       }
@@ -270,13 +290,18 @@ export default function SiteData() {
               <span className="text-gray-300 text-sm">•</span>
               <span className="text-sm font-semibold text-gray-500">RO System</span>
             </div>
-            {lastFetched && (
-              <p className="text-[10px] text-gray-400 flex items-center gap-1 mt-px">
-                <Clock className="w-2.5 h-2.5" />
-                PLC: {apiData?.last_update} &nbsp;|&nbsp; Fetched: {lastFetched.toLocaleTimeString()}
-                {apiData && <>&nbsp;|&nbsp; Data age: {ageSeconds}s</>}
-              </p>
-            )}
+            <p className="text-[10px] text-gray-400 flex items-center gap-1.5 mt-px flex-wrap">
+              <Clock className="w-2.5 h-2.5 shrink-0" />
+              {apiData?.last_update ? <>PLC: {apiData.last_update}</> : <>Connecting…</>}
+              {lastFetched && (
+                <>
+                  <span className="text-gray-200">|</span>
+                  <span>Last push: <span className={`font-semibold ${secAgo <= 3 ? "text-emerald-500" : "text-gray-400"}`}>{secAgo}s ago</span></span>
+                  <span className="text-gray-200">|</span>
+                  <span className="tabular-nums">#{pushCount} frames</span>
+                </>
+              )}
+            </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {/* Status badge */}
@@ -308,7 +333,7 @@ export default function SiteData() {
         )}
 
         {/* ── Content ─────────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+        <div className={`flex-1 overflow-y-auto p-5 space-y-5 transition-all duration-300 ${flash ? "bg-blue-50/60" : "bg-gray-50"}`}>
 
           {loading && !apiData ? (
             <div className="flex flex-col items-center justify-center h-64 gap-4">
