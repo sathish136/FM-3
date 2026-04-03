@@ -1,6 +1,7 @@
 import { Layout } from "@/components/Layout";
 import {
   Upload,
+  Search,
   FileText,
   Eye,
   History,
@@ -3871,6 +3872,9 @@ export default function ProjectDrawings() {
   const [projectFilter, setProjectFilter] = useState("");
   const [viewerIdx, setViewerIdx] = useState<number | null>(null);
   const [detailDrawingId, setDetailDrawingId] = useState<string | null>(null);
+  const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  const [selectedSystem, setSelectedSystem] = useState<string>("All");
+  const [projectSearch, setProjectSearch] = useState("");
   const [modal, setModal] = useState<ModalState>({ type: "none" });
   const [uploadAnalyzing, setUploadAnalyzing] = useState(false);
   const [uploadStep, setUploadStep] = useState<"uploading" | "analyzing" | null>(null);
@@ -4029,7 +4033,9 @@ export default function ProjectDrawings() {
     const matchStatus = statusFilter === "all" || d.status === statusFilter;
     const matchDept = !deptFilter || d.department === deptFilter;
     const matchProject = !projectFilter || d.project === projectFilter;
-    return matchSearch && matchStatus && matchDept && matchProject;
+    const matchSelectedProject = !selectedProject || d.project === selectedProject;
+    const matchSelectedSystem = selectedSystem === "All" || d.systemName === selectedSystem;
+    return matchSearch && matchStatus && matchDept && matchProject && matchSelectedProject && matchSelectedSystem;
   });
 
   const handleUpload = async (
@@ -4303,6 +4309,41 @@ export default function ProjectDrawings() {
     final: permittedDrawings.filter((d) => d.status === "final").length,
   };
 
+  // ── Project card summaries ──────────────────────────────────
+  const allProjectNames = [...new Set([
+    ...erpProjectList.map(p => p.name),
+    ...permittedDrawings.map(d => d.project).filter(Boolean),
+  ])].sort();
+
+  const filteredProjectNames = allProjectNames.filter(
+    name => !projectSearch.trim() || name.toLowerCase().includes(projectSearch.toLowerCase())
+  );
+
+  const projectSummaries = filteredProjectNames.map(name => {
+    const pDrawings = permittedDrawings.filter(d => d.project === name);
+    const systems = [...new Set(pDrawings.map(d => d.systemName).filter(Boolean))];
+    return {
+      name,
+      total: pDrawings.length,
+      draft: pDrawings.filter(d => d.status === "draft").length,
+      revision: pDrawings.filter(d => d.status === "revision").length,
+      final: pDrawings.filter(d => d.status === "final").length,
+      systems,
+    };
+  });
+
+  // ── System tabs for selected project ────────────────────────
+  const projectDrawingsAll = selectedProject
+    ? permittedDrawings.filter(d => d.project === selectedProject)
+    : [];
+  const projectSystems = ["All", ...new Set(projectDrawingsAll.map(d => d.systemName).filter(Boolean))];
+  const selectedProjectCounts = {
+    all: projectDrawingsAll.length,
+    draft: projectDrawingsAll.filter(d => d.status === "draft").length,
+    revision: projectDrawingsAll.filter(d => d.status === "revision").length,
+    final: projectDrawingsAll.filter(d => d.status === "final").length,
+  };
+
   return (
     <Layout>
       {detailDrawing ? (
@@ -4320,73 +4361,66 @@ export default function ProjectDrawings() {
           }}
           currentUserName={user?.full_name || ""}
         />
-      ) : (
+      ) : selectedProject ? (
       <div className="flex flex-col h-full">
-        {/* Header */}
-        <div className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-gray-200 bg-white">
-          <div className="flex items-start justify-between gap-4 mb-4">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
-                  <FolderOpen className="w-4 h-4 text-white" />
+        {/* Project detail header */}
+        <div className="flex-shrink-0 px-6 pt-5 pb-4 border-b border-gray-200 bg-white">
+          <div className="flex items-center justify-between gap-4 mb-3">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => { setSelectedProject(null); setSelectedSystem("All"); setSearch(""); setStatusFilter("all"); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 border border-gray-200 transition-all"
+              >
+                <ChevronLeft className="w-4 h-4" /> Projects
+              </button>
+              <div className="h-5 w-px bg-gray-300" />
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center">
+                  <Briefcase className="w-3.5 h-3.5 text-white" />
                 </div>
-                <h1 className="text-xl font-bold text-gray-900">
-                  Project Drawings
-                </h1>
+                <div>
+                  <h1 className="text-base font-bold text-gray-900 leading-tight">{selectedProject}</h1>
+                  <p className="text-[11px] text-gray-400">{selectedProjectCounts.all} drawing{selectedProjectCounts.all !== 1 ? "s" : ""}</p>
+                </div>
               </div>
-              <p className="text-sm text-gray-500">
-                Drawing management — upload, track revisions, and mark finals
-              </p>
-
-              {/* ERP User Info */}
-              {user && (
-                <div className="flex items-center gap-3 mt-2 flex-wrap">
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200">
-                    <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">
-                      {user.full_name.charAt(0).toUpperCase()}
-                    </div>
-                    <span className="text-xs font-medium text-blue-800">
-                      {user.full_name}
-                    </span>
-                  </div>
-                  {userProfile.department && (
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-200">
-                      <Building2 className="w-3.5 h-3.5 text-indigo-600" />
-                      <span className="text-xs font-medium text-indigo-800">
-                        {userProfile.department}
-                      </span>
-                    </div>
-                  )}
-                  {userProfile.designation && (
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-200">
-                      <span className="text-xs text-gray-600">
-                        {userProfile.designation}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
-
             <button
               onClick={() => setModal({ type: "upload" })}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors flex-shrink-0 shadow-sm"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors flex-shrink-0 shadow-sm"
             >
               <Plus className="w-4 h-4" /> Upload Drawing
             </button>
           </div>
-
-          {/* Filters row */}
+          {/* System tabs */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 mb-3" style={{ scrollbarWidth: "none" }}>
+            {projectSystems.map(sys => (
+              <button
+                key={sys}
+                onClick={() => setSelectedSystem(sys)}
+                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
+                  selectedSystem === sys
+                    ? "bg-blue-600 text-white border-blue-600"
+                    : "bg-white text-gray-600 border-gray-300 hover:border-blue-400 hover:text-blue-600"
+                }`}
+              >
+                {sys === "All" ? <Layers className="w-3 h-3" /> : <Tag className="w-3 h-3" />}
+                {sys}
+                {sys === "All" && (
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${selectedSystem === sys ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"}`}>
+                    {selectedProjectCounts.all}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+          {/* Status filter + search */}
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Status tabs */}
-            {(
-              [
-                { key: "all", label: "All" },
-                { key: "draft", label: "Draft" },
-                { key: "revision", label: "Revision" },
-                { key: "final", label: "Final Copy" },
-              ] as { key: DrawingStatus | "all"; label: string }[]
-            ).map(({ key, label }) => (
+            {([
+              { key: "all", label: "All" },
+              { key: "draft", label: "Draft" },
+              { key: "revision", label: "Revision" },
+              { key: "final", label: "Final Copy" },
+            ] as { key: DrawingStatus | "all"; label: string }[]).map(({ key, label }) => (
               <button
                 key={key}
                 onClick={() => setStatusFilter(key)}
@@ -4397,35 +4431,11 @@ export default function ProjectDrawings() {
                 }`}
               >
                 {label}
-                <span
-                  className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${statusFilter === key ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"}`}
-                >
-                  {counts[key]}
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${statusFilter === key ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"}`}>
+                  {key === "all" ? filtered.length : filtered.filter(d => d.status === key).length}
                 </span>
               </button>
             ))}
-
-            <div className="h-5 w-px bg-gray-300 mx-1" />
-
-            {/* Dept filter */}
-            <SelectFilter
-              value={deptFilter}
-              onChange={setDeptFilter}
-              options={allDepts.length ? allDepts : DEPARTMENTS}
-              placeholder="All Departments"
-              icon={Building2}
-            />
-
-            {/* Project filter */}
-            <SelectFilter
-              value={projectFilter}
-              onChange={setProjectFilter}
-              options={allProjects}
-              placeholder="All Projects"
-              icon={Filter}
-            />
-
-            {/* Search */}
             <div className="ml-auto flex items-center gap-2 border border-gray-300 rounded-lg px-3 py-1.5 bg-white">
               <Eye className="w-3.5 h-3.5 text-gray-400" />
               <input
@@ -4435,17 +4445,13 @@ export default function ProjectDrawings() {
                 className="text-sm outline-none text-gray-700 w-40 placeholder-gray-400"
               />
               {search && (
-                <button
-                  onClick={() => setSearch("")}
-                  className="text-gray-400 hover:text-gray-600"
-                >
+                <button onClick={() => setSearch("")} className="text-gray-400 hover:text-gray-600">
                   <X className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
           </div>
         </div>
-
         {/* Drawing list */}
         <div className="flex-1 overflow-auto p-6">
           {drawingsLoading ? (
@@ -4461,30 +4467,22 @@ export default function ProjectDrawings() {
                 <FolderOpen className="w-8 h-8 text-gray-300" />
               </div>
               <div className="text-center">
-                <p className="text-base font-medium text-gray-600 mb-1">
-                  No drawings found
-                </p>
+                <p className="text-base font-medium text-gray-600 mb-1">No drawings found</p>
                 <p className="text-sm text-gray-400">
-                  {drawings.length === 0
-                    ? "Upload your first drawing to get started"
-                    : "Try adjusting your search or filters"}
+                  {projectDrawingsAll.length === 0 ? "Upload the first drawing for this project" : "Try adjusting filters or search"}
                 </p>
               </div>
-              {drawings.length === 0 && (
-                <button
-                  onClick={() => setModal({ type: "upload" })}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-                >
+              {projectDrawingsAll.length === 0 && (
+                <button onClick={() => setModal({ type: "upload" })} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors">
                   <Upload className="w-4 h-4" /> Upload First Drawing
                 </button>
               )}
             </div>
           ) : (
             <div className="grid gap-2.5">
-              <div className="hidden md:grid grid-cols-[32px_2.5fr_2fr_1.5fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 px-4 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-200">
+              <div className="hidden md:grid grid-cols-[32px_2.5fr_2fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 px-4 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-200">
                 <span>S.No</span>
                 <span>Drawing No. / Title</span>
-                <span>Project</span>
                 <span>System</span>
                 <span>Department</span>
                 <span>Status</span>
@@ -4492,46 +4490,26 @@ export default function ProjectDrawings() {
                 <span>Date</span>
                 <span />
               </div>
-
               {filtered.map((drawing, idx) => (
                 <div
                   key={drawing.id}
                   onClick={() => setDetailDrawingId(drawing.id)}
                   className="bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-blue-400 hover:shadow-md transition-all group cursor-pointer"
                 >
-                  <div className="hidden md:grid grid-cols-[32px_2.5fr_2fr_1.5fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 items-center">
+                  <div className="hidden md:grid grid-cols-[32px_2.5fr_2fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 items-center">
                     <div className="text-xs font-semibold text-gray-400 tabular-nums">{idx + 1}</div>
                     <div className="min-w-0" title={drawing.title || drawing.drawingNo}>
                       <p className="font-mono text-sm font-semibold text-gray-900 truncate">{drawing.drawingNo}</p>
-                      {drawing.title && (
-                        <p className="text-xs text-gray-500 truncate mt-0.5">{drawing.title}</p>
-                      )}
+                      {drawing.title && <p className="text-xs text-gray-500 truncate mt-0.5">{drawing.title}</p>}
                     </div>
-                    <div
-                      className="text-xs text-gray-600 truncate"
-                      title={drawing.project}
-                    >
-                      {drawing.project || "—"}
+                    <div className="text-xs text-blue-700 font-medium truncate" title={drawing.systemName}>
+                      {drawing.systemName || <span className="text-gray-400 font-normal">—</span>}
                     </div>
-                    <div
-                      className="text-xs text-blue-700 font-medium truncate"
-                      title={drawing.systemName}
-                    >
-                      {drawing.systemName || (
-                        <span className="text-gray-400 font-normal">—</span>
-                      )}
-                    </div>
-                    <div
-                      className="text-xs text-gray-600 truncate"
-                      title={drawing.department}
-                    >
+                    <div className="text-xs text-gray-600 truncate" title={drawing.department}>
                       {drawing.department || "—"}
                     </div>
                     <div className="flex flex-col gap-1">
-                      <StatusBadge
-                        status={drawing.status}
-                        label={drawing.revisionLabel}
-                      />
+                      <StatusBadge status={drawing.status} label={drawing.revisionLabel} />
                       <div className="flex items-center gap-1">
                         {drawing.checkedBy && (
                           <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -4546,125 +4524,169 @@ export default function ProjectDrawings() {
                       </div>
                     </div>
                     <div className="text-xs text-gray-500">
-                      {drawing.history.length === 0
-                        ? "—"
-                        : `${drawing.history.length} rev${drawing.history.length !== 1 ? "s" : ""}`}
+                      {drawing.history.length === 0 ? "—" : `${drawing.history.length} rev${drawing.history.length !== 1 ? "s" : ""}`}
                     </div>
-                    <div className="text-xs text-gray-500">
-                      {formatDate(drawing.uploadedAt)}
-                    </div>
+                    <div className="text-xs text-gray-500">{formatDate(drawing.uploadedAt)}</div>
                     <div className="flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
                       <button
-                        onClick={(e) => { e.stopPropagation(); const idx = filtered.findIndex(d => d.id === drawing.id); setViewerIdx(idx); }}
+                        onClick={(e) => { e.stopPropagation(); const i = filtered.findIndex(d => d.id === drawing.id); setViewerIdx(i); }}
                         title="View PDF"
                         className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                       >
                         <Eye className="w-4 h-4" />
                       </button>
                       {(drawing.status === "final" || drawing.approvedBy) && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setSendModal(drawing); }}
-                          title="Send Approval Notification"
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                        >
+                        <button onClick={(e) => { e.stopPropagation(); setSendModal(drawing); }} title="Send Approval Notification" className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors">
                           <Send className="w-4 h-4" />
                         </button>
                       )}
                       {drawing.status !== "final" && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setModal({ type: "revision", drawing }); }}
-                          title="Upload Revision"
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                        >
+                        <button onClick={(e) => { e.stopPropagation(); setModal({ type: "revision", drawing }); }} title="Upload Revision" className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors">
                           <RefreshCw className="w-4 h-4" />
                         </button>
                       )}
                       {drawing.status !== "final" && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setModal({ type: "final", drawing }); }}
-                          title="Mark as Final Copy"
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
-                        >
+                        <button onClick={(e) => { e.stopPropagation(); setModal({ type: "final", drawing }); }} title="Mark as Final Copy" className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors">
                           <CheckCircle2 className="w-4 h-4" />
                         </button>
                       )}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setModal({ type: "delete", drawing }); }}
-                        title="Delete"
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                      >
+                      <button onClick={(e) => { e.stopPropagation(); setModal({ type: "delete", drawing }); }} title="Delete" className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
-
                   {/* Mobile layout */}
                   <div className="md:hidden">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <p className="font-mono text-sm font-semibold text-gray-900">
-                          {drawing.drawingNo}
-                        </p>
-                        {drawing.title && (
-                          <p className="text-sm text-gray-700 mt-0.5">
-                            {drawing.title}
-                          </p>
-                        )}
+                        <p className="font-mono text-sm font-semibold text-gray-900">{drawing.drawingNo}</p>
+                        {drawing.title && <p className="text-sm text-gray-700 mt-0.5">{drawing.title}</p>}
                         <div className="flex items-center gap-2 mt-1 flex-wrap">
-                          <StatusBadge
-                            status={drawing.status}
-                            label={drawing.revisionLabel}
-                          />
-                          {drawing.department && (
-                            <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
-                              {drawing.department}
-                            </span>
-                          )}
+                          <StatusBadge status={drawing.status} label={drawing.revisionLabel} />
+                          {drawing.department && <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{drawing.department}</span>}
                         </div>
                       </div>
-                      <span className="text-xs text-gray-400 flex-shrink-0">
-                        {formatDate(drawing.uploadedAt)}
+                      <span className="text-xs text-gray-400 flex-shrink-0">{formatDate(drawing.uploadedAt)}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      ) : (
+      <div className="flex flex-col h-full">
+        {/* Project cards header */}
+        <div className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-gray-200 bg-white">
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
+                  <FolderOpen className="w-4 h-4 text-white" />
+                </div>
+                <h1 className="text-xl font-bold text-gray-900">Project Drawings</h1>
+              </div>
+              <p className="text-sm text-gray-500">Select a project to view and manage its drawings</p>
+
+            </div>
+            <button
+              onClick={() => setModal({ type: "upload" })}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors flex-shrink-0 shadow-sm"
+            >
+              <Plus className="w-4 h-4" /> Upload Drawing
+            </button>
+          </div>
+          {/* Project search */}
+          <div className="flex items-center gap-2 border border-gray-300 rounded-xl px-3 py-2 bg-white">
+            <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
+            <input
+              value={projectSearch}
+              onChange={(e) => setProjectSearch(e.target.value)}
+              placeholder="Search projects…"
+              className="text-sm outline-none text-gray-700 flex-1 placeholder-gray-400"
+            />
+            {projectSearch && (
+              <button onClick={() => setProjectSearch("")} className="text-gray-400 hover:text-gray-600">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Project cards grid */}
+        <div className="flex-1 overflow-auto p-6">
+          {drawingsLoading ? (
+            <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-4 py-20">
+              <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center animate-pulse">
+                <FolderOpen className="w-8 h-8 text-gray-300" />
+              </div>
+              <p className="text-sm text-gray-400">Loading projects…</p>
+            </div>
+          ) : projectSummaries.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-4 py-20">
+              <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center">
+                <FolderOpen className="w-8 h-8 text-gray-300" />
+              </div>
+              <div className="text-center">
+                <p className="text-base font-medium text-gray-600 mb-1">No projects found</p>
+                <p className="text-sm text-gray-400">
+                  {allProjectNames.length === 0 ? "Upload your first drawing to get started" : "No projects match your search"}
+                </p>
+              </div>
+              {allProjectNames.length === 0 && (
+                <button onClick={() => setModal({ type: "upload" })} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors">
+                  <Upload className="w-4 h-4" /> Upload First Drawing
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {projectSummaries.map(proj => (
+                <div
+                  key={proj.name}
+                  onClick={() => { setSelectedProject(proj.name); setSelectedSystem("All"); setStatusFilter("all"); setSearch(""); }}
+                  className="bg-white border border-gray-200 rounded-2xl p-5 hover:border-blue-400 hover:shadow-lg transition-all cursor-pointer group"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                      <Briefcase className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-1 rounded-full">
+                      {proj.total} drawing{proj.total !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                  <h3 className="text-sm font-bold text-gray-900 mb-1 line-clamp-2 group-hover:text-blue-700 transition-colors">{proj.name}</h3>
+                  {proj.systems.length > 0 && (
+                    <p className="text-xs text-gray-500 mb-3 truncate">
+                      {proj.systems.slice(0, 3).join(" · ")}{proj.systems.length > 3 ? ` +${proj.systems.length - 3}` : ""}
+                    </p>
+                  )}
+                  <div className="flex items-center gap-2 flex-wrap mb-3">
+                    {proj.final > 0 && (
+                      <span className="flex items-center gap-1 text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">
+                        <CheckCircle2 className="w-2.5 h-2.5" /> {proj.final} Final
                       </span>
+                    )}
+                    {proj.revision > 0 && (
+                      <span className="flex items-center gap-1 text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">
+                        <RefreshCw className="w-2.5 h-2.5" /> {proj.revision} Rev
+                      </span>
+                    )}
+                    {proj.draft > 0 && (
+                      <span className="flex items-center gap-1 text-[10px] font-semibold bg-gray-50 text-gray-600 border border-gray-200 px-2 py-0.5 rounded-full">
+                        <Clock className="w-2.5 h-2.5" /> {proj.draft} Draft
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex gap-1 flex-wrap">
+                      {proj.systems.slice(0, 2).map(sys => (
+                        <span key={sys} className="text-[10px] bg-blue-50 text-blue-700 border border-blue-100 px-1.5 py-0.5 rounded font-medium truncate max-w-[80px]">{sys}</span>
+                      ))}
+                      {proj.systems.length > 2 && <span className="text-[10px] text-gray-400 self-center">+{proj.systems.length - 2}</span>}
                     </div>
-                    <div className="flex items-center gap-2 mt-2 flex-wrap">
-                      <button
-                        onClick={() => {
-                          const idx = filtered.findIndex(
-                            (d) => d.id === drawing.id,
-                          );
-                          setViewerIdx(idx);
-                        }}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-medium hover:bg-blue-100 transition-colors"
-                      >
-                        <Eye className="w-3.5 h-3.5" /> View
-                      </button>
-                      {(drawing.status === "final" || drawing.approvedBy) && (
-                        <button
-                          onClick={() => setSendModal(drawing)}
-                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-medium hover:bg-blue-100 transition-colors"
-                        >
-                          <Send className="w-3.5 h-3.5" /> Send
-                        </button>
-                      )}
-                      {drawing.status !== "final" && (
-                        <button
-                          onClick={() =>
-                            setModal({ type: "revision", drawing })
-                          }
-                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-xs font-medium hover:bg-gray-200 transition-colors"
-                        >
-                          <RefreshCw className="w-3.5 h-3.5" /> Revise
-                        </button>
-                      )}
-                      {drawing.status !== "final" && (
-                        <button
-                          onClick={() => setModal({ type: "final", drawing })}
-                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-medium hover:bg-emerald-100 transition-colors"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Final
-                        </button>
-                      )}
-                    </div>
+                    <span className="text-xs text-blue-600 font-semibold group-hover:underline flex-shrink-0">Open →</span>
                   </div>
                 </div>
               ))}
