@@ -423,7 +423,7 @@ function PdfViewer({
   const [scale, setScale] = useState(1.2);
   const [highlightMode, setHighlightMode] = useState(false);
   const [showPanel, setShowPanel] = useState(true);
-  const [activeTab, setActiveTab] = useState<PanelTab>("ai");
+  const [activeTab, setActiveTab] = useState<PanelTab>("info");
   const [showCheckConfirm, setShowCheckConfirm] = useState(false);
   const cfg = STATUS_CONFIG[drawing.status];
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -2483,7 +2483,7 @@ function DrawingDetailPage({
   const [revFileLoading, setRevFileLoading] = useState<number | null>(null);
 
   // Tab
-  const [activeTab, setActiveTab] = useState<DetailTab>("ai");
+  const [activeTab, setActiveTab] = useState<DetailTab>("info");
 
   // AI analysis — initialize from saved DB report if available
   const [aiAnalysis, setAiAnalysis] = useState<{
