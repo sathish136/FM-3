@@ -14,10 +14,39 @@ function getOpenAI(): OpenAI {
 
 const router = Router();
 
-// ─── ETP Layout Generation ───────────────────────────────────────────────────
-const LAYOUT_PROMPT = `You are a senior civil engineer specializing in Effluent Treatment Plant (ETP) design and layout.
+// ─── Layout Generation Prompt ─────────────────────────────────────────────────
+function buildLayoutPrompt(plantType: string): string {
+  const isZLD = plantType === "ZLD";
+  const isSTP = plantType === "STP";
 
-Generate a detailed ETP layout plan for the given parameters. You must arrange all components within the site boundary, following standard ETP design principles.
+  const specialNotes = isZLD
+    ? `ZLD-SPECIFIC RULES:
+- Include underground/RCC tanks (negative levels like -1.50m, -4.00m)
+- Include elevated platforms (Lvl: +2.65m, +3.15m) above structures
+- Include sludge collection pits with small footprints (0.5m×0.5m to 1m×1.8m)
+- Include slope annotations on sloped floors (e.g., -2.50 to -4.00m)
+- Include manholes (Ø750mm × 750mm or as noted) on top of buried tanks
+- Include DAF/Lamella Clarifloculator units
+- Include chemical dosing area and bulk storage
+- Include multi-effect evaporator / RO / ATFD / agitated thin-film dryer if ZLD
+- Mark underground structures with negative level (lvlBelow: true)
+- Each component can have "level" field (e.g. -4.0) for the base slab level
+- Each component can have "platform" field (e.g. +2.65) for top platform level`
+    : isSTP
+    ? `STP-SPECIFIC RULES:
+- Include screening chamber, grit trap, SBR/MBR/FAB tanks
+- Include sludge digester and drying beds
+- Include treated water storage and reuse tanks
+- Color: blue for water, teal for biological treatment, green for storage`
+    : `ETP-SPECIFIC RULES:
+- Include inlet chamber, equalization, biological treatment
+- Include chemical dosing, clarifier, and treated water storage`;
+
+  return `You are a senior civil engineer specializing in ${plantType} (${
+    isZLD ? "Zero Liquid Discharge" : isSTP ? "Sewage Treatment Plant" : "Effluent Treatment Plant"
+  }) design and layout.
+
+Generate a detailed ${plantType} layout plan for the given parameters. Arrange all components within the site boundary following standard ${plantType} design principles.
 
 Return ONLY a valid JSON object with this EXACT structure (no markdown, no extra text):
 {
@@ -30,8 +59,16 @@ Return ONLY a valid JSON object with this EXACT structure (no markdown, no extra
       "y": 0.0,
       "w": 0.0,
       "h": 0.0,
-      "type": "tank|chamber|pump_station|building|clarifier|filter|storage",
-      "color": "blue|teal|green|amber|orange|red|purple|gray"
+      "type": "tank|chamber|pump_station|building|clarifier|filter|storage|pit|evaporator",
+      "color": "blue|teal|green|amber|orange|red|purple|gray",
+      "level": -3.5,
+      "platform": 2.65,
+      "isUnderground": false,
+      "hasManholes": false,
+      "manholeCount": 0,
+      "hasSlope": false,
+      "slopeFrom": null,
+      "slopeTo": null
     }
   ],
   "flowArrows": [
@@ -55,25 +92,37 @@ Rules:
 - Leave minimum 1.5m gap between adjacent structures
 - Arrange components in logical process flow sequence
 - Size each component proportionally — larger tanks for bigger processes
-- Use standard ETP component colors: blue=water/tanks, teal=biological, green=treated/storage, amber=sludge, orange=chemical, red=emergency, gray=buildings
+- Use colors: blue=water/tanks, teal=biological, green=treated/storage, amber=sludge, orange=chemical, red=emergency, gray=buildings
 - Include ALL selected process stages in the layout
-- The outlet should be the final treated water storage or outlet structure`;
+- The outlet should be the final treated water storage or outlet structure
+- "level" field: negative = underground slab level (e.g. -4.0m), positive = top of structure above ground
+- "isUnderground": true if tank slab is below ground level
+- "hasManholes": true for buried tanks that need access manholes
+- "manholeCount": number of manholes needed (1 per 50m² typically)
+- "hasSlope": true if floor is sloped
+- "slopeFrom" / "slopeTo": start and end levels of sloped floor (e.g. -2.5, -4.0)
+
+${specialNotes}`;
+}
 
 router.post("/civil-drawing/generate", async (req, res) => {
   try {
-    const { projectName, siteLength, siteWidth, tankHeight, processSteps, inletFlow, additionalNotes } = req.body as {
+    const { projectName, siteLength, siteWidth, tankHeight, processSteps, inletFlow, additionalNotes, plantType } = req.body as {
       projectName: string; siteLength: number; siteWidth: number; tankHeight: number;
-      processSteps: string[]; inletFlow?: string; additionalNotes?: string;
+      processSteps: string[]; inletFlow?: string; additionalNotes?: string; plantType?: string;
     };
 
     if (!siteLength || !siteWidth || !processSteps?.length) {
       return res.status(400).json({ error: "siteLength, siteWidth and processSteps are required" });
     }
 
+    const pType = plantType || "ETP";
+
     const userContext = [
-      `Project Name: ${projectName || "ETP Project"}`,
+      `Plant Type: ${pType}`,
+      `Project Name: ${projectName || `${pType} Project`}`,
       `Site Dimensions: ${siteLength}m (length) × ${siteWidth}m (width)`,
-      `Tank / Structure Height: ${tankHeight || 3}m`,
+      `Tank / Structure Height: ${tankHeight || 3}m (typical above-ground wall height)`,
       `Design Flow Rate: ${inletFlow || "Not specified"}`,
       `Required Process Stages (in order): ${processSteps.join(" → ")}`,
       additionalNotes ? `Additional Requirements: ${additionalNotes}` : null,
@@ -81,8 +130,8 @@ router.post("/civil-drawing/generate", async (req, res) => {
 
     const response = await getOpenAI().chat.completions.create({
       model: "gpt-4o",
-      max_completion_tokens: 4096,
-      messages: [{ role: "user", content: `${userContext}\n\n${LAYOUT_PROMPT}` }],
+      max_completion_tokens: 6000,
+      messages: [{ role: "user", content: `${userContext}\n\n${buildLayoutPrompt(pType)}` }],
     });
 
     const raw = response.choices[0]?.message?.content ?? "{}";
@@ -93,7 +142,7 @@ router.post("/civil-drawing/generate", async (req, res) => {
     } catch {
       return res.status(500).json({ error: "AI returned invalid JSON", raw });
     }
-    return res.json({ layout, params: { projectName, siteLength, siteWidth, tankHeight, processSteps, inletFlow, additionalNotes } });
+    return res.json({ layout, params: { projectName, siteLength, siteWidth, tankHeight, processSteps, inletFlow, additionalNotes, plantType: pType } });
   } catch (e: any) {
     console.error("Civil drawing generate error:", e);
     return res.status(500).json({ error: e?.message ?? String(e) });
@@ -101,7 +150,7 @@ router.post("/civil-drawing/generate", async (req, res) => {
 });
 
 // ─── Drawing Analysis (Vision) ────────────────────────────────────────────────
-const ANALYSIS_SYSTEM = `You are an expert civil/structural/MEP engineer and quantity surveyor with 20+ years experience analyzing engineering drawings.
+const ANALYSIS_SYSTEM = `You are an expert civil/structural/MEP engineer and quantity surveyor with 20+ years experience analyzing engineering drawings including ETP, STP, ZLD, and water treatment plant civil drawings.
 Analyze the provided engineering drawing image based on the user's instruction.
 Return ONLY a valid JSON object (no markdown, no extra text):
 {
