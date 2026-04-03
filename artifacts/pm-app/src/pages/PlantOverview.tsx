@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Layout } from "@/components/Layout";
-import { Activity, Wifi, WifiOff, Radio, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Activity, Radio, WifiOff, AlertTriangle } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -35,246 +35,211 @@ interface TagValue {
 
 type ValuesMap = Record<string, TagValue>;
 
-// System types and their display config
+// Systems shown in this order
 const SYSTEM_ORDER = [
-  "Biological",
-  "CTS",
-  "MBR",
-  "Main RO",
-  "RO",
-  "Reject RO",
-  "UF",
-  "DEC",
-  "SF",
-  "NF",
+  "Biological", "CTS", "MBR", "Main RO", "RO", "Reject RO", "UF", "DEC", "SF", "NF",
 ];
 
-const SYSTEM_STYLE: Record<string, { bg: string; border: string; header: string; badge: string; dot: string }> = {
-  "Biological": {
-    bg: "bg-emerald-950/40",
-    border: "border-emerald-700/40",
-    header: "bg-emerald-900/50 text-emerald-300",
-    badge: "bg-emerald-500/20 border-emerald-500/40 text-emerald-400",
-    dot: "bg-emerald-400",
-  },
-  "CTS": {
-    bg: "bg-sky-950/40",
-    border: "border-sky-700/40",
-    header: "bg-sky-900/50 text-sky-300",
-    badge: "bg-sky-500/20 border-sky-500/40 text-sky-400",
-    dot: "bg-sky-400",
-  },
-  "MBR": {
-    bg: "bg-violet-950/40",
-    border: "border-violet-700/40",
-    header: "bg-violet-900/50 text-violet-300",
-    badge: "bg-violet-500/20 border-violet-500/40 text-violet-400",
-    dot: "bg-violet-400",
-  },
-  "RO": {
-    bg: "bg-blue-950/40",
-    border: "border-blue-700/40",
-    header: "bg-blue-900/50 text-blue-300",
-    badge: "bg-blue-500/20 border-blue-500/40 text-blue-400",
-    dot: "bg-blue-400",
-  },
-  "Main RO": {
-    bg: "bg-blue-950/40",
-    border: "border-blue-700/40",
-    header: "bg-blue-900/50 text-blue-300",
-    badge: "bg-blue-500/20 border-blue-500/40 text-blue-400",
-    dot: "bg-blue-400",
-  },
-  "Reject RO": {
-    bg: "bg-orange-950/40",
-    border: "border-orange-700/40",
-    header: "bg-orange-900/50 text-orange-300",
-    badge: "bg-orange-500/20 border-orange-500/40 text-orange-400",
-    dot: "bg-orange-400",
-  },
-  "UF": {
-    bg: "bg-cyan-950/40",
-    border: "border-cyan-700/40",
-    header: "bg-cyan-900/50 text-cyan-300",
-    badge: "bg-cyan-500/20 border-cyan-500/40 text-cyan-400",
-    dot: "bg-cyan-400",
-  },
+const SYSTEM_COLORS: Record<string, { accent: string; headerBg: string; headerText: string; rowAlt: string; border: string }> = {
+  "Biological": { accent: "#10b981", headerBg: "#052e16", headerText: "#6ee7b7", rowAlt: "#0a1f13", border: "#166534" },
+  "CTS":        { accent: "#38bdf8", headerBg: "#082f49", headerText: "#7dd3fc", rowAlt: "#0c1e2e", border: "#0c4a6e" },
+  "MBR":        { accent: "#a78bfa", headerBg: "#2e1065", headerText: "#c4b5fd", rowAlt: "#1a0e38", border: "#4c1d95" },
+  "RO":         { accent: "#60a5fa", headerBg: "#1e3a5f", headerText: "#93c5fd", rowAlt: "#0f1f33", border: "#1e40af" },
+  "Main RO":    { accent: "#60a5fa", headerBg: "#1e3a5f", headerText: "#93c5fd", rowAlt: "#0f1f33", border: "#1e40af" },
+  "Reject RO":  { accent: "#fb923c", headerBg: "#431407", headerText: "#fdba74", rowAlt: "#1f0d04", border: "#9a3412" },
+  "UF":         { accent: "#22d3ee", headerBg: "#083344", headerText: "#67e8f9", rowAlt: "#071f28", border: "#0e7490" },
 };
 
-const DEFAULT_STYLE = {
-  bg: "bg-slate-900/40",
-  border: "border-slate-700/40",
-  header: "bg-slate-800/50 text-slate-300",
-  badge: "bg-slate-500/20 border-slate-500/40 text-slate-400",
-  dot: "bg-slate-400",
-};
+const DEFAULT_COLOR = { accent: "#94a3b8", headerBg: "#1e293b", headerText: "#cbd5e1", rowAlt: "#0f172a", border: "#334155" };
 
-function getStyle(system: string) {
-  return SYSTEM_STYLE[system] ?? DEFAULT_STYLE;
+function getColor(sys: string) {
+  return SYSTEM_COLORS[sys] ?? DEFAULT_COLOR;
 }
 
-function tagStatus(tag: TagDef, v: TagValue | undefined): TagValue["status"] {
-  return v?.status ?? "offline";
-}
-
-function StatusDot({ status }: { status: TagValue["status"] }) {
-  if (status === "good")    return <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />;
-  if (status === "alarm")   return <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 shrink-0 animate-pulse" />;
-  if (status === "offline") return <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-600 shrink-0" />;
-  return <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />;
-}
-
-// Collect all unique system names in order
 function getSystemNames(sites: SiteDef[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
-  // First add in preferred order
   for (const sys of SYSTEM_ORDER) {
-    for (const site of sites) {
-      for (const sec of site.sections) {
-        if ((sec.title ?? "") === sys && !seen.has(sys)) {
-          seen.add(sys);
-          result.push(sys);
-        }
-      }
-    }
+    for (const site of sites)
+      for (const sec of site.sections)
+        if ((sec.title ?? "") === sys && !seen.has(sys)) { seen.add(sys); result.push(sys); }
   }
-  // Then add any remaining
-  for (const site of sites) {
+  for (const site of sites)
     for (const sec of site.sections) {
       const t = sec.title ?? "(General)";
-      if (!seen.has(t)) {
-        seen.add(t);
-        result.push(t);
-      }
+      if (!seen.has(t)) { seen.add(t); result.push(t); }
     }
-  }
   return result;
 }
 
-// For a given system name, return [{site, section}] pairs
-function getSitesBySystem(systemName: string, sites: SiteDef[]): { site: SiteDef; section: SectionDef }[] {
+function getSitesBySystem(sysName: string, sites: SiteDef[]): { site: SiteDef; section: SectionDef }[] {
   const result: { site: SiteDef; section: SectionDef }[] = [];
-  for (const site of sites) {
-    for (const sec of site.sections) {
-      if ((sec.title ?? "(General)") === systemName) {
+  for (const site of sites)
+    for (const sec of site.sections)
+      if ((sec.title ?? "(General)") === sysName)
         result.push({ site, section: sec });
-      }
-    }
-  }
   return result;
 }
 
-function SiteColumn({
-  site,
-  section,
-  values,
-}: {
-  site: SiteDef;
-  section: SectionDef;
-  values: ValuesMap;
-}) {
-  const hasAlarm = section.tags.some(t => values[t.id]?.status === "alarm");
-  const hasData = section.tags.some(t => values[t.id] && values[t.id].status !== "offline");
-
-  return (
-    <div
-      className={[
-        "min-w-[140px] max-w-[180px] flex-1 rounded-lg border",
-        hasAlarm ? "border-red-500/50 bg-red-950/20" : "border-slate-700/40 bg-slate-800/30",
-      ].join(" ")}
-    >
-      {/* Site name */}
-      <div className={[
-        "px-2 py-1.5 border-b text-[10px] font-bold tracking-wider truncate flex items-center gap-1.5",
-        hasAlarm ? "border-red-700/40 text-red-300" : "border-slate-700/40 text-slate-300",
-      ].join(" ")}>
-        {hasAlarm ? (
-          <AlertTriangle className="w-2.5 h-2.5 text-red-400 shrink-0" />
-        ) : hasData ? (
-          <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400 shrink-0" />
-        ) : (
-          <span className="w-2.5 h-2.5 rounded-full bg-slate-600 shrink-0 inline-block" />
-        )}
-        <span className="truncate">{site.name}</span>
-      </div>
-
-      {/* Tags */}
-      <div className="p-2 flex flex-col gap-1">
-        {section.tags.map(tag => {
-          const v = values[tag.id];
-          const val = v?.value;
-          const status = tagStatus(tag, v);
-          const displayVal = val !== null && val !== undefined
-            ? val.toFixed(tag.decimals ?? 1)
-            : "—";
-          return (
-            <div key={tag.id} className="flex items-center justify-between gap-1 min-w-0">
-              <div className="flex items-center gap-1 min-w-0 shrink">
-                <StatusDot status={status} />
-                <span className="text-[9px] text-slate-500 truncate">{tag.label}</span>
-              </div>
-              <span className={[
-                "text-[10px] font-mono font-bold shrink-0",
-                status === "alarm"   ? "text-red-300" :
-                status === "good"    ? "text-emerald-300" :
-                status === "offline" ? "text-slate-600" :
-                                       "text-slate-200",
-              ].join(" ")}>
-                {displayVal}
-                {tag.unit && val !== null && val !== undefined
-                  ? <span className="text-[8px] text-slate-500 ml-0.5">{tag.unit}</span>
-                  : null}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+// Collect all unique parameter labels across all sections of a system
+function getSystemTags(entries: { site: SiteDef; section: SectionDef }[]): TagDef[] {
+  const seen = new Set<string>();
+  const tags: TagDef[] = [];
+  for (const { section } of entries)
+    for (const tag of section.tags)
+      if (!seen.has(tag.label)) { seen.add(tag.label); tags.push(tag); }
+  return tags;
 }
 
-function SystemRow({
-  systemName,
+// Find the tag in a section matching a label
+function findTag(section: SectionDef, label: string): TagDef | undefined {
+  return section.tags.find(t => t.label === label);
+}
+
+function valueColor(status: TagValue["status"] | undefined) {
+  if (status === "alarm")   return "#f87171";
+  if (status === "good")    return "#34d399";
+  if (status === "offline") return "#374151";
+  return "#e2e8f0";
+}
+
+function statusDotColor(status: TagValue["status"] | undefined) {
+  if (status === "alarm")   return "#ef4444";
+  if (status === "good")    return "#10b981";
+  if (status === "offline") return "#374151";
+  return "#f59e0b";
+}
+
+function SystemTable({
+  sysName,
   entries,
   values,
 }: {
-  systemName: string;
+  sysName: string;
   entries: { site: SiteDef; section: SectionDef }[];
   values: ValuesMap;
 }) {
-  const style = getStyle(systemName);
-  const alarmCount = entries.filter(({ section }) =>
+  const col = getColor(sysName);
+  const tags = getSystemTags(entries);
+  const alarmSites = entries.filter(({ section }) =>
     section.tags.some(t => values[t.id]?.status === "alarm")
   ).length;
 
   return (
-    <div className={`rounded-xl border ${style.border} overflow-hidden`}>
+    <div style={{ border: `1px solid ${col.border}`, borderRadius: 10, overflow: "hidden", marginBottom: 12 }}>
       {/* System header */}
-      <div className={`flex items-center gap-2 px-4 py-2 ${style.header}`}>
-        <span className={`w-2 h-2 rounded-full shrink-0 ${style.dot}`} />
-        <span className="text-xs font-black uppercase tracking-widest">{systemName}</span>
-        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${style.badge}`}>
+      <div style={{ background: col.headerBg, padding: "8px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ width: 10, height: 10, borderRadius: "50%", background: col.accent, display: "inline-block", flexShrink: 0 }} />
+        <span style={{ color: col.headerText, fontWeight: 900, fontSize: 13, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+          {sysName}
+        </span>
+        <span style={{ color: col.accent, fontSize: 10, fontWeight: 700, opacity: 0.8 }}>
           {entries.length} site{entries.length !== 1 ? "s" : ""}
         </span>
-        {alarmCount > 0 && (
-          <span className="ml-auto text-[9px] font-bold text-red-400 flex items-center gap-1">
-            <AlertTriangle className="w-2.5 h-2.5" />
-            {alarmCount} alarm
+        {alarmSites > 0 && (
+          <span style={{ marginLeft: "auto", color: "#f87171", fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+            ⚠ {alarmSites} alarm
           </span>
         )}
       </div>
 
-      {/* Site columns */}
-      <div className={`flex gap-2 p-2 overflow-x-auto ${style.bg}`}>
-        {entries.map(({ site, section }) => (
-          <SiteColumn
-            key={`${site.id}-${section.title}`}
-            site={site}
-            section={section}
-            values={values}
-          />
-        ))}
+      {/* Table */}
+      <div style={{ overflowX: "auto", background: "#0d1117" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <thead>
+            <tr>
+              {/* Parameter column header */}
+              <th style={{
+                textAlign: "left", padding: "7px 12px",
+                color: "#64748b", fontWeight: 700, fontSize: 10,
+                textTransform: "uppercase", letterSpacing: "0.05em",
+                borderBottom: `1px solid ${col.border}`,
+                background: "#0d1117",
+                minWidth: 130, width: 140,
+              }}>
+                Parameter
+              </th>
+              {entries.map(({ site }) => {
+                const hasAlarm = entries.find(e => e.site.id === site.id)?.section.tags.some(
+                  t => values[t.id]?.status === "alarm"
+                );
+                return (
+                  <th key={site.id} style={{
+                    textAlign: "center", padding: "7px 10px",
+                    color: hasAlarm ? "#f87171" : col.headerText,
+                    fontWeight: 800, fontSize: 11,
+                    borderBottom: `1px solid ${col.border}`,
+                    borderLeft: `1px solid ${col.border}`,
+                    background: hasAlarm ? "#1f0505" : col.headerBg,
+                    whiteSpace: "nowrap",
+                    minWidth: 110,
+                  }}>
+                    {hasAlarm && <span style={{ marginRight: 4 }}>⚠</span>}
+                    {site.name}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {tags.map((tag, i) => (
+              <tr key={tag.id} style={{ background: i % 2 === 1 ? col.rowAlt : "transparent" }}>
+                {/* Parameter label */}
+                <td style={{
+                  padding: "6px 12px",
+                  color: "#94a3b8",
+                  fontWeight: 600,
+                  fontSize: 11,
+                  borderBottom: `1px solid ${col.border}22`,
+                  whiteSpace: "nowrap",
+                }}>
+                  {tag.label}
+                  {tag.unit && <span style={{ color: "#475569", marginLeft: 3, fontSize: 9 }}>({tag.unit})</span>}
+                </td>
+                {/* Values per site */}
+                {entries.map(({ site, section }) => {
+                  const matchTag = findTag(section, tag.label);
+                  const v = matchTag ? values[matchTag.id] : undefined;
+                  const val = v?.value;
+                  const status = v?.status;
+                  const displayVal = val !== null && val !== undefined
+                    ? val.toFixed(matchTag?.decimals ?? 1)
+                    : "—";
+
+                  return (
+                    <td key={site.id} style={{
+                      padding: "6px 10px",
+                      textAlign: "center",
+                      borderBottom: `1px solid ${col.border}22`,
+                      borderLeft: `1px solid ${col.border}33`,
+                      background: status === "alarm" ? "#2d0808" : undefined,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                        <span style={{
+                          width: 6, height: 6, borderRadius: "50%",
+                          background: statusDotColor(status),
+                          display: "inline-block", flexShrink: 0,
+                          animation: status === "alarm" ? "pulse 1s infinite" : undefined,
+                        }} />
+                        <span style={{
+                          color: valueColor(status),
+                          fontWeight: 700,
+                          fontFamily: "monospace",
+                          fontSize: 13,
+                        }}>
+                          {displayVal}
+                          {matchTag?.unit && val !== null && val !== undefined
+                            ? <span style={{ color: "#475569", fontSize: 9, marginLeft: 2 }}>{matchTag.unit}</span>
+                            : null}
+                        </span>
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -287,7 +252,6 @@ export default function PlantOverview() {
   const [isSimulated, setIsSimulated] = useState(true);
   const [pushCount, setPushCount] = useState(0);
   const [secAgo, setSecAgo] = useState(0);
-  const [flash, setFlash] = useState(false);
   const lastPushAt = useRef<number>(Date.now());
 
   useEffect(() => {
@@ -299,7 +263,6 @@ export default function PlantOverview() {
 
   useEffect(() => {
     const es = new EventSource(`${BASE}/api/site-data/stream`);
-
     es.addEventListener("values", (e) => {
       try {
         const data = JSON.parse(e.data);
@@ -308,14 +271,10 @@ export default function PlantOverview() {
         setPushCount(c => c + 1);
         lastPushAt.current = Date.now();
         setSecAgo(0);
-        setFlash(true);
-        setTimeout(() => setFlash(false), 300);
       } catch {}
     });
-
     es.onopen = () => setConnected(true);
     es.onerror = () => setConnected(false);
-
     return () => { es.close(); };
   }, []);
 
@@ -327,54 +286,48 @@ export default function PlantOverview() {
   }, []);
 
   const systemNames = getSystemNames(sites);
-  const totalAlarms = sites.reduce((acc, site) =>
-    acc + site.sections.reduce((a, sec) =>
-      a + sec.tags.filter(t => values[t.id]?.status === "alarm").length, 0), 0);
+
+  const totalAlarms = Object.values(values).filter(v => v.status === "alarm").length;
 
   return (
     <Layout>
-      <div className="flex flex-col h-full min-h-0">
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: "#0d1117" }}>
         {/* Header */}
-        <div className="border-b border-slate-800 px-5 py-3 shrink-0">
-          <div className="flex items-center gap-3 flex-wrap justify-between">
-            <div className="flex items-center gap-2">
-              <Activity className="w-4 h-4 text-cyan-400" />
-              <span className="text-sm font-black text-white tracking-wide">System Overview</span>
-              {isSimulated && (
-                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-400 uppercase tracking-widest">
-                  Simulated
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-3 text-xs">
-              {connected ? (
-                <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-              ) : (
-                <WifiOff className="w-3.5 h-3.5 text-slate-500" />
-              )}
-              <span className={connected ? "text-cyan-400 font-semibold" : "text-slate-500"}>
-                {connected ? "LIVE" : "Connecting…"}
+        <div style={{ borderBottom: "1px solid #1e293b", padding: "10px 16px", display: "flex", alignItems: "center", gap: 14, flexShrink: 0, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Activity style={{ width: 16, height: 16, color: "#22d3ee" }} />
+            <span style={{ color: "#f1f5f9", fontWeight: 900, fontSize: 14, letterSpacing: "0.05em" }}>SYSTEM OVERVIEW</span>
+            {isSimulated && (
+              <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 99, background: "#78350f33", border: "1px solid #92400e88", color: "#fbbf24", letterSpacing: "0.06em" }}>
+                SIMULATED
               </span>
-              <span className="text-slate-600">·</span>
-              <span className="text-slate-400">#{pushCount}</span>
-              <span className="text-slate-600">·</span>
-              <span className="text-slate-400">{secAgo}s ago</span>
-              {totalAlarms > 0 && (
-                <>
-                  <span className="text-slate-600">·</span>
-                  <span className="text-red-400 font-bold flex items-center gap-1">
-                    <AlertTriangle className="w-3 h-3" /> {totalAlarms} alarms
-                  </span>
-                </>
-              )}
-            </div>
+            )}
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 11, marginLeft: "auto" }}>
+            {connected
+              ? <Radio style={{ width: 13, height: 13, color: "#22d3ee" }} />
+              : <WifiOff style={{ width: 13, height: 13, color: "#475569" }} />}
+            <span style={{ color: connected ? "#22d3ee" : "#475569", fontWeight: 700 }}>
+              {connected ? "LIVE" : "Connecting…"}
+            </span>
+            <span style={{ color: "#334155" }}>·</span>
+            <span style={{ color: "#64748b" }}>#{pushCount} · {secAgo}s ago</span>
+            {totalAlarms > 0 && (
+              <>
+                <span style={{ color: "#334155" }}>·</span>
+                <span style={{ color: "#f87171", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+                  <AlertTriangle style={{ width: 12, height: 12 }} /> {totalAlarms} alarms
+                </span>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Systems */}
-        <div className={`flex-1 overflow-y-auto p-3 flex flex-col gap-3 transition-colors duration-200 ${flash ? "bg-cyan-950/10" : ""}`}>
+        {/* Tables */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px" }}>
           {sites.length === 0 ? (
-            <div className="flex items-center justify-center h-48 text-slate-500 text-sm">
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200, color: "#475569", fontSize: 13 }}>
               Loading site configuration…
             </div>
           ) : (
@@ -382,9 +335,9 @@ export default function PlantOverview() {
               const entries = getSitesBySystem(sysName, sites);
               if (entries.length === 0) return null;
               return (
-                <SystemRow
+                <SystemTable
                   key={sysName}
-                  systemName={sysName}
+                  sysName={sysName}
                   entries={entries}
                   values={values}
                 />
