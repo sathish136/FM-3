@@ -3859,6 +3859,300 @@ function SelectFilter({
   );
 }
 
+// ── Tree Sidebar ──────────────────────────────────────────────────────────────
+interface TreeSystem { name: string; drawings: ProjectDrawing[]; }
+interface TreeDept { name: string; total: number; systems: TreeSystem[]; unsystemedDrawings: ProjectDrawing[]; }
+interface TreeProject { name: string; total: number; depts: TreeDept[]; }
+
+const DEPT_COLORS: Record<string, string> = {
+  Mechanical: "bg-orange-400",
+  Electrical: "bg-yellow-400",
+  Civil: "bg-stone-400",
+  Instrumentation: "bg-purple-400",
+  Process: "bg-cyan-400",
+  Project: "bg-blue-400",
+  Quality: "bg-emerald-400",
+  HSE: "bg-red-400",
+};
+
+function TreeSidebar({
+  permittedDrawings,
+  allProjectNames,
+  selectedProject,
+  deptFilter,
+  selectedSystem,
+  detailDrawingId,
+  onSelectAll,
+  onSelectProject,
+  onSelectDept,
+  onSelectSystem,
+  onSelectDrawing,
+  search,
+  onSearchChange,
+  onUpload,
+}: {
+  permittedDrawings: ProjectDrawing[];
+  allProjectNames: string[];
+  selectedProject: string | null;
+  deptFilter: string;
+  selectedSystem: string;
+  detailDrawingId: string | null;
+  onSelectAll: () => void;
+  onSelectProject: (p: string) => void;
+  onSelectDept: (p: string, dept: string) => void;
+  onSelectSystem: (p: string, dept: string, sys: string) => void;
+  onSelectDrawing: (id: string) => void;
+  search: string;
+  onSearchChange: (s: string) => void;
+  onUpload: () => void;
+}) {
+  const [expanded, setExpanded] = useState<Set<string>>(
+    () => new Set(selectedProject ? [`proj:${selectedProject}`] : [])
+  );
+
+  const toggle = (key: string) => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  const ensureOpen = (key: string) => {
+    setExpanded(prev => prev.has(key) ? prev : new Set([...prev, key]));
+  };
+
+  const treeData: TreeProject[] = allProjectNames.map(proj => {
+    const projDrawings = permittedDrawings.filter(d => d.project === proj);
+    if (projDrawings.length === 0) return null;
+    const depts = [...new Set(projDrawings.map(d => d.department).filter(Boolean))].sort();
+    return {
+      name: proj,
+      total: projDrawings.length,
+      depts: depts.map(dept => {
+        const deptDrawings = projDrawings.filter(d => d.department === dept);
+        const systems = [...new Set(deptDrawings.map(d => d.systemName).filter(Boolean))].sort();
+        return {
+          name: dept,
+          total: deptDrawings.length,
+          systems: systems.map(sys => ({
+            name: sys,
+            drawings: deptDrawings.filter(d => d.systemName === sys),
+          })),
+          unsystemedDrawings: deptDrawings.filter(d => !d.systemName),
+        };
+      }),
+    };
+  }).filter(Boolean) as TreeProject[];
+
+  const isAllActive = !selectedProject && !detailDrawingId;
+
+  return (
+    <div className="flex flex-col h-full bg-white border-r border-gray-200 w-60 flex-shrink-0">
+      {/* Header */}
+      <div className="px-3 pt-4 pb-3 border-b border-gray-200">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
+            <FolderOpen className="w-3.5 h-3.5 text-white" />
+          </div>
+          <h1 className="text-sm font-bold text-gray-900 leading-tight">Project Drawings</h1>
+        </div>
+        <div className="flex items-center gap-1.5 border border-gray-200 rounded-lg px-2 py-1.5 bg-gray-50">
+          <Search className="w-3 h-3 text-gray-400 flex-shrink-0" />
+          <input
+            value={search}
+            onChange={e => onSearchChange(e.target.value)}
+            placeholder="Search drawings…"
+            className="text-xs outline-none bg-transparent text-gray-700 flex-1 placeholder-gray-400 min-w-0"
+          />
+          {search && (
+            <button onClick={() => onSearchChange("")} className="text-gray-400 hover:text-gray-600">
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* All Drawings entry */}
+      <div className="px-2 pt-2 pb-1">
+        <button
+          onClick={onSelectAll}
+          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            isAllActive ? "bg-blue-50 text-blue-700 font-semibold" : "text-gray-600 hover:bg-gray-100"
+          }`}
+        >
+          <Layers className="w-3.5 h-3.5 flex-shrink-0" />
+          <span className="flex-1 text-left">All Projects</span>
+          <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full tabular-nums">{permittedDrawings.length}</span>
+        </button>
+      </div>
+
+      {/* Separator */}
+      <div className="mx-3 border-t border-gray-100 mb-1" />
+
+      {/* Tree scroll area */}
+      <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
+        {treeData.map(proj => {
+          const projKey = `proj:${proj.name}`;
+          const projExpanded = expanded.has(projKey);
+          const isActiveProj = selectedProject === proj.name && !deptFilter && selectedSystem === "All" && !detailDrawingId;
+
+          return (
+            <div key={proj.name}>
+              {/* Project row */}
+              <div className="flex items-center gap-0.5">
+                <button
+                  onClick={() => toggle(projKey)}
+                  className="p-0.5 text-gray-400 hover:text-gray-600 flex-shrink-0 rounded"
+                >
+                  <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-150 ${projExpanded ? "rotate-90" : ""}`} />
+                </button>
+                <button
+                  onClick={() => { onSelectProject(proj.name); ensureOpen(projKey); }}
+                  className={`flex-1 flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold transition-colors min-w-0 ${
+                    isActiveProj ? "bg-blue-50 text-blue-700" : "text-gray-800 hover:bg-gray-100"
+                  }`}
+                >
+                  <Briefcase className="w-3 h-3 flex-shrink-0 text-blue-500" />
+                  <span className="flex-1 text-left truncate">{proj.name}</span>
+                  <span className="text-[10px] text-gray-400 tabular-nums flex-shrink-0">{proj.total}</span>
+                </button>
+              </div>
+
+              {/* Dept children */}
+              {projExpanded && (
+                <div className="ml-4 space-y-0.5 mt-0.5">
+                  {proj.depts.map(dept => {
+                    const deptKey = `dept:${proj.name}:${dept.name}`;
+                    const deptExpanded = expanded.has(deptKey);
+                    const dotColor = DEPT_COLORS[dept.name] || "bg-gray-400";
+                    const isActiveDept = selectedProject === proj.name && deptFilter === dept.name && selectedSystem === "All" && !detailDrawingId;
+
+                    return (
+                      <div key={dept.name}>
+                        <div className="flex items-center gap-0.5">
+                          {dept.systems.length > 0 ? (
+                            <button onClick={() => toggle(deptKey)} className="p-0.5 text-gray-400 hover:text-gray-600 flex-shrink-0 rounded">
+                              <ChevronRight className={`w-3 h-3 transition-transform duration-150 ${deptExpanded ? "rotate-90" : ""}`} />
+                            </button>
+                          ) : (
+                            <span className="w-4 flex-shrink-0" />
+                          )}
+                          <button
+                            onClick={() => { onSelectDept(proj.name, dept.name); if (dept.systems.length > 0) ensureOpen(deptKey); }}
+                            className={`flex-1 flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] font-medium transition-colors min-w-0 ${
+                              isActiveDept ? "bg-blue-50 text-blue-700" : "text-gray-700 hover:bg-gray-100"
+                            }`}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColor}`} />
+                            <span className="flex-1 text-left truncate">{dept.name}</span>
+                            <span className="text-[10px] text-gray-400 tabular-nums flex-shrink-0">{dept.total}</span>
+                          </button>
+                        </div>
+
+                        {/* System children */}
+                        {deptExpanded && (
+                          <div className="ml-4 space-y-0.5 mt-0.5">
+                            {dept.systems.map(sys => {
+                              const sysKey = `sys:${proj.name}:${dept.name}:${sys.name}`;
+                              const sysExpanded = expanded.has(sysKey);
+                              const isActiveSys = selectedProject === proj.name && deptFilter === dept.name && selectedSystem === sys.name && !detailDrawingId;
+
+                              return (
+                                <div key={sys.name}>
+                                  <div className="flex items-center gap-0.5">
+                                    {sys.drawings.length > 0 ? (
+                                      <button onClick={() => toggle(sysKey)} className="p-0.5 text-gray-400 hover:text-gray-600 flex-shrink-0 rounded">
+                                        <ChevronRight className={`w-3 h-3 transition-transform duration-150 ${sysExpanded ? "rotate-90" : ""}`} />
+                                      </button>
+                                    ) : (
+                                      <span className="w-4 flex-shrink-0" />
+                                    )}
+                                    <button
+                                      onClick={() => { onSelectSystem(proj.name, dept.name, sys.name); ensureOpen(sysKey); }}
+                                      className={`flex-1 flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] font-medium transition-colors min-w-0 ${
+                                        isActiveSys ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-100"
+                                      }`}
+                                    >
+                                      <Tag className="w-2.5 h-2.5 flex-shrink-0 text-gray-400" />
+                                      <span className="flex-1 text-left truncate">{sys.name}</span>
+                                      <span className="text-[10px] text-gray-400 tabular-nums flex-shrink-0">{sys.drawings.length}</span>
+                                    </button>
+                                  </div>
+
+                                  {/* Drawing leaves */}
+                                  {sysExpanded && (
+                                    <div className="ml-4 space-y-0.5 mt-0.5">
+                                      {sys.drawings.map(d => (
+                                        <button
+                                          key={d.id}
+                                          onClick={() => onSelectDrawing(d.id)}
+                                          className={`w-full flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] transition-colors min-w-0 ${
+                                            detailDrawingId === d.id ? "bg-blue-50 text-blue-700 font-semibold" : "text-gray-500 hover:bg-gray-100"
+                                          }`}
+                                        >
+                                          <FileText className="w-2.5 h-2.5 flex-shrink-0 opacity-60" />
+                                          <span className="flex-1 text-left truncate font-mono text-[10px]">{d.drawingNo}</span>
+                                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                                            d.status === "final" ? "bg-emerald-500" :
+                                            d.status === "revision" ? "bg-blue-500" : "bg-amber-400"
+                                          }`} />
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            {/* Drawings not assigned to any system */}
+                            {dept.unsystemedDrawings.map(d => (
+                              <button
+                                key={d.id}
+                                onClick={() => onSelectDrawing(d.id)}
+                                className={`w-full flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] transition-colors min-w-0 ${
+                                  detailDrawingId === d.id ? "bg-blue-50 text-blue-700 font-semibold" : "text-gray-500 hover:bg-gray-100"
+                                }`}
+                              >
+                                <FileText className="w-2.5 h-2.5 flex-shrink-0 opacity-60" />
+                                <span className="flex-1 text-left truncate font-mono text-[10px]">{d.drawingNo}</span>
+                                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                                  d.status === "final" ? "bg-emerald-500" :
+                                  d.status === "revision" ? "bg-blue-500" : "bg-amber-400"
+                                }`} />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {treeData.length === 0 && !search && (
+          <div className="text-center py-8 text-xs text-gray-400">
+            <FolderOpen className="w-8 h-8 mx-auto mb-2 opacity-30" />
+            <p>No drawings yet</p>
+          </div>
+        )}
+      </div>
+
+      {/* Upload button */}
+      <div className="px-3 py-3 border-t border-gray-200">
+        <button
+          onClick={onUpload}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
+        >
+          <Plus className="w-3.5 h-3.5" /> Upload Drawing
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function ProjectDrawings() {
   const { user } = useAuth();
   const [drawings, setDrawings] = useState<ProjectDrawing[]>([]);
@@ -4346,355 +4640,258 @@ export default function ProjectDrawings() {
 
   return (
     <Layout>
-      {detailDrawing ? (
-        <DrawingDetailPage
-          drawing={detailDrawing}
-          fileData={fileDataCache[detailDrawing.id] || ""}
-          onBack={() => setDetailDrawingId(null)}
-          onCheck={(remarks) => handleCheck(detailDrawing, remarks)}
-          onApprove={() => handleApprove(detailDrawing)}
-          onRevisionUpload={() => setModal({ type: "revision", drawing: detailDrawing })}
-          onMarkFinal={() => setModal({ type: "final", drawing: detailDrawing })}
-          onDelete={() => { setDetailDrawingId(null); setModal({ type: "delete", drawing: detailDrawing }); }}
-          onAnalysisSaved={(id, analysis) => {
-            setDrawings(prev => prev.map(d => d.id === id ? { ...d, aiAnalysis: analysis } : d));
-          }}
-          currentUserName={user?.full_name || ""}
+      <div className="flex h-full overflow-hidden">
+        {/* Left: Tree sidebar */}
+        <TreeSidebar
+          permittedDrawings={permittedDrawings}
+          allProjectNames={allProjectNames}
+          selectedProject={selectedProject}
+          deptFilter={deptFilter}
+          selectedSystem={selectedSystem}
+          detailDrawingId={detailDrawingId}
+          onSelectAll={() => { setSelectedProject(null); setDeptFilter(""); setSelectedSystem("All"); setStatusFilter("all"); setSearch(""); setDetailDrawingId(null); }}
+          onSelectProject={(p) => { setSelectedProject(p); setDeptFilter(""); setSelectedSystem("All"); setStatusFilter("all"); setSearch(""); setDetailDrawingId(null); }}
+          onSelectDept={(p, dept) => { setSelectedProject(p); setDeptFilter(dept); setSelectedSystem("All"); setStatusFilter("all"); setSearch(""); setDetailDrawingId(null); }}
+          onSelectSystem={(p, dept, sys) => { setSelectedProject(p); setDeptFilter(dept); setSelectedSystem(sys); setStatusFilter("all"); setSearch(""); setDetailDrawingId(null); }}
+          onSelectDrawing={(id) => { setDetailDrawingId(id); }}
+          search={search}
+          onSearchChange={setSearch}
+          onUpload={() => setModal({ type: "upload" })}
         />
-      ) : selectedProject ? (
-      <div className="flex flex-col h-full">
-        {/* Project detail header */}
-        <div className="flex-shrink-0 px-6 pt-5 pb-4 border-b border-gray-200 bg-white">
-          <div className="flex items-center justify-between gap-4 mb-3">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => { setSelectedProject(null); setSelectedSystem("All"); setSearch(""); setStatusFilter("all"); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 border border-gray-200 transition-all"
-              >
-                <ChevronLeft className="w-4 h-4" /> Projects
-              </button>
-              <div className="h-5 w-px bg-gray-300" />
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center">
-                  <Briefcase className="w-3.5 h-3.5 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-base font-bold text-gray-900 leading-tight">{selectedProject}</h1>
-                  <p className="text-[11px] text-gray-400">{selectedProjectCounts.all} drawing{selectedProjectCounts.all !== 1 ? "s" : ""}</p>
-                </div>
-              </div>
-            </div>
-            <button
-              onClick={() => setModal({ type: "upload" })}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors flex-shrink-0 shadow-sm"
-            >
-              <Plus className="w-4 h-4" /> Upload Drawing
-            </button>
-          </div>
-          {/* System tabs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 mb-3" style={{ scrollbarWidth: "none" }}>
-            {projectSystems.map(sys => (
-              <button
-                key={sys}
-                onClick={() => setSelectedSystem(sys)}
-                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
-                  selectedSystem === sys
-                    ? "bg-blue-600 text-white border-blue-600"
-                    : "bg-white text-gray-600 border-gray-300 hover:border-blue-400 hover:text-blue-600"
-                }`}
-              >
-                {sys === "All" ? <Layers className="w-3 h-3" /> : <Tag className="w-3 h-3" />}
-                {sys}
-                {sys === "All" && (
-                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${selectedSystem === sys ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"}`}>
-                    {selectedProjectCounts.all}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-          {/* Status filter + search */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {([
-              { key: "all", label: "All" },
-              { key: "draft", label: "Draft" },
-              { key: "revision", label: "Revision" },
-              { key: "final", label: "Final Copy" },
-            ] as { key: DrawingStatus | "all"; label: string }[]).map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => setStatusFilter(key)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
-                  statusFilter === key
-                    ? "bg-blue-600 text-white border-blue-600"
-                    : "bg-white text-gray-600 border-gray-300 hover:border-blue-400 hover:text-blue-600"
-                }`}
-              >
-                {label}
-                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${statusFilter === key ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"}`}>
-                  {key === "all" ? filtered.length : filtered.filter(d => d.status === key).length}
-                </span>
-              </button>
-            ))}
-            <div className="ml-auto flex items-center gap-2 border border-gray-300 rounded-lg px-3 py-1.5 bg-white">
-              <Eye className="w-3.5 h-3.5 text-gray-400" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search drawings…"
-                className="text-sm outline-none text-gray-700 w-40 placeholder-gray-400"
-              />
-              {search && (
-                <button onClick={() => setSearch("")} className="text-gray-400 hover:text-gray-600">
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-        {/* Drawing list */}
-        <div className="flex-1 overflow-auto p-6">
-          {drawingsLoading ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-4 py-20">
-              <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center animate-pulse">
-                <FolderOpen className="w-8 h-8 text-gray-300" />
-              </div>
-              <p className="text-sm text-gray-400">Loading drawings…</p>
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-4 py-20">
-              <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center">
-                <FolderOpen className="w-8 h-8 text-gray-300" />
-              </div>
-              <div className="text-center">
-                <p className="text-base font-medium text-gray-600 mb-1">No drawings found</p>
-                <p className="text-sm text-gray-400">
-                  {projectDrawingsAll.length === 0 ? "Upload the first drawing for this project" : "Try adjusting filters or search"}
-                </p>
-              </div>
-              {projectDrawingsAll.length === 0 && (
-                <button onClick={() => setModal({ type: "upload" })} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors">
-                  <Upload className="w-4 h-4" /> Upload First Drawing
-                </button>
-              )}
-            </div>
+
+        {/* Right: Main content */}
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+          {detailDrawing ? (
+            <DrawingDetailPage
+              drawing={detailDrawing}
+              fileData={fileDataCache[detailDrawing.id] || ""}
+              onBack={() => setDetailDrawingId(null)}
+              onCheck={(remarks) => handleCheck(detailDrawing, remarks)}
+              onApprove={() => handleApprove(detailDrawing)}
+              onRevisionUpload={() => setModal({ type: "revision", drawing: detailDrawing })}
+              onMarkFinal={() => setModal({ type: "final", drawing: detailDrawing })}
+              onDelete={() => { setDetailDrawingId(null); setModal({ type: "delete", drawing: detailDrawing }); }}
+              onAnalysisSaved={(id, analysis) => {
+                setDrawings(prev => prev.map(d => d.id === id ? { ...d, aiAnalysis: analysis } : d));
+              }}
+              currentUserName={user?.full_name || ""}
+            />
           ) : (
-            <div className="grid gap-2.5">
-              <div className="hidden md:grid grid-cols-[32px_2.5fr_2fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 px-4 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-200">
-                <span>S.No</span>
-                <span>Drawing No. / Title</span>
-                <span>System</span>
-                <span>Department</span>
-                <span>Status</span>
-                <span>Revisions</span>
-                <span>Date</span>
-                <span />
+          <div className="flex flex-col h-full">
+            {/* Header: breadcrumb + filters */}
+            <div className="flex-shrink-0 px-5 pt-4 pb-3 border-b border-gray-200 bg-white">
+              {/* Breadcrumb */}
+              <div className="flex items-center gap-1 text-xs mb-3 flex-wrap">
+                <button onClick={() => { setSelectedProject(null); setDeptFilter(""); setSelectedSystem("All"); setStatusFilter("all"); setSearch(""); setDetailDrawingId(null); }} className="text-blue-600 hover:underline font-medium">
+                  All Projects
+                </button>
+                {selectedProject && (
+                  <>
+                    <ChevronRight className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                    <button onClick={() => { setDeptFilter(""); setSelectedSystem("All"); setStatusFilter("all"); }} className={`hover:text-blue-600 transition-colors ${!deptFilter ? "text-gray-900 font-semibold" : "text-gray-500"}`}>
+                      {selectedProject}
+                    </button>
+                  </>
+                )}
+                {deptFilter && (
+                  <>
+                    <ChevronRight className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                    <button onClick={() => { setSelectedSystem("All"); setStatusFilter("all"); }} className={`hover:text-blue-600 transition-colors ${selectedSystem === "All" ? "text-gray-900 font-semibold" : "text-gray-500"}`}>
+                      {deptFilter}
+                    </button>
+                  </>
+                )}
+                {selectedSystem !== "All" && (
+                  <>
+                    <ChevronRight className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                    <span className="text-gray-900 font-semibold">{selectedSystem}</span>
+                  </>
+                )}
               </div>
-              {filtered.map((drawing, idx) => (
-                <div
-                  key={drawing.id}
-                  onClick={() => setDetailDrawingId(drawing.id)}
-                  className="bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-blue-400 hover:shadow-md transition-all group cursor-pointer"
-                >
-                  <div className="hidden md:grid grid-cols-[32px_2.5fr_2fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 items-center">
-                    <div className="text-xs font-semibold text-gray-400 tabular-nums">{idx + 1}</div>
-                    <div className="min-w-0" title={drawing.title || drawing.drawingNo}>
-                      <p className="font-mono text-sm font-semibold text-gray-900 truncate">{drawing.drawingNo}</p>
-                      {drawing.title && <p className="text-xs text-gray-500 truncate mt-0.5">{drawing.title}</p>}
+              {/* Status filter + search */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {([
+                  { key: "all", label: "All" },
+                  { key: "draft", label: "Draft" },
+                  { key: "revision", label: "Revision" },
+                  { key: "final", label: "Final Copy" },
+                ] as { key: DrawingStatus | "all"; label: string }[]).map(({ key, label }) => (
+                  <button
+                    key={key}
+                    onClick={() => setStatusFilter(key)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
+                      statusFilter === key
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "bg-white text-gray-600 border-gray-300 hover:border-blue-400 hover:text-blue-600"
+                    }`}
+                  >
+                    {label}
+                    <span className={`px-1 py-0.5 rounded-full text-[10px] font-bold ${statusFilter === key ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"}`}>
+                      {key === "all" ? filtered.length : filtered.filter(d => d.status === key).length}
+                    </span>
+                  </button>
+                ))}
+                <div className="ml-auto flex items-center gap-1.5 border border-gray-200 rounded-lg px-2.5 py-1.5 bg-gray-50">
+                  <Search className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search drawings…"
+                    className="text-xs outline-none bg-transparent text-gray-700 w-32 placeholder-gray-400"
+                  />
+                  {search && (
+                    <button onClick={() => setSearch("")} className="text-gray-400 hover:text-gray-600">
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Drawing list content */}
+            <div className="flex-1 overflow-auto p-4">
+              {drawingsLoading ? (
+                <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-4 py-20">
+                  <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center animate-pulse">
+                    <FolderOpen className="w-8 h-8 text-gray-300" />
+                  </div>
+                  <p className="text-sm text-gray-400">Loading drawings…</p>
+                </div>
+              ) : !selectedProject ? (
+                <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-6 py-16">
+                  <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center">
+                    <FolderOpen className="w-8 h-8 text-blue-300" />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-base font-semibold text-gray-700 mb-1">Select a project</p>
+                    <p className="text-sm text-gray-400">Choose a project from the tree on the left</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4 text-center w-full max-w-sm">
+                    <div className="bg-white border border-gray-200 rounded-xl p-4">
+                      <p className="text-2xl font-bold text-gray-900">{permittedDrawings.length}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Total Drawings</p>
                     </div>
-                    <div className="text-xs text-blue-700 font-medium truncate" title={drawing.systemName}>
-                      {drawing.systemName || <span className="text-gray-400 font-normal">—</span>}
+                    <div className="bg-white border border-gray-200 rounded-xl p-4">
+                      <p className="text-2xl font-bold text-emerald-600">{permittedDrawings.filter(d => d.status === "final").length}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Final Copies</p>
                     </div>
-                    <div className="text-xs text-gray-600 truncate" title={drawing.department}>
-                      {drawing.department || "—"}
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <StatusBadge status={drawing.status} label={drawing.revisionLabel} />
-                      <div className="flex items-center gap-1">
-                        {drawing.checkedBy && (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <UserCheck className="w-2.5 h-2.5" /> Checked
-                          </span>
-                        )}
-                        {drawing.approvedBy && (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                            <ThumbsUp className="w-2.5 h-2.5" /> Approved
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {drawing.history.length === 0 ? "—" : `${drawing.history.length} rev${drawing.history.length !== 1 ? "s" : ""}`}
-                    </div>
-                    <div className="text-xs text-gray-500">{formatDate(drawing.uploadedAt)}</div>
-                    <div className="flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); const i = filtered.findIndex(d => d.id === drawing.id); setViewerIdx(i); }}
-                        title="View PDF"
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      {(drawing.status === "final" || drawing.approvedBy) && (
-                        <button onClick={(e) => { e.stopPropagation(); setSendModal(drawing); }} title="Send Approval Notification" className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors">
-                          <Send className="w-4 h-4" />
-                        </button>
-                      )}
-                      {drawing.status !== "final" && (
-                        <button onClick={(e) => { e.stopPropagation(); setModal({ type: "revision", drawing }); }} title="Upload Revision" className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors">
-                          <RefreshCw className="w-4 h-4" />
-                        </button>
-                      )}
-                      {drawing.status !== "final" && (
-                        <button onClick={(e) => { e.stopPropagation(); setModal({ type: "final", drawing }); }} title="Mark as Final Copy" className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors">
-                          <CheckCircle2 className="w-4 h-4" />
-                        </button>
-                      )}
-                      <button onClick={(e) => { e.stopPropagation(); setModal({ type: "delete", drawing }); }} title="Delete" className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                    <div className="bg-white border border-gray-200 rounded-xl p-4">
+                      <p className="text-2xl font-bold text-blue-600">{allProjectNames.filter(n => permittedDrawings.some(d => d.project === n)).length}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Projects</p>
                     </div>
                   </div>
-                  {/* Mobile layout */}
-                  <div className="md:hidden">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="font-mono text-sm font-semibold text-gray-900">{drawing.drawingNo}</p>
-                        {drawing.title && <p className="text-sm text-gray-700 mt-0.5">{drawing.title}</p>}
-                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                </div>
+              ) : filtered.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-4 py-20">
+                  <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center">
+                    <FolderOpen className="w-8 h-8 text-gray-300" />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-base font-medium text-gray-600 mb-1">No drawings found</p>
+                    <p className="text-sm text-gray-400">Try adjusting filters or upload a new drawing</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid gap-2">
+                  <div className="hidden md:grid grid-cols-[32px_2.5fr_2fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 px-4 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-200">
+                    <span>S.No</span>
+                    <span>Drawing No. / Title</span>
+                    <span>System</span>
+                    <span>Department</span>
+                    <span>Status</span>
+                    <span>Revisions</span>
+                    <span>Date</span>
+                    <span />
+                  </div>
+                  {filtered.map((drawing, idx) => (
+                    <div
+                      key={drawing.id}
+                      onClick={() => setDetailDrawingId(drawing.id)}
+                      className="bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-blue-400 hover:shadow-md transition-all group cursor-pointer"
+                    >
+                      <div className="hidden md:grid grid-cols-[32px_2.5fr_2fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 items-center">
+                        <div className="text-xs font-semibold text-gray-400 tabular-nums">{idx + 1}</div>
+                        <div className="min-w-0" title={drawing.title || drawing.drawingNo}>
+                          <p className="font-mono text-sm font-semibold text-gray-900 truncate">{drawing.drawingNo}</p>
+                          {drawing.title && <p className="text-xs text-gray-500 truncate mt-0.5">{drawing.title}</p>}
+                        </div>
+                        <div className="text-xs text-blue-700 font-medium truncate" title={drawing.systemName}>
+                          {drawing.systemName || <span className="text-gray-400 font-normal">—</span>}
+                        </div>
+                        <div className="text-xs text-gray-600 truncate" title={drawing.department}>
+                          {drawing.department || "—"}
+                        </div>
+                        <div className="flex flex-col gap-1">
                           <StatusBadge status={drawing.status} label={drawing.revisionLabel} />
-                          {drawing.department && <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{drawing.department}</span>}
+                          <div className="flex items-center gap-1">
+                            {drawing.checkedBy && (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <UserCheck className="w-2.5 h-2.5" /> Checked
+                              </span>
+                            )}
+                            {drawing.approvedBy && (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                                <ThumbsUp className="w-2.5 h-2.5" /> Approved
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {drawing.history.length === 0 ? "—" : `${drawing.history.length} rev${drawing.history.length !== 1 ? "s" : ""}`}
+                        </div>
+                        <div className="text-xs text-gray-500">{formatDate(drawing.uploadedAt)}</div>
+                        <div className="flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); const i = filtered.findIndex(d => d.id === drawing.id); setViewerIdx(i); }}
+                            title="View PDF"
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          {(drawing.status === "final" || drawing.approvedBy) && (
+                            <button onClick={(e) => { e.stopPropagation(); setSendModal(drawing); }} title="Send Approval Notification" className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors">
+                              <Send className="w-4 h-4" />
+                            </button>
+                          )}
+                          {drawing.status !== "final" && (
+                            <button onClick={(e) => { e.stopPropagation(); setModal({ type: "revision", drawing }); }} title="Upload Revision" className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors">
+                              <RefreshCw className="w-4 h-4" />
+                            </button>
+                          )}
+                          {drawing.status !== "final" && (
+                            <button onClick={(e) => { e.stopPropagation(); setModal({ type: "final", drawing }); }} title="Mark as Final Copy" className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors">
+                              <CheckCircle2 className="w-4 h-4" />
+                            </button>
+                          )}
+                          <button onClick={(e) => { e.stopPropagation(); setModal({ type: "delete", drawing }); }} title="Delete" className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
-                      <span className="text-xs text-gray-400 flex-shrink-0">{formatDate(drawing.uploadedAt)}</span>
+                      {/* Mobile */}
+                      <div className="md:hidden">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="font-mono text-sm font-semibold text-gray-900">{drawing.drawingNo}</p>
+                            {drawing.title && <p className="text-sm text-gray-700 mt-0.5">{drawing.title}</p>}
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              <StatusBadge status={drawing.status} label={drawing.revisionLabel} />
+                              {drawing.department && <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{drawing.department}</span>}
+                            </div>
+                          </div>
+                          <span className="text-xs text-gray-400 flex-shrink-0">{formatDate(drawing.uploadedAt)}</span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-      ) : (
-      <div className="flex flex-col h-full">
-        {/* Project cards header */}
-        <div className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-gray-200 bg-white">
-          <div className="flex items-start justify-between gap-4 mb-4">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
-                  <FolderOpen className="w-4 h-4 text-white" />
-                </div>
-                <h1 className="text-xl font-bold text-gray-900">Project Drawings</h1>
-              </div>
-              <p className="text-sm text-gray-500">Select a project to view and manage its drawings</p>
-
-            </div>
-            <button
-              onClick={() => setModal({ type: "upload" })}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors flex-shrink-0 shadow-sm"
-            >
-              <Plus className="w-4 h-4" /> Upload Drawing
-            </button>
-          </div>
-          {/* Project search */}
-          <div className="flex items-center gap-2 border border-gray-300 rounded-xl px-3 py-2 bg-white">
-            <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
-            <input
-              value={projectSearch}
-              onChange={(e) => setProjectSearch(e.target.value)}
-              placeholder="Search projects…"
-              className="text-sm outline-none text-gray-700 flex-1 placeholder-gray-400"
-            />
-            {projectSearch && (
-              <button onClick={() => setProjectSearch("")} className="text-gray-400 hover:text-gray-600">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Project cards grid */}
-        <div className="flex-1 overflow-auto p-6">
-          {drawingsLoading ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-4 py-20">
-              <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center animate-pulse">
-                <FolderOpen className="w-8 h-8 text-gray-300" />
-              </div>
-              <p className="text-sm text-gray-400">Loading projects…</p>
-            </div>
-          ) : projectSummaries.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-4 py-20">
-              <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center">
-                <FolderOpen className="w-8 h-8 text-gray-300" />
-              </div>
-              <div className="text-center">
-                <p className="text-base font-medium text-gray-600 mb-1">No projects found</p>
-                <p className="text-sm text-gray-400">
-                  {allProjectNames.length === 0 ? "Upload your first drawing to get started" : "No projects match your search"}
-                </p>
-              </div>
-              {allProjectNames.length === 0 && (
-                <button onClick={() => setModal({ type: "upload" })} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors">
-                  <Upload className="w-4 h-4" /> Upload First Drawing
-                </button>
               )}
             </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {projectSummaries.map(proj => (
-                <div
-                  key={proj.name}
-                  onClick={() => { setSelectedProject(proj.name); setSelectedSystem("All"); setStatusFilter("all"); setSearch(""); }}
-                  className="bg-white border border-gray-200 rounded-2xl p-5 hover:border-blue-400 hover:shadow-lg transition-all cursor-pointer group"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                      <Briefcase className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-1 rounded-full">
-                      {proj.total} drawing{proj.total !== 1 ? "s" : ""}
-                    </span>
-                  </div>
-                  <h3 className="text-sm font-bold text-gray-900 mb-1 line-clamp-2 group-hover:text-blue-700 transition-colors">{proj.name}</h3>
-                  {proj.systems.length > 0 && (
-                    <p className="text-xs text-gray-500 mb-3 truncate">
-                      {proj.systems.slice(0, 3).join(" · ")}{proj.systems.length > 3 ? ` +${proj.systems.length - 3}` : ""}
-                    </p>
-                  )}
-                  <div className="flex items-center gap-2 flex-wrap mb-3">
-                    {proj.final > 0 && (
-                      <span className="flex items-center gap-1 text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">
-                        <CheckCircle2 className="w-2.5 h-2.5" /> {proj.final} Final
-                      </span>
-                    )}
-                    {proj.revision > 0 && (
-                      <span className="flex items-center gap-1 text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">
-                        <RefreshCw className="w-2.5 h-2.5" /> {proj.revision} Rev
-                      </span>
-                    )}
-                    {proj.draft > 0 && (
-                      <span className="flex items-center gap-1 text-[10px] font-semibold bg-gray-50 text-gray-600 border border-gray-200 px-2 py-0.5 rounded-full">
-                        <Clock className="w-2.5 h-2.5" /> {proj.draft} Draft
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex gap-1 flex-wrap">
-                      {proj.systems.slice(0, 2).map(sys => (
-                        <span key={sys} className="text-[10px] bg-blue-50 text-blue-700 border border-blue-100 px-1.5 py-0.5 rounded font-medium truncate max-w-[80px]">{sys}</span>
-                      ))}
-                      {proj.systems.length > 2 && <span className="text-[10px] text-gray-400 self-center">+{proj.systems.length - 2}</span>}
-                    </div>
-                    <span className="text-xs text-blue-600 font-semibold group-hover:underline flex-shrink-0">Open →</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+          </div>
           )}
         </div>
       </div>
-      )}
+
 
       {/* PDF Viewer (legacy eye-icon path) */}
       {viewerIdx !== null && filtered[viewerIdx] && (
