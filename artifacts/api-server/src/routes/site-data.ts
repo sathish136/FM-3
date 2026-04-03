@@ -491,4 +491,17 @@ router.get("/site-data/ads-tags", (_req, res) => {
   res.json({ tags });
 });
 
+// ── Kanchan RO Live Data Proxy ───────────────────────────────────────────────
+// Proxies the external PLC API so the browser avoids CORS / mixed-content issues
+router.get("/kanchan/ro-live", async (_req, res) => {
+  try {
+    const r = await fetch("http://api.wttint.com/api/all-values", { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return res.status(502).json({ error: `Upstream error ${r.status}` });
+    const data = await r.json();
+    return res.json(data);
+  } catch (err: any) {
+    return res.status(503).json({ error: err.message || "Upstream unreachable" });
+  }
+});
+
 export default router;

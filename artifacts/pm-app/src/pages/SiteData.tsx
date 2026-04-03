@@ -1,246 +1,453 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Layout } from "@/components/Layout";
-import { cn } from "@/lib/utils";
-import { Wifi, WifiOff, RefreshCw, Settings2, X, Clock, Activity } from "lucide-react";
+import {
+  Wifi, WifiOff, RefreshCw, Clock, Activity, Droplets,
+  Gauge, ThermometerSun, FlaskConical, BarChart3, Timer,
+  AlertTriangle, CheckCircle2, ChevronDown,
+} from "lucide-react";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "").replace(/\/pm-app$/, "");
 
-interface TagDef { id: string; label: string; unit?: string; adsTag: string; decimals?: number; }
-interface SectionDef { title?: string; columns?: number; tags: TagDef[]; }
-interface SiteDef { id: string; name: string; sections: SectionDef[]; }
-interface TagValueResult { value: number | null; timestamp: number; source: string; status: "normal" | "good" | "alarm" | "offline"; }
-interface ValuesResponse { values: Record<string, TagValueResult>; isSimulated: boolean; updatedAt: number; }
-
-const SYSTEMS = [
-  { key: "biological", label: "Biological" },
-  { key: "mbr",       label: "MBR"         },
-  { key: "ro",        label: "RO"          },
-  { key: "reject_ro", label: "Reject RO"   },
-] as const;
-type SystemKey = typeof SYSTEMS[number]["key"];
-
-function classifySection(sec: SectionDef): SystemKey {
-  const title = (sec.title ?? "").toUpperCase().trim();
-  if (title.includes("REJECT"))  return "reject_ro";
-  if (title === "MBR" || title.includes("MBR SKID") || title.includes("CTS")) return "mbr";
-  if (title.includes("MAIN RO") || (title.includes("RO") && !title.includes("REJECT"))) return "ro";
-  const combined = [...sec.tags.map(t => t.label.toLowerCase()), ...sec.tags.map(t => t.id)].join(" ");
-  if (combined.includes("bio") || combined.includes("blower") || combined.includes("ntflow") || combined.includes("nt flow") || combined.includes("srs")) return "biological";
-  if (combined.includes("mbr") || combined.includes("tmp")) return "mbr";
-  if (combined.includes("feed") || combined.includes("recov") || combined.includes("setph") || combined.includes("liveph")) return "ro";
-  return "biological";
+interface RoData {
+  ro_1st_reco: number; ro_1st_stg_dp: number; ro_1st_stg_fm: number;
+  ro_1st_stg_in: number; ro_1st_stg_out: number;
+  ro_2nd_reco: number; ro_2nd_stg_dp: number; ro_2nd_stg_fm: number;
+  ro_2nd_stg_in: number; ro_2nd_stg_out: number;
+  ro_3rd_reco: number; ro_3rd_stg_dp: number; ro_3rd_stg_fm: number;
+  ro_3rd_stg_in: number; ro_3rd_stg_out: number;
+  ro_4th_reco: number; ro_4th_stg_dp: number; ro_4th_stg_fm: number;
+  ro_4th_stg_in: number; ro_4th_stg_out: number;
+  ro_feed: number; ro_feed_lt: number; ro_feed_ph: number;
+  ro_feed_tot_fm: number; ro_reco: number; ro_running_time: string;
+  ro_stg1_tot_fm: number; ro_stg2_tot_fm: number;
+  ro_stg3_tot_fm: number; ro_stg4_tot_fm: number;
+  timestamp: string;
+}
+interface ApiResponse {
+  data: RoData;
+  last_update: string;
+  status: string;
+  timing: { api_response_time_ms: number; data_age_seconds: number; plc_read_time_ms: number };
 }
 
-function siteSystemMap(site: SiteDef): Record<SystemKey, TagDef[]> {
-  const map: Record<SystemKey, TagDef[]> = { biological: [], mbr: [], ro: [], reject_ro: [] };
-  for (const sec of site.sections) map[classifySection(sec)].push(...sec.tags);
-  return map;
+function statusColor(v: number, good: [number, number], warn: [number, number]) {
+  if (v >= good[0] && v <= good[1]) return "text-emerald-600";
+  if (v >= warn[0] && v <= warn[1]) return "text-amber-500";
+  return "text-red-500";
+}
+function statusBg(v: number, good: [number, number], warn: [number, number]) {
+  if (v >= good[0] && v <= good[1]) return "bg-emerald-50 border-emerald-200";
+  if (v >= warn[0] && v <= warn[1]) return "bg-amber-50 border-amber-200";
+  return "bg-red-50 border-red-200";
 }
 
-function ValueChip({ tagId, decimals = 2, values }: { tagId: string; decimals?: number; values: Record<string, TagValueResult> | null }) {
-  const tv = values?.[tagId];
-  if (!tv || tv.value === null)
-    return <span className="inline-block text-right w-[46px] text-[10px] font-mono text-gray-300">---</span>;
-  const cls =
-    tv.status === "alarm"   ? "text-red-600 bg-red-50 border-red-200" :
-    tv.status === "good"    ? "text-green-700 bg-green-50 border-green-200" :
-    tv.status === "offline" ? "text-gray-400 bg-gray-50 border-gray-200" :
-                              "text-blue-700 bg-blue-50 border-blue-200";
+function Metric({ label, value, unit, icon: Icon, good, warn, large }: {
+  label: string; value: number | string; unit?: string;
+  icon?: React.ElementType; good?: [number, number]; warn?: [number, number]; large?: boolean;
+}) {
+  const numVal = typeof value === "number" ? value : null;
+  const colorClass = (numVal !== null && good && warn) ? statusColor(numVal, good, warn) : "text-gray-800";
   return (
-    <span className={cn("inline-block text-right w-[46px] text-[10px] font-mono font-bold border rounded px-1", cls)}>
-      {tv.value.toFixed(decimals)}
-    </span>
-  );
-}
-
-function SystemCell({ tags, values }: { tags: TagDef[]; values: Record<string, TagValueResult> | null }) {
-  if (tags.length === 0) return <span className="text-gray-200 text-[10px]">—</span>;
-  return (
-    <div className="space-y-px">
-      {tags.map(tag => (
-        <div key={tag.id} className="flex items-center justify-between gap-1">
-          <span className="text-[10px] text-gray-600 leading-[1.3] truncate flex-1 max-w-[130px]">
-            {tag.label}{tag.unit ? <span className="text-gray-400"> ({tag.unit})</span> : null}
-          </span>
-          <ValueChip tagId={tag.id} decimals={tag.decimals} values={values} />
-        </div>
-      ))}
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest leading-none">{label}</span>
+      <div className="flex items-baseline gap-1">
+        {Icon && <Icon className={`w-3 h-3 ${colorClass} shrink-0`} />}
+        <span className={`font-black tabular-nums leading-none ${large ? "text-2xl" : "text-base"} ${colorClass}`}>
+          {typeof value === "number" ? value.toFixed(value >= 1000 ? 0 : 1) : value}
+        </span>
+        {unit && <span className="text-[10px] text-gray-400 font-medium">{unit}</span>}
+      </div>
     </div>
   );
 }
 
+function RecoveryBar({ value }: { value: number }) {
+  const pct = Math.min(100, Math.max(0, value));
+  const col = pct >= 75 ? "bg-emerald-500" : pct >= 60 ? "bg-amber-400" : "bg-red-500";
+  return (
+    <div className="mt-1.5">
+      <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full transition-all duration-500 ${col}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function StageCard({ stage, stageNum, data }: {
+  stage: string; stageNum: number;
+  data: { reco: number; dp: number; fm: number; stg_in: number; stg_out: number; tot_fm: number };
+}) {
+  const gradients = [
+    "from-blue-600 to-blue-700",
+    "from-indigo-600 to-indigo-700",
+    "from-violet-600 to-violet-700",
+    "from-purple-600 to-purple-700",
+  ];
+  const ringColors = ["ring-blue-200", "ring-indigo-200", "ring-violet-200", "ring-purple-200"];
+  const recoColor = data.reco >= 75 ? "text-emerald-400" : data.reco >= 55 ? "text-amber-400" : "text-red-400";
+  const dpColor = data.dp <= 1.5 ? "text-emerald-400" : data.dp <= 3 ? "text-amber-400" : "text-red-400";
+
+  return (
+    <div className={`bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden ring-1 ${ringColors[stageNum - 1]}`}>
+      {/* Stage header */}
+      <div className={`bg-gradient-to-br ${gradients[stageNum - 1]} px-4 py-3`}>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-[9px] font-bold text-white/60 uppercase tracking-widest">Stage {stageNum}</p>
+            <p className="text-sm font-black text-white">{stage}</p>
+          </div>
+          <div className="text-right">
+            <p className={`text-2xl font-black tabular-nums ${recoColor}`}>{data.reco.toFixed(1)}<span className="text-xs font-bold text-white/50 ml-0.5">%</span></p>
+            <p className="text-[9px] text-white/60 font-semibold uppercase">Recovery</p>
+          </div>
+        </div>
+        <div className="mt-2 h-1 bg-white/20 rounded-full overflow-hidden">
+          <div className={`h-full rounded-full ${recoColor.replace("text-", "bg-")}`}
+            style={{ width: `${Math.min(100, data.reco)}%`, transition: "width 0.5s" }} />
+        </div>
+      </div>
+
+      {/* Metrics grid */}
+      <div className="p-3 space-y-2.5">
+        {/* DP + FM */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className={`rounded-xl p-2 border ${data.dp <= 1.5 ? "bg-emerald-50 border-emerald-100" : data.dp <= 3 ? "bg-amber-50 border-amber-100" : "bg-red-50 border-red-100"}`}>
+            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Diff. Pressure</p>
+            <p className={`text-base font-black tabular-nums ${dpColor}`}>{data.dp.toFixed(1)}</p>
+            <p className="text-[9px] text-gray-400">bar</p>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-2 border border-gray-100">
+            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Flow Rate</p>
+            <p className="text-base font-black tabular-nums text-blue-700">{data.fm.toFixed(1)}</p>
+            <p className="text-[9px] text-gray-400">m³/h</p>
+          </div>
+        </div>
+
+        {/* Conductivity */}
+        <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100">
+          <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Conductivity</p>
+          <div className="flex items-center justify-between">
+            <div className="text-center">
+              <p className="text-[10px] text-gray-400">In</p>
+              <p className="text-sm font-black tabular-nums text-gray-700">{data.stg_in.toFixed(1)}</p>
+              <p className="text-[9px] text-gray-400">mS/cm</p>
+            </div>
+            <div className="flex-1 mx-2 flex flex-col items-center gap-0.5">
+              <div className="flex items-center gap-1 w-full">
+                <div className="flex-1 h-px bg-gray-300" />
+                <ChevronDown className="w-2.5 h-2.5 text-gray-400 rotate-[-90deg] shrink-0" />
+                <div className="flex-1 h-px bg-gray-300" />
+              </div>
+              <span className="text-[8px] text-gray-300 uppercase tracking-wide">reject</span>
+            </div>
+            <div className="text-center">
+              <p className="text-[10px] text-gray-400">Out</p>
+              <p className="text-sm font-black tabular-nums text-gray-700">{data.stg_out.toFixed(1)}</p>
+              <p className="text-[9px] text-gray-400">mS/cm</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Total flow */}
+        <div className="flex items-center justify-between px-1">
+          <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider">Cumulative Flow</span>
+          <span className="text-xs font-black text-gray-700 tabular-nums">{data.tot_fm.toLocaleString("en-IN", { maximumFractionDigits: 0 })} m³</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function KpiCard({ label, value, unit, icon: Icon, color, bg }: {
+  label: string; value: string | number; unit?: string;
+  icon: React.ElementType; color: string; bg: string;
+}) {
+  return (
+    <div className={`rounded-2xl border p-4 flex items-center gap-3 ${bg}`}>
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${color}`}>
+        <Icon className="w-5 h-5 text-white" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest leading-none mb-1">{label}</p>
+        <div className="flex items-baseline gap-1">
+          <span className="text-xl font-black text-gray-900 tabular-nums leading-none">
+            {typeof value === "number" ? value.toLocaleString("en-IN", { maximumFractionDigits: 1 }) : value}
+          </span>
+          {unit && <span className="text-xs text-gray-400 font-medium">{unit}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const REFRESH_INTERVAL_MS = 10_000;
+
 export default function SiteData() {
-  const [sites, setSites]               = useState<SiteDef[]>([]);
-  const [values, setValues]             = useState<Record<string, TagValueResult> | null>(null);
-  const [isSimulated, setIsSimulated]   = useState(true);
-  const [connected, setConnected]       = useState(false);
-  const [lastUpdated, setLastUpdated]   = useState<Date | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
-  const [refreshInterval, setRefreshInterval] = useState(2);
-  const [error, setError]               = useState<string | null>(null);
+  const [apiData, setApiData] = useState<ApiResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [lastFetched, setLastFetched] = useState<Date | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [countdown, setCountdown] = useState(REFRESH_INTERVAL_MS / 1000);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchConfig = useCallback(async () => {
+  const fetchData = useCallback(async (manual = false) => {
+    if (manual) setRefreshing(true);
     try {
-      const r = await fetch(`${API_BASE}/api/site-data/config`);
-      if (!r.ok) throw new Error(`${r.status}`);
-      const data = await r.json() as { sites: SiteDef[] };
-      setSites(data.sites);
-    } catch { setError("Failed to load site config."); }
-  }, []);
-
-  const fetchValues = useCallback(async () => {
-    try {
-      const r = await fetch(`${API_BASE}/api/site-data/values`);
-      if (!r.ok) throw new Error(`${r.status}`);
-      const data = await r.json() as ValuesResponse;
-      setValues(data.values);
-      setIsSimulated(data.isSimulated);
-      setConnected(true);
-      setLastUpdated(new Date());
+      const r = await fetch(`${API_BASE}/api/kanchan/ro-live`);
+      if (!r.ok) throw new Error(`Server error ${r.status}`);
+      const json: ApiResponse = await r.json();
+      setApiData(json);
       setError(null);
-    } catch { setConnected(false); setError("Cannot reach API server."); }
+      setLastFetched(new Date());
+    } catch (e: any) {
+      setError(e.message || "Failed to fetch");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+      setCountdown(REFRESH_INTERVAL_MS / 1000);
+    }
   }, []);
 
-  useEffect(() => { fetchConfig(); }, [fetchConfig]);
   useEffect(() => {
-    fetchValues();
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = setInterval(fetchValues, refreshInterval * 1000);
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [fetchValues, refreshInterval]);
+    fetchData();
+    intervalRef.current = setInterval(() => fetchData(), REFRESH_INTERVAL_MS);
+    countdownRef.current = setInterval(() => {
+      setCountdown(c => (c <= 1 ? REFRESH_INTERVAL_MS / 1000 : c - 1));
+    }, 1000);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    };
+  }, [fetchData]);
+
+  const d = apiData?.data;
+  const ageSeconds = apiData?.timing?.data_age_seconds ?? 9999;
+  const isLive = ageSeconds < 120;
+  const isStale = ageSeconds >= 120 && ageSeconds < 600;
+  const isOffline = ageSeconds >= 600;
+
+  const statusLabel = isOffline ? "Offline" : isStale ? "Stale Data" : "Live";
+  const statusDot = isOffline ? "bg-red-500" : isStale ? "bg-amber-400" : "bg-emerald-500";
+  const statusText = isOffline ? "text-red-600" : isStale ? "text-amber-600" : "text-emerald-600";
+  const statusBorder = isOffline ? "border-red-200 bg-red-50" : isStale ? "border-amber-200 bg-amber-50" : "border-emerald-200 bg-emerald-50";
+
+  const stages = d ? [
+    { stage: "1st Pass", stageNum: 1, data: { reco: d.ro_1st_reco, dp: d.ro_1st_stg_dp, fm: d.ro_1st_stg_fm, stg_in: d.ro_1st_stg_in, stg_out: d.ro_1st_stg_out, tot_fm: d.ro_stg1_tot_fm } },
+    { stage: "2nd Pass", stageNum: 2, data: { reco: d.ro_2nd_reco, dp: d.ro_2nd_stg_dp, fm: d.ro_2nd_stg_fm, stg_in: d.ro_2nd_stg_in, stg_out: d.ro_2nd_stg_out, tot_fm: d.ro_stg2_tot_fm } },
+    { stage: "3rd Pass", stageNum: 3, data: { reco: d.ro_3rd_reco, dp: d.ro_3rd_stg_dp, fm: d.ro_3rd_stg_fm, stg_in: d.ro_3rd_stg_in, stg_out: d.ro_3rd_stg_out, tot_fm: d.ro_stg3_tot_fm } },
+    { stage: "4th Pass", stageNum: 4, data: { reco: d.ro_4th_reco, dp: d.ro_4th_stg_dp, fm: d.ro_4th_stg_fm, stg_in: d.ro_4th_stg_in, stg_out: d.ro_4th_stg_out, tot_fm: d.ro_stg4_tot_fm } },
+  ] : [];
+
+  const phColor = d ? (d.ro_feed_ph >= 6.5 && d.ro_feed_ph <= 8.5 ? "text-emerald-600" : d.ro_feed_ph >= 6.0 && d.ro_feed_ph <= 9.0 ? "text-amber-500" : "text-red-500") : "text-gray-400";
+  const phBg = d ? (d.ro_feed_ph >= 6.5 && d.ro_feed_ph <= 8.5 ? "bg-emerald-50 border-emerald-200" : d.ro_feed_ph >= 6.0 && d.ro_feed_ph <= 9.0 ? "bg-amber-50 border-amber-200" : "bg-red-50 border-red-200") : "bg-gray-50 border-gray-200";
+  const overallRecoColor = d ? (d.ro_reco >= 90 ? "text-emerald-600" : d.ro_reco >= 75 ? "text-amber-500" : "text-red-500") : "text-gray-400";
 
   return (
     <Layout>
-      <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+      <div className="h-full bg-gray-50 flex flex-col overflow-hidden">
 
-        {/* ── Header ── */}
-        <div className="bg-white border-b border-gray-200 shadow-sm px-3 py-1.5 flex items-center gap-2 flex-shrink-0">
-          <Activity className="w-4 h-4 text-blue-600 shrink-0" />
-          <span className="text-gray-800 font-extrabold text-xs tracking-widest uppercase">WTT International — Live Site Data</span>
-          <div className="ml-auto flex items-center gap-2">
-            <div className={cn(
-              "flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border",
-              connected ? isSimulated ? "bg-amber-50 border-amber-300 text-amber-700" : "bg-green-50 border-green-300 text-green-700" : "bg-red-50 border-red-300 text-red-700"
-            )}>
-              {connected ? <Wifi className="w-2.5 h-2.5" /> : <WifiOff className="w-2.5 h-2.5" />}
-              {!connected ? "Disconnected" : isSimulated ? "Simulated" : "Live"}
+        {/* ── Header ─────────────────────────────────────────────────── */}
+        <div className="bg-white border-b border-gray-200 px-5 py-3 flex items-center gap-3 flex-shrink-0 shadow-sm">
+          <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center shrink-0">
+            <Droplets className="w-4 h-4 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-black text-gray-900 uppercase tracking-widest">WTT International</span>
+              <span className="text-gray-300 text-sm">•</span>
+              <span className="text-sm font-bold text-blue-700">Kanchan Plant</span>
+              <span className="text-gray-300 text-sm">•</span>
+              <span className="text-sm font-semibold text-gray-500">RO System</span>
             </div>
-            {lastUpdated && (
-              <div className="flex items-center gap-1 text-[10px] text-gray-400">
-                <Clock className="w-2.5 h-2.5" />{lastUpdated.toLocaleTimeString()}
-              </div>
+            {lastFetched && (
+              <p className="text-[10px] text-gray-400 flex items-center gap-1 mt-px">
+                <Clock className="w-2.5 h-2.5" />
+                PLC: {apiData?.last_update} &nbsp;|&nbsp; Fetched: {lastFetched.toLocaleTimeString()}
+                {apiData && <>&nbsp;|&nbsp; Data age: {ageSeconds}s</>}
+              </p>
             )}
-            <button onClick={fetchValues} className="p-1 rounded bg-gray-100 hover:bg-gray-200 text-blue-600 transition-colors" title="Refresh">
-              <RefreshCw className="w-3 h-3" />
-            </button>
-            <button onClick={() => setShowSettings(true)} className="p-1 rounded bg-gray-100 hover:bg-gray-200 text-blue-600 transition-colors" title="Settings">
-              <Settings2 className="w-3 h-3" />
-            </button>
           </div>
-        </div>
-
-        {/* ── Notices ── */}
-        {error && (
-          <div className="bg-red-50 border-b border-red-200 px-3 py-1 text-[10px] text-red-600 flex items-center gap-1.5 flex-shrink-0">
-            <WifiOff className="w-3 h-3" />{error}
-          </div>
-        )}
-        {connected && isSimulated && (
-          <div className="bg-amber-50 border-b border-amber-200 px-3 py-1 text-[10px] text-amber-700 flex-shrink-0">
-            <span className="font-bold">DEMO MODE</span> — Simulated data. Connect Beckhoff ADS bridge for live values.
-          </div>
-        )}
-
-        {/* ── Table (fills remaining height, scrolls only inside) ── */}
-        <div className="flex-1 overflow-auto min-h-0 p-2">
-          {sites.length === 0 ? (
-            <div className="flex items-center justify-center h-full">
-              <span className="text-gray-400 text-xs animate-pulse">Loading site configuration…</span>
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Status badge */}
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-bold ${statusBorder}`}>
+              <div className={`w-2 h-2 rounded-full ${statusDot} ${isLive ? "animate-pulse" : ""}`} />
+              <span className={statusText}>{statusLabel}</span>
             </div>
-          ) : (() => {
-            const visibleSites = sites.filter(s => s.id !== "swaraj");
-            return (
-              <table className="w-full border-collapse bg-white rounded-xl overflow-hidden shadow border border-gray-200 table-fixed text-[11px]">
-                <colgroup>
-                  <col style={{ width: "14%" }} />
-                  <col style={{ width: "21.5%" }} />
-                  <col style={{ width: "21.5%" }} />
-                  <col style={{ width: "21.5%" }} />
-                  <col style={{ width: "21.5%" }} />
-                </colgroup>
-                <thead className="sticky top-0 z-10">
-                  <tr>
-                    <th className="px-3 py-2 text-[10px] font-black text-white uppercase tracking-widest text-left bg-blue-800 border-r border-blue-700">Site</th>
-                    {SYSTEMS.map((sys, i) => {
-                      const colors = ["bg-blue-700", "bg-indigo-600", "bg-violet-600", "bg-purple-700"];
-                      return (
-                        <th key={sys.key} className={cn("px-3 py-2 text-[10px] font-black text-white uppercase tracking-widest text-center", colors[i], i < SYSTEMS.length - 1 ? "border-r border-white/20" : "")}>
-                          {sys.label}
-                        </th>
-                      );
-                    })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleSites.map((site, ri) => {
-                    const sysMap = siteSystemMap(site);
-                    const allIds = site.sections.flatMap(s => s.tags.map(t => t.id));
-                    const hasAlarm = allIds.some(id => values?.[id]?.status === "alarm");
-                    const isEven = ri % 2 === 0;
-                    return (
-                      <tr key={site.id} className={cn(
-                        "border-b border-gray-100 align-top transition-colors",
-                        hasAlarm ? "bg-red-50" : isEven ? "bg-white" : "bg-slate-50/60"
-                      )}>
-                        <td className={cn(
-                          "px-3 py-2 border-r border-gray-100 align-middle",
-                          hasAlarm ? "bg-red-50" : isEven ? "bg-white" : "bg-slate-50/60"
-                        )}>
-                          <div className={cn("font-black text-[11px] uppercase tracking-wide leading-tight", hasAlarm ? "text-red-600" : "text-blue-800")}>
-                            {site.name}
-                          </div>
-                          {hasAlarm && <span className="text-[8px] font-bold bg-red-500 text-white px-1 py-px rounded animate-pulse">ALARM</span>}
-                        </td>
-                        {SYSTEMS.map((sys, i) => (
-                          <td key={sys.key} className={cn("px-3 py-2", i < SYSTEMS.length - 1 ? "border-r border-gray-100" : "")}>
-                            <SystemCell tags={sysMap[sys.key]} values={values} />
-                          </td>
-                        ))}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            );
-          })()}
+            {/* Countdown ring */}
+            <div className="relative w-8 h-8 flex items-center justify-center">
+              <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 32 32">
+                <circle cx="16" cy="16" r="13" stroke="#e5e7eb" strokeWidth="2.5" fill="none" />
+                <circle cx="16" cy="16" r="13" stroke="#3b82f6" strokeWidth="2.5" fill="none"
+                  strokeDasharray={`${2 * Math.PI * 13}`}
+                  strokeDashoffset={`${2 * Math.PI * 13 * (1 - countdown / (REFRESH_INTERVAL_MS / 1000))}`}
+                  strokeLinecap="round" style={{ transition: "stroke-dashoffset 1s linear" }} />
+              </svg>
+              <span className="text-[9px] font-bold text-blue-600 tabular-nums">{countdown}</span>
+            </div>
+            <button onClick={() => fetchData(true)} disabled={refreshing}
+              className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 transition-colors disabled:opacity-50" title="Refresh now">
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+            </button>
+          </div>
         </div>
 
-        {/* ── Settings modal ── */}
-        {showSettings && (
-          <div className="fixed inset-0 bg-black/20 z-50 flex items-center justify-center p-4" onClick={() => setShowSettings(false)}>
-            <div className="bg-white border border-gray-200 rounded-xl w-full max-w-xs shadow-xl" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100">
-                <span className="text-gray-800 font-bold text-xs flex items-center gap-1.5"><Settings2 className="w-3.5 h-3.5 text-blue-600" />Settings</span>
-                <button onClick={() => setShowSettings(false)} className="text-gray-400 hover:text-gray-700"><X className="w-4 h-4" /></button>
-              </div>
-              <div className="p-4 space-y-3">
-                <div>
-                  <label className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider block mb-1.5">Refresh Interval</label>
-                  <div className="flex gap-1.5">
-                    {[1, 2, 5, 10].map(s => (
-                      <button key={s} onClick={() => setRefreshInterval(s)}
-                        className={cn("flex-1 py-1 rounded text-[10px] font-bold border transition-colors",
-                          refreshInterval === s ? "bg-blue-600 border-blue-600 text-white" : "bg-white border-gray-200 text-gray-600 hover:border-blue-300")}>
-                        {s}s
-                      </button>
-                    ))}
+        {/* ── Error bar ─────────────────────────────────────────────── */}
+        {error && (
+          <div className="bg-red-50 border-b border-red-200 px-5 py-2 flex items-center gap-2 text-xs text-red-600 shrink-0">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            <span>Connection error: {error}. Retrying in {countdown}s.</span>
+          </div>
+        )}
+
+        {/* ── Content ─────────────────────────────────────────────────── */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+
+          {loading && !apiData ? (
+            <div className="flex flex-col items-center justify-center h-64 gap-4">
+              <div className="w-12 h-12 rounded-full border-4 border-blue-200 border-t-blue-600 animate-spin" />
+              <p className="text-sm text-gray-400 font-medium">Connecting to PLC…</p>
+            </div>
+          ) : d ? (<>
+
+            {/* ── KPI row ──────────────────────────────────────────── */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className={`rounded-2xl border p-4 flex items-center gap-3 bg-white`}>
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${overallRecoColor.replace("text-", "bg-").replace("-600", "-600").replace("-500", "-500")} bg-opacity-10`}>
+                  <Activity className={`w-5 h-5 ${overallRecoColor}`} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-0.5">Overall Recovery</p>
+                  <div className="flex items-baseline gap-1">
+                    <span className={`text-2xl font-black tabular-nums ${overallRecoColor}`}>{d.ro_reco.toFixed(1)}</span>
+                    <span className="text-xs text-gray-400">%</span>
                   </div>
+                  <RecoveryBar value={d.ro_reco} />
+                </div>
+              </div>
+              <KpiCard label="Running Time" value={d.ro_running_time} icon={Timer}
+                color="bg-blue-600" bg="bg-white border-gray-100" />
+              <KpiCard label="Feed Flow Rate" value={d.ro_feed} unit="m³/h" icon={Gauge}
+                color="bg-indigo-600" bg="bg-white border-gray-100" />
+              <KpiCard label="Total Feed Volume" value={d.ro_feed_tot_fm.toLocaleString("en-IN", { maximumFractionDigits: 0 })} unit="m³" icon={BarChart3}
+                color="bg-violet-600" bg="bg-white border-gray-100" />
+            </div>
+
+            {/* ── Stage cards ───────────────────────────────────────── */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-1 h-5 rounded-full bg-blue-600" />
+                <h2 className="text-sm font-black text-gray-800 uppercase tracking-wider">RO Stages</h2>
+                <div className="flex-1 h-px bg-gray-200" />
+                <span className="text-[10px] text-gray-400 font-semibold">4-Pass System</span>
+              </div>
+              <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+                {stages.map(s => <StageCard key={s.stageNum} {...s} />)}
+              </div>
+            </div>
+
+            {/* ── Feed Conditions ───────────────────────────────────── */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-1 h-5 rounded-full bg-teal-600" />
+                <h2 className="text-sm font-black text-gray-800 uppercase tracking-wider">Feed Conditions</h2>
+                <div className="flex-1 h-px bg-gray-200" />
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {/* pH */}
+                <div className={`rounded-2xl border p-4 ${phBg}`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <FlaskConical className={`w-4 h-4 ${phColor}`} />
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Feed pH</span>
+                  </div>
+                  <p className={`text-3xl font-black tabular-nums ${phColor}`}>{d.ro_feed_ph.toFixed(1)}</p>
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    {d.ro_feed_ph >= 6.5 && d.ro_feed_ph <= 8.5 ? "✓ Normal range" :
+                     d.ro_feed_ph < 6.5 ? "⚠ Below range" : "⚠ Above range"}
+                  </p>
+                </div>
+
+                {/* Level */}
+                <div className={`rounded-2xl border p-4 ${d.ro_feed_lt >= 2 ? "bg-emerald-50 border-emerald-200" : d.ro_feed_lt >= 1 ? "bg-amber-50 border-amber-200" : "bg-red-50 border-red-200"}`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <ThermometerSun className={`w-4 h-4 ${d.ro_feed_lt >= 2 ? "text-emerald-600" : d.ro_feed_lt >= 1 ? "text-amber-500" : "text-red-500"}`} />
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Feed Level</span>
+                  </div>
+                  <p className={`text-3xl font-black tabular-nums ${d.ro_feed_lt >= 2 ? "text-emerald-600" : d.ro_feed_lt >= 1 ? "text-amber-500" : "text-red-500"}`}>
+                    {d.ro_feed_lt.toFixed(1)}
+                  </p>
+                  <p className="text-[10px] text-gray-400 mt-1">metres</p>
+                </div>
+
+                {/* Feed Flow */}
+                <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Gauge className="w-4 h-4 text-blue-600" />
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Feed Flow</span>
+                  </div>
+                  <p className="text-3xl font-black tabular-nums text-blue-700">{d.ro_feed.toFixed(1)}</p>
+                  <p className="text-[10px] text-gray-400 mt-1">m³ / hour</p>
+                </div>
+
+                {/* Total volume */}
+                <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <BarChart3 className="w-4 h-4 text-indigo-600" />
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Total Feed</span>
+                  </div>
+                  <p className="text-3xl font-black tabular-nums text-indigo-700">
+                    {(d.ro_feed_tot_fm / 1000).toFixed(1)}<span className="text-base font-bold text-indigo-400 ml-1">k</span>
+                  </p>
+                  <p className="text-[10px] text-gray-400 mt-1">m³ cumulative</p>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+
+            {/* ── Summary health row ────────────────────────────────── */}
+            <div className="bg-white rounded-2xl border border-gray-100 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <CheckCircle2 className="w-4 h-4 text-gray-400" />
+                <h3 className="text-xs font-black text-gray-700 uppercase tracking-wider">System Health Summary</h3>
+                <span className="ml-auto text-[10px] text-gray-400">{d.timestamp}</span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+                {stages.map(s => (
+                  <div key={s.stageNum} className="space-y-1">
+                    <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Stage {s.stageNum}</p>
+                    <div className="flex justify-center gap-1">
+                      {/* Recovery indicator */}
+                      <div className={`w-2 h-2 rounded-full ${s.data.reco >= 75 ? "bg-emerald-500" : s.data.reco >= 55 ? "bg-amber-400" : "bg-red-500"}`} title={`Recovery ${s.data.reco}%`} />
+                      {/* DP indicator */}
+                      <div className={`w-2 h-2 rounded-full ${s.data.dp <= 1.5 ? "bg-emerald-500" : s.data.dp <= 3 ? "bg-amber-400" : "bg-red-500"}`} title={`DP ${s.data.dp} bar`} />
+                    </div>
+                    <p className="text-[9px] text-gray-300">Reco · DP</p>
+                  </div>
+                ))}
+                <div className="space-y-1">
+                  <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Feed pH</p>
+                  <div className="flex justify-center">
+                    <div className={`w-2 h-2 rounded-full ${phColor.replace("text-", "bg-")}`} />
+                  </div>
+                  <p className="text-[9px] text-gray-300">{d.ro_feed_ph.toFixed(1)}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Overall</p>
+                  <div className="flex justify-center">
+                    <div className={`w-2 h-2 rounded-full ${overallRecoColor.replace("text-", "bg-")}`} />
+                  </div>
+                  <p className="text-[9px] text-gray-300">{d.ro_reco.toFixed(1)}%</p>
+                </div>
+              </div>
+            </div>
+
+          </>) : (
+            <div className="flex flex-col items-center justify-center h-64 gap-3">
+              <WifiOff className="w-10 h-10 text-gray-300" />
+              <p className="text-sm text-gray-400 font-medium">No data received yet</p>
+            </div>
+          )}
+        </div>
       </div>
     </Layout>
   );
