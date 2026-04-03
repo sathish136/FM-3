@@ -60,14 +60,13 @@ router.get("/stock-reports/bin", async (req, res) => {
   const search = req.query.search as string | undefined;
 
   const fields = JSON.stringify([
-    "item_code", "item_name", "warehouse",
+    "item_code", "warehouse",
     "actual_qty", "projected_qty", "reserved_qty",
     "stock_uom", "valuation_rate", "stock_value",
   ]);
 
   const filters: any[] = [["Bin", "actual_qty", ">", 0]];
-  if (warehouse) filters.push(["Bin", "warehouse", "like", `%${warehouse}%`]);
-  if (item_group) filters.push(["Bin", "item_group", "=", item_group]);
+  if (warehouse) filters.push(["Bin", "warehouse", "=", warehouse]);
   if (search) {
     filters.push(["Bin", "item_code", "like", `%${search}%`]);
   }

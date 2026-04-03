@@ -376,8 +376,7 @@ function ItemwiseTab({ warehouses, presetWarehouse }: { warehouses: string[]; pr
 
   const filtered = useMemo(() => allRows.filter((r) => {
     const q = search.toLowerCase();
-    return !q || String(r.item_code ?? "").toLowerCase().includes(q)
-      || String(r.item_name ?? "").toLowerCase().includes(q);
+    return !q || String(r.item_code ?? "").toLowerCase().includes(q);
   }), [allRows, search]);
 
   const { sorted, onSort, dir } = useSortable(filtered);
@@ -410,7 +409,6 @@ function ItemwiseTab({ warehouses, presetWarehouse }: { warehouses: string[]; pr
           </button>
           <button onClick={() => exportToExcel(sorted.map((r) => ({
             "Item Code": r.item_code,
-            "Item Name": r.item_name,
             "Warehouse": r.warehouse,
             "Actual Qty": r.actual_qty,
             "Projected Qty": r.projected_qty,
@@ -437,7 +435,6 @@ function ItemwiseTab({ warehouses, presetWarehouse }: { warehouses: string[]; pr
                 <tr>
                   <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-500 w-8">#</th>
                   <Th label="Item Code" sortKey="item_code" onSort={onSort} dir={dir("item_code")} />
-                  <Th label="Item Name" sortKey="item_name" onSort={onSort} dir={dir("item_name")} />
                   <Th label="Warehouse" sortKey="warehouse" onSort={onSort} dir={dir("warehouse")} />
                   <Th label="Actual Qty" sortKey="actual_qty" onSort={onSort} dir={dir("actual_qty")} />
                   <Th label="Projected Qty" sortKey="projected_qty" onSort={onSort} dir={dir("projected_qty")} />
@@ -452,7 +449,6 @@ function ItemwiseTab({ warehouses, presetWarehouse }: { warehouses: string[]; pr
                   <tr key={i} className="hover:bg-blue-50/40 transition-colors">
                     <td className="px-4 py-2.5 text-xs text-gray-400">{i + 1}</td>
                     <td className="px-4 py-2.5 text-xs font-mono text-gray-900 whitespace-nowrap">{r.item_code}</td>
-                    <td className="px-4 py-2.5 text-xs text-gray-700 max-w-[200px] truncate">{r.item_name}</td>
                     <td className="px-4 py-2.5 text-xs text-gray-600 whitespace-nowrap">{r.warehouse}</td>
                     <td className="px-4 py-2.5 text-xs font-semibold text-gray-900 text-right tabular-nums">{fmt(r.actual_qty, 2)}</td>
                     <td className="px-4 py-2.5 text-xs text-gray-600 text-right tabular-nums">{fmt(r.projected_qty, 2)}</td>
@@ -465,7 +461,7 @@ function ItemwiseTab({ warehouses, presetWarehouse }: { warehouses: string[]; pr
               </tbody>
               <tfoot className="bg-gray-50 border-t border-gray-200">
                 <tr>
-                  <td colSpan={4} className="px-4 py-2.5 text-xs font-bold text-gray-600">Total ({sorted.length} rows)</td>
+                  <td colSpan={3} className="px-4 py-2.5 text-xs font-bold text-gray-600">Total ({sorted.length} rows)</td>
                   <td className="px-4 py-2.5 text-xs font-bold text-gray-900 text-right tabular-nums">{fmt(totalQty, 2)}</td>
                   <td colSpan={4} />
                   <td className="px-4 py-2.5 text-xs font-bold text-emerald-700 text-right tabular-nums">{fmtAmt(totalVal)}</td>
