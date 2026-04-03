@@ -53,170 +53,165 @@ function toTable(rows: Row[], fields: string[]): string {
 // ─── Live data fetcher ────────────────────────────────────────────────────────
 
 async function fetchLiveData(query: string, module?: string): Promise<string> {
+  if (!isErpNextConfigured()) return "";
+
   const q = query.toLowerCase();
   const mod = (module || "").toLowerCase();
   const parts: string[] = [];
-  const erp = isErpNextConfigured();
 
-  // ── Keyword intent detection ──
-  const wantProjects    = matches(q, "project", "active project", "ongoing project");
-  const wantTasks       = matches(q, "task", "allocation", "assigned task", "task assign", "todo", "in progress", "kanban");
-  const wantMR          = matches(q, "material request", "material req", "purchase request");
-  const wantPO          = matches(q, "purchase order", "vendor", "po ");
-  const wantEmployees   = matches(q, "employee", "staff", "worker", "headcount", "who work", "team member", "personnel");
-  const wantDepts       = matches(q, "department", "dept", "division", "team");
-  const wantLeave       = matches(q, "leave", "absent", "off day", "holiday", "vacation", "sick", "leave application");
-  const wantAttendance  = matches(q, "attendance", "present", "absent", "checkin", "checkout", "punch");
-  const wantHRMS        = matches(q, "hrms", "hr ", "human resource", "payroll", "salary");
-  const wantIdleEmp     = matches(q, "idle", "no task", "without task", "not assign", "unassign");
-  const wantSummary     = matches(q, "summary", "overview", "how many", "total", "count", "report", "analytics", "dashboard", "kpi");
+  const today = new Date().toISOString().split("T")[0];
+  const lastWeek = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
 
-  // ── Module-based intent detection ──
-  const onHRMS       = mod.includes("hrms") || mod.includes("hr") || mod.includes("task summary") || mod.includes("team performance");
-  const onProjects   = mod.includes("project") && !mod.includes("dashboard");
-  const onPurchase   = mod.includes("purchase") || mod.includes("material");
-  const onDashboard  = mod.includes("dashboard");
+  // ── Precise keyword intent detection ──
+  const wantProjects   = matches(q, "project", "active project", "ongoing project", "march", "april", "may", "created");
+  const wantMR         = matches(q, "material request", "material req", "purchase request", "mr-");
+  const wantPO         = matches(q, "purchase order", "vendor", "po-", "supplier");
+  const wantEmployees  = matches(q, "employee", "staff", "worker", "headcount", "how many people", "team member", "personnel", "wtt");
+  const wantDepts      = matches(q, "department", "dept", "division") && !matches(q, "project");
+  const wantLeave      = matches(q, "leave", "vacation", "sick leave", "leave application", "on leave");
+  const wantAttendance = matches(q, "attendance", "present", "absent", "check-in", "punch");
+  const wantTasks      = matches(q, "task", "allocation", "task assign", "idle", "no task", "unassign");
 
-  try {
+  // ── Module context ──
+  const onProjects  = mod.includes("project") && !mod.includes("dashboard");
+  const onPurchase  = mod.includes("purchase") || mod.includes("material");
+  const onHR        = mod.includes("hrms") || mod.includes("task summary") || mod.includes("team performance") || mod.includes("hr analytics");
 
-    // ── Projects ──────────────────────────────────────────────────────────────
-    if ((wantProjects || onProjects || (onDashboard && wantSummary)) && erp) {
-      const projects = await fetchErpNextProjects();
-      const rows = (projects as Row[]).slice(0, MAX_ROWS).map((p: any) => ({
-        name: p.name,
-        status: p.status || "-",
-        priority: p.priority || "-",
-        progress: p.progress != null ? `${p.progress}%` : "-",
-        due_date: p.dueDate || "-",
-      }));
-      parts.push(`ACTIVE PROJECTS FROM ERPNEXT (${projects.length} total):\n${toTable(rows, ["name", "status", "priority", "progress", "due_date"])}`);
-    }
+  // ── Build list of fetches to run in parallel ──
+  const fetches: Promise<void>[] = [];
 
-    // ── Employees ─────────────────────────────────────────────────────────────
-    if ((wantEmployees || wantHRMS || onHRMS || wantSummary) && erp) {
-      const employees = await fetchErpNextEmployees({ status: "Active" });
-      const rows = employees.map((e: any) => ({
-        id: e.name,
-        name: e.employee_name,
-        department: e.department || "-",
-        designation: e.designation || "-",
-        gender: e.gender || "-",
-        contact: e.cell_number || "-",
-      }));
-      parts.push(`ACTIVE EMPLOYEES FROM ERPNEXT (${employees.length} total):\n${toTable(rows, ["id", "name", "department", "designation", "gender"])}`);
-    }
+  if (wantProjects || onProjects) {
+    fetches.push(
+      fetchErpNextProjects().then(projects => {
+        const rows = (projects as Row[]).slice(0, MAX_ROWS).map((p: any) => ({
+          name: p.name,
+          status: p.status || "-",
+          priority: p.priority || "-",
+          progress: p.progress != null ? `${p.progress}%` : "-",
+          due_date: p.dueDate || "-",
+        }));
+        parts.push(`ACTIVE PROJECTS FROM ERPNEXT (${projects.length} total):\n${toTable(rows, ["name", "status", "priority", "progress", "due_date"])}`);
+      }).catch(() => {})
+    );
+  }
 
-    // ── Departments ───────────────────────────────────────────────────────────
-    if ((wantDepts || onHRMS || wantHRMS) && erp) {
-      const depts = await fetchErpNextDepartments();
-      const rows = depts.map((d: any) => ({
-        name: d.name,
-        manager: d.department_manager_name || d.department_manager || "-",
-        parent: d.parent_department || "-",
-        company: d.company || "-",
-      }));
-      parts.push(`DEPARTMENTS FROM ERPNEXT (${depts.length} total):\n${toTable(rows, ["name", "manager", "parent"])}`);
-    }
+  if (wantEmployees || (onHR && matches(q, "employee", "staff", "how many", "member", "personnel", "headcount"))) {
+    fetches.push(
+      fetchErpNextEmployees({ status: "Active" }).then(employees => {
+        // Group by dept for summary
+        const byDept: Record<string, number> = {};
+        employees.forEach((e: any) => {
+          const d = e.department || "Unknown";
+          byDept[d] = (byDept[d] || 0) + 1;
+        });
+        const deptSummary = Object.entries(byDept)
+          .sort((a, b) => b[1] - a[1])
+          .map(([d, c]) => `${d}: ${c}`)
+          .join(" | ");
+        const rows = employees.slice(0, MAX_ROWS).map((e: any) => ({
+          id: e.name,
+          name: e.employee_name,
+          department: e.department || "-",
+          designation: e.designation || "-",
+        }));
+        parts.push(
+          `ACTIVE EMPLOYEES FROM ERPNEXT (${employees.length} total):\n` +
+          `By Department: ${deptSummary}\n\n` +
+          toTable(rows as Row[], ["id", "name", "department", "designation"])
+        );
+      }).catch(() => {})
+    );
+  }
 
-    // ── Leave Applications ────────────────────────────────────────────────────
-    if ((wantLeave || onHRMS) && erp) {
-      const leaves = await fetchErpNextLeaveApplications();
-      const rows = (leaves as Row[]).slice(0, MAX_ROWS).map((l: any) => ({
-        employee: l.employee_name || l.employee,
-        type: l.leave_type || "-",
-        from: l.from_date || "-",
-        to: l.to_date || "-",
-        days: l.total_leave_days || "-",
-        status: l.status || "-",
-      }));
-      parts.push(`LEAVE APPLICATIONS FROM ERPNEXT (${leaves.length} total):\n${toTable(rows, ["employee", "type", "from", "to", "days", "status"])}`);
-    }
+  if (wantDepts || (onHR && matches(q, "department", "dept"))) {
+    fetches.push(
+      fetchErpNextDepartments().then(depts => {
+        const rows = depts.map((d: any) => ({
+          name: d.name,
+          manager: d.department_manager_name || d.department_manager || "-",
+          parent: d.parent_department || "-",
+        }));
+        parts.push(`DEPARTMENTS FROM ERPNEXT (${depts.length} total):\n${toTable(rows as Row[], ["name", "manager", "parent"])}`);
+      }).catch(() => {})
+    );
+  }
 
-    // ── Attendance ────────────────────────────────────────────────────────────
-    if ((wantAttendance || onHRMS) && erp) {
-      const today = new Date().toISOString().split("T")[0];
-      const lastWeek = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
-      const att = await fetchErpNextAttendance({ from_date: lastWeek, to_date: today, limit: 200 });
-      const presentCount = (att as any[]).filter((a: any) => a.status === "Present").length;
-      const absentCount  = (att as any[]).filter((a: any) => a.status === "Absent").length;
-      const leaveCount   = (att as any[]).filter((a: any) => a.status === "On Leave").length;
-      parts.push(
-        `ATTENDANCE SUMMARY (Last 7 days, ${att.length} records):\n` +
-        `Present: ${presentCount} | Absent: ${absentCount} | On Leave: ${leaveCount}\n\n` +
-        `RECENT ATTENDANCE:\n${toTable((att as Row[]).slice(0, 30), ["employee_name", "attendance_date", "status", "department"])}`
-      );
-    }
+  if (wantLeave) {
+    fetches.push(
+      fetchErpNextLeaveApplications().then(leaves => {
+        const rows = (leaves as Row[]).slice(0, MAX_ROWS).map((l: any) => ({
+          employee: l.employee_name || l.employee,
+          type: l.leave_type || "-",
+          from: l.from_date || "-",
+          to: l.to_date || "-",
+          days: l.total_leave_days || "-",
+          status: l.status || "-",
+        }));
+        parts.push(`LEAVE APPLICATIONS FROM ERPNEXT (${leaves.length} total):\n${toTable(rows, ["employee", "type", "from", "to", "days", "status"])}`);
+      }).catch(() => {})
+    );
+  }
 
-    // ── Task Allocations ──────────────────────────────────────────────────────
-    if ((wantTasks || wantIdleEmp || onHRMS) && erp) {
-      try {
-        const today = new Date().toISOString().split("T")[0];
-        const lastWeek = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
-        const allocs = await fetchErpNextTaskAllocations({ from_date: lastWeek, to_date: today });
+  if (wantAttendance) {
+    fetches.push(
+      fetchErpNextAttendance({ from_date: lastWeek, to_date: today, limit: 200 }).then(att => {
+        const present = (att as any[]).filter((a: any) => a.status === "Present").length;
+        const absent  = (att as any[]).filter((a: any) => a.status === "Absent").length;
+        const onLeave = (att as any[]).filter((a: any) => a.status === "On Leave").length;
+        parts.push(
+          `ATTENDANCE (Last 7 days, ${att.length} records): Present=${present} | Absent=${absent} | On Leave=${onLeave}\n` +
+          toTable((att as Row[]).slice(0, 30), ["employee_name", "attendance_date", "status", "department"])
+        );
+      }).catch(() => {})
+    );
+  }
+
+  if (wantTasks || (onHR && matches(q, "task", "idle", "allocation", "assign"))) {
+    fetches.push(
+      fetchErpNextTaskAllocations({ from_date: lastWeek, to_date: today }).then(allocs => {
         if (allocs.length > 0) {
           const rows = (allocs as Row[]).slice(0, MAX_ROWS).map((a: any) => ({
             employee: a.employee_name || a.employee,
             task: a.task_name || a.name || "-",
             department: a.department || "-",
             status: a.status || "-",
-            date: a.date || a.creation?.split(" ")[0] || "-",
             hours: a.expected_hours ?? "-",
           }));
-          parts.push(`TASK ALLOCATIONS FROM ERPNEXT (${allocs.length} total, last 7 days):\n${toTable(rows, ["employee", "task", "department", "status", "date", "hours"])}`);
+          parts.push(`TASK ALLOCATIONS (${allocs.length} total, last 7 days):\n${toTable(rows, ["employee", "task", "department", "status", "hours"])}`);
         }
-      } catch { /* skip if task allocations not available */ }
-    }
-
-    // ── Material Requests ─────────────────────────────────────────────────────
-    if ((wantMR || onPurchase) && erp) {
-      const mrs = await fetchErpNextMaterialRequests();
-      const rows = (mrs as Row[]).slice(0, MAX_ROWS).map((m: any) => ({
-        name: m.name,
-        status: m.status,
-        project: m.project || "-",
-        date: m.transaction_date || "-",
-        type: m.material_request_type || "-",
-      }));
-      parts.push(`MATERIAL REQUESTS FROM ERPNEXT (${mrs.length} total):\n${toTable(rows, ["name", "status", "project", "date", "type"])}`);
-    }
-
-    // ── Purchase Orders ───────────────────────────────────────────────────────
-    if ((wantPO || onPurchase) && erp) {
-      const pos = await fetchErpNextPurchaseOrders();
-      const rows = (pos as Row[]).slice(0, MAX_ROWS).map((p: any) => ({
-        name: p.name,
-        supplier: p.supplier_name ?? p.supplier,
-        status: p.status,
-        amount: p.grand_total != null ? `₹${Number(p.grand_total).toLocaleString("en-IN")}` : "-",
-        date: p.transaction_date || "-",
-      }));
-      parts.push(`PURCHASE ORDERS FROM ERPNEXT (${pos.length} total):\n${toTable(rows, ["name", "supplier", "status", "amount", "date"])}`);
-    }
-
-    // ── General summary / dashboard ───────────────────────────────────────────
-    if (wantSummary && onDashboard && erp && !parts.length) {
-      const [projects, employees, mrs, pos] = await Promise.allSettled([
-        fetchErpNextProjectList(),
-        fetchErpNextEmployees({ status: "Active" }),
-        fetchErpNextMaterialRequests(),
-        fetchErpNextPurchaseOrders(),
-      ]);
-      const pCount = projects.status === "fulfilled" ? projects.value.length : "?";
-      const eCount = employees.status === "fulfilled" ? employees.value.length : "?";
-      const mCount = mrs.status === "fulfilled" ? mrs.value.length : "?";
-      const poCount = pos.status === "fulfilled" ? pos.value.length : "?";
-      parts.push(
-        `WTT ERPNEXT LIVE SUMMARY:\n` +
-        `Total Active Projects: ${pCount}\n` +
-        `Total Active Employees: ${eCount}\n` +
-        `Material Requests: ${mCount}\n` +
-        `Purchase Orders: ${poCount}`
-      );
-    }
-
-  } catch (e) {
-    console.error("AI context fetch error:", e);
+      }).catch(() => {})
+    );
   }
+
+  if (wantMR || onPurchase) {
+    fetches.push(
+      fetchErpNextMaterialRequests().then(mrs => {
+        const rows = (mrs as Row[]).slice(0, MAX_ROWS).map((m: any) => ({
+          name: m.name, status: m.status,
+          project: m.project || "-", date: m.transaction_date || "-",
+        }));
+        parts.push(`MATERIAL REQUESTS FROM ERPNEXT (${mrs.length} total):\n${toTable(rows, ["name", "status", "project", "date"])}`);
+      }).catch(() => {})
+    );
+  }
+
+  if (wantPO || onPurchase) {
+    fetches.push(
+      fetchErpNextPurchaseOrders().then(pos => {
+        const rows = (pos as Row[]).slice(0, MAX_ROWS).map((p: any) => ({
+          name: p.name,
+          supplier: p.supplier_name ?? p.supplier,
+          status: p.status,
+          amount: p.grand_total != null ? `₹${Number(p.grand_total).toLocaleString("en-IN")}` : "-",
+          date: p.transaction_date || "-",
+        }));
+        parts.push(`PURCHASE ORDERS FROM ERPNEXT (${pos.length} total):\n${toTable(rows, ["name", "supplier", "status", "amount", "date"])}`);
+      }).catch(() => {})
+    );
+  }
+
+  // Run all fetches in parallel
+  await Promise.all(fetches);
 
   if (!parts.length) return "";
   return `\n\n## LIVE DATA FROM ERPNEXT & FLOWMATRIX\n${parts.join("\n\n")}`;
