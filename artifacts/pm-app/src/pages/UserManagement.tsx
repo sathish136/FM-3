@@ -233,6 +233,7 @@ export function UserManagementContent() {
   const [projSearch, setProjSearch]               = useState("");
   const [copyFromOpen, setCopyFromOpen]       = useState(false);
   const [copyFromSearch, setCopyFromSearch]   = useState("");
+  const [togglingEnabled, setTogglingEnabled] = useState(false);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -339,6 +340,26 @@ export function UserManagementContent() {
     setCopyFromOpen(false);
     setCopyFromSearch("");
     toast({ title: `Copied settings from ${p.fullName || email}`, description: "Review and save to apply." });
+  }
+
+  async function toggleErpEnabled(u: ErpUser) {
+    const newEnabled = u.enabled === 0 ? 1 : 0;
+    setTogglingEnabled(true);
+    try {
+      const res = await fetch(`${BASE}/api/erpnext-users/${encodeURIComponent(u.email)}/enabled`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: newEnabled === 1 }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setUsers(prev => prev.map(x => x.email === u.email ? { ...x, enabled: newEnabled } : x));
+      if (selected?.email === u.email) setSelected(prev => prev ? { ...prev, enabled: newEnabled } : prev);
+      toast({ title: newEnabled === 1 ? `${u.full_name} enabled in ERPNext` : `${u.full_name} disabled in ERPNext` });
+    } catch (e) {
+      toast({ title: "Failed to update ERPNext user", description: String(e), variant: "destructive" });
+    } finally {
+      setTogglingEnabled(false);
+    }
   }
 
   const filtered = users.filter(u => {
@@ -500,9 +521,33 @@ export function UserManagementContent() {
             <div className="bg-card border-b border-border px-6 py-4 flex items-center gap-4 shrink-0 flex-wrap gap-y-2">
               <UserAvatar user={selected} size="lg" />
               <div className="flex-1 min-w-0">
-                <h2 className="text-base font-bold text-card-foreground">{selected.full_name}</h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-bold text-card-foreground">{selected.full_name}</h2>
+                  {selected.enabled === 0 && (
+                    <span className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full border border-red-200">Disabled in ERPNext</span>
+                  )}
+                </div>
                 <p className="text-xs text-muted-foreground">{selected.email}</p>
               </div>
+
+              {/* ERPNext Enable / Disable */}
+              <button
+                onClick={() => toggleErpEnabled(selected)}
+                disabled={togglingEnabled}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-semibold transition-colors disabled:opacity-60 shrink-0 ${
+                  selected.enabled === 0
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100"
+                    : "bg-red-50 border-red-200 text-red-700 hover:bg-red-100"
+                }`}
+              >
+                {togglingEnabled
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : selected.enabled === 0
+                    ? <Unlock className="w-3.5 h-3.5" />
+                    : <Lock className="w-3.5 h-3.5" />
+                }
+                {selected.enabled === 0 ? "Enable in ERPNext" : "Disable in ERPNext"}
+              </button>
 
               {/* Role stats */}
               <div className="flex items-center gap-2 text-[11px] font-semibold">

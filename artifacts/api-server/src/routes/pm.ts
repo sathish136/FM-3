@@ -817,6 +817,22 @@ router.get("/erpnext-users", async (_req, res) => {
   }
 });
 
+router.put("/erpnext-users/:email/enabled", async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { enabled } = req.body as { enabled: boolean };
+    const r = await fetch(`${ERP_URL}/api/resource/User/${encodeURIComponent(email)}`, {
+      method: "PUT",
+      headers: { Authorization: ERP_AUTH(), "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ enabled: enabled ? 1 : 0 }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    res.json({ ok: true, enabled: enabled ? 1 : 0 });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 router.get("/user-permissions", async (_req, res) => {
   try {
     const rows = await db.select().from(userPermissionsTable);
