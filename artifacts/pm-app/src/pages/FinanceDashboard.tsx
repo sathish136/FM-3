@@ -61,6 +61,17 @@ function fmtAmt(v: any): string {
   return "₹ " + n.toLocaleString("en-IN");
 }
 
+// Compact formatter for KPI cards — keeps numbers inside card bounds
+function fmtCard(v: any): { symbol: string; number: string; suffix: string } {
+  const n = Number(v);
+  if (isNaN(n) || v == null) return { symbol: "₹", number: "0", suffix: "" };
+  const abs = Math.abs(n);
+  if (abs >= 1_00_00_000)      return { symbol: "₹", number: (n / 1_00_00_000).toFixed(2), suffix: " Cr" };
+  if (abs >= 1_00_000)         return { symbol: "₹", number: (n / 1_00_000).toFixed(2),    suffix: " L"  };
+  if (abs >= 1_000)            return { symbol: "₹", number: (n / 1_000).toFixed(1),        suffix: " K"  };
+  return { symbol: "₹", number: n.toLocaleString("en-IN"), suffix: "" };
+}
+
 function fmt(v: any): string {
   if (v === null || v === undefined || v === "") return "—";
   return String(v);
@@ -87,26 +98,32 @@ function KPICard({
   label: string; value: any; icon: React.ElementType; color: string;
   onClick: () => void; currency?: boolean; expandIcon?: boolean;
 }) {
+  const compact = currency ? fmtCard(value) : null;
   return (
     <button
       onClick={onClick}
       style={{ background: color }}
       className="relative flex flex-col justify-between rounded-xl p-4 text-left w-full shadow-md
-                 transition-all duration-150 hover:scale-[1.03] hover:shadow-xl border-0 cursor-pointer"
+                 transition-all duration-150 hover:scale-[1.03] hover:shadow-xl border-0 cursor-pointer min-h-[90px]"
     >
-      <div className="flex items-start justify-between mb-3">
-        <span className="text-white/90 text-[11px] font-bold uppercase tracking-wider leading-tight pr-2">{label}</span>
+      <div className="flex items-start justify-between gap-1 mb-2">
+        <span className="text-white/90 text-[10px] font-bold uppercase tracking-wider leading-tight">{label}</span>
         {expandIcon
-          ? <ChevronDown style={{ width: 20, height: 20, color: "rgba(255,255,255,0.75)", flexShrink: 0 }} />
-          : <Icon style={{ width: 20, height: 20, color: "rgba(255,255,255,0.75)", flexShrink: 0 } as any} />
+          ? <ChevronDown style={{ width: 18, height: 18, color: "rgba(255,255,255,0.75)", flexShrink: 0 }} />
+          : <Icon style={{ width: 18, height: 18, color: "rgba(255,255,255,0.75)", flexShrink: 0 } as any} />
         }
       </div>
-      <div className="flex items-baseline gap-1">
-        {currency && <span className="text-white/80 text-sm font-semibold">₹</span>}
-        <span className="text-white text-2xl font-black tabular-nums leading-none">
-          {value != null ? Number(value).toLocaleString("en-IN") : "0"}
+      {currency && compact ? (
+        <div className="flex items-baseline gap-0.5 flex-wrap">
+          <span className="text-white/75 text-[11px] font-semibold leading-none">{compact.symbol}</span>
+          <span className="text-white text-xl font-black tabular-nums leading-none">{compact.number}</span>
+          {compact.suffix && <span className="text-white/80 text-[11px] font-bold leading-none">{compact.suffix}</span>}
+        </div>
+      ) : (
+        <span className="text-white text-xl font-black tabular-nums leading-none">
+          {value != null ? String(value) : "0"}
         </span>
-      </div>
+      )}
     </button>
   );
 }
@@ -114,18 +131,18 @@ function KPICard({
 function SubKPICard({
   label, value, color, onClick,
 }: { label: string; value: any; color: string; onClick: () => void }) {
+  const compact = fmtCard(value);
   return (
     <button
       onClick={onClick}
       style={{ background: color }}
-      className="flex flex-col gap-1.5 rounded-lg p-3 text-left shadow transition-all hover:scale-[1.02] border-0 cursor-pointer min-w-[140px]"
+      className="flex flex-col gap-1.5 rounded-lg p-3 text-left shadow transition-all hover:scale-[1.02] border-0 cursor-pointer min-w-[120px]"
     >
-      <span className="text-white/85 text-[10px] font-bold uppercase tracking-wider">{label}</span>
-      <div className="flex items-baseline gap-1">
-        <span className="text-white/80 text-[9px] font-semibold">₹</span>
-        <span className="text-white text-lg font-black tabular-nums">
-          {value != null ? Number(value).toLocaleString("en-IN") : "0"}
-        </span>
+      <span className="text-white/85 text-[10px] font-bold uppercase tracking-wider leading-tight">{label}</span>
+      <div className="flex items-baseline gap-0.5 flex-wrap">
+        <span className="text-white/75 text-[10px] font-semibold leading-none">{compact.symbol}</span>
+        <span className="text-white text-base font-black tabular-nums leading-none">{compact.number}</span>
+        {compact.suffix && <span className="text-white/80 text-[10px] font-bold leading-none">{compact.suffix}</span>}
       </div>
     </button>
   );
