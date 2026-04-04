@@ -207,6 +207,37 @@ export const projectDrawingsTable = pgTable("project_drawings", {
 });
 export type ProjectDrawing = typeof projectDrawingsTable.$inferSelect;
 
+export const fmTasksTable = pgTable("fm_tasks", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description"),
+  projectId: integer("project_id").references(() => projectsTable.id, { onDelete: "set null" }),
+  status: text("status").notNull().default("open"),
+  priority: text("priority").notNull().default("medium"),
+  assigneeEmail: text("assignee_email"),
+  assigneeName: text("assignee_name"),
+  createdBy: text("created_by").notNull(),
+  dueDate: text("due_date"),
+  startDate: text("start_date"),
+  tags: text("tags"),
+  isSelfAssigned: boolean("is_self_assigned").notNull().default(false),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export const insertFmTaskSchema = createInsertSchema(fmTasksTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertFmTask = z.infer<typeof insertFmTaskSchema>;
+export type FmTask = typeof fmTasksTable.$inferSelect;
+
+export const fmTaskCommentsTable = pgTable("fm_task_comments", {
+  id: serial("id").primaryKey(),
+  taskId: integer("task_id").notNull().references(() => fmTasksTable.id, { onDelete: "cascade" }),
+  author: text("author").notNull(),
+  message: text("message").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type FmTaskComment = typeof fmTaskCommentsTable.$inferSelect;
+
 export const taskCommentsTable = pgTable("task_comments", {
   id: serial("id").primaryKey(),
   taskId: integer("task_id").notNull().references(() => tasksTable.id, { onDelete: "cascade" }),

@@ -5,6 +5,8 @@ import {
   projectsTable,
   tasksTable,
   taskCommentsTable,
+  fmTasksTable,
+  fmTaskCommentsTable,
   campaignsTable,
   leadsTable,
   teamMembersTable,
