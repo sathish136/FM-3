@@ -4,6 +4,7 @@ import { db, pool } from "@workspace/db";
 import {
   projectsTable,
   tasksTable,
+  taskCommentsTable,
   campaignsTable,
   leadsTable,
   teamMembersTable,
@@ -90,6 +91,16 @@ pool
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
   );
   ALTER TABLE project_drawings ADD COLUMN IF NOT EXISTS drawing_type TEXT NOT NULL DEFAULT '';
+  CREATE TABLE IF NOT EXISTS task_comments (
+    id SERIAL PRIMARY KEY,
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    author TEXT NOT NULL,
+    message TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+  ALTER TABLE tasks ADD COLUMN IF NOT EXISTS tags TEXT;
+  ALTER TABLE tasks ADD COLUMN IF NOT EXISTS start_date TEXT;
+  ALTER TABLE tasks ADD COLUMN IF NOT EXISTS estimated_hours NUMERIC(8,2);
 `,
   )
   .then(() => console.log("PM tables ready"))
@@ -433,9 +444,56 @@ router.patch("/tasks/:id", async (req, res) => {
   }
 });
 
+router.get("/tasks/:id", async (req, res) => {
+  try {
+    const [row] = await db.select().from(tasksTable).where(eq(tasksTable.id, Number(req.params.id)));
+    if (!row) return res.status(404).json({ error: "Not found" });
+    res.json({ ...row, createdAt: row.createdAt.toISOString() });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 router.delete("/tasks/:id", async (req, res) => {
   try {
     await db.delete(tasksTable).where(eq(tasksTable.id, Number(req.params.id)));
+    res.status(204).send();
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── Task Comments ────────────────────────────────────────────────────────────
+
+router.get("/task-comments", async (req, res) => {
+  try {
+    const { taskId } = req.query;
+    if (!taskId) return res.status(400).json({ error: "taskId is required" });
+    const rows = await db
+      .select()
+      .from(taskCommentsTable)
+      .where(eq(taskCommentsTable.taskId, Number(taskId)))
+      .orderBy(taskCommentsTable.createdAt);
+    res.json(rows.map(r => ({ ...r, createdAt: r.createdAt.toISOString() })));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.post("/task-comments", async (req, res) => {
+  try {
+    const { taskId, author, message } = req.body;
+    if (!taskId || !author || !message) return res.status(400).json({ error: "taskId, author and message are required" });
+    const [row] = await db.insert(taskCommentsTable).values({ taskId: Number(taskId), author, message }).returning();
+    res.status(201).json({ ...row, createdAt: row.createdAt.toISOString() });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.delete("/task-comments/:id", async (req, res) => {
+  try {
+    await db.delete(taskCommentsTable).where(eq(taskCommentsTable.id, Number(req.params.id)));
     res.status(204).send();
   } catch (e) {
     res.status(500).json({ error: String(e) });

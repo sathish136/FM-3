@@ -26,6 +26,9 @@ export const tasksTable = pgTable("tasks", {
   priority: text("priority").notNull().default("medium"),
   assignee: text("assignee"),
   dueDate: text("due_date"),
+  startDate: text("start_date"),
+  tags: text("tags"),
+  estimatedHours: numeric("estimated_hours", { precision: 8, scale: 2 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -201,6 +204,17 @@ export const projectDrawingsTable = pgTable("project_drawings", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 export type ProjectDrawing = typeof projectDrawingsTable.$inferSelect;
+
+export const taskCommentsTable = pgTable("task_comments", {
+  id: serial("id").primaryKey(),
+  taskId: integer("task_id").notNull().references(() => tasksTable.id, { onDelete: "cascade" }),
+  author: text("author").notNull(),
+  message: text("message").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export const insertTaskCommentSchema = createInsertSchema(taskCommentsTable).omit({ id: true, createdAt: true });
+export type InsertTaskComment = z.infer<typeof insertTaskCommentSchema>;
+export type TaskComment = typeof taskCommentsTable.$inferSelect;
 
 export const resumeAnalysisCacheTable = pgTable("resume_analysis_cache", {
   id: serial("id").primaryKey(),
