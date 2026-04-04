@@ -101,6 +101,8 @@ pool
   ALTER TABLE tasks ADD COLUMN IF NOT EXISTS tags TEXT;
   ALTER TABLE tasks ADD COLUMN IF NOT EXISTS start_date TEXT;
   ALTER TABLE tasks ADD COLUMN IF NOT EXISTS estimated_hours NUMERIC(8,2);
+  ALTER TABLE tasks ADD COLUMN IF NOT EXISTS erp_task_id TEXT;
+  ALTER TABLE tasks ADD COLUMN IF NOT EXISTS erp_status TEXT;
 `,
   )
   .then(() => console.log("PM tables ready"))
@@ -123,6 +125,7 @@ import {
   fetchErpNextPurchaseOrders,
   fetchErpNextPurchaseOrder,
   fetchErpNextSuppliers,
+  fetchErpNextTasks,
 } from "../lib/erpnext";
 
 const router = Router();
@@ -495,6 +498,108 @@ router.delete("/task-comments/:id", async (req, res) => {
   try {
     await db.delete(taskCommentsTable).where(eq(taskCommentsTable.id, Number(req.params.id)));
     res.status(204).send();
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── FlowMatriX Users ─────────────────────────────────────────────────────────
+
+router.get("/flowmatrix-users", async (_req, res) => {
+  try {
+    const rows = await db
+      .select({
+        email: userPermissionsTable.email,
+        fullName: userPermissionsTable.fullName,
+        hasAccess: userPermissionsTable.hasAccess,
+      })
+      .from(userPermissionsTable)
+      .where(eq(userPermissionsTable.hasAccess, true));
+    res.json(rows.map(r => ({ email: r.email, full_name: r.fullName || r.email })));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── ERPNext Task Sync ────────────────────────────────────────────────────────
+
+const ERP_STATUS_MAP: Record<string, string> = {
+  "Open": "todo",
+  "Working": "in_progress",
+  "Pending Review": "review",
+  "Completed": "done",
+  "Cancelled": "done",
+  "Overdue": "in_progress",
+  "Template": "todo",
+};
+
+const ERP_PRIORITY_MAP: Record<string, string> = {
+  "High": "high",
+  "Medium": "medium",
+  "Low": "low",
+};
+
+router.get("/erp-tasks", async (req, res) => {
+  try {
+    const { project } = req.query as { project?: string };
+    const tasks = await fetchErpNextTasks(project);
+    res.json(tasks);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.post("/erp-tasks/sync", async (req, res) => {
+  try {
+    const { project, projectId } = req.body as { project?: string; projectId?: number };
+    const erpTasks = await fetchErpNextTasks(project);
+    const imported: any[] = [];
+    const updated: any[] = [];
+    for (const et of erpTasks) {
+      const mappedStatus = ERP_STATUS_MAP[et.status] || "todo";
+      const mappedPriority = ERP_PRIORITY_MAP[et.priority] || "medium";
+      const existing = await db.select().from(tasksTable).where(eq(tasksTable.erpTaskId as any, et.name));
+      if (existing.length > 0) {
+        const [row] = await db
+          .update(tasksTable)
+          .set({
+            title: et.subject,
+            status: mappedStatus,
+            erpStatus: et.status,
+            priority: mappedPriority,
+            dueDate: et.exp_end_date,
+            startDate: et.exp_start_date,
+            description: et.description,
+            assignee: et.assigned_to,
+          } as any)
+          .where(eq(tasksTable.erpTaskId as any, et.name))
+          .returning();
+        updated.push(row);
+      } else {
+        const [row] = await db
+          .insert(tasksTable)
+          .values({
+            title: et.subject,
+            description: et.description,
+            projectId: projectId || null,
+            status: mappedStatus,
+            priority: mappedPriority,
+            assignee: et.assigned_to,
+            dueDate: et.exp_end_date,
+            startDate: et.exp_start_date,
+            erpTaskId: et.name,
+            erpStatus: et.status,
+          } as any)
+          .returning();
+        imported.push(row);
+      }
+    }
+    res.json({
+      imported: imported.length,
+      updated: updated.length,
+      total: erpTasks.length,
+      tasks: [...imported, ...updated].map(r => ({ ...r, createdAt: r.createdAt?.toISOString() })),
+    });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

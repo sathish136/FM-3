@@ -29,6 +29,8 @@ export const tasksTable = pgTable("tasks", {
   startDate: text("start_date"),
   tags: text("tags"),
   estimatedHours: numeric("estimated_hours", { precision: 8, scale: 2 }),
+  erpTaskId: text("erp_task_id"),
+  erpStatus: text("erp_status"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

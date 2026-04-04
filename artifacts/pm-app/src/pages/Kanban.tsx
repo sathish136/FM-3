@@ -16,9 +16,9 @@ import { Layout } from "@/components/Layout";
 import {
   Plus, Trash2, Edit2, User, FolderKanban, Search, X,
   Calendar, AlertCircle, CheckCircle2, Clock, BarChart2,
-  ChevronRight, RefreshCw, Loader2, Flag, MessageSquare,
+  ChevronRight, RefreshCw, Loader2, MessageSquare,
   List, Columns, Tag, Send, ChevronDown, AlignLeft,
-  CalendarRange, Timer, MoreHorizontal, CheckCheck,
+  CalendarRange, Timer, CheckCheck, Link2, Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -113,16 +113,16 @@ function TaskForm({
   const [userDropOpen, setUserDropOpen] = useState(false);
 
   useEffect(() => {
-    fetch(`${BASE}/api/erpnext-users`)
+    fetch(`${BASE}/api/flowmatrix-users`)
       .then(r => r.json())
       .then(d => setErpUsers(Array.isArray(d) ? d : []))
       .catch(() => {});
   }, []);
 
   const filteredUsers = erpUsers.filter(u =>
-    u.full_name.toLowerCase().includes(userSearch.toLowerCase()) ||
+    (u.full_name || "").toLowerCase().includes(userSearch.toLowerCase()) ||
     u.email.toLowerCase().includes(userSearch.toLowerCase())
-  ).slice(0, 8);
+  ).slice(0, 10);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -428,6 +428,26 @@ function TaskDetailPanel({
             )}
           </div>
 
+          {/* ERP Info */}
+          {(taskAny.erpTaskId || taskAny.erpStatus) && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-50 border border-violet-200">
+              <Link2 className="w-3.5 h-3.5 text-violet-600 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[9px] text-violet-500 font-semibold uppercase tracking-wide">ERPNext Task</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {taskAny.erpTaskId && (
+                    <span className="text-xs font-bold text-violet-700">{taskAny.erpTaskId}</span>
+                  )}
+                  {taskAny.erpStatus && (
+                    <span className="text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-semibold">
+                      {taskAny.erpStatus}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Tags */}
           {tags.length > 0 && (
             <div>
@@ -547,6 +567,33 @@ export default function Kanban() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [draggingId, setDraggingId] = useState<number | null>(null);
+  const [erpSyncing, setErpSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ imported: number; updated: number } | null>(null);
+
+  async function syncFromERP() {
+    setErpSyncing(true);
+    setSyncResult(null);
+    try {
+      const project = selectedProject?.name || (selectedProject as any)?.erpnextName || undefined;
+      const body: any = {};
+      if (project) body.project = project;
+      if (typeof selectedProjectId === "number") body.projectId = selectedProjectId;
+      const res = await fetch(`${BASE}/api/erp-tasks/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSyncResult({ imported: data.imported, updated: data.updated });
+        queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(taskParams) });
+        queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
+        setTimeout(() => setSyncResult(null), 4000);
+      }
+    } finally {
+      setErpSyncing(false);
+    }
+  }
 
   const displayTasks = tasks.filter(t => {
     if (priorityFilter !== "all" && t.priority !== priorityFilter) return false;
@@ -767,6 +814,23 @@ export default function Kanban() {
               <RefreshCw className={`w-3.5 h-3.5 ${tasksLoading ? "animate-spin" : ""}`} />
             </button>
 
+            {/* ERP Sync button */}
+            <button
+              onClick={syncFromERP}
+              disabled={erpSyncing}
+              title="Sync tasks from ERPNext (Python)"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-colors disabled:opacity-60 shrink-0"
+            >
+              {erpSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+              Sync ERP
+            </button>
+
+            {syncResult && (
+              <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-lg shrink-0 border border-emerald-200">
+                +{syncResult.imported} new · {syncResult.updated} updated
+              </span>
+            )}
+
             <button onClick={() => setCreateOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold transition-colors shadow-sm shrink-0">
               <Plus className="w-3.5 h-3.5" /> New Task
@@ -824,7 +888,6 @@ export default function Kanban() {
                         const overdueDue = isOverdue(task.dueDate) && task.status !== TaskStatus.done;
                         const taskAny = task as any;
                         const tags: string[] = taskAny.tags ? taskAny.tags.split(",").map((t: string) => t.trim()).filter(Boolean) : [];
-                        const commentCount = 0;
                         return (
                           <div
                             key={task.id}
@@ -880,6 +943,18 @@ export default function Kanban() {
                                 <FolderKanban className="w-2.5 h-2.5" />
                                 {proj.name}
                               </span>
+                            )}
+
+                            {/* ERP badge */}
+                            {taskAny.erpTaskId && (
+                              <div className="flex items-center gap-1 mb-1.5">
+                                <span className="inline-flex items-center gap-1 text-[9px] bg-violet-50 text-violet-700 border border-violet-200 px-1.5 py-0.5 rounded-full font-semibold">
+                                  <Link2 className="w-2 h-2" />ERP
+                                </span>
+                                {taskAny.erpStatus && (
+                                  <span className="text-[9px] text-muted-foreground">{taskAny.erpStatus}</span>
+                                )}
+                              </div>
                             )}
 
                             {/* Footer */}
