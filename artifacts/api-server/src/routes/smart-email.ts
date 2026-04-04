@@ -1,22 +1,11 @@
 import { Router } from "express";
 import nodemailer from "nodemailer";
 import pg from "pg";
-import OpenAI from "openai";
 import multer from "multer";
 
 const router = Router();
 const { Pool } = pg;
 
-let _openai: OpenAI | null = null;
-function getOpenAI(): OpenAI {
-  if (!_openai) {
-    _openai = new OpenAI({
-      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
-      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-    });
-  }
-  return _openai;
-}
 
 const pool = new Pool({
   connectionString: "postgresql://postgres:wtt%40adm123@122.165.225.42:5432/flowmatrix",
@@ -180,8 +169,8 @@ async function initTables() {
 
   console.log("smart email tables ready");
 }
-// Automatic AI-based email analysis and reclassification
-async function runAutoEmailAnalysis() {
+// (AI auto-analysis removed)
+function _unused_runAutoEmailAnalysis() {
   try {
     console.log("🤖 Starting automatic email analysis...");
     
@@ -425,19 +414,7 @@ async function cleanupPromotionalDrafts() {
   }
 }
 
-// Run auto-analysis every 5 minutes
-setInterval(runAutoEmailAnalysis, 5 * 60 * 1000);
-
-// Run cleanup every 10 minutes
-setInterval(cleanupIncorrectTravelClassifications, 10 * 60 * 1000);
-
-// Run promotional drafts cleanup every 15 minutes
-setInterval(cleanupPromotionalDrafts, 15 * 60 * 1000);
-
-// Run once on startup
-setTimeout(runAutoEmailAnalysis, 10000);
-setTimeout(cleanupIncorrectTravelClassifications, 30000);
-setTimeout(cleanupPromotionalDrafts, 60000);
+// AI auto-analysis intervals removed
 
 function extractDomain(email: string): string {
   const match = email.match(/@([^>\s,]+)/);
@@ -550,7 +527,7 @@ function isOtpEmail(subject: string, bodySnippet: string): boolean {
   return OTP_PATTERNS.some(p => p.test(text));
 }
 
-async function classifyWithAI(subject: string, fromAddr: string, bodySnippet: string) {
+async function _unused_classifyWithAI(subject: string, fromAddr: string, bodySnippet: string) {
   const isInternal = checkInternal(fromAddr);
   const domain = extractDomain(fromAddr);
 
@@ -751,7 +728,7 @@ const smartUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize
 
 const classifyQueue = new Set<string>();
 
-async function classifyEmailRecord(uid: string, autoReply = true, userEmail?: string) {
+async function _unused_classifyEmailRecord(uid: string, autoReply = true, userEmail?: string) {
   if (classifyQueue.has(uid)) return;
   classifyQueue.add(uid);
   try {
@@ -833,7 +810,7 @@ async function classifyEmailRecord(uid: string, autoReply = true, userEmail?: st
   }
 }
 
-async function triggerAutoReply(uid: string, userEmail?: string, force = false) {
+async function _unused_triggerAutoReply(uid: string, userEmail?: string, force = false) {
   const res = await pool.query("SELECT * FROM smart_email_inbox WHERE uid=$1", [uid]);
   const email = res.rows[0];
   if (!email) return;
@@ -1188,15 +1165,7 @@ router.post("/smart-email/ingest", async (req, res) => {
       ingested++;
     }
 
-    const unclassified = await pool.query(
-      `SELECT uid FROM smart_email_inbox WHERE NOT classified${accountId ? ` AND (account_id=$1 OR account_id IS NULL)` : ""} ORDER BY email_date DESC LIMIT 30`,
-      accountId ? [accountId] : []
-    );
-    for (const r of unclassified.rows) {
-      classifyEmailRecord(r.uid, autoReply, userEmail).catch(() => {});
-    }
-
-    res.json({ ok: true, ingested, classifying: unclassified.rows.length });
+    res.json({ ok: true, ingested, classifying: 0 });
 
     // Auto-sync ERP data after ingesting new emails (non-blocking)
     syncErpData().catch(() => {});
@@ -1217,142 +1186,12 @@ router.post("/smart-email/add", async (req, res) => {
        ON CONFLICT (uid) DO NOTHING`,
       [uid, subject, from_addr, to_addr, cc_addr, email_date, body_text, body_html]
     );
-    classifyEmailRecord(String(uid)).catch(() => {});
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST /smart-email/classify/:uid — manual reclassify
-router.post("/smart-email/classify/:uid", async (req, res) => {
-  const { uid } = req.params;
-  try {
-    await pool.query("UPDATE smart_email_inbox SET classified=false WHERE uid=$1", [uid]);
-    await classifyEmailRecord(uid);
-    const r = await pool.query(
-      "SELECT email_type, category, project_name, supplier_name, priority, is_internal FROM smart_email_inbox WHERE uid=$1",
-      [uid]
-    );
-    res.json({ ok: true, classification: r.rows[0] });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /smart-email/draft-batch — generate AI draft replies for all eligible emails
-router.post("/smart-email/draft-batch", async (req, res) => {
-  const force = req.body?.force === true;
-  try {
-    // In force mode: regenerate all unsent drafts (non-internal, non-promotional, not yet sent)
-    // In normal mode: only pick emails without any draft
-    const rows = await pool.query(
-      force
-        ? `SELECT uid FROM smart_email_inbox
-           WHERE is_deleted = false
-             AND is_internal = false
-             AND COALESCE(email_type, '') NOT IN ('promotion', 'otp')
-             AND auto_replied = false
-           ORDER BY email_date DESC
-           LIMIT 50`
-        : `SELECT uid FROM smart_email_inbox
-           WHERE is_deleted = false
-             AND is_internal = false
-             AND COALESCE(email_type, '') NOT IN ('promotion', 'otp')
-             AND has_draft = false
-             AND auto_replied = false
-           ORDER BY email_date DESC
-           LIMIT 50`
-    );
-    let queued = 0;
-    for (const r of rows.rows) {
-      // Pass undefined for userEmail so the to_addr restriction is skipped in batch mode
-      triggerAutoReply(r.uid, undefined, force).catch(e => {
-        console.error(`[draft-batch] failed for uid=${r.uid}:`, e.message);
-      });
-      queued++;
-    }
-    console.log(`[draft-batch] queued ${queued} drafts (force=${force})`);
-    res.json({ ok: true, queued });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /smart-email/cleanup-promotional-drafts — clean up drafts from promotional emails
-router.post("/smart-email/cleanup-promotional-drafts", async (req, res) => {
-  try {
-    console.log("🧹 Manual promotional drafts cleanup triggered via API");
-    await cleanupPromotionalDrafts();
-    res.json({ ok: true, message: "Promotional drafts cleanup completed" });
-  } catch (err: any) {
-    console.error("Manual promotional drafts cleanup error:", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /smart-email/cleanup-travel — clean up incorrect travel classifications
-router.post("/smart-email/cleanup-travel", async (req, res) => {
-  try {
-    console.log("🧹 Manual travel cleanup triggered via API");
-    await cleanupIncorrectTravelClassifications();
-    res.json({ ok: true, message: "Travel cleanup completed" });
-  } catch (err: any) {
-    console.error("Manual travel cleanup error:", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /smart-email/auto-analyze — trigger automatic email analysis
-router.post("/smart-email/auto-analyze", async (req, res) => {
-  try {
-    console.log("🔄 Manual auto-analysis triggered via API");
-    await runAutoEmailAnalysis();
-    res.json({ ok: true, message: "Auto-analysis completed" });
-  } catch (err: any) {
-    console.error("Manual auto-analysis error:", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /smart-email/classify-batch — classify all unclassified + OTP re-scan
-router.post("/smart-email/classify-batch", async (req, res) => {
-  const autoReply = req.body?.auto_reply !== false;
-  try {
-    // 1. Classify unclassified emails via AI as before
-    const rows = await pool.query(
-      "SELECT uid FROM smart_email_inbox WHERE NOT classified ORDER BY email_date DESC LIMIT 50"
-    );
-    for (const r of rows.rows) {
-      classifyEmailRecord(r.uid, autoReply).catch(() => {});
-    }
-
-    // 2. OTP keyword re-scan: check ALL non-OTP, non-deleted emails and move matches to OTP
-    const otpScanRows = await pool.query(
-      `SELECT uid, subject, body_text, body_html
-       FROM smart_email_inbox
-       WHERE is_deleted = false AND COALESCE(email_type,'') != 'otp'
-       ORDER BY email_date DESC LIMIT 200`
-    );
-    let otpMoved = 0;
-    for (const em of otpScanRows.rows) {
-      const bodySnippet = em.body_text || (em.body_html ? em.body_html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ") : "");
-      if (isOtpEmail(em.subject || "", bodySnippet)) {
-        await pool.query(
-          "UPDATE smart_email_inbox SET email_type='otp', classified=true, has_draft=false WHERE uid=$1",
-          [em.uid]
-        );
-        // Remove any pending (unsent) draft for OTP emails
-        await pool.query("DELETE FROM smart_email_drafts WHERE email_uid=$1 AND sent=false", [em.uid]);
-        otpMoved++;
-      }
-    }
-
-    res.json({ ok: true, queued: rows.rows.length, otp_moved: otpMoved });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // POST /smart-email/seen/:uid
 router.post("/smart-email/seen/:uid", async (req, res) => {
@@ -1364,87 +1203,6 @@ router.post("/smart-email/seen/:uid", async (req, res) => {
   }
 });
 
-// POST /smart-email/ai-reply — generate smart reply options
-router.post("/smart-email/ai-reply", async (req, res) => {
-  const { uid, tone } = req.body;
-  try {
-    const r = await pool.query(
-      "SELECT subject, from_addr, body_text, body_html, email_type, category, project_name, supplier_name FROM smart_email_inbox WHERE uid=$1",
-      [uid]
-    );
-    const email = r.rows[0];
-    if (!email) return res.status(404).json({ error: "Email not found" });
-
-    const bodyText = email.body_text || (email.body_html ? email.body_html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ") : "");
-    const context = email.project_name ? `This is regarding project: ${email.project_name}.` :
-      email.supplier_name ? `This is from supplier: ${email.supplier_name}.` : "";
-
-    const completion = await getOpenAI().chat.completions.create({
-      model: "gpt-4o-mini",
-      max_tokens: 800,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content: `You are the MD's email assistant at WTT International (water treatment technology company). Generate smart reply options for the MD. ${context} Return JSON with "replies" array of 3 objects each with "tone" and "text" fields.`,
-        },
-        {
-          role: "user",
-          content: `From: ${email.from_addr}
-Subject: ${email.subject}
-Email type: ${email.email_type}
-Category: ${email.category}
-Body: ${bodyText.slice(0, 1500)}
-
-Generate 3 reply options:
-1. Brief & Direct (2-3 sentences, gets to the point)
-2. Professional & Detailed (4-6 sentences, formal)  
-3. Friendly & Positive (3-4 sentences, warm tone)
-
-Each reply should be actionable and appropriate for the MD of a water treatment company.`,
-        },
-      ],
-    });
-
-    const parsed = JSON.parse(completion.choices[0]?.message?.content || '{"replies":[]}');
-    res.json({ replies: parsed.replies || [] });
-  } catch (err: any) {
-    console.error("ai-reply error:", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /smart-email/ai-summary/:uid
-router.post("/smart-email/ai-summary/:uid", async (req, res) => {
-  try {
-    const r = await pool.query(
-      "SELECT subject, from_addr, body_text, body_html, email_type, category, project_name, priority FROM smart_email_inbox WHERE uid=$1",
-      [req.params.uid]
-    );
-    const email = r.rows[0];
-    if (!email) return res.status(404).json({ error: "Email not found" });
-
-    const bodyText = email.body_text || (email.body_html ? email.body_html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ") : "");
-
-    const completion = await getOpenAI().chat.completions.create({
-      model: "gpt-4o-mini",
-      max_tokens: 300,
-      messages: [
-        {
-          role: "system",
-          content: "You are a concise email summarizer for a busy Managing Director. Summarize in 2-3 sentences. Highlight key action items, deadlines, and important numbers. Be direct and clear.",
-        },
-        {
-          role: "user",
-          content: `Subject: ${email.subject}\nFrom: ${email.from_addr}\nType: ${email.email_type} / ${email.category}\n\n${bodyText.slice(0, 2000)}`,
-        },
-      ],
-    });
-    res.json({ summary: completion.choices[0]?.message?.content || "" });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // POST /smart-email/send
 router.post("/smart-email/send", smartUpload.array("attachments"), async (req, res) => {
@@ -1468,17 +1226,6 @@ router.post("/smart-email/send", smartUpload.array("attachments"), async (req, r
   }
 });
 
-// POST /smart-email/auto-reply/:uid — generate draft (does NOT send)
-router.post("/smart-email/auto-reply/:uid", async (req, res) => {
-  const force = req.body?.force === true;
-  try {
-    await triggerAutoReply(req.params.uid, req.body?.user_email, force);
-    const draft = await pool.query("SELECT * FROM smart_email_drafts WHERE email_uid=$1 AND sent=false", [req.params.uid]);
-    res.json({ ok: true, draft: draft.rows[0] || null });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // DELETE /smart-email/draft/:uid — discard (delete) the unsent draft
 router.delete("/smart-email/draft/:uid", async (req, res) => {

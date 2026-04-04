@@ -538,13 +538,7 @@ function EmailDetail({ email, onClose, onDeleted, onDraftDiscarded, userEmail, i
               className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1B2A5E] text-white text-xs font-semibold rounded-lg hover:opacity-90">
               <Reply className="w-3.5 h-3.5" />Reply
             </button>
-            {!hasDraft ? (
-              <button onClick={handleAutoReply} disabled={autoReplying}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 disabled:opacity-60 shadow-sm">
-                {autoReplying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
-                {autoReplying ? "Generating…" : "Generate Reply"}
-              </button>
-            ) : (
+            {hasDraft && (
               <button onClick={() => setTab("draft")}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 text-white text-xs font-semibold rounded-lg hover:bg-orange-700 ring-2 ring-orange-300 shadow-sm">
                 <Bot className="w-3.5 h-3.5" />
@@ -582,7 +576,6 @@ function EmailDetail({ email, onClose, onDeleted, onDraftDiscarded, userEmail, i
           {([
             { key: "mail",  label: "Email",         icon: Mail },
             { key: "draft", label: hasDraft && !autoReplied ? "Draft ●" : "Draft", icon: Bot, hidden: false },
-            { key: "reply", label: "Smart Replies", icon: Wand2 },
           ] as { key: string; label: string; icon: any; hidden?: boolean }[]).filter(t => !t.hidden).map(t => (
             <button key={t.key} onClick={() => handleTabChange(t.key as any)}
               className={cn(
@@ -786,104 +779,6 @@ function EmailDetail({ email, onClose, onDeleted, onDraftDiscarded, userEmail, i
             </div>
           )}
 
-          {tab === "reply" && (
-            <div className="p-5 space-y-3">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center">
-                  <Wand2 className="w-3.5 h-3.5 text-white" />
-                </div>
-                <span className="text-sm font-bold text-gray-800">AI Smart Replies</span>
-                <span className="text-[10px] text-gray-400 ml-1">Select one, then send</span>
-                {replies.length > 0 && (
-                  <button onClick={loadReplies} className="ml-auto text-[10px] text-gray-400 hover:text-gray-600 flex items-center gap-1">
-                    <RefreshCw className="w-3 h-3" />Regenerate
-                  </button>
-                )}
-              </div>
-
-              {repliesError && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2 text-xs text-red-600">
-                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-semibold mb-1">Could not generate replies</p>
-                    <p className="text-red-500">{repliesError}</p>
-                    <button onClick={loadReplies} className="mt-2 underline text-red-600 font-medium">Try again</button>
-                  </div>
-                </div>
-              )}
-
-              {repliesLoading ? (
-                <div className="flex flex-col items-center justify-center py-8 gap-3 text-gray-400">
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  <span className="text-sm">Generating smart replies…</span>
-                </div>
-              ) : replies.length > 0 ? (
-                <>
-                  {replies.map((r, i) => {
-                    const isSelected = selectedReplyIdx === i;
-                    return (
-                      <div key={i}
-                        onClick={() => setSelectedReplyIdx(isSelected ? null : i)}
-                        className={cn(
-                          "border-2 rounded-xl p-4 cursor-pointer transition-all",
-                          isSelected
-                            ? "border-[#1B2A5E] bg-[#edf2fb] shadow-sm"
-                            : "border-gray-100 hover:border-gray-300 hover:bg-gray-50"
-                        )}>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className={cn(
-                            "text-[10px] font-bold uppercase tracking-wider",
-                            isSelected ? "text-[#1B2A5E]" : "text-gray-400"
-                          )}>
-                            {r.tone || ["Brief & Direct", "Professional", "Friendly"][i] || `Option ${i + 1}`}
-                          </span>
-                          <div className={cn(
-                            "w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all",
-                            isSelected ? "border-[#1B2A5E] bg-[#1B2A5E]" : "border-gray-300"
-                          )}>
-                            {isSelected && <CheckCircle2 className="w-3 h-3 text-white" />}
-                          </div>
-                        </div>
-                        <p className="text-[13px] text-gray-700 leading-relaxed">{r.text || String(r)}</p>
-                      </div>
-                    );
-                  })}
-
-                  {selectedReplyIdx !== null && (
-                    <div className="pt-1 flex gap-2">
-                      <button
-                        onClick={() => {
-                          setReplyDraft(replies[selectedReplyIdx].text);
-                          setReplyIsDraft(false);
-                          setReplyOpen(true);
-                        }}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-[#1B2A5E] text-white text-sm font-bold rounded-xl hover:opacity-90 transition-opacity shadow-sm">
-                        <Send className="w-4 h-4" />
-                        Send Selected Reply
-                      </button>
-                      <button
-                        onClick={() => setSelectedReplyIdx(null)}
-                        className="p-2.5 border border-gray-200 rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors">
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <button onClick={loadReplies}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm">
-                  <Wand2 className="w-4 h-4" />Generate Smart Replies
-                </button>
-              )}
-
-              <div className="pt-1">
-                <button onClick={() => { setReplyDraft(""); setReplyIsDraft(false); setReplyOpen(true); }}
-                  className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 w-full justify-center transition-colors">
-                  <Reply className="w-3.5 h-3.5" />Write Custom Reply
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
@@ -1374,37 +1269,6 @@ export default function SmartInbox() {
               </div>
             )}
 
-            {/* Secondary AI actions - compact icon row */}
-            <div className="mt-2 grid grid-cols-3 gap-1.5">
-              <button
-                onClick={() => {
-                  setAnalyzing(true);
-                  triggerAutoAnalysis().then(success => {
-                    setSyncProgress({ message: success ? "Analysis done! Refreshing…" : "Analysis failed.", progress: 100, total: 100 });
-                    setTimeout(() => { loadStats(); loadEmails(activeFilter, filterValue, search || undefined); setSyncProgress(null); }, 2000);
-                    setAnalyzing(false);
-                  });
-                }}
-                disabled={analyzing}
-                title="AI Auto-Analysis"
-                className="flex flex-col items-center gap-1 py-2 rounded-lg bg-purple-50 hover:bg-purple-100 border border-purple-100 text-purple-700 transition-colors disabled:opacity-50">
-                {analyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BrainCircuit className="w-3.5 h-3.5" />}
-                <span className="text-[9px] font-semibold">Analyse</span>
-              </button>
-              <button
-                onClick={() => handleDraftAll(draftAllResult === "all_done")}
-                disabled={draftingAll || classifying}
-                title={draftAllResult === "all_done" ? "Regenerate All Drafts" : "AI Draft All Replies"}
-                className={cn(
-                  "flex flex-col items-center gap-1 py-2 rounded-lg border transition-colors disabled:opacity-50",
-                  draftAllResult === "all_done"
-                    ? "bg-green-50 hover:bg-green-100 border-green-100 text-green-700"
-                    : "bg-amber-50 hover:bg-amber-100 border-amber-100 text-amber-700"
-                )}>
-                {draftingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : draftAllResult === "all_done" ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
-                <span className="text-[9px] font-semibold">{draftAllResult === "all_done" ? "Regen" : "Draft"}</span>
-              </button>
-            </div>
           </div>
 
           {/* Auto-reply toggle */}
