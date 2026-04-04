@@ -170,7 +170,7 @@ async function initTables() {
   console.log("smart email tables ready");
 }
 // (AI auto-analysis removed)
-function _unused_runAutoEmailAnalysis() {
+async function _unused_runAutoEmailAnalysis() {
   try {
     console.log("🤖 Starting automatic email analysis...");
     
