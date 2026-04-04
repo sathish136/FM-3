@@ -220,6 +220,7 @@ export function UserManagementContent() {
   const [saving, setSaving]       = useState(false);
   const [search, setSearch]       = useState("");
   const [selected, setSelected]   = useState<ErpUser | null>(null);
+  const [hideDisabled, setHideDisabled] = useState(true);
 
   // Draft state
   const [draftAccess, setDraftAccess]         = useState(true);
@@ -340,10 +341,13 @@ export function UserManagementContent() {
     toast({ title: `Copied settings from ${p.fullName || email}`, description: "Review and save to apply." });
   }
 
-  const filtered = users.filter(u =>
-    u.full_name.toLowerCase().includes(search.toLowerCase()) ||
-    u.email.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = users.filter(u => {
+    if (hideDisabled && u.enabled === 0) return false;
+    return (
+      u.full_name.toLowerCase().includes(search.toLowerCase()) ||
+      u.email.toLowerCase().includes(search.toLowerCase())
+    );
+  });
 
   const filteredProjects = projects.filter(p =>
     (p.name || p.erpnextName || "").toLowerCase().includes(projSearch.toLowerCase())
@@ -400,7 +404,7 @@ export function UserManagementContent() {
 
         {/* ── Left: user list ─────────────────────────────────────────────── */}
         <div className="w-72 shrink-0 bg-card border-r border-border flex flex-col overflow-hidden">
-          <div className="p-3 border-b border-border">
+          <div className="p-3 border-b border-border space-y-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
               <input
@@ -409,6 +413,19 @@ export function UserManagementContent() {
                 className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-border bg-muted text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
               />
             </div>
+            <button
+              onClick={() => setHideDisabled(v => !v)}
+              className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${
+                hideDisabled
+                  ? "bg-muted border-border text-muted-foreground hover:text-foreground hover:bg-muted/80"
+                  : "bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
+              }`}
+            >
+              <span>{hideDisabled ? "Showing active users only" : "Showing all users"}</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${hideDisabled ? "bg-muted-foreground/20 text-muted-foreground" : "bg-amber-200 text-amber-800"}`}>
+                {hideDisabled ? "Disabled hidden" : "Disabled visible"}
+              </span>
+            </button>
           </div>
 
           <div className="flex-1 overflow-y-auto">
@@ -427,13 +444,18 @@ export function UserManagementContent() {
                 <button key={u.email} onClick={() => selectUser(u)}
                   className={`w-full flex items-center gap-3 px-4 py-3 border-b border-border/50 text-left transition-colors ${
                     isSel ? "bg-accent border-primary/10" : "hover:bg-muted/50"
-                  }`}
+                  } ${u.enabled === 0 ? "opacity-60" : ""}`}
                 >
                   <UserAvatar user={u} size="sm" />
                   <div className="flex-1 min-w-0">
-                    <p className={`text-xs font-semibold truncate ${isSel ? "text-primary" : "text-foreground"}`}>
-                      {u.full_name}
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <p className={`text-xs font-semibold truncate ${isSel ? "text-primary" : "text-foreground"}`}>
+                        {u.full_name}
+                      </p>
+                      {u.enabled === 0 && (
+                        <span className="text-[8px] font-bold bg-muted text-muted-foreground px-1 py-0.5 rounded shrink-0">OFF</span>
+                      )}
+                    </div>
                     <p className="text-[10px] text-muted-foreground truncate">{u.email}</p>
                   </div>
                   <div className="shrink-0 flex flex-col items-end gap-0.5">
