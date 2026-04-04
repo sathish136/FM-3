@@ -3,7 +3,7 @@ import {
   Users, Search, Shield, ShieldOff, Save,
   RefreshCw, ChevronRight, Loader2, Lock, Unlock, Eye, Pencil, Ban,
   KeyRound, SunMedium, Moon, Monitor, LayoutDashboard, PanelLeftClose, Layers, Copy, LayoutGrid, FolderOpen,
-  Tag, Plus, Trash2, Edit2, X, Check, ChevronDown, Wand2,
+  Tag, Plus, Trash2, Edit2, X, Check, ChevronDown, Wand2, ChevronLeft, ArrowRight,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -277,7 +277,7 @@ function RolePicker({ role, onChange }: { role: ModuleRole; onChange: (r: Module
 
   return (
     <div className="flex rounded-lg overflow-hidden border border-border shrink-0">
-      {options.map((opt, i) => (
+      {options.map((opt) => (
         <button
           key={opt.value}
           onClick={() => onChange(opt.value)}
@@ -300,17 +300,14 @@ function buildDefaultRoles(defaultRole: ModuleRole = "write"): Record<string, Mo
 }
 
 function rolesFromPermission(p: Permission): Record<string, ModuleRole> {
-  // Prefer moduleRoles if it has data
   try {
     const stored = JSON.parse(p.moduleRoles || "{}") as Record<string, ModuleRole>;
     if (Object.keys(stored).length > 0) {
-      // Ensure all modules are present, default missing ones to "none"
       const full: Record<string, ModuleRole> = {};
       APP_MODULES.forEach(m => { full[m.key] = stored[m.key] ?? "none"; });
       return full;
     }
   } catch {}
-  // Fallback: derive from old modules array (all enabled = write, rest = none)
   try {
     const mods = JSON.parse(p.modules || "[]") as string[];
     const full: Record<string, ModuleRole> = {};
@@ -319,6 +316,14 @@ function rolesFromPermission(p: Permission): Record<string, ModuleRole> {
   } catch {}
   return buildDefaultRoles("none");
 }
+
+// ── Wizard step definitions ───────────────────────────────────────────────────
+const WIZARD_STEPS = [
+  { id: 1, label: "Role & Access",       icon: <Tag className="w-3.5 h-3.5" /> },
+  { id: 2, label: "Module Permissions",  icon: <Shield className="w-3.5 h-3.5" /> },
+  { id: 3, label: "Projects & Drawings", icon: <FolderOpen className="w-3.5 h-3.5" /> },
+  { id: 4, label: "Preferences",         icon: <SunMedium className="w-3.5 h-3.5" /> },
+];
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export function UserManagementContent() {
@@ -334,6 +339,9 @@ export function UserManagementContent() {
   const [selected, setSelected]   = useState<ErpUser | null>(null);
   const [hideDisabled, setHideDisabled] = useState(true);
 
+  // Wizard step
+  const [wizardStep, setWizardStep] = useState(1);
+
   // Draft state
   const [draftAccess, setDraftAccess]         = useState(true);
   const [draftRoles, setDraftRoles]           = useState<Record<string, ModuleRole>>({});
@@ -346,7 +354,6 @@ export function UserManagementContent() {
   const [projSearch, setProjSearch]               = useState("");
   const [copyFromOpen, setCopyFromOpen]       = useState(false);
   const [copyFromSearch, setCopyFromSearch]   = useState("");
-  const [roleTypeOpen, setRoleTypeOpen]       = useState(false);
   const [togglingEnabled, setTogglingEnabled] = useState(false);
 
   // Role template editor state
@@ -388,6 +395,7 @@ export function UserManagementContent() {
 
   function selectUser(u: ErpUser) {
     setSelected(u);
+    setWizardStep(1);
     const p = perms[u.email];
     setDraftAccess(p ? p.hasAccess : true);
     setDraftRoles(p ? rolesFromPermission(p) : buildDefaultRoles("write"));
@@ -398,7 +406,7 @@ export function UserManagementContent() {
     setDraftTheme(p ? (p.theme ?? "system") : "system");
     setDraftNavbarStyle(p ? (p.navbarStyle ?? "full") : "full");
     setProjSearch("");
-    setRoleTypeOpen(false);
+    setCopyFromOpen(false);
   }
 
   async function save() {
@@ -423,7 +431,7 @@ export function UserManagementContent() {
       if (!res.ok) throw new Error(await res.text());
       const row: Permission = await res.json();
       setPerms(prev => ({ ...prev, [selected.email]: row }));
-      toast({ title: "Permissions saved" });
+      toast({ title: "Permissions saved successfully" });
     } catch (e) {
       toast({ title: "Failed to save", description: String(e), variant: "destructive" });
     } finally {
@@ -438,27 +446,28 @@ export function UserManagementContent() {
       APP_MODULES.forEach(m => { full[m.key] = roles[m.key] ?? "none"; });
       setDraftRoles(full);
       setDraftRoleType(tmpl.name);
-      setRoleTypeOpen(false);
-      toast({ title: `Applied template: ${tmpl.name}`, description: "Review and save to apply to user." });
+      toast({ title: `Applied: ${tmpl.name}`, description: "Module permissions updated from template." });
     } catch {
       toast({ title: "Failed to apply template", variant: "destructive" });
     }
   }
 
-  async function saveTmpl(isNew: boolean) {
+  async function saveTmpl() {
     setTmplSaving(true);
     try {
+      const isNew = !tmplEditing;
       const url = isNew ? `${BASE}/api/role-templates` : `${BASE}/api/role-templates/${tmplEditing!.id}`;
+      const method = isNew ? "POST" : "PUT";
       const res = await fetch(url, {
-        method: isNew ? "POST" : "PUT",
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: tmplName, description: tmplDesc, color: tmplColor, moduleRoles: tmplRoles }),
       });
       if (!res.ok) throw new Error(await res.text());
       const saved: RoleTemplate = await res.json();
       setTemplates(prev => isNew ? [...prev, saved] : prev.map(t => t.id === saved.id ? saved : t));
-      setTmplCreating(false);
       setTmplEditing(null);
+      setTmplCreating(false);
       toast({ title: isNew ? "Role template created" : "Role template updated" });
     } catch (e) {
       toast({ title: "Failed to save template", description: String(e), variant: "destructive" });
@@ -499,20 +508,16 @@ export function UserManagementContent() {
   }
 
   function openCreateTmpl() {
-    setTmplCreating(true);
     setTmplEditing(null);
-    setTmplName("");
-    setTmplDesc("");
-    setTmplColor("violet");
+    setTmplCreating(true);
+    setTmplName(""); setTmplDesc(""); setTmplColor("violet");
     setTmplRoles(buildDefaultRoles("none"));
   }
 
   function openEditTmpl(t: RoleTemplate) {
-    setTmplEditing(t);
     setTmplCreating(false);
-    setTmplName(t.name);
-    setTmplDesc(t.description);
-    setTmplColor(t.color);
+    setTmplEditing(t);
+    setTmplName(t.name); setTmplDesc(t.description); setTmplColor(t.color);
     try {
       const roles = JSON.parse(t.moduleRoles || "{}") as Record<string, ModuleRole>;
       const full: Record<string, ModuleRole> = {};
@@ -560,7 +565,7 @@ export function UserManagementContent() {
     setDraftNavbarStyle(p.navbarStyle ?? "full");
     setCopyFromOpen(false);
     setCopyFromSearch("");
-    toast({ title: `Copied settings from ${p.fullName || email}`, description: "Review and save to apply." });
+    toast({ title: `Copied settings from ${p.fullName || email}` });
   }
 
   async function toggleErpEnabled(u: ErpUser) {
@@ -615,7 +620,6 @@ export function UserManagementContent() {
     return null;
   }
 
-  // Draft stats
   const writeCount = Object.values(draftRoles).filter(r => r === "write").length;
   const readCount  = Object.values(draftRoles).filter(r => r === "read").length;
   const noneCount  = Object.values(draftRoles).filter(r => r === "none").length;
@@ -630,7 +634,6 @@ export function UserManagementContent() {
           <h1 className="text-sm font-bold text-card-foreground">User Management</h1>
           <span className="text-xs text-muted-foreground ml-1 hidden sm:inline">Control module access & roles per user</span>
         </div>
-        {/* View tabs */}
         <div className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
           <button
             onClick={() => setView("users")}
@@ -652,14 +655,6 @@ export function UserManagementContent() {
             )}
           </button>
         </div>
-        {/* Legend (users view only) */}
-        {view === "users" && (
-          <div className="hidden md:flex items-center gap-3 text-[10px] font-semibold text-muted-foreground">
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-muted-foreground inline-block" /> None</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" /> Read</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Write</span>
-          </div>
-        )}
         <button onClick={fetchAll} disabled={loading}
           className="p-2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
           <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
@@ -671,7 +666,6 @@ export function UserManagementContent() {
         {/* ── Templates view ──────────────────────────────────────────────── */}
         {view === "templates" && (
           <div className="flex-1 flex min-h-0 overflow-hidden">
-            {/* Templates list */}
             <div className="w-80 shrink-0 bg-card border-r border-border flex flex-col overflow-hidden">
               <div className="p-4 border-b border-border flex items-center justify-between gap-2">
                 <div>
@@ -693,48 +687,27 @@ export function UserManagementContent() {
               </div>
               <div className="flex-1 overflow-y-auto">
                 {templates.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 text-center px-6">
-                    <Tag className="w-8 h-8 text-muted-foreground/30 mb-3" />
+                  <div className="flex flex-col items-center justify-center h-full gap-3 px-6 text-center">
+                    <Tag className="w-8 h-8 text-muted-foreground/30" />
                     <p className="text-sm font-medium text-muted-foreground">No role templates yet</p>
-                    <p className="text-xs text-muted-foreground/60 mt-1">Create templates to quickly assign permissions to users</p>
+                    <p className="text-xs text-muted-foreground/60">Create templates to quickly assign permissions to users.</p>
                     <button onClick={seedDefaultTemplates}
-                      className="mt-4 flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
-                      <Wand2 className="w-3.5 h-3.5" /> Add default templates
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                      <Wand2 className="w-3.5 h-3.5" /> Seed default templates
                     </button>
                   </div>
                 ) : templates.map(t => {
                   const c = getTemplateColor(t.color);
                   const isEditing = tmplEditing?.id === t.id;
-                  const usersWithRole = Object.values(perms).filter(p => (p as Permission & { roleType?: string }).roleType === t.name).length;
                   return (
                     <button key={t.id} onClick={() => openEditTmpl(t)}
-                      className={`w-full flex items-start gap-3 px-4 py-3.5 border-b border-border/50 text-left transition-colors ${
-                        isEditing ? "bg-accent" : "hover:bg-muted/50"
-                      }`}
-                    >
-                      <span className={`w-3 h-3 rounded-full shrink-0 mt-0.5 ${c.dot}`} />
+                      className={`w-full flex items-center gap-3 px-4 py-3 border-b border-border/50 text-left transition-colors ${isEditing ? "bg-accent" : "hover:bg-muted/50"}`}>
+                      <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${c.dot}`} />
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-xs font-semibold text-foreground truncate">{t.name}</p>
-                          {usersWithRole > 0 && (
-                            <span className="text-[9px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded-full shrink-0">
-                              {usersWithRole} user{usersWithRole !== 1 ? "s" : ""}
-                            </span>
-                          )}
-                        </div>
-                        {t.description && <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{t.description}</p>}
-                        <p className="text-[10px] text-muted-foreground/50 mt-0.5">
-                          {(() => {
-                            try {
-                              const roles = JSON.parse(t.moduleRoles || "{}") as Record<string, ModuleRole>;
-                              const w = Object.values(roles).filter(r => r === "write").length;
-                              const r = Object.values(roles).filter(r => r === "read").length;
-                              return `${w}W · ${r}R`;
-                            } catch { return ""; }
-                          })()}
-                        </p>
+                        <p className="text-xs font-semibold text-foreground">{t.name}</p>
+                        {t.description && <p className="text-[10px] text-muted-foreground truncate">{t.description}</p>}
                       </div>
-                      <ChevronRight className="w-3 h-3 text-muted-foreground/30 shrink-0 mt-0.5" />
+                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/40 shrink-0" />
                     </button>
                   );
                 })}
@@ -744,102 +717,70 @@ export function UserManagementContent() {
             {/* Template editor */}
             {(tmplCreating || tmplEditing) ? (
               <div className="flex-1 flex flex-col overflow-hidden">
-                {/* Editor header */}
-                <div className="bg-card border-b border-border px-6 py-4 flex items-center gap-4 shrink-0">
-                  <div className="flex-1 min-w-0">
-                    <input
-                      value={tmplName}
-                      onChange={e => setTmplName(e.target.value)}
-                      placeholder="Template name…"
-                      className="w-full text-base font-bold bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/40"
-                    />
-                    <input
-                      value={tmplDesc}
-                      onChange={e => setTmplDesc(e.target.value)}
-                      placeholder="Short description…"
-                      className="w-full text-xs bg-transparent border-none outline-none text-muted-foreground placeholder:text-muted-foreground/40 mt-0.5"
-                    />
-                  </div>
-                  {/* Color picker */}
-                  <div className="flex items-center gap-1.5">
-                    {TEMPLATE_COLORS.map(c => (
-                      <button key={c.value} onClick={() => setTmplColor(c.value)} title={c.label}
-                        className={`w-5 h-5 rounded-full ${c.dot} transition-all ${tmplColor === c.value ? "ring-2 ring-offset-2 ring-current scale-110" : "opacity-50 hover:opacity-100"}`}
-                      />
-                    ))}
-                  </div>
-                  {/* Bulk actions */}
-                  <div className="flex items-center gap-1.5">
-                    <button onClick={() => setTmplRoles(buildDefaultRoles("write"))}
-                      className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 px-2 py-1 rounded-lg hover:bg-emerald-50 transition-colors border border-emerald-200">
-                      <Pencil className="w-2.5 h-2.5" /> All Write
-                    </button>
-                    <button onClick={() => setTmplRoles(buildDefaultRoles("read"))}
-                      className="flex items-center gap-1 text-[11px] font-semibold text-blue-700 hover:text-blue-900 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors border border-blue-200">
-                      <Eye className="w-2.5 h-2.5" /> All Read
-                    </button>
-                    <button onClick={() => setTmplRoles(buildDefaultRoles("none"))}
-                      className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted transition-colors border border-border">
-                      <Ban className="w-2.5 h-2.5" /> All None
-                    </button>
+                <div className="px-6 py-4 border-b border-border flex items-center gap-3 bg-card">
+                  <div className="flex-1">
+                    <p className="text-sm font-bold text-foreground">{tmplCreating ? "New Role Template" : `Edit: ${tmplEditing?.name}`}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Configure module permissions for this template</p>
                   </div>
                   {tmplEditing && (
-                    <button onClick={() => { if (confirm(`Delete "${tmplEditing.name}"?`)) deleteTmpl(tmplEditing.id); setTmplEditing(null); }}
-                      className="p-2 rounded-lg text-red-500 hover:bg-red-50 transition-colors">
-                      <Trash2 className="w-4 h-4" />
+                    <button onClick={() => deleteTmpl(tmplEditing.id)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-[11px] font-semibold transition-colors">
+                      <Trash2 className="w-3 h-3" /> Delete
                     </button>
                   )}
-                  <button onClick={() => { setTmplCreating(false); setTmplEditing(null); }}
-                    className="p-2 rounded-lg text-muted-foreground hover:bg-muted transition-colors">
+                  <button onClick={() => { setTmplEditing(null); setTmplCreating(false); }}
+                    className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted transition-colors">
                     <X className="w-4 h-4" />
                   </button>
-                  <button onClick={() => saveTmpl(tmplCreating)} disabled={tmplSaving || !tmplName.trim()}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold shadow-sm transition-colors disabled:opacity-60">
-                    {tmplSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                    {tmplCreating ? "Create" : "Update"}
-                  </button>
                 </div>
-                {/* Module permissions editor */}
-                <div className="flex-1 overflow-y-auto px-6 py-5">
-                  <div className="flex items-center gap-2 px-4 py-1.5 mb-2">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex-1">Module</span>
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground w-[138px] text-center">Permission</span>
+                <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Name</label>
+                      <input value={tmplName} onChange={e => setTmplName(e.target.value)}
+                        placeholder="e.g. Site Engineer"
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary" />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Color</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {TEMPLATE_COLORS.map(c => (
+                          <button key={c.value} onClick={() => setTmplColor(c.value)}
+                            className={`w-6 h-6 rounded-full ${c.dot} transition-transform ${tmplColor === c.value ? "scale-125 ring-2 ring-offset-1 ring-current" : "hover:scale-110"}`}
+                            title={c.label} />
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                  <div className="space-y-4">
-                    {MODULE_GROUPS.map(group => {
-                      const groupMods = APP_MODULES.filter(m => m.group === group);
-                      const groupRoles = groupMods.map(m => tmplRoles[m.key] ?? "none");
-                      const allWrite = groupRoles.every(r => r === "write");
-                      const allRead  = groupRoles.every(r => r === "read");
-                      const allNone  = groupRoles.every(r => r === "none");
-                      const groupSummary = allWrite ? "write" : allRead ? "read" : allNone ? "none" : "mixed";
-                      return (
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Description</label>
+                    <input value={tmplDesc} onChange={e => setTmplDesc(e.target.value)}
+                      placeholder="Brief description of this role"
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary" />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Module Permissions</label>
+                      <div className="flex gap-1.5">
+                        <button onClick={() => setTmplRoles(buildDefaultRoles("write"))}
+                          className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 px-2 py-1 rounded-lg hover:bg-emerald-50 transition-colors border border-emerald-200">All Write</button>
+                        <button onClick={() => setTmplRoles(buildDefaultRoles("read"))}
+                          className="text-[11px] font-semibold text-blue-700 hover:text-blue-900 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors border border-blue-200">All Read</button>
+                        <button onClick={() => setTmplRoles(buildDefaultRoles("none"))}
+                          className="text-[11px] font-semibold text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted transition-colors border border-border">All None</button>
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      {MODULE_GROUPS.map(group => (
                         <div key={group}>
-                          <div className="flex items-center gap-2 mb-1.5">
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex-1">{group}</p>
-                            <div className="flex items-center gap-1">
-                              {(["write","read","none"] as ModuleRole[]).map((r, i) => (
-                                <button key={r} onClick={() => {
-                                  const keys = APP_MODULES.filter(m => m.group === group).map(m => m.key);
-                                  setTmplRoles(prev => { const next = { ...prev }; keys.forEach(k => { next[k] = r; }); return next; });
-                                }}
-                                  className={`text-[9px] font-semibold px-1.5 py-0.5 rounded transition-colors ${
-                                    groupSummary === r
-                                      ? r === "write" ? "bg-emerald-100 text-emerald-700" : r === "read" ? "bg-blue-100 text-blue-700" : "bg-muted text-foreground/70"
-                                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                                  }`}>{["W","R","—"][i]}</button>
-                              ))}
-                            </div>
-                          </div>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5">{group}</p>
                           <div className="space-y-1">
-                            {groupMods.map(mod => {
+                            {APP_MODULES.filter(m => m.group === group).map(mod => {
                               const role = tmplRoles[mod.key] ?? "none";
                               return (
-                                <div key={mod.key}
-                                  className={`flex items-center gap-3 px-4 py-2 rounded-xl border transition-all ${
-                                    role === "write" ? "bg-emerald-50 border-emerald-200" : role === "read" ? "bg-blue-50 border-blue-200" : "bg-card border-border"
-                                  }`}
-                                >
+                                <div key={mod.key} className={`flex items-center gap-3 px-4 py-2 rounded-xl border transition-all ${
+                                  role === "write" ? "bg-emerald-50 border-emerald-200" : role === "read" ? "bg-blue-50 border-blue-200" : "bg-card border-border"
+                                }`}>
                                   <span className={`w-2 h-2 rounded-full shrink-0 ${role === "write" ? "bg-emerald-500" : role === "read" ? "bg-blue-500" : "bg-muted-foreground/30"}`} />
                                   <span className={`text-xs font-medium flex-1 ${role === "write" ? "text-emerald-800" : role === "read" ? "text-blue-800" : "text-muted-foreground"}`}>{mod.label}</span>
                                   <RolePicker role={role} onChange={r => setTmplRoles(prev => ({ ...prev, [mod.key]: r }))} />
@@ -848,16 +789,28 @@ export function UserManagementContent() {
                             })}
                           </div>
                         </div>
-                      );
-                    })}
+                      ))}
+                    </div>
                   </div>
+                </div>
+                <div className="px-6 py-4 border-t border-border bg-card flex justify-end gap-2">
+                  <button onClick={() => { setTmplEditing(null); setTmplCreating(false); }}
+                    className="px-4 py-2 rounded-lg border border-border text-sm font-semibold text-muted-foreground hover:bg-muted transition-colors">
+                    Cancel
+                  </button>
+                  <button onClick={saveTmpl} disabled={tmplSaving || !tmplName.trim()}
+                    className="flex items-center gap-2 px-5 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold transition-colors disabled:opacity-60">
+                    {tmplSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                    {tmplCreating ? "Create Template" : "Save Changes"}
+                  </button>
                 </div>
               </div>
             ) : (
-              <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground">
-                <Tag className="w-10 h-10 opacity-20" />
-                <p className="text-sm font-medium">Select a template to edit</p>
-                <p className="text-xs opacity-60">Or create a new one to get started</p>
+              <div className="flex-1 flex items-center justify-center text-muted-foreground">
+                <div className="text-center">
+                  <Edit2 className="w-8 h-8 opacity-20 mx-auto mb-2" />
+                  <p className="text-sm font-medium">Select a template to edit</p>
+                </div>
               </div>
             )}
           </div>
@@ -865,579 +818,580 @@ export function UserManagementContent() {
 
         {/* ── Users view ──────────────────────────────────────────────────── */}
         {view === "users" && (<>
-        <div className="w-72 shrink-0 bg-card border-r border-border flex flex-col overflow-hidden">
-          <div className="p-3 border-b border-border space-y-2">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-              <input
-                value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Search users…"
-                className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-border bg-muted text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-              />
-            </div>
-            <button
-              onClick={() => setHideDisabled(v => !v)}
-              className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${
-                hideDisabled
-                  ? "bg-muted border-border text-muted-foreground hover:text-foreground hover:bg-muted/80"
-                  : "bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
-              }`}
-            >
-              <span>{hideDisabled ? "Showing active users only" : "Showing all users"}</span>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${hideDisabled ? "bg-muted-foreground/20 text-muted-foreground" : "bg-amber-200 text-amber-800"}`}>
-                {hideDisabled ? "Disabled hidden" : "Disabled visible"}
-              </span>
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto">
-            {loading ? (
-              <div className="flex items-center justify-center py-16">
-                <Loader2 className="w-5 h-5 animate-spin text-primary/60" />
+          {/* User list */}
+          <div className="w-72 shrink-0 bg-card border-r border-border flex flex-col overflow-hidden">
+            <div className="p-3 border-b border-border space-y-2">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                <input
+                  value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder="Search users…"
+                  className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-border bg-muted text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                />
               </div>
-            ) : filtered.length === 0 ? (
-              <div className="text-center py-12 text-sm text-muted-foreground">No users found</div>
-            ) : filtered.map(u => {
-              const summary = getAccessSummary(u.email);
-              const isBlocked = summary === "blocked";
-              const isNoAccess = summary === "no-access";
-              const isSel = selected?.email === u.email;
-              return (
-                <button key={u.email} onClick={() => selectUser(u)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 border-b border-border/50 text-left transition-colors ${
-                    isSel ? "bg-accent border-primary/10" : "hover:bg-muted/50"
-                  } ${u.enabled === 0 ? "opacity-60" : ""}`}
-                >
-                  <UserAvatar user={u} size="sm" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className={`text-xs font-semibold truncate ${isSel ? "text-primary" : "text-foreground"}`}>
-                        {u.full_name}
-                      </p>
-                      {u.enabled === 0 && (
-                        <span className="text-[8px] font-bold bg-muted text-muted-foreground px-1 py-0.5 rounded shrink-0">OFF</span>
-                      )}
-                    </div>
-                    <p className="text-[10px] text-muted-foreground truncate">{u.email}</p>
-                  </div>
-                  <div className="shrink-0 flex flex-col items-end gap-0.5">
-                    {(() => {
-                      const roleType = perms[u.email]?.roleType;
-                      if (roleType) {
-                        const tmpl = templates.find(t => t.name === roleType);
-                        const c = getTemplateColor(tmpl?.color ?? "violet");
-                        return (
-                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${c.bg} ${c.text}`}>
-                            {roleType}
-                          </span>
-                        );
-                      }
-                      return null;
-                    })()}
-                    {!summary ? (
-                      <span className="text-[9px] text-muted-foreground/40">Default</span>
-                    ) : isBlocked ? (
-                      <span className="text-[9px] font-semibold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">Blocked</span>
-                    ) : isNoAccess ? (
-                      <span className="text-[9px] font-semibold bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">No access</span>
-                    ) : typeof summary === "object" ? (
-                      <div className="flex items-center gap-1">
-                        {summary.write > 0 && (
-                          <span className="text-[9px] font-semibold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">{summary.write}W</span>
-                        )}
-                        {summary.read > 0 && (
-                          <span className="text-[9px] font-semibold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">{summary.read}R</span>
-                        )}
-                      </div>
-                    ) : null}
-                    <ChevronRight className={`w-3 h-3 ${isSel ? "text-primary/60" : "text-muted-foreground/30"}`} />
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-          <div className="p-3 border-t border-border">
-            <p className="text-[10px] text-muted-foreground text-center">{users.length} users from ERPNext</p>
-          </div>
-        </div>
-
-        {/* ── Right: permission editor ─────────────────────────────────────── */}
-        {!selected ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground">
-            <Users className="w-10 h-10 opacity-20" />
-            <p className="text-sm font-medium">Select a user to configure permissions</p>
-            <p className="text-xs opacity-60">Users are loaded from ERPNext</p>
-          </div>
-        ) : (
-          <div className="flex-1 flex flex-col overflow-hidden">
-
-            {/* User info header */}
-            <div className="bg-card border-b border-border px-6 py-4 flex items-center gap-4 shrink-0 flex-wrap gap-y-2">
-              <UserAvatar user={selected} size="lg" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-base font-bold text-card-foreground">{selected.full_name}</h2>
-                  {selected.enabled === 0 && (
-                    <span className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full border border-red-200">Disabled in ERPNext</span>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground">{selected.email}</p>
-              </div>
-
-              {/* ERPNext Enable / Disable */}
               <button
-                onClick={() => toggleErpEnabled(selected)}
-                disabled={togglingEnabled}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-semibold transition-colors disabled:opacity-60 shrink-0 ${
-                  selected.enabled === 0
-                    ? "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100"
-                    : "bg-red-50 border-red-200 text-red-700 hover:bg-red-100"
-                }`}
+                onClick={() => setHideDisabled(p => !p)}
+                className={`w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${hideDisabled ? "bg-muted text-muted-foreground hover:bg-muted/80" : "bg-primary/10 text-primary hover:bg-primary/20"}`}
               >
-                {togglingEnabled
-                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  : selected.enabled === 0
-                    ? <Unlock className="w-3.5 h-3.5" />
-                    : <Lock className="w-3.5 h-3.5" />
-                }
-                {selected.enabled === 0 ? "Enable in ERPNext" : "Disable in ERPNext"}
-              </button>
-
-              {/* Role stats */}
-              <div className="flex items-center gap-2 text-[11px] font-semibold">
-                <span className="flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2 py-1 rounded-lg border border-emerald-200">
-                  <Pencil className="w-3 h-3" /> {writeCount} Write
-                </span>
-                <span className="flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-1 rounded-lg border border-blue-200">
-                  <Eye className="w-3 h-3" /> {readCount} Read
-                </span>
-                <span className="flex items-center gap-1 bg-muted text-muted-foreground px-2 py-1 rounded-lg border border-border">
-                  <Ban className="w-3 h-3" /> {noneCount} None
-                </span>
-              </div>
-
-              {/* Access toggle */}
-              <div className="flex items-center gap-3 bg-muted border border-border rounded-xl px-4 py-2">
-                {draftAccess
-                  ? <Unlock className="w-4 h-4 text-emerald-500" />
-                  : <Lock className="w-4 h-4 text-red-500" />}
-                <span className="text-xs font-semibold text-foreground/80">
-                  {draftAccess ? "Access Granted" : "Access Blocked"}
-                </span>
-                <Toggle on={draftAccess} onChange={setDraftAccess} />
-              </div>
-
-              {/* Role Type picker */}
-              <div className="relative">
-                <button onClick={() => { setRoleTypeOpen(o => !o); setCopyFromOpen(false); }}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-semibold transition-colors ${
-                    draftRoleType
-                      ? `${getTemplateColor(templates.find(t => t.name === draftRoleType)?.color ?? "violet").bg} ${getTemplateColor(templates.find(t => t.name === draftRoleType)?.color ?? "violet").border} ${getTemplateColor(templates.find(t => t.name === draftRoleType)?.color ?? "violet").text}`
-                      : "border-border bg-card hover:bg-muted text-foreground"
-                  }`}>
-                  <Tag className="w-3.5 h-3.5" />
-                  {draftRoleType ?? "Role Type"}
-                  {draftRoleType && (
-                    <button onClick={e => { e.stopPropagation(); setDraftRoleType(null); }}
-                      className="ml-0.5 hover:text-red-500 transition-colors">
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
-                  <ChevronDown className="w-3 h-3 opacity-50" />
-                </button>
-                {roleTypeOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setRoleTypeOpen(false)} />
-                    <div className="absolute right-0 top-full mt-2 w-72 bg-popover border border-border rounded-xl shadow-2xl z-50 overflow-hidden">
-                      <div className="px-3 py-2 border-b border-border">
-                        <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Apply Role Template</p>
-                        <p className="text-[10px] text-muted-foreground/70 mt-0.5">Applies permissions from the selected template</p>
-                      </div>
-                      <div className="max-h-64 overflow-y-auto py-1">
-                        {templates.length === 0 ? (
-                          <div className="px-3 py-4 text-center">
-                            <p className="text-xs text-muted-foreground">No role templates yet</p>
-                            <button onClick={() => { setRoleTypeOpen(false); setView("templates"); }}
-                              className="mt-2 text-xs text-primary hover:underline">
-                              Create templates →
-                            </button>
-                          </div>
-                        ) : templates.map(t => {
-                          const c = getTemplateColor(t.color);
-                          const isActive = draftRoleType === t.name;
-                          return (
-                            <button key={t.id} onClick={() => applyTemplate(t)}
-                              className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-accent ${isActive ? "bg-accent/80" : ""}`}
-                            >
-                              <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${c.dot}`} />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs font-semibold text-foreground">{t.name}</p>
-                                {t.description && <p className="text-[10px] text-muted-foreground truncate">{t.description}</p>}
-                              </div>
-                              {isActive && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {draftRoleType && (
-                        <div className="border-t border-border px-3 py-2">
-                          <button onClick={() => { setDraftRoleType(null); setRoleTypeOpen(false); }}
-                            className="w-full flex items-center justify-center gap-1.5 text-[11px] font-semibold text-muted-foreground hover:text-red-500 transition-colors py-1">
-                            <X className="w-3 h-3" /> Remove role type
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* Copy from user */}
-              <div className="relative">
-                <button onClick={() => { setCopyFromOpen(o => !o); setCopyFromSearch(""); setRoleTypeOpen(false); }}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border bg-card hover:bg-muted text-foreground text-xs font-semibold transition-colors">
-                  <Copy className="w-3.5 h-3.5 text-violet-500" />
-                  Copy from…
-                </button>
-                {copyFromOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setCopyFromOpen(false)} />
-                  <div className="absolute right-0 top-full mt-2 w-72 bg-popover border border-border rounded-xl shadow-2xl z-50 overflow-hidden">
-                    <div className="p-2 border-b border-border">
-                      <div className="relative">
-                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                        <input
-                          autoFocus
-                          value={copyFromSearch}
-                          onChange={e => setCopyFromSearch(e.target.value)}
-                          placeholder="Search users…"
-                          className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-border bg-muted focus:outline-none focus:ring-2 focus:ring-primary/30"
-                        />
-                      </div>
-                    </div>
-                    <div className="max-h-56 overflow-y-auto">
-                      {users
-                        .filter(u => u.email !== selected?.email && perms[u.email] && (
-                          u.full_name.toLowerCase().includes(copyFromSearch.toLowerCase()) ||
-                          u.email.toLowerCase().includes(copyFromSearch.toLowerCase())
-                        ))
-                        .map(u => (
-                          <button key={u.email} onClick={() => copyFromUser(u.email)}
-                            className="w-full flex items-center gap-3 px-3 py-2 hover:bg-accent text-left transition-colors">
-                            <UserAvatar user={u} size="sm" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-semibold truncate text-foreground">{u.full_name}</p>
-                              <p className="text-[10px] text-muted-foreground truncate">{u.email}</p>
-                            </div>
-                          </button>
-                        ))}
-                      {users.filter(u => u.email !== selected?.email && perms[u.email] && (
-                        u.full_name.toLowerCase().includes(copyFromSearch.toLowerCase()) ||
-                        u.email.toLowerCase().includes(copyFromSearch.toLowerCase())
-                      )).length === 0 && (
-                        <p className="text-xs text-muted-foreground text-center py-6">No configured users found</p>
-                      )}
-                    </div>
-                  </div>
-                  </>
-                )}
-              </div>
-
-              <button onClick={save} disabled={saving}
-                className="flex items-center gap-2 px-5 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold shadow-sm transition-colors disabled:opacity-60">
-                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                Save
+                {hideDisabled ? "Showing active users only" : "Showing all users"}
+                <span className="opacity-50">· {hideDisabled ? "show disabled" : "hide disabled"}</span>
               </button>
             </div>
+            <div className="flex-1 overflow-y-auto">
+              {loading ? (
+                <div className="flex items-center justify-center h-32">
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : filtered.map(u => {
+                const summary = getAccessSummary(u.email);
+                const isBlocked = summary === "blocked";
+                const isNoAccess = summary === "no-access";
+                const isSel = selected?.email === u.email;
+                return (
+                  <button key={u.email} onClick={() => selectUser(u)}
+                    className={`w-full flex items-center gap-3 px-4 py-3 border-b border-border/50 text-left transition-colors ${
+                      isSel ? "bg-accent border-primary/10" : "hover:bg-muted/50"
+                    } ${u.enabled === 0 ? "opacity-60" : ""}`}
+                  >
+                    <UserAvatar user={u} size="sm" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className={`text-xs font-semibold truncate ${isSel ? "text-primary" : "text-foreground"}`}>
+                          {u.full_name}
+                        </p>
+                        {u.enabled === 0 && (
+                          <span className="text-[8px] font-bold bg-muted text-muted-foreground px-1 py-0.5 rounded shrink-0">OFF</span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground truncate">{u.email}</p>
+                    </div>
+                    <div className="shrink-0 flex flex-col items-end gap-0.5">
+                      {(() => {
+                        const roleType = perms[u.email]?.roleType;
+                        if (roleType) {
+                          const tmpl = templates.find(t => t.name === roleType);
+                          const c = getTemplateColor(tmpl?.color ?? "violet");
+                          return (
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${c.bg} ${c.text}`}>
+                              {roleType}
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
+                      {!summary ? (
+                        <span className="text-[9px] text-muted-foreground/40">Default</span>
+                      ) : isBlocked ? (
+                        <span className="text-[9px] font-semibold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">Blocked</span>
+                      ) : isNoAccess ? (
+                        <span className="text-[9px] font-semibold bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">No access</span>
+                      ) : typeof summary === "object" ? (
+                        <div className="flex items-center gap-1">
+                          {summary.write > 0 && (
+                            <span className="text-[9px] font-semibold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">{summary.write}W</span>
+                          )}
+                          {summary.read > 0 && (
+                            <span className="text-[9px] font-semibold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">{summary.read}R</span>
+                          )}
+                        </div>
+                      ) : null}
+                      <ChevronRight className={`w-3 h-3 ${isSel ? "text-primary/60" : "text-muted-foreground/30"}`} />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="p-3 border-t border-border">
+              <p className="text-[10px] text-muted-foreground text-center">{users.length} users from ERPNext</p>
+            </div>
+          </div>
 
-            {!draftAccess && (
-              <div className="mx-6 mt-4 flex items-center gap-2.5 bg-red-50 border border-red-200 text-red-700 text-xs px-4 py-3 rounded-xl shrink-0">
-                <ShieldOff className="w-4 h-4 shrink-0" />
-                This user is blocked from accessing FlowMatrix entirely.
-              </div>
-            )}
+          {/* ── Right: Wizard ─────────────────────────────────────────────── */}
+          {!selected ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground bg-muted/20">
+              <Users className="w-12 h-12 opacity-10" />
+              <p className="text-sm font-semibold">Select a user to configure permissions</p>
+              <p className="text-xs opacity-50">Users are loaded from ERPNext</p>
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col overflow-hidden bg-muted/10">
 
-            <div className={`flex-1 overflow-y-auto px-6 py-5 flex gap-6 min-h-0 ${!draftAccess ? "opacity-40 pointer-events-none" : ""}`}>
-
-              {/* ── Module permissions ── */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between mb-3">
+              {/* User banner */}
+              <div className="bg-card border-b border-border px-6 py-3 flex items-center gap-4 shrink-0">
+                <UserAvatar user={selected} size="md" />
+                <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <Shield className="w-4 h-4 text-primary" />
-                    <h3 className="text-xs font-bold text-foreground/70 uppercase tracking-wider">Module Permissions</h3>
+                    <h2 className="text-sm font-bold text-card-foreground">{selected.full_name}</h2>
+                    {selected.enabled === 0 && (
+                      <span className="text-[9px] font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full border border-red-200">ERPNext disabled</span>
+                    )}
+                    {draftRoleType && (() => {
+                      const tmpl = templates.find(t => t.name === draftRoleType);
+                      const c = getTemplateColor(tmpl?.color ?? "violet");
+                      return <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${c.bg} ${c.text}`}>{draftRoleType}</span>;
+                    })()}
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <button onClick={() => setDraftRoles(buildDefaultRoles("write"))}
-                      className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 px-2 py-1 rounded-lg hover:bg-emerald-50 transition-colors border border-emerald-200">
-                      <Pencil className="w-2.5 h-2.5" /> All Write
-                    </button>
-                    <button onClick={() => setDraftRoles(buildDefaultRoles("read"))}
-                      className="flex items-center gap-1 text-[11px] font-semibold text-blue-700 hover:text-blue-900 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors border border-blue-200">
-                      <Eye className="w-2.5 h-2.5" /> All Read
-                    </button>
-                    <button onClick={() => setDraftRoles(buildDefaultRoles("none"))}
-                      className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted transition-colors border border-border">
-                      <Ban className="w-2.5 h-2.5" /> All None
-                    </button>
-                  </div>
+                  <p className="text-[10px] text-muted-foreground">{selected.email}</p>
                 </div>
-
-                {/* Column header */}
-                <div className="flex items-center gap-3 px-4 py-1.5 mb-1">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex-1">Module</span>
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground w-[138px] text-center">Permission</span>
+                <div className="flex items-center gap-2 text-[11px] font-semibold shrink-0">
+                  <span className="flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2 py-1 rounded-lg border border-emerald-200">
+                    <Pencil className="w-3 h-3" /> {writeCount}W
+                  </span>
+                  <span className="flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-1 rounded-lg border border-blue-200">
+                    <Eye className="w-3 h-3" /> {readCount}R
+                  </span>
+                  <span className="flex items-center gap-1 bg-muted text-muted-foreground px-2 py-1 rounded-lg border border-border">
+                    <Ban className="w-3 h-3" /> {noneCount}
+                  </span>
                 </div>
+              </div>
 
-                <div className="space-y-4">
-                  {MODULE_GROUPS.map(group => {
-                    const groupMods = APP_MODULES.filter(m => m.group === group);
-                    const groupRoles = groupMods.map(m => draftRoles[m.key] ?? "none");
-                    const allWrite = groupRoles.every(r => r === "write");
-                    const allRead  = groupRoles.every(r => r === "read");
-                    const allNone  = groupRoles.every(r => r === "none");
-                    const groupSummary = allWrite ? "write" : allRead ? "read" : allNone ? "none" : "mixed";
-
+              {/* Wizard step progress */}
+              <div className="bg-card border-b border-border px-6 py-3 shrink-0">
+                <div className="flex items-center gap-0">
+                  {WIZARD_STEPS.map((step, idx) => {
+                    const isActive = wizardStep === step.id;
+                    const isDone = wizardStep > step.id;
                     return (
-                      <div key={group}>
-                        {/* Group header with bulk actions */}
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex-1">{group}</p>
-                          <div className="flex items-center gap-1">
-                            <button onClick={() => setGroupRole(group, "write")}
-                              className={`text-[9px] font-semibold px-1.5 py-0.5 rounded transition-colors ${
-                                groupSummary === "write" ? "bg-emerald-100 text-emerald-700" : "text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50"
-                              }`}>W</button>
-                            <button onClick={() => setGroupRole(group, "read")}
-                              className={`text-[9px] font-semibold px-1.5 py-0.5 rounded transition-colors ${
-                                groupSummary === "read" ? "bg-blue-100 text-blue-700" : "text-muted-foreground hover:text-blue-600 hover:bg-blue-50"
-                              }`}>R</button>
-                            <button onClick={() => setGroupRole(group, "none")}
-                              className={`text-[9px] font-semibold px-1.5 py-0.5 rounded transition-colors ${
-                                groupSummary === "none" ? "bg-muted text-foreground/70" : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                              }`}>—</button>
+                      <div key={step.id} className="flex items-center flex-1">
+                        <button
+                          onClick={() => setWizardStep(step.id)}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all w-full ${
+                            isActive
+                              ? "bg-primary text-primary-foreground shadow-sm"
+                              : isDone
+                              ? "text-emerald-700 hover:bg-emerald-50"
+                              : "text-muted-foreground hover:bg-muted"
+                          }`}
+                        >
+                          {isDone ? (
+                            <span className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
+                              <Check className="w-3 h-3" />
+                            </span>
+                          ) : (
+                            <span className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
+                              isActive ? "bg-white/20 text-primary-foreground" : "bg-muted text-muted-foreground"
+                            }`}>
+                              {step.id}
+                            </span>
+                          )}
+                          <span className="truncate hidden sm:block">{step.label}</span>
+                        </button>
+                        {idx < WIZARD_STEPS.length - 1 && (
+                          <ChevronRight className="w-4 h-4 text-muted-foreground/30 shrink-0 mx-1" />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Step content */}
+              <div className="flex-1 overflow-y-auto">
+
+                {/* ── Step 1: Role & Access ─────────────────────────────── */}
+                {wizardStep === 1 && (
+                  <div className="max-w-2xl mx-auto px-6 py-8 space-y-6">
+                    <div>
+                      <h3 className="text-base font-bold text-foreground mb-1">Role & Access</h3>
+                      <p className="text-sm text-muted-foreground">Choose a role template and set this user's access level.</p>
+                    </div>
+
+                    {/* App Access */}
+                    <div className={`rounded-2xl border-2 p-5 transition-all ${
+                      draftAccess ? "border-emerald-200 bg-emerald-50/50" : "border-red-200 bg-red-50/50"
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          {draftAccess
+                            ? <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center"><Unlock className="w-5 h-5 text-emerald-600" /></div>
+                            : <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center"><Lock className="w-5 h-5 text-red-600" /></div>
+                          }
+                          <div>
+                            <p className={`text-sm font-bold ${draftAccess ? "text-emerald-800" : "text-red-800"}`}>
+                              {draftAccess ? "Access Granted" : "Access Blocked"}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {draftAccess ? "User can log in to FlowMatrix" : "User is blocked from FlowMatrix entirely"}
+                            </p>
                           </div>
                         </div>
+                        <Toggle on={draftAccess} onChange={setDraftAccess} />
+                      </div>
+                    </div>
 
-                        <div className="space-y-1">
-                          {groupMods.map(mod => {
-                            const role = draftRoles[mod.key] ?? "none";
+                    {/* Role Templates */}
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-sm font-bold text-foreground">Apply Role Template</p>
+                        {draftRoleType && (
+                          <button onClick={() => setDraftRoleType(null)}
+                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-red-500 transition-colors">
+                            <X className="w-3 h-3" /> Clear
+                          </button>
+                        )}
+                      </div>
+                      {templates.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-border p-6 text-center">
+                          <p className="text-sm text-muted-foreground mb-3">No role templates configured yet</p>
+                          <button onClick={() => setView("templates")}
+                            className="text-xs text-primary hover:underline font-semibold">
+                            Go to Role Templates to create some →
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-3">
+                          {templates.map(t => {
+                            const c = getTemplateColor(t.color);
+                            const isActive = draftRoleType === t.name;
                             return (
-                              <div key={mod.key}
-                                className={`flex items-center gap-3 px-4 py-2 rounded-xl border transition-all ${
-                                  role === "write"
-                                    ? "bg-emerald-50 border-emerald-200"
-                                    : role === "read"
-                                    ? "bg-blue-50 border-blue-200"
-                                    : "bg-card border-border"
-                                }`}
-                              >
-                                {/* Role indicator dot */}
-                                <span className={`w-2 h-2 rounded-full shrink-0 ${
-                                  role === "write" ? "bg-emerald-500" : role === "read" ? "bg-blue-500" : "bg-muted-foreground/30"
-                                }`} />
-                                <span className={`text-xs font-medium flex-1 ${
-                                  role === "write" ? "text-emerald-800" : role === "read" ? "text-blue-800" : "text-muted-foreground"
-                                }`}>{mod.label}</span>
-                                <RolePicker role={role} onChange={r => setRole(mod.key, r)} />
+                              <button key={t.id} onClick={() => applyTemplate(t)}
+                                className={`flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 text-left transition-all ${
+                                  isActive
+                                    ? `${c.bg} ${c.border} shadow-sm`
+                                    : "border-border bg-card hover:border-primary/30 hover:bg-muted/50"
+                                }`}>
+                                <span className={`w-3 h-3 rounded-full shrink-0 ${c.dot}`} />
+                                <div className="flex-1 min-w-0">
+                                  <p className={`text-sm font-semibold ${isActive ? c.text : "text-foreground"}`}>{t.name}</p>
+                                  {t.description && <p className="text-[10px] text-muted-foreground truncate mt-0.5">{t.description}</p>}
+                                </div>
+                                {isActive && <Check className={`w-4 h-4 shrink-0 ${c.text}`} />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Copy from user + ERPNext toggle */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="relative">
+                        <button onClick={() => { setCopyFromOpen(o => !o); setCopyFromSearch(""); }}
+                          className="w-full flex items-center gap-2.5 px-4 py-3 rounded-xl border border-border bg-card hover:bg-muted text-sm font-semibold text-foreground transition-colors">
+                          <Copy className="w-4 h-4 text-violet-500" />
+                          Copy from user…
+                        </button>
+                        {copyFromOpen && (
+                          <>
+                            <div className="fixed inset-0 z-40" onClick={() => setCopyFromOpen(false)} />
+                            <div className="absolute left-0 top-full mt-2 w-72 bg-popover border border-border rounded-xl shadow-2xl z-50 overflow-hidden">
+                              <div className="p-2 border-b border-border">
+                                <div className="relative">
+                                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                                  <input autoFocus value={copyFromSearch} onChange={e => setCopyFromSearch(e.target.value)}
+                                    placeholder="Search users…"
+                                    className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-border bg-muted focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                                </div>
                               </div>
+                              <div className="max-h-56 overflow-y-auto">
+                                {users.filter(u => u.email !== selected?.email && perms[u.email] && (
+                                  u.full_name.toLowerCase().includes(copyFromSearch.toLowerCase()) ||
+                                  u.email.toLowerCase().includes(copyFromSearch.toLowerCase())
+                                )).map(u => (
+                                  <button key={u.email} onClick={() => copyFromUser(u.email)}
+                                    className="w-full flex items-center gap-3 px-3 py-2 hover:bg-accent text-left transition-colors">
+                                    <UserAvatar user={u} size="sm" />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs font-semibold truncate text-foreground">{u.full_name}</p>
+                                      <p className="text-[10px] text-muted-foreground truncate">{u.email}</p>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={() => toggleErpEnabled(selected)}
+                        disabled={togglingEnabled}
+                        className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border text-sm font-semibold transition-colors disabled:opacity-60 ${
+                          selected.enabled === 0
+                            ? "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100"
+                            : "bg-red-50 border-red-200 text-red-700 hover:bg-red-100"
+                        }`}
+                      >
+                        {togglingEnabled ? <Loader2 className="w-4 h-4 animate-spin" /> : selected.enabled === 0 ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                        {selected.enabled === 0 ? "Enable in ERPNext" : "Disable in ERPNext"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Step 2: Module Permissions ────────────────────────── */}
+                {wizardStep === 2 && (
+                  <div className="px-6 py-6">
+                    <div className="flex items-center justify-between mb-5">
+                      <div>
+                        <h3 className="text-base font-bold text-foreground mb-1">Module Permissions</h3>
+                        <p className="text-sm text-muted-foreground">Fine-tune access for each module.</p>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => setDraftRoles(buildDefaultRoles("write"))}
+                          className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 px-2 py-1.5 rounded-lg hover:bg-emerald-50 transition-colors border border-emerald-200">
+                          <Pencil className="w-2.5 h-2.5" /> All Write
+                        </button>
+                        <button onClick={() => setDraftRoles(buildDefaultRoles("read"))}
+                          className="flex items-center gap-1 text-[11px] font-semibold text-blue-700 hover:text-blue-900 px-2 py-1.5 rounded-lg hover:bg-blue-50 transition-colors border border-blue-200">
+                          <Eye className="w-2.5 h-2.5" /> All Read
+                        </button>
+                        <button onClick={() => setDraftRoles(buildDefaultRoles("none"))}
+                          className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground px-2 py-1.5 rounded-lg hover:bg-muted transition-colors border border-border">
+                          <Ban className="w-2.5 h-2.5" /> All None
+                        </button>
+                      </div>
+                    </div>
+
+                    {!draftAccess && (
+                      <div className="mb-4 flex items-center gap-2.5 bg-red-50 border border-red-200 text-red-700 text-xs px-4 py-3 rounded-xl">
+                        <ShieldOff className="w-4 h-4 shrink-0" />
+                        This user is blocked — module permissions won't apply until access is granted.
+                      </div>
+                    )}
+
+                    <div className="space-y-4">
+                      {MODULE_GROUPS.map(group => {
+                        const groupMods = APP_MODULES.filter(m => m.group === group);
+                        const groupRoles = groupMods.map(m => draftRoles[m.key] ?? "none");
+                        const allWrite = groupRoles.every(r => r === "write");
+                        const allRead  = groupRoles.every(r => r === "read");
+                        const allNone  = groupRoles.every(r => r === "none");
+                        const groupSummary = allWrite ? "write" : allRead ? "read" : allNone ? "none" : "mixed";
+
+                        return (
+                          <div key={group}>
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex-1">{group}</p>
+                              <div className="flex items-center gap-1">
+                                <button onClick={() => setGroupRole(group, "write")}
+                                  className={`text-[9px] font-semibold px-1.5 py-0.5 rounded transition-colors ${groupSummary === "write" ? "bg-emerald-100 text-emerald-700" : "text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50"}`}>W</button>
+                                <button onClick={() => setGroupRole(group, "read")}
+                                  className={`text-[9px] font-semibold px-1.5 py-0.5 rounded transition-colors ${groupSummary === "read" ? "bg-blue-100 text-blue-700" : "text-muted-foreground hover:text-blue-600 hover:bg-blue-50"}`}>R</button>
+                                <button onClick={() => setGroupRole(group, "none")}
+                                  className={`text-[9px] font-semibold px-1.5 py-0.5 rounded transition-colors ${groupSummary === "none" ? "bg-muted text-foreground/70" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}>—</button>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              {groupMods.map(mod => {
+                                const role = draftRoles[mod.key] ?? "none";
+                                return (
+                                  <div key={mod.key} className={`flex items-center gap-3 px-4 py-2 rounded-xl border transition-all ${
+                                    role === "write" ? "bg-emerald-50 border-emerald-200" : role === "read" ? "bg-blue-50 border-blue-200" : "bg-card border-border"
+                                  }`}>
+                                    <span className={`w-2 h-2 rounded-full shrink-0 ${role === "write" ? "bg-emerald-500" : role === "read" ? "bg-blue-500" : "bg-muted-foreground/30"}`} />
+                                    <span className={`text-xs font-medium flex-1 ${role === "write" ? "text-emerald-800" : role === "read" ? "text-blue-800" : "text-muted-foreground"}`}>{mod.label}</span>
+                                    <RolePicker role={role} onChange={r => setRole(mod.key, r)} />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Step 3: Projects & Drawings ───────────────────────── */}
+                {wizardStep === 3 && (
+                  <div className="max-w-4xl mx-auto px-6 py-8">
+                    <div className="mb-6">
+                      <h3 className="text-base font-bold text-foreground mb-1">Projects & Drawings</h3>
+                      <p className="text-sm text-muted-foreground">Restrict which projects and drawing categories this user can access.</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-6">
+                      {/* Project access */}
+                      <div>
+                        <div className="flex items-center gap-2 mb-3">
+                          <Shield className="w-4 h-4 text-violet-500" />
+                          <p className="text-sm font-bold text-foreground">Project Access</p>
+                          {draftProjects.length > 0 && (
+                            <span className="ml-auto text-[10px] font-bold bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full">
+                              {draftProjects.length} selected
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mb-3">If none are selected, user can see all projects.</p>
+                        <div className="relative mb-2">
+                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+                          <input value={projSearch} onChange={e => setProjSearch(e.target.value)}
+                            placeholder="Search projects…"
+                            className="w-full pl-7 pr-3 py-2 text-[11px] rounded-lg border border-border bg-muted text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary" />
+                        </div>
+                        <div className="space-y-1 max-h-80 overflow-y-auto pr-1">
+                          {filteredProjects.length === 0 ? (
+                            <p className="text-[11px] text-muted-foreground text-center py-4">No projects found</p>
+                          ) : filteredProjects.map(p => {
+                            const name = p.name;
+                            const on = draftProjects.includes(name) || draftProjects.includes(p.erpnextName || "");
+                            return (
+                              <button key={name} onClick={() => toggleProject(name)}
+                                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-all ${
+                                  on ? "bg-violet-50 border-violet-200 text-violet-700" : "bg-card border-border text-muted-foreground hover:border-border/60"
+                                }`}>
+                                <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${on ? "bg-violet-600 border-violet-600" : "border-border"}`}>
+                                  {on && <span className="w-2 h-2 bg-white rounded-sm" />}
+                                </div>
+                                <span className="text-xs font-medium truncate flex-1">{p.name}</span>
+                              </button>
                             );
                           })}
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
 
-              {/* ── User Settings (2FA, Theme, Navbar) ── */}
-              <div className="w-56 shrink-0 space-y-5">
-
-                {/* 2FA */}
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <KeyRound className="w-4 h-4 text-amber-500" />
-                    <h3 className="text-xs font-bold text-foreground/70 uppercase tracking-wider">Security</h3>
-                  </div>
-                  <div className={`flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
-                    draftTwoFa ? "bg-amber-50 border-amber-200" : "bg-card border-border"
-                  }`}>
-                    <div className="min-w-0">
-                      <p className={`text-xs font-semibold ${draftTwoFa ? "text-amber-800" : "text-card-foreground"}`}>
-                        Two-Factor Auth
-                      </p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">
-                        {draftTwoFa ? "OTP required at login" : "OTP not required"}
-                      </p>
+                      {/* Drawing categories */}
+                      <div>
+                        <div className="flex items-center gap-2 mb-3">
+                          <FolderOpen className="w-4 h-4 text-orange-500" />
+                          <p className="text-sm font-bold text-foreground">Drawing Categories</p>
+                          {draftDrawingDepts.length > 0 && (
+                            <span className="ml-auto text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
+                              {draftDrawingDepts.length} selected
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mb-3">If none are selected, user cannot view any drawings.</p>
+                        <div className="space-y-2">
+                          {["Mechanical","Electrical","Civil","Instrumentation","Process","Project","Quality","HSE"].map(dept => {
+                            const on = draftDrawingDepts.includes(dept);
+                            return (
+                              <button key={dept} onClick={() => toggleDrawingDept(dept)}
+                                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-left transition-all ${
+                                  on ? "bg-orange-50 border-orange-200 text-orange-700" : "bg-card border-border text-muted-foreground hover:border-orange-200/50"
+                                }`}>
+                                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 ${on ? "bg-orange-500 border-orange-500" : "border-border"}`}>
+                                  {on && <Check className="w-3 h-3 text-white" />}
+                                </div>
+                                <span className="text-sm font-medium flex-1">{dept}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
                     </div>
-                    <Toggle on={draftTwoFa} onChange={setDraftTwoFa} />
                   </div>
-                </div>
+                )}
 
-                {/* Theme */}
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <SunMedium className="w-4 h-4 text-orange-400" />
-                    <h3 className="text-xs font-bold text-foreground/70 uppercase tracking-wider">Theme</h3>
-                  </div>
-                  <div className="space-y-1.5">
-                    {([
-                      { value: "light", label: "Light", icon: <SunMedium className="w-3.5 h-3.5" />, active: "bg-orange-50 border-orange-300 text-orange-700" },
-                      { value: "dark",  label: "Dark",  icon: <Moon className="w-3.5 h-3.5" />,      active: "bg-zinc-800 border-zinc-700 text-zinc-100" },
-                      { value: "system",label: "System",icon: <Monitor className="w-3.5 h-3.5" />,   active: "bg-primary/10 border-primary/30 text-primary" },
-                    ] as { value: ThemeOption; label: string; icon: React.ReactNode; active: string }[]).map(opt => (
-                      <button key={opt.value} onClick={() => setDraftTheme(opt.value)}
-                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl border text-left transition-all ${
-                          draftTheme === opt.value ? opt.active : "bg-card border-border text-muted-foreground hover:border-border/60"
-                        }`}
-                      >
-                        {opt.icon}
-                        <span className="text-xs font-medium">{opt.label}</span>
-                        {draftTheme === opt.value && (
-                          <span className="ml-auto w-2 h-2 rounded-full bg-current opacity-60" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                {/* ── Step 4: Preferences ───────────────────────────────── */}
+                {wizardStep === 4 && (
+                  <div className="max-w-2xl mx-auto px-6 py-8 space-y-6">
+                    <div>
+                      <h3 className="text-base font-bold text-foreground mb-1">Preferences</h3>
+                      <p className="text-sm text-muted-foreground">Set UI preferences and security options for this user.</p>
+                    </div>
 
-                {/* Navbar Style */}
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <LayoutDashboard className="w-4 h-4 text-teal-500" />
-                    <h3 className="text-xs font-bold text-foreground/70 uppercase tracking-wider">Navbar Style</h3>
-                  </div>
-                  <div className="space-y-1.5">
-                    {([
-                      { value: "full",     label: "Full Sidebar",  desc: "Expanded with labels",      icon: <Layers className="w-3.5 h-3.5" />,       active: "bg-teal-50 border-teal-300 text-teal-700" },
-                      { value: "mini",     label: "Mini Sidebar",  desc: "Icons only, compact",       icon: <PanelLeftClose className="w-3.5 h-3.5" />,active: "bg-teal-50 border-teal-300 text-teal-700" },
-                      { value: "auto",     label: "Auto",          desc: "Collapses on small screens", icon: <Monitor className="w-3.5 h-3.5" />,      active: "bg-teal-50 border-teal-300 text-teal-700" },
-                      { value: "launcher", label: "Launcher",      desc: "App icon grid, no sidebar", icon: <LayoutGrid className="w-3.5 h-3.5" />,   active: "bg-violet-50 border-violet-300 text-violet-700" },
-                    ] as { value: NavbarStyleOption; label: string; desc: string; icon: React.ReactNode; active: string }[]).map(opt => (
-                      <button key={opt.value} onClick={() => setDraftNavbarStyle(opt.value)}
-                        className={`w-full flex items-start gap-2.5 px-3 py-2 rounded-xl border text-left transition-all ${
-                          draftNavbarStyle === opt.value ? opt.active : "bg-card border-border text-muted-foreground hover:border-border/60"
-                        }`}
-                      >
-                        <span className="mt-0.5">{opt.icon}</span>
-                        <div className="min-w-0">
-                          <p className="text-xs font-medium">{opt.label}</p>
-                          <p className="text-[10px] opacity-60 mt-0.5">{opt.desc}</p>
+                    {/* 2FA */}
+                    <div className={`rounded-2xl border-2 p-5 transition-all ${draftTwoFa ? "border-amber-200 bg-amber-50/50" : "border-border bg-card"}`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${draftTwoFa ? "bg-amber-100" : "bg-muted"}`}>
+                            <KeyRound className={`w-5 h-5 ${draftTwoFa ? "text-amber-600" : "text-muted-foreground"}`} />
+                          </div>
+                          <div>
+                            <p className={`text-sm font-bold ${draftTwoFa ? "text-amber-800" : "text-foreground"}`}>Two-Factor Authentication</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">{draftTwoFa ? "OTP required at every login" : "No OTP required"}</p>
+                          </div>
                         </div>
-                        {draftNavbarStyle === opt.value && (
-                          <span className="ml-auto mt-1 w-2 h-2 rounded-full bg-current opacity-60 shrink-0" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
+                        <Toggle on={draftTwoFa} onChange={setDraftTwoFa} />
+                      </div>
+                    </div>
 
-              {/* ── Drawing Department Access ── */}
-              <div className="w-56 shrink-0">
-                <div className="flex items-center gap-2 mb-3">
-                  <FolderOpen className="w-4 h-4 text-orange-500" />
-                  <h3 className="text-xs font-bold text-foreground/70 uppercase tracking-wider">Drawing Categories</h3>
-                </div>
-                <p className="text-[10px] text-muted-foreground mb-3 leading-relaxed">
-                  Select which drawing departments this user can view. If none are selected, the user cannot view any drawings.
-                </p>
-                <div className="space-y-1">
-                  {["Mechanical","Electrical","Civil","Instrumentation","Process","Project","Quality","HSE"].map(dept => {
-                    const on = draftDrawingDepts.includes(dept);
-                    return (
-                      <button key={dept} onClick={() => toggleDrawingDept(dept)}
-                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl border text-left transition-all ${
-                          on ? "bg-orange-50 border-orange-200 text-orange-700" : "bg-card border-border text-muted-foreground hover:border-border/60"
-                        }`}
-                      >
-                        <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
-                          on ? "bg-orange-500 border-orange-500" : "border-border"
-                        }`}>
-                          {on && <span className="w-2 h-2 bg-white rounded-sm" />}
-                        </div>
-                        <span className="text-[11px] font-medium flex-1">{dept}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-                {draftDrawingDepts.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-border">
-                    <p className="text-[10px] text-muted-foreground font-semibold mb-1.5">
-                      Restricted to {draftDrawingDepts.length} dept{draftDrawingDepts.length !== 1 ? "s" : ""}:
-                    </p>
-                    <div className="flex flex-wrap gap-1">
-                      {draftDrawingDepts.map(d => (
-                        <span key={d} className="inline-flex items-center gap-1 text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
-                          {d}
-                          <button onClick={() => toggleDrawingDept(d)} className="hover:text-red-500 transition-colors">×</button>
-                        </span>
-                      ))}
+                    {/* Theme */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <SunMedium className="w-4 h-4 text-orange-400" />
+                        <p className="text-sm font-bold text-foreground">Theme</p>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3">
+                        {([
+                          { value: "light", label: "Light", icon: <SunMedium className="w-5 h-5" />, active: "bg-orange-50 border-orange-300 text-orange-700" },
+                          { value: "dark",  label: "Dark",  icon: <Moon className="w-5 h-5" />,      active: "bg-zinc-800 border-zinc-600 text-zinc-100" },
+                          { value: "system",label: "System",icon: <Monitor className="w-5 h-5" />,   active: "bg-primary/10 border-primary/30 text-primary" },
+                        ] as { value: ThemeOption; label: string; icon: React.ReactNode; active: string }[]).map(opt => (
+                          <button key={opt.value} onClick={() => setDraftTheme(opt.value)}
+                            className={`flex flex-col items-center gap-2 px-4 py-4 rounded-xl border-2 text-center transition-all ${
+                              draftTheme === opt.value ? `${opt.active} shadow-sm` : "bg-card border-border text-muted-foreground hover:border-border/60 hover:bg-muted/50"
+                            }`}>
+                            {opt.icon}
+                            <span className="text-sm font-semibold">{opt.label}</span>
+                            {draftTheme === opt.value && <Check className="w-3.5 h-3.5" />}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Navbar Style */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <LayoutDashboard className="w-4 h-4 text-teal-500" />
+                        <p className="text-sm font-bold text-foreground">Sidebar Style</p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        {([
+                          { value: "full",     label: "Full Sidebar",  desc: "Expanded with labels",       icon: <Layers className="w-5 h-5" />,       active: "bg-teal-50 border-teal-300 text-teal-700" },
+                          { value: "mini",     label: "Mini Sidebar",  desc: "Icons only, compact",        icon: <PanelLeftClose className="w-5 h-5" />,active: "bg-teal-50 border-teal-300 text-teal-700" },
+                          { value: "auto",     label: "Auto",          desc: "Collapses on small screens", icon: <Monitor className="w-5 h-5" />,       active: "bg-teal-50 border-teal-300 text-teal-700" },
+                          { value: "launcher", label: "Launcher",      desc: "App icon grid, no sidebar",  icon: <LayoutGrid className="w-5 h-5" />,    active: "bg-violet-50 border-violet-300 text-violet-700" },
+                        ] as { value: NavbarStyleOption; label: string; desc: string; icon: React.ReactNode; active: string }[]).map(opt => (
+                          <button key={opt.value} onClick={() => setDraftNavbarStyle(opt.value)}
+                            className={`flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 text-left transition-all ${
+                              draftNavbarStyle === opt.value ? `${opt.active} shadow-sm` : "bg-card border-border text-muted-foreground hover:border-border/60 hover:bg-muted/50"
+                            }`}>
+                            {opt.icon}
+                            <div>
+                              <p className="text-sm font-semibold">{opt.label}</p>
+                              <p className="text-[11px] opacity-60">{opt.desc}</p>
+                            </div>
+                            {draftNavbarStyle === opt.value && <Check className="w-4 h-4 ml-auto shrink-0" />}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* ── Project access ── */}
-              <div className="w-64 shrink-0">
-                <div className="flex items-center gap-2 mb-3">
-                  <Shield className="w-4 h-4 text-violet-500" />
-                  <h3 className="text-xs font-bold text-foreground/70 uppercase tracking-wider">Project Access</h3>
+              {/* Wizard footer navigation */}
+              <div className="bg-card border-t border-border px-6 py-4 flex items-center justify-between shrink-0">
+                <div>
+                  {wizardStep > 1 ? (
+                    <button onClick={() => setWizardStep(s => s - 1)}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-card hover:bg-muted text-sm font-semibold text-foreground transition-colors">
+                      <ChevronLeft className="w-4 h-4" /> Back
+                    </button>
+                  ) : (
+                    <div />
+                  )}
                 </div>
 
-
-
-                <div className="relative mb-2">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
-                  <input value={projSearch} onChange={e => setProjSearch(e.target.value)}
-                    placeholder="Search projects…"
-                    className="w-full pl-7 pr-3 py-2 text-[11px] rounded-lg border border-border bg-muted text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                  />
+                <div className="flex items-center gap-1.5">
+                  {WIZARD_STEPS.map(s => (
+                    <button key={s.id} onClick={() => setWizardStep(s.id)}
+                      className={`w-2 h-2 rounded-full transition-all ${wizardStep === s.id ? "bg-primary w-5" : wizardStep > s.id ? "bg-emerald-400" : "bg-muted-foreground/20"}`}
+                    />
+                  ))}
                 </div>
 
-                <div className="space-y-1 max-h-[420px] overflow-y-auto pr-1">
-                  {filteredProjects.length === 0 ? (
-                    <p className="text-[11px] text-muted-foreground text-center py-4">No projects found</p>
-                  ) : filteredProjects.map(p => {
-                    const name = p.name;
-                    const on = draftProjects.includes(name) || draftProjects.includes(p.erpnextName || "");
-                    return (
-                      <button key={name} onClick={() => toggleProject(name)}
-                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl border text-left transition-all ${
-                          on
-                            ? "bg-violet-50 border-violet-200 text-violet-700"
-                            : "bg-card border-border text-muted-foreground hover:border-border/60"
-                        }`}
-                      >
-                        <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
-                          on ? "bg-violet-600 border-violet-600" : "border-border"
-                        }`}>
-                          {on && <span className="w-2 h-2 bg-white rounded-sm" />}
-                        </div>
-                        <span className="text-[11px] font-medium truncate flex-1">{p.name}</span>
-                      </button>
-                    );
-                  })}
+                <div className="flex items-center gap-2">
+                  {wizardStep < WIZARD_STEPS.length ? (
+                    <button onClick={() => setWizardStep(s => s + 1)}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold shadow-sm transition-colors">
+                      Next <ArrowRight className="w-4 h-4" />
+                    </button>
+                  ) : (
+                    <button onClick={save} disabled={saving}
+                      className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold shadow-sm transition-colors disabled:opacity-60">
+                      {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      Save Permissions
+                    </button>
+                  )}
                 </div>
-
-                {draftProjects.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-border">
-                    <p className="text-[10px] text-muted-foreground font-semibold mb-1.5">
-                      Restricted to {draftProjects.length} project{draftProjects.length !== 1 ? "s" : ""}:
-                    </p>
-                    <div className="flex flex-wrap gap-1">
-                      {draftProjects.map(p => (
-                        <span key={p} className="inline-flex items-center gap-1 text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">
-                          {p}
-                          <button onClick={() => toggleProject(p)} className="hover:text-red-500 transition-colors">×</button>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
-          </div>
-        )}
+          )}
         </>)}
       </div>
     </div>
