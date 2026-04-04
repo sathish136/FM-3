@@ -5,10 +5,9 @@ import { Link } from "wouter";
 import {
   CheckCircle, ClipboardCheck, FileClock, FileQuestion,
   ShoppingCart, CreditCard, AlertTriangle, Truck,
-  RefreshCw, Download, ChevronDown, Search, X, Clock, Package, ArrowLeft, BarChart2,
+  RefreshCw, ChevronDown, Search, X, Clock, Package, ArrowLeft, BarChart2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import * as XLSX from "xlsx";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -30,13 +29,6 @@ const COLORS = {
 function apiUrl(path: string, project?: string) {
   const base = `/api/purchase-dashboard/${path}`;
   return project?.trim() ? `${base}?project=${encodeURIComponent(project)}` : base;
-}
-
-function exportToExcel(rows: Record<string, any>[], filename: string) {
-  const ws = XLSX.utils.json_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Data");
-  XLSX.writeFile(wb, `${filename}.xlsx`);
 }
 
 function parseAge(val: any): number {
@@ -186,9 +178,9 @@ function KPICard({ label, value, icon: Icon, color, onClick }: {
 
 type ColDef = { key: string; label: string; render?: (val: any, row: Record<string, any>) => React.ReactNode; };
 
-function PanelTable({ title, rows, columns, loading, filename, accentColor }: {
+function PanelTable({ title, rows, columns, loading, accentColor }: {
   title: string; rows: Record<string, any>[]; columns: ColDef[];
-  loading?: boolean; filename: string; accentColor: string;
+  loading?: boolean; filename?: string; accentColor: string;
 }) {
   const [filters, setFilters] = useState<Record<string, string>>({});
   const setFilter = useCallback((key: string, val: string) => setFilters(p => ({ ...p, [key]: val })), []);
@@ -200,18 +192,12 @@ function PanelTable({ title, rows, columns, loading, filename, accentColor }: {
   return (
     <div style={{ background:"#fff", border:"1px solid #e5e7eb", borderRadius:10, overflow:"hidden", boxShadow:"0 1px 4px rgba(0,0,0,0.06)", display:"flex", flexDirection:"column" }}>
       {/* Panel header */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderBottom:"2px solid #f3f4f6", background:"#fff" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <span style={{ width:4, height:18, background:accentColor, borderRadius:2, display:"inline-block", flexShrink:0 }} />
-          <span style={{ fontWeight:700, fontSize:13, color:"#111827" }}>{title}</span>
-          <span style={{ background: accentColor, color:"#fff", fontSize:10, fontWeight:700, padding:"2px 7px", borderRadius:10 }}>
-            {loading ? "…" : filtered.length}
-          </span>
-        </div>
-        <button onClick={() => exportToExcel(filtered, filename)}
-          style={{ display:"flex", alignItems:"center", gap:4, background:"#f3f4f6", border:"1px solid #e5e7eb", borderRadius:6, padding:"4px 10px", fontSize:11, fontWeight:600, color:"#374151", cursor:"pointer" }}>
-          <Download style={{ width:11, height:11 }} /> Export Excel
-        </button>
+      <div style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 14px", borderBottom:"2px solid #f3f4f6", background:"#fff" }}>
+        <span style={{ width:4, height:18, background:accentColor, borderRadius:2, display:"inline-block", flexShrink:0 }} />
+        <span style={{ fontWeight:700, fontSize:13, color:"#111827" }}>{title}</span>
+        <span style={{ background: accentColor, color:"#fff", fontSize:10, fontWeight:700, padding:"2px 7px", borderRadius:10 }}>
+          {loading ? "…" : filtered.length}
+        </span>
       </div>
 
       {/* Table */}
@@ -409,10 +395,6 @@ function DetailOverlay({ id, project, onClose }: { id: DetailId; project: string
             {isLoading ? "…" : rows.length} records
           </span>
         </div>
-        <button onClick={() => exportToExcel(rows, cfg.filename)}
-          style={{ display:"flex", alignItems:"center", gap:6, background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)", borderRadius:7, padding:"6px 14px", color:"#fff", fontSize:12, fontWeight:600, cursor:"pointer" }}>
-          <Download style={{ width:13, height:13 }} /> Export Excel
-        </button>
       </div>
       {/* Full-screen table */}
       <div style={{ flex:1, overflowY:"auto", padding:20 }}>
