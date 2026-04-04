@@ -3,6 +3,7 @@ import {
   Users, Search, Shield, ShieldOff, Save,
   RefreshCw, ChevronRight, Loader2, Lock, Unlock, Eye, Pencil, Ban,
   KeyRound, SunMedium, Moon, Monitor, LayoutDashboard, PanelLeftClose, Layers, Copy, LayoutGrid, FolderOpen,
+  Tag, Plus, Trash2, Edit2, X, Check, ChevronDown, Wand2,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -80,6 +81,7 @@ interface Permission {
   hasAccess: boolean;
   modules: string;
   moduleRoles: string;
+  roleType: string | null;
   allowedProjects: string;
   allowedDrawingDepts: string;
   twoFaEnabled: boolean;
@@ -89,6 +91,114 @@ interface Permission {
 }
 
 interface Project { name: string; erpnextName?: string }
+
+interface RoleTemplate {
+  id: number;
+  name: string;
+  description: string;
+  color: string;
+  moduleRoles: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const TEMPLATE_COLORS: { value: string; label: string; bg: string; border: string; text: string; dot: string }[] = [
+  { value: "violet",  label: "Violet",  bg: "bg-violet-50",  border: "border-violet-300",  text: "text-violet-700",  dot: "bg-violet-500" },
+  { value: "blue",    label: "Blue",    bg: "bg-blue-50",    border: "border-blue-300",    text: "text-blue-700",    dot: "bg-blue-500" },
+  { value: "emerald", label: "Green",   bg: "bg-emerald-50", border: "border-emerald-300", text: "text-emerald-700", dot: "bg-emerald-500" },
+  { value: "amber",   label: "Amber",   bg: "bg-amber-50",   border: "border-amber-300",   text: "text-amber-700",   dot: "bg-amber-500" },
+  { value: "rose",    label: "Rose",    bg: "bg-rose-50",    border: "border-rose-300",    text: "text-rose-700",    dot: "bg-rose-500" },
+  { value: "cyan",    label: "Cyan",    bg: "bg-cyan-50",    border: "border-cyan-300",    text: "text-cyan-700",    dot: "bg-cyan-500" },
+  { value: "orange",  label: "Orange",  bg: "bg-orange-50",  border: "border-orange-300",  text: "text-orange-700",  dot: "bg-orange-500" },
+  { value: "slate",   label: "Slate",   bg: "bg-slate-50",   border: "border-slate-300",   text: "text-slate-700",   dot: "bg-slate-500" },
+];
+
+function getTemplateColor(color: string) {
+  return TEMPLATE_COLORS.find(c => c.value === color) ?? TEMPLATE_COLORS[0];
+}
+
+const DEFAULT_ROLE_TEMPLATES: Omit<RoleTemplate, "id" | "createdAt" | "updatedAt">[] = [
+  {
+    name: "Admin",
+    description: "Full access to all modules",
+    color: "rose",
+    moduleRoles: JSON.stringify(Object.fromEntries(
+      ["dashboard","calendar","tasks","projects","project-board","project-timeline","meeting-minutes","project-drawings","presentation",
+       "drawings","design-2d","design-3d","pid","nesting","material-request","purchase-order","purchase-dashboard","stores-dashboard",
+       "logistics-dashboard","process-proposal","finance-dashboard","email","smart-inbox","chat","sheets","marketing","leads","campaigns",
+       "hrms","hrms-checkin","hrms-leave-request","hrms-claims","hrms-recruitment","hrms-incidents","hrms-analytics","hrms-performance",
+       "hrms-team-performance","hrms-task-summary","hrms-daily-reporting","site-data","cctv","mis-report","payment-tracker",
+       "user-management","settings","email-settings"].map(k => [k, "write"])
+    )),
+  },
+  {
+    name: "Project Manager",
+    description: "Full access to project management modules, read-only for others",
+    color: "violet",
+    moduleRoles: JSON.stringify(Object.fromEntries([
+      ...["dashboard","calendar","tasks","projects","project-board","project-timeline","meeting-minutes","project-drawings","presentation",
+         "material-request","email","chat","sheets"].map(k => [k, "write"]),
+      ...["purchase-order","purchase-dashboard","stores-dashboard","logistics-dashboard","process-proposal","finance-dashboard",
+         "drawings","design-2d","design-3d","pid","nesting","hrms","hrms-checkin","hrms-leave-request","hrms-claims","hrms-analytics",
+         "hrms-performance","hrms-team-performance","hrms-task-summary","hrms-daily-reporting"].map(k => [k, "read"]),
+      ...["marketing","leads","campaigns","hrms-recruitment","hrms-incidents","site-data","cctv","mis-report","payment-tracker",
+         "user-management","settings","email-settings","smart-inbox"].map(k => [k, "none"]),
+    ])),
+  },
+  {
+    name: "Engineer",
+    description: "Full access to design & engineering modules",
+    color: "blue",
+    moduleRoles: JSON.stringify(Object.fromEntries([
+      ...["dashboard","calendar","tasks","drawings","design-2d","design-3d","pid","nesting","project-drawings","email","chat"].map(k => [k, "write"]),
+      ...["projects","project-board","project-timeline","meeting-minutes","material-request","presentation"].map(k => [k, "read"]),
+      ...["purchase-order","purchase-dashboard","stores-dashboard","logistics-dashboard","process-proposal","finance-dashboard",
+         "marketing","leads","campaigns","hrms","hrms-checkin","hrms-leave-request","hrms-claims","hrms-recruitment","hrms-incidents",
+         "hrms-analytics","hrms-performance","hrms-team-performance","hrms-task-summary","hrms-daily-reporting","site-data","cctv",
+         "mis-report","payment-tracker","user-management","settings","email-settings","smart-inbox","sheets"].map(k => [k, "none"]),
+    ])),
+  },
+  {
+    name: "HR Manager",
+    description: "Full access to HR modules",
+    color: "emerald",
+    moduleRoles: JSON.stringify(Object.fromEntries([
+      ...["dashboard","calendar","hrms","hrms-checkin","hrms-leave-request","hrms-claims","hrms-recruitment","hrms-incidents",
+         "hrms-analytics","hrms-performance","hrms-team-performance","hrms-task-summary","hrms-daily-reporting","email","chat"].map(k => [k, "write"]),
+      ...["tasks","projects","project-board","project-timeline","meeting-minutes"].map(k => [k, "read"]),
+      ...["project-drawings","presentation","drawings","design-2d","design-3d","pid","nesting","material-request","purchase-order",
+         "purchase-dashboard","stores-dashboard","logistics-dashboard","process-proposal","finance-dashboard","marketing","leads",
+         "campaigns","site-data","cctv","mis-report","payment-tracker","user-management","settings","email-settings","smart-inbox","sheets"].map(k => [k, "none"]),
+    ])),
+  },
+  {
+    name: "Finance",
+    description: "Access to finance and procurement modules",
+    color: "amber",
+    moduleRoles: JSON.stringify(Object.fromEntries([
+      ...["dashboard","calendar","finance-dashboard","purchase-order","purchase-dashboard","stores-dashboard","logistics-dashboard",
+         "material-request","email","chat"].map(k => [k, "write"]),
+      ...["tasks","projects","project-board","process-proposal","mis-report"].map(k => [k, "read"]),
+      ...["project-timeline","meeting-minutes","project-drawings","presentation","drawings","design-2d","design-3d","pid","nesting",
+         "marketing","leads","campaigns","hrms","hrms-checkin","hrms-leave-request","hrms-claims","hrms-recruitment","hrms-incidents",
+         "hrms-analytics","hrms-performance","hrms-team-performance","hrms-task-summary","hrms-daily-reporting","site-data","cctv",
+         "payment-tracker","user-management","settings","email-settings","smart-inbox","sheets"].map(k => [k, "none"]),
+    ])),
+  },
+  {
+    name: "Viewer",
+    description: "Read-only access to core modules",
+    color: "slate",
+    moduleRoles: JSON.stringify(Object.fromEntries([
+      ...["dashboard","calendar","tasks","projects","project-board","project-timeline","meeting-minutes"].map(k => [k, "read"]),
+      ...["project-drawings","presentation","drawings","design-2d","design-3d","pid","nesting","material-request","purchase-order",
+         "purchase-dashboard","stores-dashboard","logistics-dashboard","process-proposal","finance-dashboard","email","smart-inbox","chat",
+         "sheets","marketing","leads","campaigns","hrms","hrms-checkin","hrms-leave-request","hrms-claims","hrms-recruitment","hrms-incidents",
+         "hrms-analytics","hrms-performance","hrms-team-performance","hrms-task-summary","hrms-daily-reporting","site-data","cctv","mis-report",
+         "payment-tracker","user-management","settings","email-settings"].map(k => [k, "none"]),
+    ])),
+  },
+];
 
 // ── Avatar helpers ────────────────────────────────────────────────────────────
 const COLORS = [
@@ -213,9 +323,11 @@ function rolesFromPermission(p: Permission): Record<string, ModuleRole> {
 // ── Main page ─────────────────────────────────────────────────────────────────
 export function UserManagementContent() {
   const { toast } = useToast();
+  const [view, setView]           = useState<"users" | "templates">("users");
   const [users, setUsers]         = useState<ErpUser[]>([]);
   const [perms, setPerms]         = useState<Record<string, Permission>>({});
   const [projects, setProjects]   = useState<Project[]>([]);
+  const [templates, setTemplates] = useState<RoleTemplate[]>([]);
   const [loading, setLoading]     = useState(true);
   const [saving, setSaving]       = useState(false);
   const [search, setSearch]       = useState("");
@@ -225,6 +337,7 @@ export function UserManagementContent() {
   // Draft state
   const [draftAccess, setDraftAccess]         = useState(true);
   const [draftRoles, setDraftRoles]           = useState<Record<string, ModuleRole>>({});
+  const [draftRoleType, setDraftRoleType]     = useState<string | null>(null);
   const [draftProjects, setDraftProjects]         = useState<string[]>([]);
   const [draftDrawingDepts, setDraftDrawingDepts] = useState<string[]>([]);
   const [draftTwoFa, setDraftTwoFa]               = useState(false);
@@ -233,21 +346,34 @@ export function UserManagementContent() {
   const [projSearch, setProjSearch]               = useState("");
   const [copyFromOpen, setCopyFromOpen]       = useState(false);
   const [copyFromSearch, setCopyFromSearch]   = useState("");
+  const [roleTypeOpen, setRoleTypeOpen]       = useState(false);
   const [togglingEnabled, setTogglingEnabled] = useState(false);
+
+  // Role template editor state
+  const [tmplEditing, setTmplEditing]         = useState<RoleTemplate | null>(null);
+  const [tmplCreating, setTmplCreating]       = useState(false);
+  const [tmplName, setTmplName]               = useState("");
+  const [tmplDesc, setTmplDesc]               = useState("");
+  const [tmplColor, setTmplColor]             = useState("violet");
+  const [tmplRoles, setTmplRoles]             = useState<Record<string, ModuleRole>>({});
+  const [tmplSaving, setTmplSaving]           = useState(false);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [uRes, pRes, prRes] = await Promise.all([
+      const [uRes, pRes, prRes, tRes] = await Promise.all([
         fetch(`${BASE}/api/erpnext-users`),
         fetch(`${BASE}/api/user-permissions`),
         fetch(`${BASE}/api/projects`),
+        fetch(`${BASE}/api/role-templates`),
       ]);
-      const uData: ErpUser[]    = uRes.ok  ? await uRes.json()  : [];
-      const pData: Permission[] = pRes.ok  ? await pRes.json()  : [];
-      const prData: Project[]   = prRes.ok ? await prRes.json() : [];
+      const uData: ErpUser[]       = uRes.ok  ? await uRes.json()  : [];
+      const pData: Permission[]    = pRes.ok  ? await pRes.json()  : [];
+      const prData: Project[]      = prRes.ok ? await prRes.json() : [];
+      const tData: RoleTemplate[]  = tRes.ok  ? await tRes.json()  : [];
       setUsers(uData);
       setProjects(prData);
+      setTemplates(tData);
       const map: Record<string, Permission> = {};
       pData.forEach(p => { map[p.email] = p; });
       setPerms(map);
@@ -265,12 +391,14 @@ export function UserManagementContent() {
     const p = perms[u.email];
     setDraftAccess(p ? p.hasAccess : true);
     setDraftRoles(p ? rolesFromPermission(p) : buildDefaultRoles("write"));
+    setDraftRoleType(p ? (p.roleType ?? null) : null);
     setDraftProjects(p ? JSON.parse(p.allowedProjects || "[]") : []);
     setDraftDrawingDepts(p ? (() => { try { return JSON.parse(p.allowedDrawingDepts || "[]"); } catch { return []; } })() : []);
     setDraftTwoFa(p ? (p.twoFaEnabled ?? false) : false);
     setDraftTheme(p ? (p.theme ?? "system") : "system");
     setDraftNavbarStyle(p ? (p.navbarStyle ?? "full") : "full");
     setProjSearch("");
+    setRoleTypeOpen(false);
   }
 
   async function save() {
@@ -284,6 +412,7 @@ export function UserManagementContent() {
           fullName: selected.full_name,
           hasAccess: draftAccess,
           moduleRoles: draftRoles,
+          roleType: draftRoleType,
           allowedProjects: draftProjects,
           allowedDrawingDepts: draftDrawingDepts,
           twoFaEnabled: draftTwoFa,
@@ -299,6 +428,98 @@ export function UserManagementContent() {
       toast({ title: "Failed to save", description: String(e), variant: "destructive" });
     } finally {
       setSaving(false);
+    }
+  }
+
+  function applyTemplate(tmpl: RoleTemplate) {
+    try {
+      const roles = JSON.parse(tmpl.moduleRoles || "{}") as Record<string, ModuleRole>;
+      const full: Record<string, ModuleRole> = {};
+      APP_MODULES.forEach(m => { full[m.key] = roles[m.key] ?? "none"; });
+      setDraftRoles(full);
+      setDraftRoleType(tmpl.name);
+      setRoleTypeOpen(false);
+      toast({ title: `Applied template: ${tmpl.name}`, description: "Review and save to apply to user." });
+    } catch {
+      toast({ title: "Failed to apply template", variant: "destructive" });
+    }
+  }
+
+  async function saveTmpl(isNew: boolean) {
+    setTmplSaving(true);
+    try {
+      const url = isNew ? `${BASE}/api/role-templates` : `${BASE}/api/role-templates/${tmplEditing!.id}`;
+      const res = await fetch(url, {
+        method: isNew ? "POST" : "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: tmplName, description: tmplDesc, color: tmplColor, moduleRoles: tmplRoles }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const saved: RoleTemplate = await res.json();
+      setTemplates(prev => isNew ? [...prev, saved] : prev.map(t => t.id === saved.id ? saved : t));
+      setTmplCreating(false);
+      setTmplEditing(null);
+      toast({ title: isNew ? "Role template created" : "Role template updated" });
+    } catch (e) {
+      toast({ title: "Failed to save template", description: String(e), variant: "destructive" });
+    } finally {
+      setTmplSaving(false);
+    }
+  }
+
+  async function deleteTmpl(id: number) {
+    try {
+      const res = await fetch(`${BASE}/api/role-templates/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(await res.text());
+      setTemplates(prev => prev.filter(t => t.id !== id));
+      toast({ title: "Template deleted" });
+    } catch (e) {
+      toast({ title: "Failed to delete template", description: String(e), variant: "destructive" });
+    }
+  }
+
+  async function seedDefaultTemplates() {
+    for (const tmpl of DEFAULT_ROLE_TEMPLATES) {
+      const existing = templates.find(t => t.name === tmpl.name);
+      if (!existing) {
+        try {
+          const res = await fetch(`${BASE}/api/role-templates`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: tmpl.name, description: tmpl.description, color: tmpl.color, moduleRoles: JSON.parse(tmpl.moduleRoles) }),
+          });
+          if (res.ok) {
+            const saved: RoleTemplate = await res.json();
+            setTemplates(prev => [...prev, saved]);
+          }
+        } catch {}
+      }
+    }
+    toast({ title: "Default role templates added" });
+  }
+
+  function openCreateTmpl() {
+    setTmplCreating(true);
+    setTmplEditing(null);
+    setTmplName("");
+    setTmplDesc("");
+    setTmplColor("violet");
+    setTmplRoles(buildDefaultRoles("none"));
+  }
+
+  function openEditTmpl(t: RoleTemplate) {
+    setTmplEditing(t);
+    setTmplCreating(false);
+    setTmplName(t.name);
+    setTmplDesc(t.description);
+    setTmplColor(t.color);
+    try {
+      const roles = JSON.parse(t.moduleRoles || "{}") as Record<string, ModuleRole>;
+      const full: Record<string, ModuleRole> = {};
+      APP_MODULES.forEach(m => { full[m.key] = roles[m.key] ?? "none"; });
+      setTmplRoles(full);
+    } catch {
+      setTmplRoles(buildDefaultRoles("none"));
     }
   }
 
@@ -409,12 +630,36 @@ export function UserManagementContent() {
           <h1 className="text-sm font-bold text-card-foreground">User Management</h1>
           <span className="text-xs text-muted-foreground ml-1 hidden sm:inline">Control module access & roles per user</span>
         </div>
-        {/* Legend */}
-        <div className="hidden md:flex items-center gap-3 text-[10px] font-semibold text-muted-foreground">
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-muted-foreground inline-block" /> None</span>
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" /> Read</span>
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Write</span>
+        {/* View tabs */}
+        <div className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
+          <button
+            onClick={() => setView("users")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+              view === "users" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" /> Users
+          </button>
+          <button
+            onClick={() => setView("templates")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+              view === "templates" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Tag className="w-3.5 h-3.5" /> Role Templates
+            {templates.length > 0 && (
+              <span className="ml-0.5 text-[9px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">{templates.length}</span>
+            )}
+          </button>
         </div>
+        {/* Legend (users view only) */}
+        {view === "users" && (
+          <div className="hidden md:flex items-center gap-3 text-[10px] font-semibold text-muted-foreground">
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-muted-foreground inline-block" /> None</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" /> Read</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Write</span>
+          </div>
+        )}
         <button onClick={fetchAll} disabled={loading}
           className="p-2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
           <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
@@ -423,7 +668,203 @@ export function UserManagementContent() {
 
       <div className="flex-1 flex min-h-0 overflow-hidden">
 
-        {/* ── Left: user list ─────────────────────────────────────────────── */}
+        {/* ── Templates view ──────────────────────────────────────────────── */}
+        {view === "templates" && (
+          <div className="flex-1 flex min-h-0 overflow-hidden">
+            {/* Templates list */}
+            <div className="w-80 shrink-0 bg-card border-r border-border flex flex-col overflow-hidden">
+              <div className="p-4 border-b border-border flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-bold text-foreground">Role Templates</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">{templates.length} template{templates.length !== 1 ? "s" : ""}</p>
+                </div>
+                <div className="flex gap-1.5">
+                  {templates.length === 0 && (
+                    <button onClick={seedDefaultTemplates}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                      <Wand2 className="w-3 h-3" /> Seed defaults
+                    </button>
+                  )}
+                  <button onClick={openCreateTmpl}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-primary text-primary-foreground text-[11px] font-semibold hover:bg-primary/90 transition-colors">
+                    <Plus className="w-3 h-3" /> New
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                {templates.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center px-6">
+                    <Tag className="w-8 h-8 text-muted-foreground/30 mb-3" />
+                    <p className="text-sm font-medium text-muted-foreground">No role templates yet</p>
+                    <p className="text-xs text-muted-foreground/60 mt-1">Create templates to quickly assign permissions to users</p>
+                    <button onClick={seedDefaultTemplates}
+                      className="mt-4 flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                      <Wand2 className="w-3.5 h-3.5" /> Add default templates
+                    </button>
+                  </div>
+                ) : templates.map(t => {
+                  const c = getTemplateColor(t.color);
+                  const isEditing = tmplEditing?.id === t.id;
+                  const usersWithRole = Object.values(perms).filter(p => (p as Permission & { roleType?: string }).roleType === t.name).length;
+                  return (
+                    <button key={t.id} onClick={() => openEditTmpl(t)}
+                      className={`w-full flex items-start gap-3 px-4 py-3.5 border-b border-border/50 text-left transition-colors ${
+                        isEditing ? "bg-accent" : "hover:bg-muted/50"
+                      }`}
+                    >
+                      <span className={`w-3 h-3 rounded-full shrink-0 mt-0.5 ${c.dot}`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-semibold text-foreground truncate">{t.name}</p>
+                          {usersWithRole > 0 && (
+                            <span className="text-[9px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded-full shrink-0">
+                              {usersWithRole} user{usersWithRole !== 1 ? "s" : ""}
+                            </span>
+                          )}
+                        </div>
+                        {t.description && <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{t.description}</p>}
+                        <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+                          {(() => {
+                            try {
+                              const roles = JSON.parse(t.moduleRoles || "{}") as Record<string, ModuleRole>;
+                              const w = Object.values(roles).filter(r => r === "write").length;
+                              const r = Object.values(roles).filter(r => r === "read").length;
+                              return `${w}W · ${r}R`;
+                            } catch { return ""; }
+                          })()}
+                        </p>
+                      </div>
+                      <ChevronRight className="w-3 h-3 text-muted-foreground/30 shrink-0 mt-0.5" />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Template editor */}
+            {(tmplCreating || tmplEditing) ? (
+              <div className="flex-1 flex flex-col overflow-hidden">
+                {/* Editor header */}
+                <div className="bg-card border-b border-border px-6 py-4 flex items-center gap-4 shrink-0">
+                  <div className="flex-1 min-w-0">
+                    <input
+                      value={tmplName}
+                      onChange={e => setTmplName(e.target.value)}
+                      placeholder="Template name…"
+                      className="w-full text-base font-bold bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/40"
+                    />
+                    <input
+                      value={tmplDesc}
+                      onChange={e => setTmplDesc(e.target.value)}
+                      placeholder="Short description…"
+                      className="w-full text-xs bg-transparent border-none outline-none text-muted-foreground placeholder:text-muted-foreground/40 mt-0.5"
+                    />
+                  </div>
+                  {/* Color picker */}
+                  <div className="flex items-center gap-1.5">
+                    {TEMPLATE_COLORS.map(c => (
+                      <button key={c.value} onClick={() => setTmplColor(c.value)} title={c.label}
+                        className={`w-5 h-5 rounded-full ${c.dot} transition-all ${tmplColor === c.value ? "ring-2 ring-offset-2 ring-current scale-110" : "opacity-50 hover:opacity-100"}`}
+                      />
+                    ))}
+                  </div>
+                  {/* Bulk actions */}
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={() => setTmplRoles(buildDefaultRoles("write"))}
+                      className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 px-2 py-1 rounded-lg hover:bg-emerald-50 transition-colors border border-emerald-200">
+                      <Pencil className="w-2.5 h-2.5" /> All Write
+                    </button>
+                    <button onClick={() => setTmplRoles(buildDefaultRoles("read"))}
+                      className="flex items-center gap-1 text-[11px] font-semibold text-blue-700 hover:text-blue-900 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors border border-blue-200">
+                      <Eye className="w-2.5 h-2.5" /> All Read
+                    </button>
+                    <button onClick={() => setTmplRoles(buildDefaultRoles("none"))}
+                      className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted transition-colors border border-border">
+                      <Ban className="w-2.5 h-2.5" /> All None
+                    </button>
+                  </div>
+                  {tmplEditing && (
+                    <button onClick={() => { if (confirm(`Delete "${tmplEditing.name}"?`)) deleteTmpl(tmplEditing.id); setTmplEditing(null); }}
+                      className="p-2 rounded-lg text-red-500 hover:bg-red-50 transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                  <button onClick={() => { setTmplCreating(false); setTmplEditing(null); }}
+                    className="p-2 rounded-lg text-muted-foreground hover:bg-muted transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => saveTmpl(tmplCreating)} disabled={tmplSaving || !tmplName.trim()}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold shadow-sm transition-colors disabled:opacity-60">
+                    {tmplSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                    {tmplCreating ? "Create" : "Update"}
+                  </button>
+                </div>
+                {/* Module permissions editor */}
+                <div className="flex-1 overflow-y-auto px-6 py-5">
+                  <div className="flex items-center gap-2 px-4 py-1.5 mb-2">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex-1">Module</span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground w-[138px] text-center">Permission</span>
+                  </div>
+                  <div className="space-y-4">
+                    {MODULE_GROUPS.map(group => {
+                      const groupMods = APP_MODULES.filter(m => m.group === group);
+                      const groupRoles = groupMods.map(m => tmplRoles[m.key] ?? "none");
+                      const allWrite = groupRoles.every(r => r === "write");
+                      const allRead  = groupRoles.every(r => r === "read");
+                      const allNone  = groupRoles.every(r => r === "none");
+                      const groupSummary = allWrite ? "write" : allRead ? "read" : allNone ? "none" : "mixed";
+                      return (
+                        <div key={group}>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex-1">{group}</p>
+                            <div className="flex items-center gap-1">
+                              {(["write","read","none"] as ModuleRole[]).map((r, i) => (
+                                <button key={r} onClick={() => {
+                                  const keys = APP_MODULES.filter(m => m.group === group).map(m => m.key);
+                                  setTmplRoles(prev => { const next = { ...prev }; keys.forEach(k => { next[k] = r; }); return next; });
+                                }}
+                                  className={`text-[9px] font-semibold px-1.5 py-0.5 rounded transition-colors ${
+                                    groupSummary === r
+                                      ? r === "write" ? "bg-emerald-100 text-emerald-700" : r === "read" ? "bg-blue-100 text-blue-700" : "bg-muted text-foreground/70"
+                                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                                  }`}>{["W","R","—"][i]}</button>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            {groupMods.map(mod => {
+                              const role = tmplRoles[mod.key] ?? "none";
+                              return (
+                                <div key={mod.key}
+                                  className={`flex items-center gap-3 px-4 py-2 rounded-xl border transition-all ${
+                                    role === "write" ? "bg-emerald-50 border-emerald-200" : role === "read" ? "bg-blue-50 border-blue-200" : "bg-card border-border"
+                                  }`}
+                                >
+                                  <span className={`w-2 h-2 rounded-full shrink-0 ${role === "write" ? "bg-emerald-500" : role === "read" ? "bg-blue-500" : "bg-muted-foreground/30"}`} />
+                                  <span className={`text-xs font-medium flex-1 ${role === "write" ? "text-emerald-800" : role === "read" ? "text-blue-800" : "text-muted-foreground"}`}>{mod.label}</span>
+                                  <RolePicker role={role} onChange={r => setTmplRoles(prev => ({ ...prev, [mod.key]: r }))} />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+                <Tag className="w-10 h-10 opacity-20" />
+                <p className="text-sm font-medium">Select a template to edit</p>
+                <p className="text-xs opacity-60">Or create a new one to get started</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Users view ──────────────────────────────────────────────────── */}
+        {view === "users" && (<>
         <div className="w-72 shrink-0 bg-card border-r border-border flex flex-col overflow-hidden">
           <div className="p-3 border-b border-border space-y-2">
             <div className="relative">
@@ -480,6 +921,19 @@ export function UserManagementContent() {
                     <p className="text-[10px] text-muted-foreground truncate">{u.email}</p>
                   </div>
                   <div className="shrink-0 flex flex-col items-end gap-0.5">
+                    {(() => {
+                      const roleType = perms[u.email]?.roleType;
+                      if (roleType) {
+                        const tmpl = templates.find(t => t.name === roleType);
+                        const c = getTemplateColor(tmpl?.color ?? "violet");
+                        return (
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${c.bg} ${c.text}`}>
+                            {roleType}
+                          </span>
+                        );
+                      }
+                      return null;
+                    })()}
                     {!summary ? (
                       <span className="text-[9px] text-muted-foreground/40">Default</span>
                     ) : isBlocked ? (
@@ -573,9 +1027,74 @@ export function UserManagementContent() {
                 <Toggle on={draftAccess} onChange={setDraftAccess} />
               </div>
 
+              {/* Role Type picker */}
+              <div className="relative">
+                <button onClick={() => { setRoleTypeOpen(o => !o); setCopyFromOpen(false); }}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-semibold transition-colors ${
+                    draftRoleType
+                      ? `${getTemplateColor(templates.find(t => t.name === draftRoleType)?.color ?? "violet").bg} ${getTemplateColor(templates.find(t => t.name === draftRoleType)?.color ?? "violet").border} ${getTemplateColor(templates.find(t => t.name === draftRoleType)?.color ?? "violet").text}`
+                      : "border-border bg-card hover:bg-muted text-foreground"
+                  }`}>
+                  <Tag className="w-3.5 h-3.5" />
+                  {draftRoleType ?? "Role Type"}
+                  {draftRoleType && (
+                    <button onClick={e => { e.stopPropagation(); setDraftRoleType(null); }}
+                      className="ml-0.5 hover:text-red-500 transition-colors">
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                  <ChevronDown className="w-3 h-3 opacity-50" />
+                </button>
+                {roleTypeOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setRoleTypeOpen(false)} />
+                    <div className="absolute right-0 top-full mt-2 w-72 bg-popover border border-border rounded-xl shadow-2xl z-50 overflow-hidden">
+                      <div className="px-3 py-2 border-b border-border">
+                        <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Apply Role Template</p>
+                        <p className="text-[10px] text-muted-foreground/70 mt-0.5">Applies permissions from the selected template</p>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto py-1">
+                        {templates.length === 0 ? (
+                          <div className="px-3 py-4 text-center">
+                            <p className="text-xs text-muted-foreground">No role templates yet</p>
+                            <button onClick={() => { setRoleTypeOpen(false); setView("templates"); }}
+                              className="mt-2 text-xs text-primary hover:underline">
+                              Create templates →
+                            </button>
+                          </div>
+                        ) : templates.map(t => {
+                          const c = getTemplateColor(t.color);
+                          const isActive = draftRoleType === t.name;
+                          return (
+                            <button key={t.id} onClick={() => applyTemplate(t)}
+                              className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-accent ${isActive ? "bg-accent/80" : ""}`}
+                            >
+                              <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${c.dot}`} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-semibold text-foreground">{t.name}</p>
+                                {t.description && <p className="text-[10px] text-muted-foreground truncate">{t.description}</p>}
+                              </div>
+                              {isActive && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {draftRoleType && (
+                        <div className="border-t border-border px-3 py-2">
+                          <button onClick={() => { setDraftRoleType(null); setRoleTypeOpen(false); }}
+                            className="w-full flex items-center justify-center gap-1.5 text-[11px] font-semibold text-muted-foreground hover:text-red-500 transition-colors py-1">
+                            <X className="w-3 h-3" /> Remove role type
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+
               {/* Copy from user */}
               <div className="relative">
-                <button onClick={() => { setCopyFromOpen(o => !o); setCopyFromSearch(""); }}
+                <button onClick={() => { setCopyFromOpen(o => !o); setCopyFromSearch(""); setRoleTypeOpen(false); }}
                   className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border bg-card hover:bg-muted text-foreground text-xs font-semibold transition-colors">
                   <Copy className="w-3.5 h-3.5 text-violet-500" />
                   Copy from…
@@ -919,6 +1438,7 @@ export function UserManagementContent() {
             </div>
           </div>
         )}
+        </>)}
       </div>
     </div>
   );

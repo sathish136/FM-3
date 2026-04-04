@@ -114,12 +114,26 @@ export const insertSpreadsheetSchema = createInsertSchema(spreadsheetsTable).omi
 export type InsertSpreadsheet = z.infer<typeof insertSpreadsheetSchema>;
 export type Spreadsheet = typeof spreadsheetsTable.$inferSelect;
 
+export const roleTemplatesTable = pgTable("role_templates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  description: text("description").notNull().default(""),
+  color: text("color").notNull().default("violet"),
+  moduleRoles: text("module_roles").notNull().default("{}"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type RoleTemplate = typeof roleTemplatesTable.$inferSelect;
+export const insertRoleTemplateSchema = createInsertSchema(roleTemplatesTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertRoleTemplate = z.infer<typeof insertRoleTemplateSchema>;
+
 export const userPermissionsTable = pgTable("user_permissions", {
   email: text("email").primaryKey(),
   fullName: text("full_name"),
   hasAccess: boolean("has_access").notNull().default(true),
   modules: text("modules").notNull().default("[]"),
   moduleRoles: text("module_roles").notNull().default("{}"),
+  roleType: text("role_type"),
   allowedProjects: text("allowed_projects").notNull().default("[]"),
   allowedDrawingDepts: text("allowed_drawing_depts").notNull().default("[]"),
   twoFaEnabled: boolean("two_fa_enabled").notNull().default(false),

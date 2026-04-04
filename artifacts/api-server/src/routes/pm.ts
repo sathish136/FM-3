@@ -8,6 +8,7 @@ import {
   leadsTable,
   teamMembersTable,
   userPermissionsTable,
+  roleTemplatesTable,
   projectDrawingsTable,
 } from "@workspace/db/schema";
 import { eq, sql } from "drizzle-orm";
@@ -833,6 +834,71 @@ router.put("/erpnext-users/:email/enabled", async (req, res) => {
   }
 });
 
+// ─── Role Templates ──────────────────────────────────────────────────────────
+
+router.get("/role-templates", async (_req, res) => {
+  try {
+    const rows = await db.select().from(roleTemplatesTable).orderBy(roleTemplatesTable.name);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.post("/role-templates", async (req, res) => {
+  try {
+    const { name, description, color, moduleRoles } = req.body;
+    if (!name) return res.status(400).json({ error: "name is required" });
+    const [row] = await db
+      .insert(roleTemplatesTable)
+      .values({
+        name,
+        description: description ?? "",
+        color: color ?? "violet",
+        moduleRoles: JSON.stringify(moduleRoles ?? {}),
+        updatedAt: new Date(),
+      })
+      .returning();
+    res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.put("/role-templates/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { name, description, color, moduleRoles } = req.body;
+    const [row] = await db
+      .update(roleTemplatesTable)
+      .set({
+        ...(name !== undefined && { name }),
+        ...(description !== undefined && { description }),
+        ...(color !== undefined && { color }),
+        ...(moduleRoles !== undefined && { moduleRoles: JSON.stringify(moduleRoles) }),
+        updatedAt: new Date(),
+      })
+      .where(eq(roleTemplatesTable.id, id))
+      .returning();
+    if (!row) return res.status(404).json({ error: "Not found" });
+    res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.delete("/role-templates/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    await db.delete(roleTemplatesTable).where(eq(roleTemplatesTable.id, id));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── User Permissions ─────────────────────────────────────────────────────────
+
 router.get("/user-permissions", async (_req, res) => {
   try {
     const rows = await db.select().from(userPermissionsTable);
@@ -856,7 +922,7 @@ router.get("/user-permissions/:email", async (req, res) => {
 router.put("/user-permissions/:email", async (req, res) => {
   try {
     const { email } = req.params;
-    const { fullName, hasAccess, modules, moduleRoles, allowedProjects, allowedDrawingDepts, twoFaEnabled, theme, navbarStyle } = req.body;
+    const { fullName, hasAccess, modules, moduleRoles, roleType, allowedProjects, allowedDrawingDepts, twoFaEnabled, theme, navbarStyle } = req.body;
     const derivedModules = moduleRoles
       ? Object.entries(moduleRoles as Record<string, string>)
           .filter(([, role]) => role !== "none")
@@ -870,6 +936,7 @@ router.put("/user-permissions/:email", async (req, res) => {
         hasAccess: hasAccess ?? true,
         modules: JSON.stringify(derivedModules),
         moduleRoles: JSON.stringify(moduleRoles ?? {}),
+        roleType: roleType ?? null,
         allowedProjects: JSON.stringify(allowedProjects ?? []),
         allowedDrawingDepts: JSON.stringify(allowedDrawingDepts ?? []),
         twoFaEnabled: twoFaEnabled ?? false,
@@ -884,6 +951,7 @@ router.put("/user-permissions/:email", async (req, res) => {
           hasAccess: hasAccess ?? true,
           modules: JSON.stringify(derivedModules),
           moduleRoles: JSON.stringify(moduleRoles ?? {}),
+          roleType: roleType ?? null,
           allowedProjects: JSON.stringify(allowedProjects ?? []),
           allowedDrawingDepts: JSON.stringify(allowedDrawingDepts ?? []),
           twoFaEnabled: twoFaEnabled ?? false,
