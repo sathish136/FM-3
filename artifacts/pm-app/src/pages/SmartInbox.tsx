@@ -556,13 +556,6 @@ function EmailDetail({ email, onClose, onDeleted, onDraftDiscarded, userEmail, i
                 <CheckCircle2 className="w-3.5 h-3.5" />Sent
               </span>
             )}
-            {!isTrash && (
-              <button onClick={handleReclassify} disabled={classifying}
-                className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-50">
-                {classifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                Reclassify
-              </button>
-            )}
             {isTrash ? (
               <>
                 <button onClick={handleRestore} disabled={deleting}
@@ -1060,11 +1053,6 @@ export default function SmartInbox() {
       setSyncing(false);
       setSyncProgress(null);
       if (msg) setError(msg);
-      // Run AI classification in background (non-blocking)
-      api("/smart-email/auto-analyze", { method: "POST" }).then(() => {
-        loadEmails(activeFilter, filterValue, search || undefined);
-        loadStats();
-      }).catch(() => {});
     };
 
     try {
@@ -1402,14 +1390,6 @@ export default function SmartInbox() {
                 className="flex flex-col items-center gap-1 py-2 rounded-lg bg-purple-50 hover:bg-purple-100 border border-purple-100 text-purple-700 transition-colors disabled:opacity-50">
                 {analyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BrainCircuit className="w-3.5 h-3.5" />}
                 <span className="text-[9px] font-semibold">Analyse</span>
-              </button>
-              <button
-                onClick={handleClassifyAll}
-                disabled={classifying}
-                title="AI Classify All"
-                className="flex flex-col items-center gap-1 py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 text-indigo-700 transition-colors disabled:opacity-50">
-                {classifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                <span className="text-[9px] font-semibold">Classify</span>
               </button>
               <button
                 onClick={() => handleDraftAll(draftAllResult === "all_done")}
