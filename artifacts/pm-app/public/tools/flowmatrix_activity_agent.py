@@ -14,7 +14,17 @@ Sends a heartbeat to FlowMatriX every 30 seconds with:
 SETUP (run once):
     pip install requests psutil
 
-OPTIONAL: Override username or API URL below, or leave as AUTO.
+CONFIGURATION:
+  - API_URL: Set this to your FlowMatriX server URL.
+      Use the deployed (published) URL for permanent use — e.g.:
+          https://flowmatrix-yourcompany.replit.app/api
+      For testing on dev, use the current Replit dev URL.
+
+  - DEVICE_USERNAME:
+      Leave as "AUTO" to auto-detect from your Windows login name.
+      If your Windows username does NOT match your WTT employee ID
+      (e.g. username is "IT" but your ERP ID is "WTT1194"),
+      set it manually: DEVICE_USERNAME = "WTT1194"
 
 To run at Windows startup:
     Place a shortcut to this script in:
@@ -30,10 +40,20 @@ import getpass
 import os
 
 # ─────────────────────────────────────────────────────────────────
-# CONFIGURATION — change only if auto-detection fails
+# CONFIGURATION
 # ─────────────────────────────────────────────────────────────────
-API_URL         = "https://37c09f1a-3f49-43a3-9ddd-3621e25395b9-00-3iwvuqrlgw3nw.sisko.replit.dev/api"
-DEVICE_USERNAME = "WTT1194"      # "AUTO" = detect from Windows login; or set e.g. "WTT1194"
+#
+# API_URL: Point this to your deployed FlowMatriX server.
+#   PRODUCTION (use this once the app is deployed/published):
+#       API_URL = "https://flowmatrix-yourcompany.replit.app/api"
+#   DEVELOPMENT (temporary — this URL changes every Replit session):
+API_URL         = "https://06515121-4ed5-426e-b553-3c1b183b238b-00-2vxxyxljjpr80.pike.replit.dev/api"
+#
+# DEVICE_USERNAME: Your WTT employee ID (e.g. "WTT1194").
+#   "AUTO" = use your Windows login name (works if it matches your WTT ID).
+#   Set manually if your Windows username differs from your ERP employee ID.
+DEVICE_USERNAME = "AUTO"
+#
 HEARTBEAT_SEC   = 30          # How often to send (seconds)
 IDLE_THRESHOLD  = 300         # Seconds of no input = idle (5 min)
 # ─────────────────────────────────────────────────────────────────
