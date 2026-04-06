@@ -2134,7 +2134,7 @@ function UploadModal({
                 className={`w-full border rounded-lg px-3 py-2 text-sm cursor-pointer flex items-center justify-between gap-2 ${project ? "border-blue-400 bg-blue-50" : "border-gray-300 bg-white"} focus:outline-none`}
               >
                 {project ? (
-                  <span className="text-gray-900 flex items-center gap-2">
+                  <span className="text-gray-900 flex items-center gap-2 min-w-0 overflow-hidden">
                     {erpProjects.find((p) => p.name === project)
                       ?.erpnextName && (
                       <span className="text-[10px] font-mono font-semibold text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded flex-shrink-0">
@@ -2147,7 +2147,7 @@ function UploadModal({
                     <span className="truncate">{project}</span>
                   </span>
                 ) : (
-                  <span className="text-gray-400">Select project…</span>
+                  <span className="text-gray-400 truncate">Select project…</span>
                 )}
                 <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
               </div>
