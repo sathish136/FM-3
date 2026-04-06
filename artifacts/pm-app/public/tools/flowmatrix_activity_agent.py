@@ -46,7 +46,7 @@ import os
 # API_URL: FlowMatriX server URL.
 #   Once your custom domain DNS is configured, switch to:
 #       API_URL = "https://flowmatrix.wttint.com/api"
-API_URL         = "https://06515121-4ed5-426e-b553-3c1b183b238b-00-2vxxyxljjpr80.pike.replit.dev/api"
+API_URL         = "http://10.15.5.18:5174/api"
 #
 # DEVICE_USERNAME: Your WTT employee ID (e.g. "WTT1194").
 #   "AUTO" = use your Windows login name (works if it matches your WTT ID).
