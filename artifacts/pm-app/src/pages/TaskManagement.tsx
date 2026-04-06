@@ -140,13 +140,14 @@ const STATUS_LABEL: Record<string, string> = {
   offline: "Offline",
 };
 
+interface AssigneeOption { name: string; email: string; designation?: string; department?: string; }
+
 // ── Task Modal ─────────────────────────────────────────────────────────────────
 function TaskModal({
-  task, projects, users, defaultStatus, onClose, onSave,
+  task, projects, defaultStatus, onClose, onSave,
 }: {
   task?: FmTask | null;
   projects: Project[];
-  users: string[];
   defaultStatus?: string;
   onClose: () => void;
   onSave: (data: Partial<FmTask>) => void;
@@ -155,10 +156,39 @@ function TaskModal({
   const [description, setDescription] = useState(task?.description ?? "");
   const [status, setStatus] = useState(task?.status ?? defaultStatus ?? "todo");
   const [priority, setPriority] = useState(task?.priority ?? "medium");
-  const [assignee, setAssignee] = useState(task?.assigneeName ?? "");
+  const [assigneeEmail, setAssigneeEmail] = useState(task?.assigneeEmail ?? "");
+  const [assigneeName, setAssigneeName] = useState(task?.assigneeName ?? "");
+  const [assigneeSearch, setAssigneeSearch] = useState(task?.assigneeName ?? task?.assigneeEmail ?? "");
+  const [showAssigneeList, setShowAssigneeList] = useState(false);
+  const [assignees, setAssignees] = useState<AssigneeOption[]>([]);
   const [dueDate, setDueDate] = useState(task?.dueDate ?? "");
   const [projectId, setProjectId] = useState<number | null>(task?.projectId ?? null);
   const [tags, setTags] = useState(task?.tags ?? "");
+
+  const BASE_PROXY = import.meta.env.BASE_URL.replace(/\/$/, "");
+  useEffect(() => {
+    fetch(`${BASE_PROXY}/api/fm-tasks/assignees`)
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setAssignees(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, []);
+
+  const filtered = assignees.filter(a =>
+    !assigneeSearch || a.name.toLowerCase().includes(assigneeSearch.toLowerCase()) ||
+    a.email.toLowerCase().includes(assigneeSearch.toLowerCase()) ||
+    (a.department || "").toLowerCase().includes(assigneeSearch.toLowerCase())
+  );
+
+  const selectAssignee = (a: AssigneeOption) => {
+    setAssigneeEmail(a.email);
+    setAssigneeName(a.name);
+    setAssigneeSearch(a.name);
+    setShowAssigneeList(false);
+  };
+
+  const clearAssignee = () => {
+    setAssigneeEmail(""); setAssigneeName(""); setAssigneeSearch(""); setShowAssigneeList(false);
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
@@ -211,13 +241,63 @@ function TaskModal({
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
+
+          {/* Assignee picker */}
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">Assignee</label>
-            <input value={assignee} onChange={e => setAssignee(e.target.value)}
-              list="assignee-list" placeholder="Name or email…"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <datalist id="assignee-list">{users.map(u => <option key={u} value={u} />)}</datalist>
+            <div className="relative">
+              <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 focus-within:ring-2 focus-within:ring-blue-500">
+                {assigneeEmail ? (
+                  <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0">
+                    {initials(assigneeName || assigneeEmail)}
+                  </div>
+                ) : (
+                  <User className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                )}
+                <input
+                  value={assigneeSearch}
+                  onChange={e => { setAssigneeSearch(e.target.value); setShowAssigneeList(true); if (!e.target.value) clearAssignee(); }}
+                  onFocus={() => setShowAssigneeList(true)}
+                  placeholder="Search employee name or email…"
+                  className="flex-1 text-sm bg-transparent focus:outline-none min-w-0"
+                />
+                {assigneeEmail && (
+                  <button onClick={clearAssignee} className="flex-shrink-0 text-gray-300 hover:text-gray-500">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              {assigneeEmail && (
+                <div className="mt-1 text-[11px] text-green-600 font-medium flex items-center gap-1 px-1">
+                  <CheckCircle2 className="w-3 h-3" /> {assigneeEmail} — will receive a notification
+                </div>
+              )}
+              {showAssigneeList && filtered.length > 0 && (
+                <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-52 overflow-y-auto">
+                  {filtered.slice(0, 10).map(a => (
+                    <button key={a.email} onMouseDown={() => selectAssignee(a)}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-blue-50 transition-colors text-left">
+                      <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0">
+                        {initials(a.name)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold text-gray-900 truncate">{a.name}</div>
+                        <div className="text-xs text-gray-400 truncate">{a.email}{a.designation ? ` · ${a.designation}` : ""}</div>
+                      </div>
+                      {a.department && <span className="text-[10px] text-gray-400 flex-shrink-0">{a.department}</span>}
+                    </button>
+                  ))}
+                  {assignees.length === 0 && (
+                    <div className="px-3 py-4 text-sm text-gray-400 text-center italic">No employees found in system yet</div>
+                  )}
+                </div>
+              )}
+              {showAssigneeList && (
+                <div className="fixed inset-0 z-40" onClick={() => setShowAssigneeList(false)} />
+              )}
+            </div>
           </div>
+
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">Tags</label>
             <input value={tags} onChange={e => setTags(e.target.value)}
@@ -229,7 +309,12 @@ function TaskModal({
           <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl transition-colors">Cancel</button>
           <button onClick={() => {
             if (!title.trim()) return;
-            onSave({ title: title.trim(), description: description || null, status, priority, assigneeName: assignee || null, dueDate: dueDate || null, projectId, tags: tags || null });
+            onSave({
+              title: title.trim(), description: description || null, status, priority,
+              assigneeName: assigneeName || assigneeSearch || null,
+              assigneeEmail: assigneeEmail || null,
+              dueDate: dueDate || null, projectId, tags: tags || null,
+            });
           }} className="px-5 py-2 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors">
             {task ? "Save Changes" : "Create Task"}
           </button>
@@ -1334,7 +1419,7 @@ export default function TaskManagement() {
   };
 
   const updateTask = async (id: number, data: Partial<FmTask>) => {
-    const r = await fetch(`${BASE}/api/fm-tasks/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+    const r = await fetch(`${BASE}/api/fm-tasks/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...data, updatedBy: user?.email }) });
     if (r.ok) { loadTasks(); setModal({ open: false }); }
   };
 
@@ -1870,7 +1955,6 @@ export default function TaskManagement() {
         <TaskModal
           task={modal.task}
           projects={projects}
-          users={userNames}
           defaultStatus={modal.defaultStatus}
           onClose={() => setModal({ open: false })}
           onSave={data => modal.task ? updateTask(modal.task.id, data) : createTask(data)}

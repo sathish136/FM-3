@@ -16,6 +16,7 @@ import {
   systemActivityTable,
 } from "@workspace/db/schema";
 import { eq, sql, desc, gt } from "drizzle-orm";
+import { sendNotification } from "./notifications";
 
 // Ensure all PM tables exist on startup
 pool
@@ -1491,6 +1492,42 @@ router.post("/project-drawings/:id/send-approval", async (req, res) => {
 
 // ── FM Tasks CRUD ─────────────────────────────────────────────────────────────
 
+// All known assignable users (system_activity + user_permissions)
+router.get("/fm-tasks/assignees", async (_req, res) => {
+  try {
+    const [actRows, permRows] = await Promise.all([
+      db.select({
+        email: systemActivityTable.email,
+        fullName: systemActivityTable.fullName,
+        designation: systemActivityTable.designation,
+        department: systemActivityTable.department,
+      }).from(systemActivityTable),
+      db.select({ email: userPermissionsTable.email, fullName: userPermissionsTable.fullName })
+        .from(userPermissionsTable),
+    ]);
+
+    const map = new Map<string, { name: string; email: string; designation?: string; department?: string }>();
+    for (const r of permRows) {
+      if (r.email) map.set(r.email.toLowerCase(), { name: r.fullName || r.email, email: r.email });
+    }
+    for (const r of actRows) {
+      if (r.email) {
+        const key = r.email.toLowerCase();
+        const existing = map.get(key);
+        map.set(key, {
+          name: r.fullName || existing?.name || r.email,
+          email: r.email,
+          designation: r.designation || undefined,
+          department: r.department || undefined,
+        });
+      }
+    }
+    res.json([...map.values()].sort((a, b) => a.name.localeCompare(b.name)));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 router.get("/fm-tasks", async (_req, res) => {
   try {
     const rows = await db.select().from(fmTasksTable).orderBy(desc(fmTasksTable.createdAt));
@@ -1513,6 +1550,22 @@ router.post("/fm-tasks", async (req, res) => {
       tags: tags ?? null, isSelfAssigned: isSelfAssigned ?? false,
       notes: notes ?? null,
     }).returning();
+
+    // Send notification to assignee (don't await — fire and forget)
+    if (assigneeEmail && assigneeEmail !== createdBy) {
+      const assignedTo = assigneeName || assigneeEmail;
+      const byWhom = createdBy || "Someone";
+      const dueLine = dueDate ? ` Due: ${dueDate}.` : "";
+      sendNotification({
+        userEmail: assigneeEmail,
+        title: "New Task Assigned",
+        message: `"${title}" has been assigned to you by ${byWhom}.${dueLine}`,
+        type: "info",
+        eventType: "task_assigned",
+        data: { taskId: row.id, title, priority: priority ?? "medium", dueDate: dueDate ?? null },
+      }).catch(() => {});
+    }
+
     res.json(row);
   } catch (e) {
     res.status(500).json({ error: String(e) });
@@ -1522,7 +1575,11 @@ router.post("/fm-tasks", async (req, res) => {
 router.patch("/fm-tasks/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { title, description, projectId, status, priority, assigneeEmail, assigneeName, dueDate, startDate, tags, isSelfAssigned, notes } = req.body;
+    const { title, description, projectId, status, priority, assigneeEmail, assigneeName, dueDate, startDate, tags, isSelfAssigned, notes, updatedBy } = req.body;
+
+    // Fetch existing task to detect assignee change
+    const [existing] = await db.select().from(fmTasksTable).where(eq(fmTasksTable.id, id)).limit(1);
+
     const update: Record<string, unknown> = { updatedAt: new Date() };
     if (title !== undefined) update.title = title;
     if (description !== undefined) update.description = description;
@@ -1538,6 +1595,25 @@ router.patch("/fm-tasks/:id", async (req, res) => {
     if (notes !== undefined) update.notes = notes;
     const [row] = await db.update(fmTasksTable).set(update).where(eq(fmTasksTable.id, id)).returning();
     if (!row) return res.status(404).json({ error: "not found" });
+
+    // Notify if assignee changed (new assignee is different from before)
+    const newEmail = assigneeEmail ?? existing?.assigneeEmail;
+    const prevEmail = existing?.assigneeEmail;
+    if (newEmail && newEmail !== prevEmail && newEmail !== (updatedBy || existing?.createdBy)) {
+      const taskTitle = title ?? existing?.title ?? "Task";
+      const byWhom = updatedBy || existing?.createdBy || "Someone";
+      const newDue = dueDate ?? existing?.dueDate;
+      const dueLine = newDue ? ` Due: ${newDue}.` : "";
+      sendNotification({
+        userEmail: newEmail,
+        title: "Task Assigned to You",
+        message: `"${taskTitle}" has been assigned to you by ${byWhom}.${dueLine}`,
+        type: "info",
+        eventType: "task_assigned",
+        data: { taskId: id, title: taskTitle, priority: priority ?? existing?.priority ?? "medium", dueDate: newDue ?? null },
+      }).catch(() => {});
+    }
+
     res.json(row);
   } catch (e) {
     res.status(500).json({ error: String(e) });
