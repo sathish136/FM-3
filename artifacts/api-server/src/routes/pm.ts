@@ -1977,4 +1977,67 @@ router.delete("/activity/:deviceUsername", async (req, res) => {
   }
 });
 
+// ── Public: Employee Agent Dashboard data (no auth required) ─────────────────
+// Called by the browser page opened by the Python desktop agent.
+// ?username=WTT1194  (Windows login username)
+router.get("/emp-agent/data", async (req, res) => {
+  try {
+    const username = (req.query.username as string || "").trim();
+    if (!username) return res.status(400).json({ error: "username param required" });
+
+    // 1. Fetch live activity row for this device user
+    const actRows = await db
+      .select()
+      .from(systemActivityTable)
+      .where(eq(systemActivityTable.deviceUsername, username))
+      .limit(1);
+    const act = actRows[0] || null;
+
+    const emailForLookup = act?.email || username;
+    const nameForLookup  = act?.fullName || username;
+
+    // 2. Fetch ERP profile (reuse internal endpoint via local HTTP)
+    const port = process.env.PORT || 8080;
+    let profile: Record<string, unknown> | null = null;
+    try {
+      const pr = await fetch(`http://localhost:${port}/api/auth/profile?email=${encodeURIComponent(emailForLookup)}`);
+      if (pr.ok) profile = await pr.json();
+    } catch {}
+
+    // 3. Fetch FM tasks assigned to this employee
+    const allTasks = await db.select().from(fmTasksTable).orderBy(desc(fmTasksTable.createdAt));
+    const email  = emailForLookup.toLowerCase();
+    const fName  = nameForLookup.toLowerCase().split(" ")[0];
+    const myTasks = allTasks.filter(t =>
+      (t.assigneeEmail && t.assigneeEmail.toLowerCase() === email) ||
+      (t.assigneeName && (
+        t.assigneeName.toLowerCase().includes(fName) ||
+        fName.includes(t.assigneeName.toLowerCase().split(" ")[0])
+      ))
+    );
+
+    // 4. Fetch notifications
+    const { rows: notifRows } = await pool.query(
+      `SELECT * FROM notifications WHERE email = $1 ORDER BY created_at DESC LIMIT 20`,
+      [email]
+    );
+
+    res.json({
+      activity: act ? {
+        ...act,
+        lastSeen: act.lastSeen?.toISOString?.() ?? act.lastSeen,
+        createdAt: act.createdAt?.toISOString?.() ?? act.createdAt,
+      } : null,
+      profile,
+      tasks: myTasks,
+      notifications: notifRows.map((n: any) => ({
+        id: n.id, title: n.title, message: n.message, type: n.type,
+        read: n.read, createdAt: n.created_at,
+      })),
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 export default router;

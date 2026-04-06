@@ -390,7 +390,9 @@ class FlowMatrixApp(ctk.CTk):
             text_color=FM["white"],
             corner_radius=10,
             height=38,
-            command=lambda: webbrowser.open(WEB_APP_URL),
+            command=lambda: webbrowser.open(
+                f"{WEB_APP_URL}?username={__import__('urllib.parse', fromlist=['quote']).quote(DEVICE_USERNAME)}"
+            ),
         ).pack(fill="x")
 
         # ── Device footer ──
@@ -654,8 +656,10 @@ class FlowMatrixApp(ctk.CTk):
     def _open_browser(self):
         time.sleep(1.5)   # brief delay so the window appears first
         try:
-            webbrowser.open(WEB_APP_URL)
-            log.info("Opened employee dashboard: %s", WEB_APP_URL)
+            import urllib.parse
+            url = f"{WEB_APP_URL}?username={urllib.parse.quote(DEVICE_USERNAME)}"
+            webbrowser.open(url)
+            log.info("Opened employee dashboard: %s", url)
         except Exception as e:
             log.warning("Could not open browser: %s", e)
 

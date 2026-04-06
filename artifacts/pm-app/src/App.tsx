@@ -213,7 +213,6 @@ function ProtectedRoutes() {
       <Route path="/finance-dashboard" component={FinanceDashboard} />
       <Route path="/stock-reports" component={StockReports} />
       <Route path="/task-management" component={TaskManagement} />
-      <Route path="/emp-agent" component={EmpAgent} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -229,6 +228,7 @@ function App() {
             <SlideshowProvider>
               <Switch>
                 <Route path="/pptx-viewer" component={PptxPreviewPage} />
+                <Route path="/emp-agent" component={EmpAgent} />
                 <Route component={ProtectedRoutes} />
               </Switch>
             </SlideshowProvider>
