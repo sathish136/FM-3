@@ -4219,7 +4219,7 @@ export default function ProjectDrawings() {
     }
   }, []);
 
-  useEffect(() => {
+  const refreshDrawings = useCallback(() => {
     setDrawingsLoading(true);
     fetch(`${BASE}/api/project-drawings`)
       .then((r) => (r.ok ? r.json() : []))
@@ -4253,6 +4253,8 @@ export default function ProjectDrawings() {
       .catch(() => {})
       .finally(() => setDrawingsLoading(false));
   }, []);
+
+  useEffect(() => { refreshDrawings(); }, []);
 
   useEffect(() => {
     if (!user?.email) return;
@@ -4435,13 +4437,12 @@ export default function ProjectDrawings() {
     setUploadAnalyzing(false);
     setUploadStep(null);
     setUploadProgress(null);
-    if (saved.length > 0) {
-      setDrawings((prev) => [...saved, ...prev]);
-    }
     if (failed.length > 0) {
       alert(`⚠️ ${failed.length} drawing(s) failed to upload and were not saved:\n\n${failed.join("\n")}\n\nPlease re-upload these files.`);
     }
     setModal({ type: "none" });
+    // Reload all drawings from server to get the accurate full count
+    refreshDrawings();
   };
 
   const handleRevision = async (
@@ -4697,6 +4698,21 @@ export default function ProjectDrawings() {
                 <button onClick={() => { setSelectedProject(null); setDeptFilter(""); setSelectedSystem("All"); setStatusFilter("all"); setSearch(""); setDetailDrawingId(null); }} className="text-blue-600 hover:underline font-medium">
                   All Projects
                 </button>
+                <button
+                  onClick={() => refreshDrawings()}
+                  title="Refresh drawings from server"
+                  className="ml-auto flex items-center gap-1 px-2 py-1 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors border border-transparent hover:border-blue-200"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  <span className="text-[10px]">Refresh</span>
+                </button>
+                {selectedProject && (
+                  <span className="ml-1 text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                    {filtered.length === projectDrawingsAll.length
+                      ? `${filtered.length} drawings`
+                      : `${filtered.length} of ${projectDrawingsAll.length} shown`}
+                  </span>
+                )}
                 {selectedProject && (
                   <>
                     <ChevronRight className="w-3 h-3 text-gray-400 flex-shrink-0" />
