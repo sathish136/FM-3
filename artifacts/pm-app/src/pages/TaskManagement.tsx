@@ -1320,19 +1320,17 @@ function ActivityCard({ row, onRefresh, onClick, erpCheckin }: {
       {/* Timing row */}
       <div className="px-4 py-2 border-t border-gray-100 bg-gray-50/60 grid grid-cols-3 gap-1 text-center">
         <div>
-          <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">ERP In</div>
+          <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Check-In</div>
           <div className="text-[11px] font-bold text-emerald-600">{formatTime(erpCheckin?.checkIn)}</div>
         </div>
         <div>
-          <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">System On</div>
+          <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">System Logged</div>
           <div className="text-[11px] font-bold text-blue-600">{formatTime(row.systemLoginToday)}</div>
         </div>
         <div>
-          <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">
-            {status === "offline" ? "Last Active" : "ERP Out"}
-          </div>
-          <div className={`text-[11px] font-bold ${status === "offline" ? "text-gray-500" : "text-rose-500"}`}>
-            {status === "offline" ? formatTime(row.systemLogoutToday || row.lastSeen) : formatTime(erpCheckin?.checkOut)}
+          <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Last Active</div>
+          <div className="text-[11px] font-bold text-gray-500">
+            {formatTime(row.systemLogoutToday || row.lastSeen)}
           </div>
         </div>
       </div>
@@ -1966,9 +1964,8 @@ export default function TaskManagement() {
                         <tr>
                           <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 w-56">Employee</th>
                           <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Status</th>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">ERP Check-In</th>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">ERP Check-Out</th>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">System On</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Check-In</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">System Logged</th>
                           <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Last Active</th>
                           <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Current App</th>
                           <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Department</th>
@@ -2016,21 +2013,11 @@ export default function TaskManagement() {
                                 })()}
                               </td>
                               <td className="px-4 py-3">
-                                {(() => {
-                                  const co = row.erpEmployeeId ? erpCheckinMap[row.erpEmployeeId]?.checkOut : undefined;
-                                  return co
-                                    ? <span className="text-xs font-semibold text-rose-500">{formatTime(co)}</span>
-                                    : <span className="text-gray-300 text-xs">—</span>;
-                                })()}
-                              </td>
-                              <td className="px-4 py-3">
                                 <span className="text-xs font-semibold text-blue-600">{formatTime(row.systemLoginToday)}</span>
                               </td>
                               <td className="px-4 py-3">
                                 <span className="text-xs font-semibold text-gray-600">
-                                  {st === "offline"
-                                    ? formatTime(row.systemLogoutToday || row.lastSeen)
-                                    : formatTime(row.systemLogoutToday)}
+                                  {formatTime(row.systemLogoutToday || row.lastSeen)}
                                 </span>
                               </td>
                               <td className="px-4 py-3">
