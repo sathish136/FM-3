@@ -1959,6 +1959,7 @@ router.get("/activity/:deviceUsername/cost-info", async (req, res) => {
     let monthlySalary: number | null = null;
     let monthlyNet: number | null = null;
     let slipDate: string | null = null;
+    let salarySource: string = "salary_slip";
 
     try {
       const r = await fetch(`${ERP_URL}/api/resource/Salary%20Slip?${params}`, { headers: hdr });
@@ -1972,6 +1973,28 @@ router.get("/activity/:deviceUsername/cost-info", async (req, res) => {
         }
       }
     } catch {}
+
+    // Fallback: try Salary Structure Assignment if no salary slip found
+    if (!monthlySalary) {
+      try {
+        const saParams = new URLSearchParams({
+          filters: JSON.stringify([["employee", "=", erpId], ["docstatus", "=", "1"]]),
+          fields: JSON.stringify(["base", "from_date", "salary_structure"]),
+          limit_page_length: "1",
+          order_by: "from_date desc",
+        });
+        const saR = await fetch(`${ERP_URL}/api/resource/Salary%20Structure%20Assignment?${saParams}`, { headers: hdr });
+        if (saR.ok) {
+          const saData = (await saR.json()) as any;
+          const sa = saData?.data?.[0];
+          if (sa?.base) {
+            monthlySalary = Number(sa.base) || null;
+            slipDate = sa.from_date || null;
+            salarySource = "salary_structure_assignment";
+          }
+        }
+      } catch {}
+    }
 
     // Working days per month = 26, hours per day = 8
     const hourlyRate = monthlySalary ? Math.round((monthlySalary / (26 * 8)) * 100) / 100 : null;
@@ -2003,6 +2026,7 @@ router.get("/activity/:deviceUsername/cost-info", async (req, res) => {
       dailyRate,
       minuteRate,
       slipDate,
+      salarySource,
       activeHoursToday,
       workingCostToday,
       idleCostToday,

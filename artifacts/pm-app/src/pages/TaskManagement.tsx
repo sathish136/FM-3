@@ -386,10 +386,11 @@ function calcProductivityScore(history: ActivityLog[], currentRow: SystemActivit
 }
 
 // ── Employee Detail Panel ──────────────────────────────────────────────────────
-function EmployeeDetailPanel({ row, tasks, onClose }: {
+function EmployeeDetailPanel({ row, tasks, onClose, erpCheckin }: {
   row: SystemActivity;
   tasks: FmTask[];
   onClose: () => void;
+  erpCheckin?: { checkIn?: string; checkOut?: string };
 }) {
   const BASE_PROXY = import.meta.env.BASE_URL.replace(/\/$/, "");
   const status = activityStatus(row);
@@ -403,7 +404,8 @@ function EmployeeDetailPanel({ row, tasks, onClose }: {
   const [costInfo, setCostInfo] = useState<{
     available: boolean; monthlySalary?: number|null; monthlyNet?: number|null;
     hourlyRate?: number|null; dailyRate?: number|null; slipDate?: string|null;
-    activeHoursToday?: number; workingCostToday?: number|null; idleCostToday?: number|null;
+    salarySource?: string; activeHoursToday?: number;
+    workingCostToday?: number|null; idleCostToday?: number|null;
   } | null>(null);
   const [erpProjects, setErpProjects] = useState<Array<{ id: number; name: string; erpnextName: string }>>([]);
 
@@ -566,6 +568,31 @@ function EmployeeDetailPanel({ row, tasks, onClose }: {
             {row.erpEmployeeId && <div className="mt-1.5 text-[10px] font-mono text-gray-400">{row.erpEmployeeId}</div>}
           </div>
 
+          {/* Attendance & System Times */}
+          <div className="px-5 py-4 border-b border-gray-100">
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Today's Times</div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-gray-500 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" /> Check-In
+                </span>
+                <span className="text-[12px] font-bold text-emerald-600">{formatTime(erpCheckin?.checkIn)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-gray-500 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" /> System Logged
+                </span>
+                <span className="text-[12px] font-bold text-blue-600">{formatTime(row.systemLoginToday)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-gray-500 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-gray-400 inline-block" /> Last Active
+                </span>
+                <span className="text-[12px] font-bold text-gray-600">{formatTime(row.systemLogoutToday || row.lastSeen)}</span>
+              </div>
+            </div>
+          </div>
+
           {/* Productivity score ring */}
           <div className="px-5 py-5 border-b border-gray-100 text-center">
             <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Productivity Score</div>
@@ -649,7 +676,10 @@ function EmployeeDetailPanel({ row, tasks, onClose }: {
                   </div>
                 )}
                 {costInfo.slipDate && (
-                  <div className="text-[10px] text-gray-400 text-center">Salary slip: {costInfo.slipDate}</div>
+                  <div className="text-[10px] text-gray-400 text-center">
+                    {costInfo.salarySource === "salary_structure_assignment" ? "From structure: " : "Salary slip: "}
+                    {costInfo.slipDate}
+                  </div>
                 )}
               </div>
             </div>
@@ -2056,6 +2086,7 @@ export default function TaskManagement() {
           row={selectedEmployee}
           tasks={tasks}
           onClose={() => setSelectedEmployee(null)}
+          erpCheckin={selectedEmployee.erpEmployeeId ? erpCheckinMap[selectedEmployee.erpEmployeeId] : undefined}
         />
       )}
 
