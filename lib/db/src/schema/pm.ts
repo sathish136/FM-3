@@ -251,9 +251,13 @@ export type TaskComment = typeof taskCommentsTable.$inferSelect;
 
 export const systemActivityTable = pgTable("system_activity", {
   id: serial("id").primaryKey(),
-  email: text("email").notNull().unique(),
+  deviceUsername: text("device_username").notNull().unique().default(""),
+  email: text("email").notNull().default(""),
   fullName: text("full_name").notNull().default(""),
   department: text("department").notNull().default(""),
+  designation: text("designation").notNull().default(""),
+  erpEmployeeId: text("erp_employee_id").notNull().default(""),
+  erpImage: text("erp_image").notNull().default(""),
   activeApp: text("active_app").notNull().default(""),
   windowTitle: text("window_title").notNull().default(""),
   isActive: boolean("is_active").notNull().default(true),
