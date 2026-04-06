@@ -1,17 +1,26 @@
 """
 FlowMatriX Activity Agent  v5.0
 ================================
-Modern desktop GUI using CustomTkinter.
+Runs the FlowMatriX Employee Dashboard in your browser AND shows
+a compact live-status window on your desktop.
 
 SETUP (run once):
     pip install requests psutil customtkinter
 
 RUN:
     python flowmatrix_activity_agent.py
+
+PACKAGE AS EXE (Windows):
+    pip install pyinstaller
+    pyinstaller --onefile --noconsole --name FlowMatrixAgent flowmatrix_activity_agent.py
 """
 
-import sys, time, socket, platform, getpass, os, threading, logging
+import sys, time, socket, platform, getpass, os, threading, logging, webbrowser
 from datetime import datetime
+
+# ── Web App URL ───────────────────────────────────────────────────────────────
+# Change this to your deployed FlowMatriX URL if needed
+WEB_APP_URL = "https://766e4ea0-5b9e-488a-ad69-f3453d798d6d-00-3m118gokkcn7o.pike.replit.dev/pm-app/emp-agent"
 
 # ── Config ────────────────────────────────────────────────────────────────────
 API_URL        = "https://766e4ea0-5b9e-488a-ad69-f3453d798d6d-00-3m118gokkcn7o.pike.replit.dev/api"
@@ -369,6 +378,21 @@ class FlowMatrixApp(ctk.CTk):
         # Spacer
         ctk.CTkFrame(sb, fg_color="transparent").grid(row=10, column=0, sticky="nsew")
 
+        # ── Open Dashboard button ──
+        dash_frame = ctk.CTkFrame(sb, fg_color="transparent")
+        dash_frame.grid(row=9, column=0, padx=16, pady=(0, 8), sticky="ew")
+        ctk.CTkButton(
+            dash_frame,
+            text="🌐  Open My Dashboard",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            fg_color=FM["blue"],
+            hover_color="#1A7FE8",
+            text_color=FM["white"],
+            corner_radius=10,
+            height=38,
+            command=lambda: webbrowser.open(WEB_APP_URL),
+        ).pack(fill="x")
+
         # ── Device footer ──
         foot = ctk.CTkFrame(sb, fg_color=FM["bg"], corner_radius=0)
         foot.grid(row=11, column=0, sticky="ew")
@@ -622,8 +646,18 @@ class FlowMatrixApp(ctk.CTk):
         except ImportError:
             self.v_state.set("requests missing"); return
 
-        threading.Thread(target=self._hb_loop,   daemon=True).start()
-        threading.Thread(target=self._task_loop, daemon=True).start()
+        threading.Thread(target=self._hb_loop,    daemon=True).start()
+        threading.Thread(target=self._task_loop,  daemon=True).start()
+        # Open the employee dashboard in the default browser
+        threading.Thread(target=self._open_browser, daemon=True).start()
+
+    def _open_browser(self):
+        time.sleep(1.5)   # brief delay so the window appears first
+        try:
+            webbrowser.open(WEB_APP_URL)
+            log.info("Opened employee dashboard: %s", WEB_APP_URL)
+        except Exception as e:
+            log.warning("Could not open browser: %s", e)
 
     def _hb_loop(self):
         while self._running:

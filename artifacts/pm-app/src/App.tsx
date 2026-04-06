@@ -65,6 +65,7 @@ import ProcessProposalDashboard from "@/pages/ProcessProposalDashboard";
 import FinanceDashboard from "@/pages/FinanceDashboard";
 import StockReports from "@/pages/StockReports";
 import TaskManagement from "@/pages/TaskManagement";
+import EmpAgent from "@/pages/EmpAgent";
 import { SlideshowProvider } from "@/contexts/SlideshowContext";
 
 const queryClient = new QueryClient({
@@ -212,6 +213,7 @@ function ProtectedRoutes() {
       <Route path="/finance-dashboard" component={FinanceDashboard} />
       <Route path="/stock-reports" component={StockReports} />
       <Route path="/task-management" component={TaskManagement} />
+      <Route path="/emp-agent" component={EmpAgent} />
       <Route component={NotFound} />
     </Switch>
   );
