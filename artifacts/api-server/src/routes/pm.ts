@@ -169,6 +169,7 @@ import {
   fetchErpNextPurchaseOrder,
   fetchErpNextSuppliers,
   fetchErpNextTasks,
+  fetchErpNextCheckins,
 } from "../lib/erpnext";
 
 const router = Router();
@@ -1805,19 +1806,61 @@ router.post("/activity/heartbeat", async (req, res) => {
   }
 });
 
-router.get("/activity/live", async (_req, res) => {
+router.get("/activity/live", async (req, res) => {
   try {
+    const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
     const rows = await db
       .select()
       .from(systemActivityTable)
       .orderBy(desc(systemActivityTable.lastSeen));
+
+    const timesResult = await pool.query(
+      `SELECT device_username,
+              MIN(logged_at) AS system_login,
+              MAX(logged_at) AS system_logout
+       FROM activity_log
+       WHERE logged_at::date = $1::date
+       GROUP BY device_username`,
+      [date]
+    );
+    const timesMap: Record<string, { login: string; logout: string }> = {};
+    for (const r of timesResult.rows) {
+      timesMap[r.device_username] = {
+        login:  r.system_login  instanceof Date ? r.system_login.toISOString()  : r.system_login,
+        logout: r.system_logout instanceof Date ? r.system_logout.toISOString() : r.system_logout,
+      };
+    }
+
     res.json(rows.map(r => ({
       ...r,
       lastSeen: r.lastSeen?.toISOString?.() ?? r.lastSeen,
       createdAt: r.createdAt?.toISOString?.() ?? r.createdAt,
+      systemLoginToday:  timesMap[r.deviceUsername]?.login  ?? null,
+      systemLogoutToday: timesMap[r.deviceUsername]?.logout ?? null,
     })));
   } catch (e) {
     res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get("/activity/checkins-today", async (req, res) => {
+  try {
+    const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
+    const checkins = await fetchErpNextCheckins({ from_date: date, to_date: date });
+    const map: Record<string, { checkIn?: string; checkOut?: string }> = {};
+    for (const c of checkins) {
+      const emp = c.employee || "";
+      if (!map[emp]) map[emp] = {};
+      if (c.log_type === "IN") {
+        if (!map[emp].checkIn || c.time < map[emp].checkIn!) map[emp].checkIn = c.time;
+      }
+      if (c.log_type === "OUT") {
+        if (!map[emp].checkOut || c.time > map[emp].checkOut!) map[emp].checkOut = c.time;
+      }
+    }
+    res.json(map);
+  } catch {
+    res.json({});
   }
 });
 

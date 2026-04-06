@@ -69,6 +69,8 @@ interface SystemActivity {
   deviceName: string;
   lastSeen: string;
   createdAt: string;
+  systemLoginToday?: string | null;
+  systemLogoutToday?: string | null;
 }
 
 interface ActivityLog {
@@ -120,6 +122,16 @@ function formatDuration(seconds: number): string {
   const h = Math.floor(m / 60);
   const rem = m % 60;
   return rem > 0 ? `${h}h ${rem}m` : `${h}h`;
+}
+
+function formatTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  } catch {
+    return "—";
+  }
 }
 
 function activityStatus(row: SystemActivity): "active" | "idle" | "offline" {
@@ -1148,7 +1160,12 @@ function SummaryReport({ activity, tasks, onClose }: {
 // ── Activity Card ──────────────────────────────────────────────────────────────
 const BASE_PROXY = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-function ActivityCard({ row, onRefresh, onClick }: { row: SystemActivity; onRefresh: () => void; onClick: () => void }) {
+function ActivityCard({ row, onRefresh, onClick, erpCheckin }: {
+  row: SystemActivity;
+  onRefresh: () => void;
+  onClick: () => void;
+  erpCheckin?: { checkIn?: string; checkOut?: string };
+}) {
   const status = activityStatus(row);
   const displayName = row.fullName || row.deviceUsername || row.email.split("@")[0];
   const photoUrl = row.erpImage
@@ -1300,15 +1317,32 @@ function ActivityCard({ row, onRefresh, onClick }: { row: SystemActivity; onRefr
         )}
       </div>
 
-      {/* Footer */}
-      <div className="px-4 pb-3 pt-1 border-t border-gray-100 flex items-center justify-between">
-        <div className="text-[10px] text-gray-400 truncate max-w-[120px]" title={row.deviceName}>{row.deviceName || row.deviceUsername}</div>
-        <div className="flex items-center gap-2">
-          <div className="text-[10px] text-gray-400">{timeSince(row.lastSeen)}</div>
-          <span className="text-[10px] text-blue-400 font-medium flex items-center gap-0.5">
-            Details <ChevronRight className="w-3 h-3" />
-          </span>
+      {/* Timing row */}
+      <div className="px-4 py-2 border-t border-gray-100 bg-gray-50/60 grid grid-cols-3 gap-1 text-center">
+        <div>
+          <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">ERP In</div>
+          <div className="text-[11px] font-bold text-emerald-600">{formatTime(erpCheckin?.checkIn)}</div>
         </div>
+        <div>
+          <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">System On</div>
+          <div className="text-[11px] font-bold text-blue-600">{formatTime(row.systemLoginToday)}</div>
+        </div>
+        <div>
+          <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">
+            {status === "offline" ? "Last Active" : "ERP Out"}
+          </div>
+          <div className={`text-[11px] font-bold ${status === "offline" ? "text-gray-500" : "text-rose-500"}`}>
+            {status === "offline" ? formatTime(row.systemLogoutToday || row.lastSeen) : formatTime(erpCheckin?.checkOut)}
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="px-4 pb-3 pt-1 flex items-center justify-between">
+        <div className="text-[10px] text-gray-400 truncate max-w-[120px]" title={row.deviceName}>{row.deviceName || row.deviceUsername}</div>
+        <span className="text-[10px] text-blue-400 font-medium flex items-center gap-0.5">
+          Details <ChevronRight className="w-3 h-3" />
+        </span>
       </div>
     </div>
   );
@@ -1342,6 +1376,8 @@ export default function TaskManagement() {
   const [monitorSearch, setMonitorSearch] = useState("");
   const [monitorStatus, setMonitorStatus] = useState("all");
   const [monitorDept, setMonitorDept] = useState("all");
+  const [monitorDate, setMonitorDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [erpCheckinMap, setErpCheckinMap] = useState<Record<string, { checkIn?: string; checkOut?: string }>>({});
 
   // Load tasks
   const loadTasks = useCallback(() => {
@@ -1357,11 +1393,11 @@ export default function TaskManagement() {
 
   // Load activity
   const loadActivity = useCallback(() => {
-    fetch(`${BASE}/api/activity/live`)
+    fetch(`${BASE}/api/activity/live?date=${monitorDate}`)
       .then(r => r.ok ? r.json() : [])
       .then(data => setActivity(Array.isArray(data) ? data : []))
       .catch(() => {});
-  }, []);
+  }, [monitorDate]);
 
   useEffect(() => { loadTasks(); }, [loadTasks]);
 
@@ -1399,7 +1435,7 @@ export default function TaskManagement() {
   useEffect(() => {
     if (tab === "monitor") {
       setActivityLoading(true);
-      fetch(`${BASE}/api/activity/live`)
+      fetch(`${BASE}/api/activity/live?date=${monitorDate}`)
         .then(r => r.ok ? r.json() : [])
         .then(data => setActivity(Array.isArray(data) ? data : []))
         .catch(() => {})
@@ -1409,7 +1445,15 @@ export default function TaskManagement() {
     return () => {
       if (activityIntervalRef.current) clearInterval(activityIntervalRef.current);
     };
-  }, [tab, loadActivity]);
+  }, [tab, monitorDate, loadActivity]);
+
+  useEffect(() => {
+    if (tab !== "monitor") return;
+    fetch(`${BASE}/api/activity/checkins-today?date=${monitorDate}`)
+      .then(r => r.ok ? r.json() : {})
+      .then(data => setErpCheckinMap(typeof data === "object" && data !== null ? data : {}))
+      .catch(() => {});
+  }, [tab, monitorDate]);
 
   // Task CRUD
   const createTask = async (data: Partial<FmTask>) => {
@@ -1868,6 +1912,13 @@ export default function TaskManagement() {
                   )}
 
                   <div className="ml-auto flex items-center gap-2">
+                    {/* Date picker */}
+                    <input
+                      type="date"
+                      value={monitorDate}
+                      onChange={e => setMonitorDate(e.target.value)}
+                      className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700"
+                    />
                     <span className="text-xs text-gray-400">{filteredActivity.length} shown · refreshes 30s</span>
                     {/* View toggle */}
                     <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
@@ -1903,6 +1954,7 @@ export default function TaskManagement() {
                             row={row}
                             onRefresh={loadActivity}
                             onClick={() => setSelectedEmployee(row)}
+                            erpCheckin={row.erpEmployeeId ? erpCheckinMap[row.erpEmployeeId] : undefined}
                           />
                         ))}
                       </div>
@@ -1914,11 +1966,12 @@ export default function TaskManagement() {
                         <tr>
                           <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 w-56">Employee</th>
                           <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Status</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">ERP Check-In</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">ERP Check-Out</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">System On</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Last Active</th>
                           <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Current App</th>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Window / Document</th>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Idle</th>
                           <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Department</th>
-                          <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500">Last Seen</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
@@ -1955,22 +2008,37 @@ export default function TaskManagement() {
                                 </span>
                               </td>
                               <td className="px-4 py-3">
-                                <div className="text-sm font-medium text-gray-800 truncate max-w-[160px]">{row.activeApp || <span className="text-gray-300 italic">—</span>}</div>
-                              </td>
-                              <td className="px-4 py-3 max-w-[200px]">
-                                <div className="text-xs text-gray-500 truncate" title={row.windowTitle}>{row.windowTitle && row.windowTitle !== row.activeApp ? row.windowTitle : <span className="text-gray-300">—</span>}</div>
+                                {(() => {
+                                  const ci = row.erpEmployeeId ? erpCheckinMap[row.erpEmployeeId]?.checkIn : undefined;
+                                  return ci
+                                    ? <span className="text-xs font-semibold text-emerald-600">{formatTime(ci)}</span>
+                                    : <span className="text-gray-300 text-xs">—</span>;
+                                })()}
                               </td>
                               <td className="px-4 py-3">
-                                {row.idleSeconds > 0 ? (
-                                  <span className="text-xs font-medium text-amber-600 flex items-center gap-1">
-                                    <Coffee className="w-3 h-3" /> {formatDuration(row.idleSeconds)}
-                                  </span>
-                                ) : <span className="text-gray-300 text-xs">—</span>}
+                                {(() => {
+                                  const co = row.erpEmployeeId ? erpCheckinMap[row.erpEmployeeId]?.checkOut : undefined;
+                                  return co
+                                    ? <span className="text-xs font-semibold text-rose-500">{formatTime(co)}</span>
+                                    : <span className="text-gray-300 text-xs">—</span>;
+                                })()}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="text-xs font-semibold text-blue-600">{formatTime(row.systemLoginToday)}</span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="text-xs font-semibold text-gray-600">
+                                  {st === "offline"
+                                    ? formatTime(row.systemLogoutToday || row.lastSeen)
+                                    : formatTime(row.systemLogoutToday)}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="text-xs font-medium text-gray-800 truncate max-w-[140px]">{row.activeApp || <span className="text-gray-300 italic">—</span>}</div>
                               </td>
                               <td className="px-4 py-3">
                                 <span className="text-xs text-gray-500 truncate max-w-[120px] block">{row.department || "—"}</span>
                               </td>
-                              <td className="px-5 py-3 text-right text-xs text-gray-400">{timeSince(row.lastSeen)}</td>
                             </tr>
                           );
                         })}
