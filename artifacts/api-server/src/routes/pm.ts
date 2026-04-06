@@ -1193,6 +1193,7 @@ router.get("/project-drawings", async (_req, res) => {
         checkedBy: projectDrawingsTable.checkedBy,
         approvedBy: projectDrawingsTable.approvedBy,
         erpFileUrl: projectDrawingsTable.erpFileUrl,
+        aiAnalysis: projectDrawingsTable.aiAnalysis,
         createdAt: projectDrawingsTable.createdAt,
         updatedAt: projectDrawingsTable.updatedAt,
       })
@@ -1233,6 +1234,7 @@ router.post("/project-drawings", async (req, res) => {
         title: body.title ?? "",
         project: body.project ?? "",
         department: body.department ?? "",
+        drawingType: body.drawingType ?? "",
         systemName: body.systemName ?? "",
         uploadedAt: body.uploadedAt,
         status: body.status ?? "draft",
@@ -1263,6 +1265,7 @@ router.put("/project-drawings/:id", async (req, res) => {
     if (body.title !== undefined) updateData.title = body.title;
     if (body.project !== undefined) updateData.project = body.project;
     if (body.department !== undefined) updateData.department = body.department;
+    if (body.drawingType !== undefined) updateData.drawingType = body.drawingType;
     if (body.systemName !== undefined) updateData.systemName = body.systemName;
     if (body.uploadedAt !== undefined) updateData.uploadedAt = body.uploadedAt;
     if (body.status !== undefined) updateData.status = body.status;
@@ -1277,9 +1280,44 @@ router.put("/project-drawings/:id", async (req, res) => {
     if (body.checkedBy !== undefined) updateData.checkedBy = body.checkedBy;
     if (body.approvedBy !== undefined) updateData.approvedBy = body.approvedBy;
     if (body.erpFileUrl !== undefined) updateData.erpFileUrl = body.erpFileUrl;
+    if (body.aiAnalysis !== undefined) updateData.aiAnalysis = body.aiAnalysis;
     const [row] = await db
       .update(projectDrawingsTable)
       .set(updateData)
+      .where(eq(projectDrawingsTable.id, req.params.id))
+      .returning();
+    if (!row) return res.status(404).json({ error: "Not found" });
+    res.json({ ...row, fileData: "", createdAt: row.createdAt?.toISOString?.() ?? row.createdAt, updatedAt: row.updatedAt?.toISOString?.() ?? row.updatedAt });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.patch("/project-drawings/:id", async (req, res) => {
+  try {
+    const body = req.body;
+    const patchData: Record<string, unknown> = { updatedAt: new Date() };
+    if (body.drawingNo !== undefined) patchData.drawingNo = body.drawingNo;
+    if (body.title !== undefined) patchData.title = body.title;
+    if (body.project !== undefined) patchData.project = body.project;
+    if (body.department !== undefined) patchData.department = body.department;
+    if (body.drawingType !== undefined) patchData.drawingType = body.drawingType;
+    if (body.systemName !== undefined) patchData.systemName = body.systemName;
+    if (body.status !== undefined) patchData.status = body.status;
+    if (body.revisionNo !== undefined) patchData.revisionNo = body.revisionNo;
+    if (body.revisionLabel !== undefined) patchData.revisionLabel = body.revisionLabel;
+    if (body.fileData !== undefined && body.fileData !== "") patchData.fileData = body.fileData;
+    if (body.fileName !== undefined) patchData.fileName = body.fileName;
+    if (body.note !== undefined) patchData.note = body.note;
+    if (body.checkedBy !== undefined) patchData.checkedBy = body.checkedBy;
+    if (body.approvedBy !== undefined) patchData.approvedBy = body.approvedBy;
+    if (body.erpFileUrl !== undefined) patchData.erpFileUrl = body.erpFileUrl;
+    if (body.aiAnalysis !== undefined) patchData.aiAnalysis = body.aiAnalysis;
+    if (body.history !== undefined) patchData.history = body.history;
+    if (body.viewLog !== undefined) patchData.viewLog = body.viewLog;
+    const [row] = await db
+      .update(projectDrawingsTable)
+      .set(patchData)
       .where(eq(projectDrawingsTable.id, req.params.id))
       .returning();
     if (!row) return res.status(404).json({ error: "Not found" });
