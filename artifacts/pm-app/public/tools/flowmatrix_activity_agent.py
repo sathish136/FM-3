@@ -43,11 +43,8 @@ import os
 # CONFIGURATION
 # ─────────────────────────────────────────────────────────────────
 #
-# API_URL: Point this to your deployed FlowMatriX server.
-#   PRODUCTION (use this once the app is deployed/published):
-#       API_URL = "https://flowmatrix-yourcompany.replit.app/api"
-#   DEVELOPMENT (temporary — this URL changes every Replit session):
-API_URL         = "https://06515121-4ed5-426e-b553-3c1b183b238b-00-2vxxyxljjpr80.pike.replit.dev/api"
+# API_URL: FlowMatriX server URL. Use the production domain.
+API_URL         = "https://flowmatrix.wttint.com/api"
 #
 # DEVICE_USERNAME: Your WTT employee ID (e.g. "WTT1194").
 #   "AUTO" = use your Windows login name (works if it matches your WTT ID).
