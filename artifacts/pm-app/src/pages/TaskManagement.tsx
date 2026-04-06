@@ -102,6 +102,15 @@ function timeSince(iso: string) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem > 0 ? `${h}h ${rem}m` : `${h}h`;
+}
+
 function activityStatus(row: SystemActivity): "active" | "idle" | "offline" {
   const secsAgo = (Date.now() - new Date(row.lastSeen).getTime()) / 1000;
   if (secsAgo > 300) return "offline";
@@ -224,7 +233,6 @@ const BASE_PROXY = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 function ActivityCard({ row, onRefresh }: { row: SystemActivity; onRefresh: () => void }) {
   const status = activityStatus(row);
-  const idleMin = Math.floor(row.idleSeconds / 60);
   const displayName = row.fullName || row.deviceUsername || row.email.split("@")[0];
   const photoUrl = row.erpImage
     ? `${BASE_PROXY}/api/auth/photo?url=${encodeURIComponent(row.erpImage)}`
@@ -289,6 +297,24 @@ function ActivityCard({ row, onRefresh }: { row: SystemActivity; onRefresh: () =
             {row.department && (
               <div className="text-[11px] text-gray-500 truncate">{row.department}</div>
             )}
+            {/* Idle / Active time pill */}
+            {status === "idle" && row.idleSeconds > 0 && (
+              <div className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 border border-amber-200">
+                <Coffee className="w-3 h-3 text-amber-600" />
+                <span className="text-[11px] font-semibold text-amber-700">Idle {formatDuration(row.idleSeconds)}</span>
+              </div>
+            )}
+            {status === "active" && (
+              <div className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 border border-green-200">
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse inline-block" />
+                <span className="text-[11px] font-semibold text-green-700">Active now</span>
+              </div>
+            )}
+            {status === "offline" && (
+              <div className="mt-1 text-[10px] text-gray-400">
+                Last seen {timeSince(row.lastSeen)}
+              </div>
+            )}
             {row.erpEmployeeId ? (
               <div className="text-[10px] text-gray-400 font-mono mt-0.5">ID: {row.erpEmployeeId}</div>
             ) : (
@@ -347,12 +373,6 @@ function ActivityCard({ row, onRefresh }: { row: SystemActivity; onRefresh: () =
             </div>
             {row.windowTitle && row.windowTitle !== row.activeApp && (
               <div className="text-[11px] text-gray-400 truncate ml-4" title={row.windowTitle}>{row.windowTitle}</div>
-            )}
-            {status === "idle" && idleMin > 0 && (
-              <div className="flex items-center gap-1 text-xs text-amber-600">
-                <Coffee className="w-3 h-3" />
-                <span>Idle {idleMin}m</span>
-              </div>
             )}
           </>
         ) : (
