@@ -4,6 +4,7 @@ export interface AuthUser {
   email: string;
   full_name: string;
   photo: string | null;
+  username: string | null;
 }
 
 interface AuthContextType {
@@ -86,6 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 email: data.email || parsed.email,
                 full_name: data.full_name || parsed.full_name,
                 photo: proxyPhoto,
+                username: (data.username as string | null) ?? parsed.username ?? null,
               };
               localStorage.setItem(STORAGE_KEY, JSON.stringify(refreshed));
               setUser(refreshed);
@@ -134,6 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: (data.email as string),
         full_name: (data.full_name as string) || (data.email as string),
         photo: proxyPhoto,
+        username: (data.username as string | null) ?? null,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(authUser));
       setUser(authUser);
@@ -178,6 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email: (data.email as string) || email,
       full_name: (data.full_name as string) || email,
       photo: proxyPhoto,
+      username: (data.username as string | null) ?? null,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(authUser));
     setUser(authUser);

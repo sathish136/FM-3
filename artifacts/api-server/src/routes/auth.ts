@@ -21,7 +21,7 @@ const API_SECRET = process.env.ERPNEXT_API_SECRET || "";
 interface OtpEntry {
   otp: string;
   expires: number;
-  userData: { email: string; full_name: string; photo: string | null };
+  userData: { email: string; full_name: string; photo: string | null; username: string | null };
 }
 const otpStore = new Map<string, OtpEntry>();
 
@@ -251,6 +251,7 @@ authRouter.post("/auth/login", async (req, res) => {
     let fullName: string = (data as any)?.full_name || loginId;
     let email = loginId;
     let photo: string | null = null;
+    let username: string | null = null;
 
     try {
       console.log("Resolving user document for loginId:", loginId);
@@ -258,6 +259,7 @@ authRouter.post("/auth/login", async (req, res) => {
       console.log("User document resolved:", userDoc);
       if (userDoc.full_name) fullName = userDoc.full_name;
       if (userDoc.email) email = userDoc.email;
+      if (userDoc.username) username = userDoc.username;
       if (userDoc.user_image) {
         const img = String(userDoc.user_image);
         photo = img.startsWith("http") ? img : `${ERP_URL}${img}`;
@@ -296,6 +298,7 @@ authRouter.post("/auth/login", async (req, res) => {
         email,
         full_name: fullName,
         photo,
+        username,
       });
     }
 
@@ -304,7 +307,7 @@ authRouter.post("/auth/login", async (req, res) => {
     otpStore.set(email, {
       otp,
       expires: Date.now() + 5 * 60 * 1000,
-      userData: { email, full_name: fullName, photo },
+      userData: { email, full_name: fullName, photo, username },
     });
 
     try {
@@ -401,6 +404,7 @@ authRouter.get("/auth/me", async (req, res) => {
       email: d.email,
       full_name: d.full_name || loginId,
       photo,
+      username: d.username || null,
     });
   } catch (err) {
     console.error("Me error:", err);

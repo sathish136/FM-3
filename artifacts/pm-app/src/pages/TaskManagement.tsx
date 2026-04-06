@@ -6,6 +6,7 @@ import {
   MoreVertical, Edit2, Trash2, Tag, Briefcase, Wifi, WifiOff,
   Activity, Download, X, ChevronDown, Search, Filter,
   AlertCircle, CheckCircle2, Timer, CircleDot, Coffee, Zap,
+  Building2, MapPin, Phone, BadgeCheck, Users,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -31,6 +32,24 @@ interface FmTask {
 }
 
 interface Project { id: number; name: string; }
+
+interface EmployeeProfile {
+  email: string;
+  full_name: string;
+  username: string | null;
+  employee_number: string | null;
+  designation: string | null;
+  department: string | null;
+  company: string | null;
+  branch: string | null;
+  date_of_joining: string | null;
+  employment_type: string | null;
+  gender: string | null;
+  employee_status: string | null;
+  reports_to: string | null;
+  grade: string | null;
+  photo: string | null;
+}
 
 interface SystemActivity {
   id: number;
@@ -249,6 +268,10 @@ export default function TaskManagement() {
   const { user } = useAuth();
   const [tab, setTab] = useState<"tasks" | "monitor">("tasks");
 
+  // Employee profile
+  const [empProfile, setEmpProfile] = useState<EmployeeProfile | null>(null);
+  const [empLoading, setEmpLoading] = useState(false);
+
   // Tasks state
   const [tasks, setTasks] = useState<FmTask[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -284,6 +307,37 @@ export default function TaskManagement() {
   }, []);
 
   useEffect(() => { loadTasks(); }, [loadTasks]);
+
+  // Fetch logged user's employee profile
+  useEffect(() => {
+    if (!user?.email) return;
+    setEmpLoading(true);
+    fetch(`${BASE}/api/auth/profile?email=${encodeURIComponent(user.email)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data) {
+          setEmpProfile({
+            email: data.email,
+            full_name: data.full_name,
+            username: data.username || user.username || null,
+            employee_number: data.employee_number || null,
+            designation: data.designation || null,
+            department: data.department || null,
+            company: data.company || null,
+            branch: data.branch || null,
+            date_of_joining: data.date_of_joining || null,
+            employment_type: data.employment_type || null,
+            gender: data.gender || null,
+            employee_status: data.employee_status || null,
+            reports_to: data.reports_to || null,
+            grade: data.grade || null,
+            photo: data.photo ? `${BASE}/api/auth/photo?url=${encodeURIComponent(data.photo)}` : (user.photo || null),
+          });
+        }
+      })
+      .catch(() => {})
+      .finally(() => setEmpLoading(false));
+  }, [user?.email]);
 
   useEffect(() => {
     if (tab === "monitor") {
@@ -420,6 +474,92 @@ export default function TaskManagement() {
         {/* ── TASKS TAB ── */}
         {tab === "tasks" && (
           <div className="flex flex-col flex-1 min-h-0">
+            {/* Logged User Profile Card */}
+            {empLoading ? (
+              <div className="mx-6 mt-4 mb-2 h-20 bg-white border border-gray-200 rounded-2xl animate-pulse flex-shrink-0" />
+            ) : empProfile && (
+              <div className="mx-6 mt-4 mb-2 bg-white border border-blue-100 rounded-2xl shadow-sm px-5 py-4 flex items-start gap-4 flex-shrink-0">
+                {/* Avatar */}
+                <div className="flex-shrink-0">
+                  {empProfile.photo ? (
+                    <img src={empProfile.photo} alt={empProfile.full_name}
+                      className="w-14 h-14 rounded-full object-cover border-2 border-blue-200" />
+                  ) : (
+                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xl font-bold">
+                      {initials(empProfile.full_name)}
+                    </div>
+                  )}
+                </div>
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                    <h2 className="text-base font-bold text-gray-900 truncate">{empProfile.full_name}</h2>
+                    {empProfile.employee_status && (
+                      <span className={`px-2 py-0.5 text-[10px] font-semibold rounded-full ${empProfile.employee_status === "Active" ? "bg-green-50 text-green-700 border border-green-200" : "bg-gray-100 text-gray-500"}`}>
+                        {empProfile.employee_status}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 flex-wrap text-xs text-gray-500 mb-2">
+                    {empProfile.username && (
+                      <span className="flex items-center gap-1">
+                        <BadgeCheck className="w-3 h-3 text-blue-500" />
+                        <span className="font-medium text-blue-700">{empProfile.username}</span>
+                      </span>
+                    )}
+                    {empProfile.employee_number && (
+                      <span className="flex items-center gap-1 text-gray-400">
+                        <span className="font-semibold text-gray-600">ID:</span> {empProfile.employee_number}
+                      </span>
+                    )}
+                    {empProfile.designation && (
+                      <span className="flex items-center gap-1">
+                        <Briefcase className="w-3 h-3 text-gray-400" />
+                        {empProfile.designation}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-4 flex-wrap text-xs text-gray-500">
+                    {empProfile.department && (
+                      <span className="flex items-center gap-1">
+                        <Users className="w-3 h-3 text-gray-400" />
+                        {empProfile.department}
+                      </span>
+                    )}
+                    {empProfile.company && (
+                      <span className="flex items-center gap-1">
+                        <Building2 className="w-3 h-3 text-gray-400" />
+                        {empProfile.company}
+                      </span>
+                    )}
+                    {empProfile.branch && (
+                      <span className="flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-gray-400" />
+                        {empProfile.branch}
+                      </span>
+                    )}
+                    {empProfile.date_of_joining && (
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-3 h-3 text-gray-400" />
+                        Joined {empProfile.date_of_joining}
+                      </span>
+                    )}
+                    {empProfile.employment_type && (
+                      <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-medium border border-indigo-100">
+                        {empProfile.employment_type}
+                      </span>
+                    )}
+                    {empProfile.grade && (
+                      <span className="px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full text-[10px] font-medium border border-amber-100">
+                        Grade: {empProfile.grade}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Filter bar */}
             <div className="flex items-center gap-3 px-6 py-3 bg-white border-b border-gray-100 flex-shrink-0">
               <div className="relative flex-1 max-w-xs">
