@@ -404,9 +404,10 @@ function EmployeeDetailPanel({ row, tasks, onClose, erpCheckin }: {
   const [costInfo, setCostInfo] = useState<{
     available: boolean; monthlySalary?: number|null; monthlyNet?: number|null;
     hourlyRate?: number|null; dailyRate?: number|null; slipDate?: string|null;
-    salarySource?: string; activeHoursToday?: number;
+    salarySource?: string; activeHoursToday?: number; idleHoursToday?: number;
     workingCostToday?: number|null; idleCostToday?: number|null;
   } | null>(null);
+  const [erpCheckinDirect, setErpCheckinDirect] = useState<{ checkIn?: string; checkOut?: string } | null>(null);
   const [erpProjects, setErpProjects] = useState<Array<{ id: number; name: string; erpnextName: string }>>([]);
 
   const assignedTasks = tasks.filter(t =>
@@ -430,6 +431,17 @@ function EmployeeDetailPanel({ row, tasks, onClose, erpCheckin }: {
       .then(d => setCostInfo(d))
       .catch(() => {});
   }, [row.deviceUsername]);
+
+  useEffect(() => {
+    if (!row.erpEmployeeId) return;
+    const today = new Date().toISOString().slice(0, 10);
+    fetch(`${BASE_PROXY}/api/activity/checkins-today?date=${today}`)
+      .then(r => r.ok ? r.json() : {})
+      .then((map: Record<string, { checkIn?: string; checkOut?: string }>) => {
+        setErpCheckinDirect(map[row.erpEmployeeId] ?? null);
+      })
+      .catch(() => {});
+  }, [row.erpEmployeeId]);
 
   useEffect(() => {
     fetch(`${BASE_PROXY}/api/projects`)
@@ -570,25 +582,39 @@ function EmployeeDetailPanel({ row, tasks, onClose, erpCheckin }: {
 
           {/* Attendance & System Times */}
           <div className="px-5 py-4 border-b border-gray-100">
-            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Today's Times</div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-gray-500 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" /> Check-In
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Today's Attendance</div>
+            <div className="space-y-2.5">
+              {/* Check-In */}
+              <div className="flex items-center justify-between bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">
+                <span className="text-[11px] text-emerald-700 font-semibold">Check-In</span>
+                <span className="text-sm font-black text-emerald-700">
+                  {erpCheckinDirect?.checkIn ? formatTime(erpCheckinDirect.checkIn) : erpCheckin?.checkIn ? formatTime(erpCheckin.checkIn) : <span className="text-emerald-300 font-normal text-xs">Not recorded</span>}
                 </span>
-                <span className="text-[12px] font-bold text-emerald-600">{formatTime(erpCheckin?.checkIn)}</span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-gray-500 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" /> System Logged
-                </span>
-                <span className="text-[12px] font-bold text-blue-600">{formatTime(row.systemLoginToday)}</span>
+              {/* System Logged */}
+              <div className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
+                <span className="text-[11px] text-blue-700 font-semibold">System Logged</span>
+                <span className="text-sm font-black text-blue-700">{row.systemLoginToday ? formatTime(row.systemLoginToday) : <span className="text-blue-300 font-normal text-xs">—</span>}</span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-gray-500 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-gray-400 inline-block" /> Last Active
-                </span>
-                <span className="text-[12px] font-bold text-gray-600">{formatTime(row.systemLogoutToday || row.lastSeen)}</span>
+              {/* Last Active */}
+              <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
+                <span className="text-[11px] text-gray-600 font-semibold">Last Active</span>
+                <span className="text-sm font-black text-gray-700">{formatTime(row.systemLogoutToday || row.lastSeen)}</span>
+              </div>
+              {/* Active / Idle hours */}
+              <div className="grid grid-cols-2 gap-2 pt-0.5">
+                <div className="bg-green-50 border border-green-100 rounded-xl px-3 py-2 text-center">
+                  <div className="text-[10px] text-green-500 font-semibold uppercase tracking-wide mb-0.5">Active</div>
+                  <div className="text-base font-black text-green-700">
+                    {costInfo?.activeHoursToday != null ? `${costInfo.activeHoursToday.toFixed(1)}h` : <span className="text-gray-300 text-xs font-normal">—</span>}
+                  </div>
+                </div>
+                <div className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 text-center">
+                  <div className="text-[10px] text-amber-500 font-semibold uppercase tracking-wide mb-0.5">Idle</div>
+                  <div className="text-base font-black text-amber-700">
+                    {costInfo?.idleHoursToday != null ? `${costInfo.idleHoursToday.toFixed(1)}h` : <span className="text-gray-300 text-xs font-normal">—</span>}
+                  </div>
+                </div>
               </div>
             </div>
           </div>

@@ -2017,6 +2017,8 @@ router.get("/activity/:deviceUsername/cost-info", async (req, res) => {
     const workingCostToday = hourlyRate ? Math.round(hourlyRate * activeHoursToday * 100) / 100 : null;
     const idleCostToday = hourlyRate ? Math.round(hourlyRate * (idleSecsToday / 3600) * 100) / 100 : null;
 
+    const idleHoursToday = Math.round((idleSecsToday / 3600) * 100) / 100;
+
     res.json({
       available: true,
       erpEmployeeId: erpId,
@@ -2028,6 +2030,7 @@ router.get("/activity/:deviceUsername/cost-info", async (req, res) => {
       slipDate,
       salarySource,
       activeHoursToday,
+      idleHoursToday,
       workingCostToday,
       idleCostToday,
     });
