@@ -4163,6 +4163,9 @@ export default function ProjectDrawings() {
     "all",
   );
   const [deptFilter, setDeptFilter] = useState("");
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
   const [projectFilter, setProjectFilter] = useState("");
   const [viewerIdx, setViewerIdx] = useState<number | null>(null);
   const [detailDrawingId, setDetailDrawingId] = useState<string | null>(null);
@@ -4740,21 +4743,118 @@ export default function ProjectDrawings() {
                     </span>
                   </button>
                 ))}
-                <div className="ml-auto flex items-center gap-1.5 border border-gray-200 rounded-lg px-2.5 py-1.5 bg-gray-50">
-                  <Search className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                  <input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search drawings…"
-                    className="text-xs outline-none bg-transparent text-gray-700 w-32 placeholder-gray-400"
-                  />
-                  {search && (
-                    <button onClick={() => setSearch("")} className="text-gray-400 hover:text-gray-600">
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
+                <div className="ml-auto flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setSelectionMode(s => {
+                        if (s) setSelectedIds(new Set());
+                        return !s;
+                      });
+                    }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                      selectionMode
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "bg-white text-gray-600 border-gray-300 hover:border-blue-400 hover:text-blue-600"
+                    }`}
+                  >
+                    <ListChecks className="w-3.5 h-3.5" />
+                    {selectionMode ? `${selectedIds.size} selected` : "Select"}
+                  </button>
+                  <div className="flex items-center gap-1.5 border border-gray-200 rounded-lg px-2.5 py-1.5 bg-gray-50">
+                    <Search className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                    <input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search drawings…"
+                      className="text-xs outline-none bg-transparent text-gray-700 w-32 placeholder-gray-400"
+                    />
+                    {search && (
+                      <button onClick={() => setSearch("")} className="text-gray-400 hover:text-gray-600">
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
+              {/* Bulk action bar */}
+              {selectionMode && selectedIds.size > 0 && (
+                <div className="flex items-center gap-2 px-1 py-2 bg-blue-50 border border-blue-200 rounded-xl flex-wrap">
+                  <span className="text-xs font-semibold text-blue-700 mr-1">{selectedIds.size} drawing{selectedIds.size !== 1 ? "s" : ""} selected</span>
+                  <button
+                    disabled={bulkActionLoading}
+                    onClick={async () => {
+                      if (!confirm(`Change ${selectedIds.size} drawing(s) to Draft?`)) return;
+                      setBulkActionLoading(true);
+                      const ids = Array.from(selectedIds);
+                      await Promise.all(ids.map(id => {
+                        const d = drawings.find(x => x.id === id);
+                        if (!d) return Promise.resolve();
+                        return fetch(`${BASE}/api/project-drawings/${id}`, {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ status: "draft", revisionLabel: "Draft" }),
+                        });
+                      }));
+                      setDrawings(prev => prev.map(d => selectedIds.has(d.id) ? { ...d, status: "draft", revisionLabel: "Draft" } : d));
+                      setSelectedIds(new Set());
+                      setBulkActionLoading(false);
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white border border-gray-300 text-gray-700 hover:border-gray-400 disabled:opacity-50 transition-colors"
+                  >
+                    <FileText className="w-3 h-3" /> Set Draft
+                  </button>
+                  <button
+                    disabled={bulkActionLoading}
+                    onClick={async () => {
+                      if (!confirm(`Change ${selectedIds.size} drawing(s) to Revision?`)) return;
+                      setBulkActionLoading(true);
+                      const ids = Array.from(selectedIds);
+                      await Promise.all(ids.map(id => {
+                        return fetch(`${BASE}/api/project-drawings/${id}`, {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ status: "revision", revisionLabel: "Revision" }),
+                        });
+                      }));
+                      setDrawings(prev => prev.map(d => selectedIds.has(d.id) ? { ...d, status: "revision", revisionLabel: "Revision" } : d));
+                      setSelectedIds(new Set());
+                      setBulkActionLoading(false);
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white border border-gray-300 text-gray-700 hover:border-gray-400 disabled:opacity-50 transition-colors"
+                  >
+                    <RefreshCw className="w-3 h-3" /> Set Revision
+                  </button>
+                  <button
+                    disabled={bulkActionLoading}
+                    onClick={async () => {
+                      if (!confirm(`Delete ${selectedIds.size} drawing(s) permanently? This cannot be undone.`)) return;
+                      setBulkActionLoading(true);
+                      const ids = Array.from(selectedIds);
+                      await Promise.all(ids.map(id =>
+                        fetch(`${BASE}/api/project-drawings/${id}`, { method: "DELETE" }).catch(() => {})
+                      ));
+                      setFileDataCache(prev => {
+                        const n = { ...prev };
+                        ids.forEach(id => delete n[id]);
+                        return n;
+                      });
+                      setDrawings(prev => prev.filter(d => !selectedIds.has(d.id)));
+                      setSelectedIds(new Set());
+                      setSelectionMode(false);
+                      setBulkActionLoading(false);
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+                  >
+                    <Trash2 className="w-3 h-3" /> Delete Selected
+                  </button>
+                  <button
+                    onClick={() => setSelectedIds(new Set())}
+                    className="ml-auto flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
+                  >
+                    <X className="w-3 h-3" /> Clear
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Drawing list content */}
@@ -4803,7 +4903,22 @@ export default function ProjectDrawings() {
               ) : (
                 <div className="grid gap-2">
                   <div className="hidden md:grid grid-cols-[32px_2.5fr_2fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 px-4 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-200">
-                    <span>S.No</span>
+                    {selectionMode ? (
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 rounded cursor-pointer accent-blue-600"
+                        checked={filtered.length > 0 && filtered.every(d => selectedIds.has(d.id))}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedIds(new Set(filtered.map(d => d.id)));
+                          } else {
+                            setSelectedIds(new Set());
+                          }
+                        }}
+                      />
+                    ) : (
+                      <span>S.No</span>
+                    )}
                     <span>Drawing No. / Title</span>
                     <span>System</span>
                     <span>Department</span>
@@ -4815,11 +4930,36 @@ export default function ProjectDrawings() {
                   {filtered.map((drawing, idx) => (
                     <div
                       key={drawing.id}
-                      onClick={() => setDetailDrawingId(drawing.id)}
-                      className="bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-blue-400 hover:shadow-md transition-all group cursor-pointer"
+                      onClick={() => {
+                        if (selectionMode) {
+                          setSelectedIds(prev => {
+                            const next = new Set(prev);
+                            if (next.has(drawing.id)) next.delete(drawing.id);
+                            else next.add(drawing.id);
+                            return next;
+                          });
+                        } else {
+                          setDetailDrawingId(drawing.id);
+                        }
+                      }}
+                      className={`bg-white border rounded-xl px-4 py-3 hover:shadow-md transition-all group cursor-pointer ${
+                        selectedIds.has(drawing.id)
+                          ? "border-blue-400 bg-blue-50"
+                          : "border-gray-200 hover:border-blue-400"
+                      }`}
                     >
                       <div className="hidden md:grid grid-cols-[32px_2.5fr_2fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 items-center">
-                        <div className="text-xs font-semibold text-gray-400 tabular-nums">{idx + 1}</div>
+                        {selectionMode ? (
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 rounded cursor-pointer accent-blue-600"
+                            checked={selectedIds.has(drawing.id)}
+                            onChange={() => {}}
+                            onClick={e => e.stopPropagation()}
+                          />
+                        ) : (
+                          <div className="text-xs font-semibold text-gray-400 tabular-nums">{idx + 1}</div>
+                        )}
                         <div className="min-w-0" title={drawing.title || drawing.drawingNo}>
                           <p className="font-mono text-sm font-semibold text-gray-900 truncate">{drawing.drawingNo}</p>
                           {drawing.title && <p className="text-xs text-gray-500 truncate mt-0.5">{drawing.title}</p>}
