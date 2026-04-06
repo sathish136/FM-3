@@ -6,7 +6,7 @@ import {
   MoreVertical, Edit2, Trash2, Tag, Briefcase, Wifi, WifiOff,
   Activity, Download, X, ChevronDown, Search, Filter,
   AlertCircle, CheckCircle2, Timer, CircleDot, Coffee, Zap,
-  Building2, MapPin, Phone, BadgeCheck, Users,
+  Building2, MapPin, Phone, BadgeCheck, Users, Link2, Check, Loader2,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -222,13 +222,41 @@ function TaskModal({
 // ── Activity Card ──────────────────────────────────────────────────────────────
 const BASE_PROXY = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-function ActivityCard({ row }: { row: SystemActivity }) {
+function ActivityCard({ row, onRefresh }: { row: SystemActivity; onRefresh: () => void }) {
   const status = activityStatus(row);
   const idleMin = Math.floor(row.idleSeconds / 60);
   const displayName = row.fullName || row.deviceUsername || row.email.split("@")[0];
   const photoUrl = row.erpImage
     ? `${BASE_PROXY}/api/auth/photo?url=${encodeURIComponent(row.erpImage)}`
     : null;
+
+  const isUnmatched = !row.erpEmployeeId;
+
+  const [editing, setEditing] = useState(false);
+  const [erpInput, setErpInput] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  const handleSaveOverride = async () => {
+    if (!erpInput.trim()) return;
+    setSaving(true);
+    setSaveError("");
+    try {
+      const r = await fetch(
+        `${BASE_PROXY}/api/activity/${encodeURIComponent(row.deviceUsername)}/erp-override`,
+        { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ erpUsername: erpInput.trim() }) }
+      );
+      const data = await r.json();
+      if (!r.ok) { setSaveError(data.error || "Failed"); return; }
+      setEditing(false);
+      setErpInput("");
+      onRefresh();
+    } catch {
+      setSaveError("Network error");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className={`bg-white rounded-2xl border shadow-sm hover:shadow-md transition-all overflow-hidden ${status === "active" ? "border-green-200" : status === "idle" ? "border-amber-200" : "border-gray-200 opacity-70"}`}>
@@ -261,11 +289,52 @@ function ActivityCard({ row }: { row: SystemActivity }) {
             {row.department && (
               <div className="text-[11px] text-gray-500 truncate">{row.department}</div>
             )}
-            {row.erpEmployeeId && (
+            {row.erpEmployeeId ? (
               <div className="text-[10px] text-gray-400 font-mono mt-0.5">ID: {row.erpEmployeeId}</div>
+            ) : (
+              <div className="text-[10px] text-amber-500 mt-0.5 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" /> Not matched to ERPNext
+              </div>
             )}
           </div>
+
+          {/* Link / Edit button */}
+          <button
+            onClick={() => { setEditing(e => !e); setSaveError(""); setErpInput(""); }}
+            title={isUnmatched ? "Link to ERPNext employee" : "Change ERPNext link"}
+            className={`flex-shrink-0 p-1.5 rounded-lg transition-colors ${isUnmatched ? "bg-amber-50 text-amber-500 hover:bg-amber-100" : "text-gray-300 hover:text-gray-500 hover:bg-gray-100"}`}>
+            <Link2 className="w-3.5 h-3.5" />
+          </button>
         </div>
+
+        {/* Inline override form */}
+        {editing && (
+          <div className="mt-3 p-3 bg-white border border-blue-200 rounded-xl space-y-2">
+            <div className="text-[11px] font-semibold text-gray-600">Enter ERPNext username or employee ID</div>
+            <div className="text-[10px] text-gray-400">e.g. WTT1194 or john.doe</div>
+            <div className="flex gap-1.5">
+              <input
+                value={erpInput}
+                onChange={e => setErpInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleSaveOverride()}
+                placeholder="e.g. WTT1194"
+                autoFocus
+                className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                onClick={handleSaveOverride}
+                disabled={saving || !erpInput.trim()}
+                className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition-colors">
+                {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                {saving ? "" : "Link"}
+              </button>
+              <button onClick={() => setEditing(false)} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            {saveError && <div className="text-[10px] text-red-500">{saveError}</div>}
+          </div>
+        )}
       </div>
 
       {/* Activity */}
@@ -771,7 +840,7 @@ export default function TaskManagement() {
                       const order = { active: 0, idle: 1, offline: 2 };
                       return order[activityStatus(a)] - order[activityStatus(b)];
                     })
-                    .map(row => <ActivityCard key={row.email} row={row} />)}
+                    .map(row => <ActivityCard key={row.deviceUsername || row.email} row={row} onRefresh={loadActivity} />)}
                 </div>
               </>
             )}

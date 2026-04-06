@@ -1676,9 +1676,48 @@ router.get("/activity/live", async (_req, res) => {
   }
 });
 
-router.delete("/activity/:email", async (req, res) => {
+// Manually override the ERPNext username for a device (when auto-detection fails)
+router.patch("/activity/:deviceUsername/erp-override", async (req, res) => {
   try {
-    await db.delete(systemActivityTable).where(eq(systemActivityTable.email, req.params.email));
+    const { deviceUsername } = req.params;
+    const { erpUsername } = req.body;
+    if (!erpUsername) return res.status(400).json({ error: "erpUsername required" });
+
+    // Clear the cache so we re-resolve with the new username
+    erpUserCache.delete(deviceUsername.toLowerCase());
+    erpUserCache.delete(erpUsername.toLowerCase());
+
+    // Resolve using the provided ERPNext username
+    const emp = await resolveErpEmployee(erpUsername);
+
+    // Update the record
+    await db
+      .update(systemActivityTable)
+      .set({
+        email: emp.email || "",
+        fullName: emp.fullName || erpUsername,
+        department: emp.department || "",
+        designation: emp.designation || "",
+        erpEmployeeId: emp.erpEmployeeId || "",
+        erpImage: emp.erpImage || "",
+      })
+      .where(eq(systemActivityTable.deviceUsername, deviceUsername));
+
+    res.json({
+      ok: true,
+      resolvedName: emp.fullName,
+      resolvedDept: emp.department,
+      resolvedDesignation: emp.designation,
+      erpEmployeeId: emp.erpEmployeeId,
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.delete("/activity/:deviceUsername", async (req, res) => {
+  try {
+    await db.delete(systemActivityTable).where(eq(systemActivityTable.deviceUsername, req.params.deviceUsername));
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: String(e) });
