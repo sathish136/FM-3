@@ -1,14 +1,10 @@
 """
-FlowMatriX Activity Agent  v4.0 — Modern GUI
-=============================================
-Desktop app that tracks your activity, shows assigned tasks,
-and fires toast notifications when tasks are assigned to you.
+FlowMatriX Activity Agent  v5.0
+================================
+Modern desktop GUI using CustomTkinter.
 
-SETUP:
-    pip install requests psutil
-
-OPTIONAL (system-tray icon):
-    pip install pillow pystray
+SETUP (run once):
+    pip install requests psutil customtkinter
 
 RUN:
     python flowmatrix_activity_agent.py
@@ -18,37 +14,41 @@ import sys, time, socket, platform, getpass, os, threading, logging
 from datetime import datetime
 
 # ── Config ────────────────────────────────────────────────────────────────────
-API_URL         = "https://766e4ea0-5b9e-488a-ad69-f3453d798d6d-00-3m118gokkcn7o.pike.replit.dev/api"
+API_URL        = "https://766e4ea0-5b9e-488a-ad69-f3453d798d6d-00-3m118gokkcn7o.pike.replit.dev/api"
 DEVICE_USERNAME = "AUTO"
 HEARTBEAT_SEC   = 30
 IDLE_THRESHOLD  = 300
 
-# ── Brand palette ─────────────────────────────────────────────────────────────
-BG          = "#F6F5F4"
-SIDEBAR     = "#1E1530"      # deep navy-purple
-SIDEBAR2    = "#2A1F42"      # slightly lighter sidebar
-BLUE        = "#2492FF"
-ACCENT      = "#FF3C00"
-WHITE       = "#FFFFFF"
-TEXT        = "#2F3034"
-MUTED       = "#9CA3AF"
-BORDER      = "#E5E7EB"
-CARD        = "#FFFFFF"
-GREEN       = "#10B981"
-GREEN_LIGHT = "#D1FAE5"
-AMBER       = "#F59E0B"
-AMBER_LIGHT = "#FEF3C7"
-RED         = "#EF4444"
-RED_LIGHT   = "#FEE2E2"
-BLUE_LIGHT  = "#DBEAFE"
-PURPLE      = "#7C3AED"
-GRAY100     = "#F3F4F6"
-GRAY200     = "#E5E7EB"
-GRAY700     = "#374151"
-
 PLATFORM = platform.system()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 log = logging.getLogger("fm")
+
+# ── FlowMatriX Palette ────────────────────────────────────────────────────────
+FM = {
+    "bg":           "#0D0B1A",   # deepest background
+    "sidebar":      "#12102A",   # sidebar bg
+    "card":         "#1A1836",   # card bg
+    "card_hover":   "#1F1D40",
+    "border":       "#2A2850",   # subtle borders
+    "blue":         "#2492FF",   # primary blue
+    "blue_dim":     "#1A3A6E",   # muted blue bg
+    "purple":       "#7C3AED",
+    "purple_dim":   "#2D1B69",
+    "accent":       "#FF3C00",   # orange-red
+    "accent_dim":   "#4A1500",
+    "green":        "#10B981",
+    "green_dim":    "#064E3B",
+    "amber":        "#F59E0B",
+    "amber_dim":    "#451A03",
+    "red":          "#EF4444",
+    "red_dim":      "#450A0A",
+    "text":         "#F1F0FF",   # primary text
+    "text_sub":     "#9491B4",   # muted text
+    "text_dim":     "#5B5880",   # very muted
+    "white":        "#FFFFFF",
+    "input_bg":     "#1E1C3A",
+}
+
 
 # ── Platform helpers ──────────────────────────────────────────────────────────
 def detect_username():
@@ -61,13 +61,14 @@ def detect_username():
             if ctypes.windll.secur32.GetUserNameExW(2, buf, ctypes.byref(size)):
                 v = buf.value
                 if "\\" in v: return v.split("\\")[-1]
-                if "@" in v: return v.split("@")[0]
+                if "@" in v:  return v.split("@")[0]
                 return v
         except Exception: pass
     try: return getpass.getuser()
     except Exception: pass
     return (os.environ.get("USERNAME") or os.environ.get("USER")
             or os.environ.get("LOGNAME") or socket.gethostname())
+
 
 def get_idle_seconds():
     try:
@@ -87,6 +88,7 @@ def get_idle_seconds():
     except Exception: pass
     return 0.0
 
+
 def get_active_window():
     try:
         if PLATFORM == "Windows":
@@ -98,7 +100,8 @@ def get_active_window():
             try:
                 pid = wt.DWORD()
                 ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-                import psutil; app = psutil.Process(pid.value).name().replace(".exe","").replace(".EXE","")
+                import psutil
+                app = psutil.Process(pid.value).name().replace(".exe","").replace(".EXE","")
             except Exception: app = "Unknown"
             return app, title
         if PLATFORM == "Darwin":
@@ -114,74 +117,70 @@ def get_active_window():
     except Exception: pass
     return "Unknown", "Unknown"
 
+
 def fmt_idle(s):
     s = int(s)
     if s < 60: return f"{s}s"
     m = s // 60
-    if m < 60: return f"{m}m idle"
-    return f"{m//60}h {m%60}m idle"
+    if m < 60: return f"{m} min"
+    return f"{m//60}h {m%60}m"
+
 
 def initials(name):
     parts = (name or "?").split()
     return "".join(p[0].upper() for p in parts[:2]) or "?"
 
-# ── Tkinter ───────────────────────────────────────────────────────────────────
+
+# ── CustomTkinter check ───────────────────────────────────────────────────────
 try:
+    import customtkinter as ctk
     import tkinter as tk
-    from tkinter import ttk
+    from tkinter import Canvas
 except ImportError:
-    print("tkinter is not available. Please install it."); sys.exit(1)
+    print("\n  customtkinter not found.\n  Run:  pip install customtkinter\n")
+    sys.exit(1)
+
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
 
 
-# ── Rounded-rectangle helper on Canvas ───────────────────────────────────────
-def round_rect(canvas, x1, y1, x2, y2, r=8, **kw):
-    pts = [
-        x1+r, y1,   x2-r, y1,
-        x2,   y1,   x2,   y1+r,
-        x2,   y2-r, x2,   y2,
-        x2-r, y2,   x1+r, y2,
-        x1,   y2,   x1,   y2-r,
-        x1,   y1+r, x1,   y1,
-        x1+r, y1,
-    ]
-    return canvas.create_polygon(pts, smooth=True, **kw)
-
-
-# ── Toast ─────────────────────────────────────────────────────────────────────
-class Toast(tk.Toplevel):
-    def __init__(self, master, title, body, ms=6000):
+# ── Toast Notification ────────────────────────────────────────────────────────
+class Toast(ctk.CTkToplevel):
+    def __init__(self, master, title: str, body: str, ms: int = 6000):
         super().__init__(master)
         self.overrideredirect(True)
         self.attributes("-topmost", True)
+        self.configure(fg_color=FM["card"])
         try: self.attributes("-alpha", 0.97)
         except Exception: pass
 
-        W, PAD = 320, 16
-        self.configure(bg=SIDEBAR)
+        W = 340
+        # Blue accent strip (left border via canvas)
+        strip = tk.Canvas(self, width=4, bg=FM["blue"], highlightthickness=0)
+        strip.pack(side="left", fill="y")
 
-        # Blue left accent
-        accent = tk.Frame(self, bg=BLUE, width=4)
-        accent.place(relx=0, rely=0, relheight=1)
+        wrap = ctk.CTkFrame(self, fg_color=FM["card"], corner_radius=0)
+        wrap.pack(side="left", fill="both", expand=True, padx=16, pady=14)
 
-        wrap = tk.Frame(self, bg=SIDEBAR, padx=PAD+4, pady=14)
-        wrap.pack(fill="both", expand=True)
-
-        # header row
-        hdr = tk.Frame(wrap, bg=SIDEBAR)
+        # Header
+        hdr = ctk.CTkFrame(wrap, fg_color="transparent")
         hdr.pack(fill="x")
-        dot = tk.Label(hdr, text="⚡", font=("Segoe UI", 10), fg=BLUE, bg=SIDEBAR)
-        dot.pack(side="left")
-        tk.Label(hdr, text=" FlowMatriX", font=("Segoe UI", 9, "bold"), fg=BLUE, bg=SIDEBAR).pack(side="left")
-        ts = tk.Label(hdr, text=datetime.now().strftime("%H:%M"), font=("Segoe UI", 8), fg=MUTED, bg=SIDEBAR)
-        ts.pack(side="right")
+        ctk.CTkLabel(hdr, text="⚡ FlowMatriX",
+                     font=ctk.CTkFont(size=10, weight="bold"),
+                     text_color=FM["blue"]).pack(side="left")
+        ctk.CTkLabel(hdr, text=datetime.now().strftime("%H:%M"),
+                     font=ctk.CTkFont(size=9),
+                     text_color=FM["text_dim"]).pack(side="right")
 
-        tk.Frame(wrap, bg="#2E2A45", height=1).pack(fill="x", pady=(8, 8))
+        ctk.CTkFrame(wrap, height=1, fg_color=FM["border"]).pack(fill="x", pady=(8, 10))
 
-        tk.Label(wrap, text=title, font=("Segoe UI", 10, "bold"), fg=WHITE, bg=SIDEBAR,
-                 wraplength=W-2*PAD-20, justify="left", anchor="w").pack(fill="x")
+        ctk.CTkLabel(wrap, text=title,
+                     font=ctk.CTkFont(size=11, weight="bold"),
+                     text_color=FM["text"], wraplength=W-50, justify="left").pack(anchor="w")
         if body:
-            tk.Label(wrap, text=body, font=("Segoe UI", 9), fg="#94A3B8", bg=SIDEBAR,
-                     wraplength=W-2*PAD-20, justify="left", anchor="w").pack(fill="x", pady=(4, 0))
+            ctk.CTkLabel(wrap, text=body,
+                         font=ctk.CTkFont(size=9),
+                         text_color=FM["text_sub"], wraplength=W-50, justify="left").pack(anchor="w", pady=(4, 0))
 
         self.update_idletasks()
         h = self.winfo_reqheight() + 10
@@ -190,45 +189,67 @@ class Toast(tk.Toplevel):
         self.after(ms, self.destroy)
 
 
-# ── Pill label ────────────────────────────────────────────────────────────────
-def pill(parent, text, fg, bg, pad_x=10, pad_y=3, size=8):
-    return tk.Label(parent, text=text, font=("Segoe UI", size, "bold"),
-                    fg=fg, bg=bg, padx=pad_x, pady=pad_y)
+# ── Avatar Canvas widget ──────────────────────────────────────────────────────
+class AvatarCanvas(tk.Canvas):
+    def __init__(self, master, size=64, color=None, **kw):
+        self._size = size
+        super().__init__(master, width=size, height=size,
+                         bg=FM["sidebar"], bd=0, highlightthickness=0, **kw)
+        self._color = color or FM["blue"]
+        self._oval  = self.create_oval(2, 2, size-2, size-2,
+                                        fill=self._color, outline="")
+        self._text  = self.create_text(size//2, size//2, text="?",
+                                        fill=FM["white"],
+                                        font=("Segoe UI", size//4, "bold"))
+        # Status dot
+        d = size // 5
+        x0 = size - d - 2; y0 = size - d - 2
+        self._dot_bg = self.create_oval(x0-2, y0-2, x0+d+2, y0+d+2,
+                                         fill=FM["sidebar"], outline="")
+        self._dot    = self.create_oval(x0, y0, x0+d, y0+d,
+                                         fill=FM["amber"], outline="")
+
+    def set_initials(self, name):
+        self.itemconfig(self._text, text=initials(name))
+
+    def set_status(self, color):
+        self.itemconfig(self._dot, fill=color)
 
 
-# ── Main window ───────────────────────────────────────────────────────────────
-class App(tk.Tk):
-    W, H = 860, 620
+# ── Main Application ──────────────────────────────────────────────────────────
+class FlowMatrixApp(ctk.CTk):
+    W, H = 940, 660
 
     def __init__(self):
         super().__init__()
         self.title("FlowMatriX · Activity Agent")
-        self.configure(bg=SIDEBAR)
+        self.configure(fg_color=FM["bg"])
         self.resizable(True, True)
-        self.minsize(740, 520)
+        self.minsize(780, 540)
 
         # State
-        self.dev_user   = detect_username()
-        self.session    = None
-        self._running   = True
-        self._hb_ok     = 0
-        self.seen_ids   : set  = set()
-        self.tasks      : list = []
+        self.dev_user  = detect_username()
+        self.session   = None
+        self._running  = True
+        self._hb_ok    = 0
+        self.seen_ids  : set  = set()
+        self.tasks     : list = []
 
-        # Live vars
-        self.v_name   = tk.StringVar(value=self.dev_user)
-        self.v_dept   = tk.StringVar(value="Not linked to ERPNext")
-        self.v_desig  = tk.StringVar(value="")
-        self.v_emp_id = tk.StringVar(value="")
-        self.v_app    = tk.StringVar(value="—")
-        self.v_win    = tk.StringVar(value="—")
-        self.v_idle   = tk.StringVar(value="—")
-        self.v_state  = tk.StringVar(value="Connecting…")
-        self.v_hb     = tk.StringVar(value="Never")
-        self.v_hb_cnt = tk.StringVar(value="0 sent")
+        # StringVars
+        self.v_name    = tk.StringVar(value=self.dev_user)
+        self.v_dept    = tk.StringVar(value="Not linked")
+        self.v_desig   = tk.StringVar(value="—")
+        self.v_emp_id  = tk.StringVar(value="")
+        self.v_app     = tk.StringVar(value="—")
+        self.v_win     = tk.StringVar(value="—")
+        self.v_idle    = tk.StringVar(value="None")
+        self.v_state   = tk.StringVar(value="Connecting…")
+        self.v_hb_time = tk.StringVar(value="—")
+        self.v_hb_cnt  = tk.StringVar(value="0")
+        self.v_task_ct = tk.StringVar(value="0")
 
-        self._build()
-        self._start()
+        self._build_layout()
+        self._start_agent()
         self.protocol("WM_DELETE_WINDOW", self._quit)
 
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
@@ -236,309 +257,371 @@ class App(tk.Tk):
 
     # ── Layout ───────────────────────────────────────────────────────────────
 
-    def _build(self):
-        # Two columns: sidebar + main
+    def _build_layout(self):
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
-
         self._build_sidebar()
         self._build_main()
 
     # ── Sidebar ──────────────────────────────────────────────────────────────
 
     def _build_sidebar(self):
-        sb = tk.Frame(self, bg=SIDEBAR, width=230)
+        sb = ctk.CTkFrame(self, width=240, corner_radius=0, fg_color=FM["sidebar"])
         sb.grid(row=0, column=0, sticky="nsew")
         sb.grid_propagate(False)
-        sb.grid_rowconfigure(9, weight=1)
+        sb.grid_rowconfigure(10, weight=1)
+        sb.grid_columnconfigure(0, weight=1)
 
-        # Logo area
-        logo_area = tk.Frame(sb, bg=SIDEBAR, pady=20, padx=20)
-        logo_area.grid(row=0, column=0, sticky="ew")
+        # ── Logo ──
+        logo = ctk.CTkFrame(sb, fg_color="transparent")
+        logo.grid(row=0, column=0, padx=20, pady=(22, 16), sticky="ew")
 
-        logo_row = tk.Frame(logo_area, bg=SIDEBAR)
+        logo_row = ctk.CTkFrame(logo, fg_color="transparent")
         logo_row.pack(anchor="w")
-        tk.Label(logo_row, text="⚡", font=("Segoe UI", 18), fg=BLUE, bg=SIDEBAR).pack(side="left")
-        tk.Label(logo_row, text="FlowMatriX", font=("Segoe UI", 14, "bold"), fg=WHITE, bg=SIDEBAR).pack(side="left", padx=(4, 0))
-        tk.Label(logo_area, text="Activity Agent", font=("Segoe UI", 8), fg=MUTED, bg=SIDEBAR).pack(anchor="w", pady=(2, 0))
+        ctk.CTkLabel(logo_row, text="⚡",
+                     font=ctk.CTkFont(size=20, weight="bold"),
+                     text_color=FM["blue"]).pack(side="left")
+        ctk.CTkLabel(logo_row, text=" FlowMatriX",
+                     font=ctk.CTkFont(size=16, weight="bold"),
+                     text_color=FM["text"]).pack(side="left")
+        ctk.CTkLabel(logo, text="Activity Agent",
+                     font=ctk.CTkFont(size=9),
+                     text_color=FM["text_dim"]).pack(anchor="w", pady=(2, 0))
 
-        # Divider
-        tk.Frame(sb, bg="#2A1F42", height=1).grid(row=1, column=0, sticky="ew", padx=16)
+        self._divider(sb, row=1)
 
-        # ── Avatar + employee card ──
-        emp_pad = tk.Frame(sb, bg=SIDEBAR, padx=20, pady=20)
-        emp_pad.grid(row=2, column=0, sticky="ew")
+        # ── Employee profile ──
+        emp = ctk.CTkFrame(sb, fg_color="transparent")
+        emp.grid(row=2, column=0, padx=20, pady=18, sticky="ew")
 
-        # Avatar circle
-        self._av_canvas = tk.Canvas(emp_pad, width=56, height=56, bg=SIDEBAR, bd=0, highlightthickness=0)
-        self._av_canvas.pack(anchor="center")
-        self._av_canvas.create_oval(3, 3, 53, 53, fill=BLUE, outline=BLUE)
-        self._av_initials = self._av_canvas.create_text(
-            28, 28, text=initials(self.dev_user), fill=WHITE, font=("Segoe UI", 16, "bold"))
+        # Avatar
+        self._avatar = AvatarCanvas(emp, size=68)
+        self._avatar.pack()
 
-        # Status dot on avatar
-        self._av_dot = self._av_canvas.create_oval(38, 38, 52, 52, fill=AMBER, outline=SIDEBAR, width=2)
+        # Status pill under avatar
+        self._state_lbl = ctk.CTkLabel(
+            emp, textvariable=self.v_state,
+            font=ctk.CTkFont(size=9, weight="bold"),
+            text_color=FM["bg"],
+            fg_color=FM["amber"],
+            corner_radius=20, padx=14, pady=4)
+        self._state_lbl.pack(pady=(10, 0))
 
-        emp_info = tk.Frame(emp_pad, bg=SIDEBAR)
-        emp_info.pack(fill="x", pady=(12, 0))
+        # Name
+        ctk.CTkLabel(emp, textvariable=self.v_name,
+                     font=ctk.CTkFont(size=13, weight="bold"),
+                     text_color=FM["text"],
+                     wraplength=195).pack(pady=(12, 0))
 
-        tk.Label(emp_info, textvariable=self.v_name, font=("Segoe UI", 11, "bold"),
-                 fg=WHITE, bg=SIDEBAR, anchor="center", wraplength=190, justify="center").pack(fill="x")
-        tk.Label(emp_info, textvariable=self.v_desig, font=("Segoe UI", 8, "bold"),
-                 fg=BLUE, bg=SIDEBAR, anchor="center").pack(fill="x", pady=(2, 0))
-        tk.Label(emp_info, textvariable=self.v_dept, font=("Segoe UI", 8),
-                 fg=MUTED, bg=SIDEBAR, anchor="center", wraplength=190, justify="center").pack(fill="x", pady=(1, 0))
-        tk.Label(emp_info, textvariable=self.v_emp_id, font=("Courier", 8),
-                 fg="#6B7280", bg=SIDEBAR, anchor="center").pack(fill="x", pady=(2, 0))
+        # Designation
+        ctk.CTkLabel(emp, textvariable=self.v_desig,
+                     font=ctk.CTkFont(size=9, weight="bold"),
+                     text_color=FM["blue"]).pack(pady=(2, 0))
 
-        # State pill
-        self._state_pill = tk.Label(emp_info, textvariable=self.v_state,
-                                    font=("Segoe UI", 8, "bold"),
-                                    fg=WHITE, bg=AMBER, padx=12, pady=4)
-        self._state_pill.pack(pady=(10, 0))
+        # Department
+        ctk.CTkLabel(emp, textvariable=self.v_dept,
+                     font=ctk.CTkFont(size=9),
+                     text_color=FM["text_sub"],
+                     wraplength=195).pack(pady=(2, 0))
 
-        # Divider
-        tk.Frame(sb, bg="#2A1F42", height=1).grid(row=3, column=0, sticky="ew", padx=16)
+        # Employee ID
+        ctk.CTkLabel(emp, textvariable=self.v_emp_id,
+                     font=ctk.CTkFont(size=8, family="Courier"),
+                     text_color=FM["text_dim"]).pack(pady=(2, 0))
 
-        # ── Stats grid ──
-        stats_frame = tk.Frame(sb, bg=SIDEBAR, padx=20, pady=16)
-        stats_frame.grid(row=4, column=0, sticky="ew")
+        self._divider(sb, row=3)
 
-        self._stat_boxes = {}
-        stats_defs = [
-            ("hb_cnt", "Heartbeats",   self.v_hb_cnt, BLUE),
-            ("hb_time","Last Sync",    self.v_hb,     GREEN),
-        ]
-        for i, (key, label, var, color) in enumerate(stats_defs):
-            box = tk.Frame(stats_frame, bg=SIDEBAR2, padx=10, pady=8)
-            box.grid(row=i, column=0, sticky="ew", pady=(0, 6))
-            stats_frame.grid_columnconfigure(0, weight=1)
-            tk.Label(box, text=label, font=("Segoe UI", 7, "bold"), fg=MUTED, bg=SIDEBAR2).pack(anchor="w")
-            tk.Label(box, textvariable=var, font=("Segoe UI", 10, "bold"), fg=color, bg=SIDEBAR2).pack(anchor="w")
-            self._stat_boxes[key] = box
+        # ── Stats row ──
+        stats = ctk.CTkFrame(sb, fg_color="transparent")
+        stats.grid(row=4, column=0, padx=16, pady=(12, 8), sticky="ew")
+        stats.grid_columnconfigure((0, 1), weight=1)
 
-        # Divider
-        tk.Frame(sb, bg="#2A1F42", height=1).grid(row=5, column=0, sticky="ew", padx=16)
+        self._stat_card(stats, "Heartbeats", self.v_hb_cnt, FM["blue"], 0)
+        self._stat_card(stats, "Last Sync",  self.v_hb_time, FM["green"], 1)
+
+        self._divider(sb, row=5)
 
         # ── Live activity ──
-        act_frame = tk.Frame(sb, bg=SIDEBAR, padx=20, pady=16)
-        act_frame.grid(row=6, column=0, sticky="ew")
+        act = ctk.CTkFrame(sb, fg_color="transparent")
+        act.grid(row=6, column=0, padx=20, pady=(14, 8), sticky="ew")
 
-        tk.Label(act_frame, text="LIVE ACTIVITY", font=("Segoe UI", 7, "bold"),
-                 fg=MUTED, bg=SIDEBAR).pack(anchor="w", pady=(0, 8))
+        ctk.CTkLabel(act, text="LIVE ACTIVITY",
+                     font=ctk.CTkFont(size=8, weight="bold"),
+                     text_color=FM["text_dim"]).pack(anchor="w", pady=(0, 10))
 
-        for label, var in [("App", self.v_app), ("Window", self.v_win), ("Idle", self.v_idle)]:
-            row = tk.Frame(act_frame, bg=SIDEBAR)
-            row.pack(fill="x", pady=(0, 6))
-            tk.Label(row, text=label, font=("Segoe UI", 8), fg=MUTED, bg=SIDEBAR, width=7, anchor="w").pack(side="left")
-            color = AMBER if label == "Idle" else WHITE
-            font_extra = "" if label != "App" else "bold"
-            tk.Label(row, textvariable=var, font=("Segoe UI", 8, font_extra),
-                     fg=color, bg=SIDEBAR, anchor="w", wraplength=140, justify="left").pack(side="left", fill="x", expand=True)
+        rows = [("App", self.v_app, FM["text"]),
+                ("Window", self.v_win, FM["text_sub"]),
+                ("Idle", self.v_idle, FM["amber"])]
+        for label, var, color in rows:
+            r = ctk.CTkFrame(act, fg_color="transparent")
+            r.pack(fill="x", pady=(0, 6))
+            ctk.CTkLabel(r, text=label, width=52,
+                         font=ctk.CTkFont(size=8, weight="bold"),
+                         text_color=FM["text_dim"],
+                         anchor="w").pack(side="left")
+            ctk.CTkLabel(r, textvariable=var,
+                         font=ctk.CTkFont(size=9),
+                         text_color=color,
+                         anchor="w",
+                         wraplength=150,
+                         justify="left").pack(side="left", fill="x", expand=True)
 
         # Spacer
-        tk.Frame(sb, bg=SIDEBAR).grid(row=9, column=0, sticky="nsew")
+        ctk.CTkFrame(sb, fg_color="transparent").grid(row=10, column=0, sticky="nsew")
 
-        # Bottom: device info
-        bottom = tk.Frame(sb, bg="#120E22", padx=16, pady=12)
-        bottom.grid(row=10, column=0, sticky="ew")
-        tk.Label(bottom, text=f"🖥  {socket.gethostname()}", font=("Segoe UI", 8), fg=MUTED, bg="#120E22", anchor="w").pack(fill="x")
-        tk.Label(bottom, text=f"👤 {self.dev_user}", font=("Segoe UI", 8), fg=MUTED, bg="#120E22", anchor="w").pack(fill="x", pady=(2, 0))
+        # ── Device footer ──
+        foot = ctk.CTkFrame(sb, fg_color=FM["bg"], corner_radius=0)
+        foot.grid(row=11, column=0, sticky="ew")
+        foot_in = ctk.CTkFrame(foot, fg_color="transparent")
+        foot_in.pack(fill="x", padx=16, pady=12)
+
+        ctk.CTkLabel(foot_in, text=f"🖥  {socket.gethostname()}",
+                     font=ctk.CTkFont(size=8), text_color=FM["text_dim"],
+                     anchor="w").pack(fill="x")
+        ctk.CTkLabel(foot_in, text=f"👤  {self.dev_user}",
+                     font=ctk.CTkFont(size=8), text_color=FM["text_dim"],
+                     anchor="w").pack(fill="x", pady=(3, 0))
+        ctk.CTkLabel(foot_in, text=f"🌐  {PLATFORM}",
+                     font=ctk.CTkFont(size=8), text_color=FM["text_dim"],
+                     anchor="w").pack(fill="x", pady=(3, 0))
+
+    def _stat_card(self, parent, label, var, color, col):
+        card = ctk.CTkFrame(parent, fg_color=FM["card"], corner_radius=8)
+        card.grid(row=0, column=col, padx=(0, 6) if col == 0 else (0, 0), sticky="ew", ipady=8, ipadx=6)
+        ctk.CTkLabel(card, text=label, font=ctk.CTkFont(size=7, weight="bold"),
+                     text_color=FM["text_dim"]).pack(anchor="w", padx=10, pady=(8, 2))
+        ctk.CTkLabel(card, textvariable=var, font=ctk.CTkFont(size=13, weight="bold"),
+                     text_color=color).pack(anchor="w", padx=10, pady=(0, 8))
+
+    def _divider(self, parent, row):
+        ctk.CTkFrame(parent, height=1, fg_color=FM["border"], corner_radius=0).grid(
+            row=row, column=0, sticky="ew", padx=16)
 
     # ── Main panel ───────────────────────────────────────────────────────────
 
     def _build_main(self):
-        main = tk.Frame(self, bg=BG)
+        main = ctk.CTkFrame(self, corner_radius=0, fg_color=FM["bg"])
         main.grid(row=0, column=1, sticky="nsew")
         main.grid_rowconfigure(1, weight=1)
         main.grid_columnconfigure(0, weight=1)
 
         # ── Top bar ──
-        topbar = tk.Frame(main, bg=WHITE, height=56,
-                          highlightbackground=GRAY200, highlightthickness=1)
+        topbar = ctk.CTkFrame(main, height=60, corner_radius=0,
+                              fg_color=FM["sidebar"],
+                              border_width=0)
         topbar.grid(row=0, column=0, sticky="ew")
         topbar.grid_propagate(False)
+        topbar.grid_columnconfigure(1, weight=1)
 
-        tb_inner = tk.Frame(topbar, bg=WHITE)
-        tb_inner.place(relx=0, rely=0, relwidth=1, relheight=1)
+        left_hdr = ctk.CTkFrame(topbar, fg_color="transparent")
+        left_hdr.grid(row=0, column=0, padx=24, sticky="w", pady=14)
 
-        tk.Label(tb_inner, text="My Tasks", font=("Segoe UI", 13, "bold"),
-                 fg=TEXT, bg=WHITE).place(x=20, rely=0.5, anchor="w")
+        ctk.CTkLabel(left_hdr, text="My Tasks",
+                     font=ctk.CTkFont(size=16, weight="bold"),
+                     text_color=FM["text"]).pack(side="left")
 
-        # Task count badge
-        self._task_count_lbl = tk.Label(tb_inner, text="0", font=("Segoe UI", 9, "bold"),
-                                         fg=WHITE, bg=BLUE, padx=10, pady=3)
-        self._task_count_lbl.place(x=115, rely=0.5, anchor="w")
+        # Count badge
+        self._count_badge = ctk.CTkLabel(
+            left_hdr, textvariable=self.v_task_ct,
+            font=ctk.CTkFont(size=9, weight="bold"),
+            text_color=FM["white"],
+            fg_color=FM["blue"],
+            corner_radius=10, padx=10, pady=3, width=28)
+        self._count_badge.pack(side="left", padx=(10, 0))
 
         # Refresh button
-        ref_btn = tk.Label(tb_inner, text="↻  Refresh", font=("Segoe UI", 9, "bold"),
-                           fg=BLUE, bg=GRAY100, padx=12, pady=5, cursor="hand2")
-        ref_btn.place(relx=1, x=-16, rely=0.5, anchor="e")
-        ref_btn.bind("<Button-1>", lambda e: threading.Thread(target=self._fetch_tasks, daemon=True).start())
+        ctk.CTkButton(topbar, text="↻  Refresh",
+                      font=ctk.CTkFont(size=10, weight="bold"),
+                      fg_color=FM["blue_dim"],
+                      hover_color=FM["blue"],
+                      text_color=FM["blue"],
+                      corner_radius=8, height=30, width=100,
+                      command=lambda: threading.Thread(target=self._fetch_tasks, daemon=True).start()
+                      ).grid(row=0, column=2, padx=20, pady=14, sticky="e")
 
         # ── Scroll area ──
-        scroll_frame = tk.Frame(main, bg=BG)
-        scroll_frame.grid(row=1, column=0, sticky="nsew")
-        scroll_frame.grid_rowconfigure(0, weight=1)
-        scroll_frame.grid_columnconfigure(0, weight=1)
+        scroll = ctk.CTkScrollableFrame(main, fg_color=FM["bg"], scrollbar_button_color=FM["border"],
+                                        scrollbar_button_hover_color=FM["text_dim"])
+        scroll.grid(row=1, column=0, sticky="nsew", padx=0, pady=0)
+        scroll.grid_columnconfigure(0, weight=1)
+        self._scroll = scroll
 
-        self._canvas = tk.Canvas(scroll_frame, bg=BG, bd=0, highlightthickness=0)
-        self._vsb = ttk.Scrollbar(scroll_frame, orient="vertical", command=self._canvas.yview)
-        self._canvas.configure(yscrollcommand=self._vsb.set)
-        self._vsb.grid(row=0, column=1, sticky="ns")
-        self._canvas.grid(row=0, column=0, sticky="nsew")
+        self._render_placeholder("Loading tasks…")
 
-        self._list_frame = tk.Frame(self._canvas, bg=BG)
-        self._list_win = self._canvas.create_window((0, 0), window=self._list_frame, anchor="nw")
-
-        self._list_frame.bind("<Configure>", lambda e: self._canvas.configure(
-            scrollregion=self._canvas.bbox("all")))
-        self._canvas.bind("<Configure>", lambda e: self._canvas.itemconfig(
-            self._list_win, width=e.width))
-        self._canvas.bind_all("<MouseWheel>", lambda e: self._canvas.yview_scroll(-1*(e.delta//120), "units"))
-
-        self._render_empty("Loading your tasks…")
-
-    # ── Task rendering ───────────────────────────────────────────────────────
+    # ── Task rendering ────────────────────────────────────────────────────────
 
     STATUS_META = {
-        "todo":        ("To Do",       GRAY700, GRAY100),
-        "in_progress": ("In Progress", BLUE,    BLUE_LIGHT),
-        "review":      ("In Review",   AMBER,   AMBER_LIGHT),
-        "done":        ("Done",        GREEN,   GREEN_LIGHT),
+        "todo":        ("To Do",       FM["text_dim"], FM["card"]),
+        "in_progress": ("In Progress", FM["blue"],     FM["blue_dim"]),
+        "review":      ("In Review",   FM["amber"],    FM["amber_dim"]),
+        "done":        ("Done",        FM["green"],    FM["green_dim"]),
     }
     PRIORITY_META = {
-        "high":   (RED,   RED_LIGHT,   "●  High"),
-        "medium": (AMBER, AMBER_LIGHT, "●  Medium"),
-        "low":    (GREEN, GREEN_LIGHT, "●  Low"),
+        "high":   (FM["red"],    FM["red_dim"],    "High"),
+        "medium": (FM["amber"],  FM["amber_dim"],  "Medium"),
+        "low":    (FM["green"],  FM["green_dim"],  "Low"),
     }
-    PRIORITY_STRIPE = {"high": RED, "medium": AMBER, "low": GREEN}
+    PRIORITY_STRIPE = {
+        "high": FM["red"], "medium": FM["amber"], "low": FM["green"]
+    }
+    GROUP_ORDER = ["in_progress", "todo", "review", "done"]
+    GROUP_NAMES = {
+        "in_progress": "In Progress", "todo": "To Do",
+        "review": "In Review", "done": "Done",
+    }
 
-    def _render_empty(self, msg="No tasks assigned to you yet."):
-        for w in self._list_frame.winfo_children(): w.destroy()
-        wrap = tk.Frame(self._list_frame, bg=BG)
-        wrap.pack(expand=True, pady=60)
-        tk.Label(wrap, text="📋", font=("Segoe UI", 32), bg=BG).pack()
-        tk.Label(wrap, text=msg, font=("Segoe UI", 11), fg=MUTED, bg=BG).pack(pady=(8, 0))
+    def _clear_scroll(self):
+        for w in self._scroll.winfo_children():
+            w.destroy()
+
+    def _render_placeholder(self, msg):
+        self._clear_scroll()
+        wrap = ctk.CTkFrame(self._scroll, fg_color="transparent")
+        wrap.grid(row=0, column=0, pady=80)
+        ctk.CTkLabel(wrap, text="📋", font=ctk.CTkFont(size=36)).pack()
+        ctk.CTkLabel(wrap, text=msg,
+                     font=ctk.CTkFont(size=12),
+                     text_color=FM["text_sub"]).pack(pady=(10, 0))
 
     def _render_tasks(self):
-        for w in self._list_frame.winfo_children(): w.destroy()
+        self._clear_scroll()
+        self.v_task_ct.set(str(len(self.tasks)))
 
         if not self.tasks:
-            self._render_empty()
-            self._task_count_lbl.configure(text="0")
+            self._render_placeholder("No tasks assigned to you yet.")
             return
 
-        self._task_count_lbl.configure(text=str(len(self.tasks)))
+        row_idx = 0
+        for status in self.GROUP_ORDER:
+            group = [t for t in self.tasks if t.get("status") == status]
+            if not group: continue
 
-        # Group header: In Progress first, then rest
-        groups = [
-            ("In Progress", [t for t in self.tasks if t.get("status") == "in_progress"]),
-            ("To Do",       [t for t in self.tasks if t.get("status") == "todo"]),
-            ("In Review",   [t for t in self.tasks if t.get("status") == "review"]),
-            ("Done",        [t for t in self.tasks if t.get("status") == "done"]),
-        ]
+            # Group header
+            gh = ctk.CTkFrame(self._scroll, fg_color="transparent")
+            gh.grid(row=row_idx, column=0, sticky="ew", padx=20, pady=(20, 6))
+            gh.grid_columnconfigure(1, weight=1)
+            row_idx += 1
 
-        for group_name, group_tasks in groups:
-            if not group_tasks: continue
-            self._render_group_header(group_name, len(group_tasks))
-            for task in group_tasks:
-                self._render_task_card(task)
+            s_label, s_fg, s_bg = self.STATUS_META.get(status, ("—", FM["text_sub"], FM["card"]))
+            ctk.CTkLabel(gh, text=s_label,
+                         font=ctk.CTkFont(size=9, weight="bold"),
+                         fg_color=s_bg, text_color=s_fg,
+                         corner_radius=6, padx=10, pady=4).grid(row=0, column=0)
+            ctk.CTkLabel(gh, text=f" {len(group)}",
+                         font=ctk.CTkFont(size=9),
+                         text_color=FM["text_dim"]).grid(row=0, column=1, sticky="w", padx=(4, 0))
+            ctk.CTkFrame(gh, height=1, fg_color=FM["border"]).grid(
+                row=0, column=2, sticky="ew", padx=(12, 0))
+            gh.grid_columnconfigure(2, weight=1)
 
-    def _render_group_header(self, title, count):
-        row = tk.Frame(self._list_frame, bg=BG)
-        row.pack(fill="x", padx=20, pady=(16, 4))
-        tk.Label(row, text=title, font=("Segoe UI", 9, "bold"),
-                 fg=GRAY700, bg=BG).pack(side="left")
-        tk.Label(row, text=f"  {count}", font=("Segoe UI", 9),
-                 fg=MUTED, bg=BG).pack(side="left")
-        tk.Frame(row, bg=GRAY200, height=1).pack(side="left", fill="x", expand=True, padx=(10, 0), pady=6)
+            for task in group:
+                self._task_card(task, row_idx)
+                row_idx += 1
 
-    def _render_task_card(self, task):
-        status_key = task.get("status", "todo")
-        priority   = task.get("priority", "medium")
-        s_label, s_fg, s_bg = self.STATUS_META.get(status_key, ("—", MUTED, GRAY100))
-        p_fg, p_bg, p_label = self.PRIORITY_META.get(priority, (MUTED, GRAY100, "● Medium"))
-        stripe_color         = self.PRIORITY_STRIPE.get(priority, GRAY200)
+    def _task_card(self, task, row):
+        status   = task.get("status", "todo")
+        priority = task.get("priority", "medium")
+        s_label, s_fg, s_bg = self.STATUS_META.get(status, ("—", FM["text_sub"], FM["card"]))
+        p_fg, p_bg, p_name  = self.PRIORITY_META.get(priority, (FM["text_sub"], FM["card"], "Medium"))
+        stripe_c = self.PRIORITY_STRIPE.get(priority, FM["border"])
 
-        due       = task.get("dueDate") or ""
-        title_txt = task.get("title", "Untitled")
-        desc_txt  = task.get("description") or ""
-        is_over   = due and due < datetime.now().strftime("%Y-%m-%d") and status_key != "done"
+        title    = task.get("title", "Untitled")
+        desc     = task.get("description") or ""
+        due      = task.get("dueDate") or ""
+        tags_raw = task.get("tags") or ""
+        by       = (task.get("createdBy") or "").split("@")[0]
+        is_over  = due and due < datetime.now().strftime("%Y-%m-%d") and status != "done"
 
-        # Outer shadow effect (via slightly offset frame)
-        shadow = tk.Frame(self._list_frame, bg=GRAY200)
-        shadow.pack(fill="x", padx=20, pady=(0, 2))
-
-        card = tk.Frame(shadow, bg=WHITE)
-        card.pack(fill="x", padx=0, pady=(0, 2))
+        # Card outer
+        outer = ctk.CTkFrame(self._scroll, fg_color=FM["card"], corner_radius=10)
+        outer.grid(row=row, column=0, sticky="ew", padx=20, pady=(0, 8))
+        outer.grid_columnconfigure(1, weight=1)
 
         # Priority stripe
-        stripe = tk.Frame(card, bg=stripe_color, width=4)
-        stripe.pack(side="left", fill="y")
+        stripe = ctk.CTkFrame(outer, width=4, fg_color=stripe_c, corner_radius=0)
+        stripe.grid(row=0, column=0, sticky="ns", rowspan=10, padx=(0, 0))
 
-        body = tk.Frame(card, bg=WHITE, padx=16, pady=14)
-        body.pack(side="left", fill="both", expand=True)
+        body = ctk.CTkFrame(outer, fg_color="transparent")
+        body.grid(row=0, column=1, sticky="ew", padx=16, pady=14)
+        body.grid_columnconfigure(0, weight=1)
 
-        # ── Row 1: title + status badge ──
-        row1 = tk.Frame(body, bg=WHITE)
-        row1.pack(fill="x")
+        # Row 1: title + status badge
+        r1 = ctk.CTkFrame(body, fg_color="transparent")
+        r1.grid(row=0, column=0, sticky="ew")
+        r1.grid_columnconfigure(0, weight=1)
 
-        title_lbl = tk.Label(row1, text=title_txt, font=("Segoe UI", 11, "bold"),
-                             fg=TEXT, bg=WHITE, anchor="w", justify="left", wraplength=360)
-        title_lbl.pack(side="left", fill="x", expand=True)
+        ctk.CTkLabel(r1, text=title,
+                     font=ctk.CTkFont(size=12, weight="bold"),
+                     text_color=FM["text"],
+                     anchor="w", justify="left",
+                     wraplength=380).grid(row=0, column=0, sticky="w")
 
-        status_badge = tk.Label(row1, text=s_label, font=("Segoe UI", 8, "bold"),
-                                fg=s_fg, bg=s_bg, padx=10, pady=4)
-        status_badge.pack(side="right", padx=(8, 0))
+        ctk.CTkLabel(r1, text=s_label,
+                     font=ctk.CTkFont(size=8, weight="bold"),
+                     text_color=s_fg, fg_color=s_bg,
+                     corner_radius=6, padx=10, pady=4).grid(row=0, column=1, sticky="e", padx=(8, 0))
 
-        # ── Row 2: description ──
-        if desc_txt.strip():
-            short = desc_txt[:160] + ("…" if len(desc_txt) > 160 else "")
-            tk.Label(body, text=short, font=("Segoe UI", 9), fg=MUTED, bg=WHITE,
-                     anchor="w", justify="left", wraplength=420).pack(fill="x", pady=(4, 0))
+        # Row 2: description
+        if desc.strip():
+            short = desc[:180] + ("…" if len(desc) > 180 else "")
+            ctk.CTkLabel(body, text=short,
+                         font=ctk.CTkFont(size=9),
+                         text_color=FM["text_sub"],
+                         anchor="w", justify="left",
+                         wraplength=480).grid(row=1, column=0, sticky="w", pady=(6, 0))
 
-        # ── Row 3: meta pills ──
-        meta = tk.Frame(body, bg=WHITE)
-        meta.pack(fill="x", pady=(10, 0))
+        # Divider
+        ctk.CTkFrame(body, height=1, fg_color=FM["border"]).grid(
+            row=2, column=0, sticky="ew", pady=(10, 8))
 
-        # Priority
-        p_pill = tk.Label(meta, text=p_label, font=("Segoe UI", 8, "bold"),
-                          fg=p_fg, bg=p_bg, padx=8, pady=3)
-        p_pill.pack(side="left")
+        # Row 3: meta pills
+        meta = ctk.CTkFrame(body, fg_color="transparent")
+        meta.grid(row=3, column=0, sticky="ew")
 
-        # Tags
-        tags = task.get("tags") or ""
-        for tag in [t.strip() for t in tags.split(",") if t.strip()][:3]:
-            tk.Label(meta, text=f"# {tag}", font=("Segoe UI", 8),
-                     fg=PURPLE, bg="#F3E8FF", padx=8, pady=3).pack(side="left", padx=(6, 0))
+        # Priority pill
+        ctk.CTkLabel(meta,
+                     text=f"● {p_name}",
+                     font=ctk.CTkFont(size=8, weight="bold"),
+                     text_color=p_fg, fg_color=p_bg,
+                     corner_radius=6, padx=8, pady=3).pack(side="left")
+
+        # Tag pills
+        for tag in [t.strip() for t in tags_raw.split(",") if t.strip()][:3]:
+            ctk.CTkLabel(meta, text=f"# {tag}",
+                         font=ctk.CTkFont(size=8),
+                         text_color=FM["purple"],
+                         fg_color=FM["purple_dim"],
+                         corner_radius=6, padx=8, pady=3).pack(side="left", padx=(6, 0))
+
+        # Created by
+        if by:
+            ctk.CTkLabel(meta, text=f"by {by}",
+                         font=ctk.CTkFont(size=8),
+                         text_color=FM["text_dim"]).pack(side="left", padx=(10, 0))
 
         # Due date
         if due:
-            due_fg  = RED   if is_over else MUTED
-            due_bg  = RED_LIGHT if is_over else GRAY100
+            due_fg  = FM["red"]  if is_over else FM["text_dim"]
+            due_bg  = FM["red_dim"] if is_over else FM["card"]
             due_txt = ("⚠  Overdue " if is_over else "📅  ") + due
-            tk.Label(meta, text=due_txt, font=("Segoe UI", 8, "bold" if is_over else ""),
-                     fg=due_fg, bg=due_bg, padx=8, pady=3).pack(side="right")
-
-        # Created by
-        if task.get("createdBy"):
-            by = task["createdBy"].split("@")[0]
-            tk.Label(meta, text=f"by {by}", font=("Segoe UI", 8),
-                     fg=MUTED, bg=WHITE).pack(side="right", padx=(0, 8))
-
-        # Subtle separator at bottom
-        tk.Frame(body, bg=GRAY100, height=1).pack(fill="x", pady=(10, 0))
+            ctk.CTkLabel(meta, text=due_txt,
+                         font=ctk.CTkFont(size=8, weight="bold" if is_over else "normal"),
+                         text_color=due_fg, fg_color=due_bg,
+                         corner_radius=6, padx=8, pady=3).pack(side="right")
 
     # ── Agent logic ──────────────────────────────────────────────────────────
 
-    def _start(self):
+    def _start_agent(self):
         try:
             import requests
             self.session = requests.Session()
-            self.session.headers.update({"Content-Type":"application/json","User-Agent":"FlowMatriX-Agent/4.0"})
+            self.session.headers.update({
+                "Content-Type": "application/json",
+                "User-Agent": "FlowMatriX-Agent/5.0",
+            })
         except ImportError:
-            self.v_state.set("requests not installed"); return
+            self.v_state.set("requests missing"); return
+
         threading.Thread(target=self._hb_loop,   daemon=True).start()
         threading.Thread(target=self._task_loop, daemon=True).start()
 
@@ -548,7 +631,7 @@ class App(tk.Tk):
             time.sleep(HEARTBEAT_SEC)
 
     def _task_loop(self):
-        time.sleep(3)
+        time.sleep(4)
         while self._running:
             self._fetch_tasks()
             time.sleep(30)
@@ -557,86 +640,82 @@ class App(tk.Tk):
         app, win = get_active_window()
         idle     = get_idle_seconds()
         active   = idle < IDLE_THRESHOLD
-        payload  = {
-            "deviceUsername": self.dev_user,
-            "activeApp":      app,
-            "windowTitle":    win[:250],
-            "isActive":       active,
-            "idleSeconds":    int(idle),
-            "deviceName":     socket.gethostname(),
-        }
         try:
-            r = self.session.post(f"{API_URL}/activity/heartbeat", json=payload, timeout=10)
+            r = self.session.post(f"{API_URL}/activity/heartbeat", timeout=10, json={
+                "deviceUsername": self.dev_user,
+                "activeApp":      app,
+                "windowTitle":    win[:250],
+                "isActive":       active,
+                "idleSeconds":    int(idle),
+                "deviceName":     socket.gethostname(),
+            })
             if r.status_code == 200:
-                data = r.json()
                 self._hb_ok += 1
-                self.after(0, self._on_hb_ok, app, win, idle, active, data)
+                self.after(0, self._on_hb, app, win, idle, active, r.json())
             else:
-                self.after(0, self._set_err, f"HTTP {r.status_code}")
-        except Exception as e:
-            self.after(0, self._set_err, str(e)[:50])
+                self.after(0, self._set_offline)
+        except Exception:
+            self.after(0, self._set_offline)
 
     def _fetch_tasks(self):
         try:
             r = self.session.get(f"{API_URL}/fm-tasks", timeout=10)
             if r.status_code != 200: return
-            all_tasks = r.json()
-            my = self.v_name.get().lower()
-            my_tasks = [
-                t for t in all_tasks
-                if my and (
-                    my in (t.get("assigneeName") or "").lower() or
-                    (t.get("assigneeName") or "").lower() in my
-                )
-            ]
-            # toast for newly assigned
-            new_ids = {t["id"] for t in my_tasks} - self.seen_ids
-            if self.seen_ids:   # skip first load
-                for t in my_tasks:
+            my_name = self.v_name.get().lower()
+            my = [t for t in r.json()
+                  if my_name and (
+                      my_name in (t.get("assigneeName") or "").lower() or
+                      (t.get("assigneeName") or "").lower() in my_name
+                  )]
+            new_ids = {t["id"] for t in my} - self.seen_ids
+            if self.seen_ids:
+                for t in my:
                     if t["id"] in new_ids:
-                        self.after(0, self._toast_task, t)
-            self.seen_ids = {t["id"] for t in my_tasks}
-            self.tasks    = my_tasks
+                        self.after(0, self._show_toast, t)
+            self.seen_ids = {t["id"] for t in my}
+            self.tasks    = my
             self.after(0, self._render_tasks)
         except Exception as e:
-            log.warning("task fetch: %s", e)
+            log.warning("tasks: %s", e)
 
-    def _on_hb_ok(self, app, win, idle, active, data):
-        name  = data.get("resolvedName") or self.dev_user
-        dept  = data.get("resolvedDept") or ""
+    def _on_hb(self, app, win, idle, active, data):
+        name  = data.get("resolvedName")  or self.dev_user
+        dept  = data.get("resolvedDept")  or ""
         desig = data.get("resolvedDesignation") or ""
         emp   = data.get("erpEmployeeId") or ""
 
         self.v_name.set(name)
-        self.v_dept.set(dept or "Not linked to ERPNext")
-        self.v_desig.set(desig)
+        self.v_dept.set(dept  or "Not linked to ERPNext")
+        self.v_desig.set(desig or "—")
         self.v_emp_id.set(emp)
         self.v_app.set(app or "—")
-        self.v_win.set((win[:55]+"…") if len(win) > 55 else (win or "—"))
+        self.v_win.set((win[:52]+"…") if len(win) > 52 else (win or "—"))
         self.v_idle.set(fmt_idle(idle) if idle > 5 else "None")
-        self.v_hb.set(datetime.now().strftime("%H:%M:%S"))
-        self.v_hb_cnt.set(f"{self._hb_ok} sent")
-
-        # Update avatar initials
-        self._av_canvas.itemconfig(self._av_initials, text=initials(name))
+        self.v_hb_time.set(datetime.now().strftime("%H:%M:%S"))
+        self.v_hb_cnt.set(str(self._hb_ok))
+        self._avatar.set_initials(name)
 
         if active:
-            self.v_state.set("● ACTIVE")
-            self._state_pill.configure(bg=GREEN)
-            self._av_canvas.itemconfig(self._av_dot, fill=GREEN)
+            self.v_state.set("● Active")
+            self._state_lbl.configure(fg_color=FM["green"])
+            self._avatar.set_status(FM["green"])
         else:
-            self.v_state.set(f"● {fmt_idle(idle).upper()}")
-            self._state_pill.configure(bg=AMBER)
-            self._av_canvas.itemconfig(self._av_dot, fill=AMBER)
+            label = fmt_idle(idle) if idle > 5 else "Idle"
+            self.v_state.set(f"● {label}")
+            self._state_lbl.configure(fg_color=FM["amber"])
+            self._avatar.set_status(FM["amber"])
 
-    def _set_err(self, msg):
-        self.v_state.set("Offline")
-        self._state_pill.configure(bg=RED)
+    def _set_offline(self):
+        self.v_state.set("● Offline")
+        self._state_lbl.configure(fg_color=FM["red"])
+        self._avatar.set_status(FM["red"])
 
-    def _toast_task(self, task):
+    def _show_toast(self, task):
         prio = task.get("priority", "medium").capitalize()
         due  = (f"  ·  Due {task['dueDate']}" if task.get("dueDate") else "")
-        Toast(self, f"📌  {task.get('title','New Task')}", f"{prio} priority{due}")
+        try:
+            Toast(self, f"📌  {task.get('title','New Task')}", f"{prio} priority{due}")
+        except Exception: pass
 
     def _quit(self):
         self._running = False
@@ -648,8 +727,10 @@ def main():
     try:
         import requests  # noqa
     except ImportError:
-        print("Install requests first:  pip install requests psutil"); sys.exit(1)
-    App().mainloop()
+        print("\n  requests not installed.\n  Run:  pip install requests psutil customtkinter\n")
+        sys.exit(1)
+    FlowMatrixApp().mainloop()
+
 
 if __name__ == "__main__":
     main()
