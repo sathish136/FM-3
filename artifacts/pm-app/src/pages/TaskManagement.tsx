@@ -8,6 +8,7 @@ import {
   AlertCircle, CheckCircle2, Timer, CircleDot, Coffee, Zap,
   Building2, MapPin, Phone, BadgeCheck, Users, Link2, Check, Loader2,
   BarChart2, FileText, ChevronRight, History, ClipboardList,
+  LayoutGrid, List, ArrowLeft, SlidersHorizontal,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -276,191 +277,208 @@ function EmployeeDetailPanel({ row, tasks, onClose }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex" onClick={onClose}>
-      {/* Backdrop */}
-      <div className="flex-1 bg-black/30" />
-      {/* Panel */}
-      <div
-        className="w-[480px] bg-white h-full shadow-2xl flex flex-col overflow-hidden"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className={`px-6 pt-6 pb-5 flex-shrink-0 ${status === "active" ? "bg-gradient-to-br from-green-50 to-emerald-50 border-b border-green-100" : status === "idle" ? "bg-gradient-to-br from-amber-50 to-orange-50 border-b border-amber-100" : "bg-gray-50 border-b border-gray-200"}`}>
-          <div className="flex items-start justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                {photoUrl ? (
-                  <img src={photoUrl} alt={displayName} className="w-16 h-16 rounded-2xl object-cover border-2 border-white shadow-md" />
-                ) : (
-                  <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-xl font-bold text-white shadow-md ${status === "active" ? "bg-gradient-to-br from-green-400 to-emerald-600" : status === "idle" ? "bg-gradient-to-br from-amber-400 to-orange-500" : "bg-gradient-to-br from-gray-300 to-gray-400"}`}>
-                    {initials(displayName)}
-                  </div>
-                )}
-                <span className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${STATUS_DOT[status]}`} />
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-gray-900">{displayName}</h2>
-                {row.designation && <div className="text-sm text-blue-600 font-medium">{row.designation}</div>}
-                {row.department && <div className="text-xs text-gray-500">{row.department}</div>}
-              </div>
-            </div>
-            <button onClick={onClose} className="p-2 rounded-xl hover:bg-white/70 text-gray-400 hover:text-gray-600">
-              <X className="w-4 h-4" />
-            </button>
+    <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col overflow-hidden">
+      {/* Top bar */}
+      <div className={`flex-shrink-0 border-b ${status === "active" ? "bg-gradient-to-r from-green-600 to-emerald-600 border-green-700" : status === "idle" ? "bg-gradient-to-r from-amber-500 to-orange-500 border-amber-600" : "bg-gradient-to-r from-gray-600 to-gray-700 border-gray-700"}`}>
+        <div className="px-6 py-3 flex items-center gap-4">
+          <button onClick={onClose} className="flex items-center gap-2 text-white/80 hover:text-white text-sm font-medium transition-colors">
+            <ArrowLeft className="w-4 h-4" /> Back to Team Pulse
+          </button>
+          <span className="text-white/40">|</span>
+          <div className="flex items-center gap-2">
+            <span className={`w-2.5 h-2.5 rounded-full bg-white ${status === "active" ? "animate-pulse" : "opacity-60"}`} />
+            <span className="text-white text-sm font-semibold">{STATUS_LABEL[status]}</span>
           </div>
-
-          {/* Status badges */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 ${status === "active" ? "bg-green-100 text-green-700 border border-green-200" : status === "idle" ? "bg-amber-100 text-amber-700 border border-amber-200" : "bg-gray-200 text-gray-600"}`}>
-              <span className={`w-2 h-2 rounded-full ${STATUS_DOT[status]} ${status === "active" ? "animate-pulse" : ""}`} />
-              {STATUS_LABEL[status]}
+          {status === "idle" && row.idleSeconds > 0 && (
+            <span className="text-white/80 text-xs flex items-center gap-1">
+              <Coffee className="w-3.5 h-3.5" /> Idle for {formatDuration(row.idleSeconds)}
             </span>
-            {status === "idle" && row.idleSeconds > 0 && (
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-600 border border-amber-200 flex items-center gap-1">
-                <Coffee className="w-3 h-3" /> Idle {formatDuration(row.idleSeconds)}
-              </span>
-            )}
-            {status === "offline" && (
-              <span className="text-xs text-gray-400">Last seen {timeSince(row.lastSeen)}</span>
-            )}
-            {row.erpEmployeeId && (
-              <span className="px-2 py-1 rounded-full text-[10px] font-mono bg-white border border-gray-200 text-gray-500">
-                {row.erpEmployeeId}
-              </span>
-            )}
-          </div>
+          )}
+          {status === "offline" && (
+            <span className="text-white/70 text-xs">Last seen {timeSince(row.lastSeen)}</span>
+          )}
+          <div className="ml-auto text-white/60 text-xs">{timeSince(row.lastSeen)}</div>
         </div>
+      </div>
 
-        {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
+      {/* Main layout: left profile + right content */}
+      <div className="flex-1 flex overflow-hidden">
 
-          {/* Current Activity */}
-          <div className="px-6 py-4">
-            <div className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-              <Monitor className="w-3.5 h-3.5" /> Current Activity
+        {/* LEFT: Employee profile sidebar */}
+        <div className="w-72 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-y-auto">
+          {/* Avatar + name */}
+          <div className="px-6 pt-8 pb-6 text-center border-b border-gray-100">
+            <div className="relative inline-block mb-4">
+              {photoUrl ? (
+                <img src={photoUrl} alt={displayName} className="w-24 h-24 rounded-2xl object-cover border-4 border-gray-100 shadow-lg mx-auto" />
+              ) : (
+                <div className={`w-24 h-24 rounded-2xl flex items-center justify-center text-3xl font-bold text-white shadow-lg mx-auto ${status === "active" ? "bg-gradient-to-br from-green-400 to-emerald-600" : status === "idle" ? "bg-gradient-to-br from-amber-400 to-orange-500" : "bg-gradient-to-br from-gray-300 to-gray-500"}`}>
+                  {initials(displayName)}
+                </div>
+              )}
+              <span className={`absolute bottom-0 right-0 w-5 h-5 rounded-full border-2 border-white ${STATUS_DOT[status]}`} />
             </div>
-            {status !== "offline" && row.activeApp ? (
-              <div className="bg-gray-50 rounded-xl p-3 space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                    <Monitor className="w-4 h-4 text-blue-600" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-gray-800">{row.activeApp}</div>
-                    {row.windowTitle && row.windowTitle !== row.activeApp && (
-                      <div className="text-xs text-gray-500 truncate" title={row.windowTitle}>{row.windowTitle}</div>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 text-xs text-gray-500 pt-1 border-t border-gray-200">
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3 h-3" /> Updated {timeSince(row.lastSeen)}
-                  </span>
-                  {row.deviceName && (
-                    <span className="flex items-center gap-1">
-                      <Monitor className="w-3 h-3" /> {row.deviceName}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="text-sm text-gray-400 italic">No active app detected</div>
+            <h2 className="text-base font-bold text-gray-900">{displayName}</h2>
+            {row.designation && <div className="text-sm text-blue-600 font-medium mt-0.5">{row.designation}</div>}
+            {row.department && <div className="text-xs text-gray-500 mt-0.5">{row.department}</div>}
+            {row.erpEmployeeId && (
+              <div className="mt-2 inline-block px-3 py-1 bg-gray-100 rounded-full text-[11px] font-mono text-gray-500">{row.erpEmployeeId}</div>
             )}
           </div>
 
-          {/* Info */}
-          <div className="px-6 py-4">
-            <div className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5" /> Details
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              {row.email && (
-                <div className="col-span-2">
-                  <span className="text-gray-400">Email</span>
-                  <div className="font-medium text-gray-700 truncate">{row.email}</div>
-                </div>
-              )}
-              {row.deviceUsername && (
-                <div>
-                  <span className="text-gray-400">Device User</span>
-                  <div className="font-medium text-gray-700 font-mono">{row.deviceUsername}</div>
-                </div>
-              )}
-              {row.deviceName && (
-                <div>
-                  <span className="text-gray-400">Device</span>
-                  <div className="font-medium text-gray-700 truncate">{row.deviceName}</div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Assigned Tasks */}
-          <div className="px-6 py-4">
-            <div className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-              <ClipboardList className="w-3.5 h-3.5" /> Assigned Tasks
-              <span className="ml-auto px-2 py-0.5 bg-gray-100 rounded-full text-gray-500 font-semibold">{assignedTasks.length}</span>
-            </div>
-            {assignedTasks.length === 0 ? (
-              <div className="text-xs text-gray-400 italic">No tasks assigned</div>
-            ) : (
-              <div className="space-y-2">
-                {(["in_progress", "todo", "review", "done"] as const).map(s => {
-                  const col = COLUMNS.find(c => c.id === s)!;
-                  const sTasks = tasksByStatus[s];
-                  if (sTasks.length === 0) return null;
-                  return (
-                    <div key={s}>
-                      <div className={`text-[10px] font-semibold mb-1 flex items-center gap-1 ${s === "in_progress" ? "text-blue-600" : s === "done" ? "text-green-600" : s === "review" ? "text-amber-600" : "text-gray-500"}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${col.dot}`} />
-                        {col.label} ({sTasks.length})
-                      </div>
-                      {sTasks.map(t => (
-                        <div key={t.id} className="bg-gray-50 rounded-lg px-3 py-2 mb-1 border border-gray-100">
-                          <div className="text-xs font-medium text-gray-800 line-clamp-1">{t.title}</div>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${priorityColor(t.priority)}`}>{t.priority}</span>
-                            {t.dueDate && <span className="text-[10px] text-gray-400 flex items-center gap-0.5"><Calendar className="w-2.5 h-2.5" />{t.dueDate}</span>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })}
+          {/* Details */}
+          <div className="px-5 py-4 space-y-3 flex-1">
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Employee Details</div>
+            {row.email && (
+              <div className="bg-gray-50 rounded-xl px-3 py-2.5">
+                <div className="text-[10px] text-gray-400 mb-0.5">Email</div>
+                <div className="text-xs font-medium text-gray-700 break-all">{row.email}</div>
               </div>
             )}
-          </div>
-
-          {/* Activity History */}
-          <div className="px-6 py-4">
-            <div className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-              <History className="w-3.5 h-3.5" /> Recent Activity Log
-            </div>
-            {historyLoading ? (
-              <div className="flex items-center justify-center py-4">
-                <div className="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+            {row.deviceUsername && (
+              <div className="bg-gray-50 rounded-xl px-3 py-2.5">
+                <div className="text-[10px] text-gray-400 mb-0.5">Device User</div>
+                <div className="text-xs font-mono font-medium text-gray-700">{row.deviceUsername}</div>
               </div>
-            ) : history.length === 0 ? (
-              <div className="text-xs text-gray-400 italic">No activity history yet</div>
-            ) : (
-              <div className="space-y-1 max-h-64 overflow-y-auto">
-                {history.map((log, i) => (
-                  <div key={log.id} className={`flex items-start gap-2 py-1.5 border-b border-gray-50 last:border-0 ${i === 0 ? "opacity-100" : "opacity-80"}`}>
-                    <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${log.isActive ? "bg-green-500" : "bg-amber-400"}`} />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium text-gray-700 truncate">{log.activeApp || "—"}</div>
-                      {log.windowTitle && log.windowTitle !== log.activeApp && (
-                        <div className="text-[10px] text-gray-400 truncate">{log.windowTitle}</div>
-                      )}
-                      {log.idleSeconds > 0 && (
-                        <div className="text-[10px] text-amber-500">Idle {formatDuration(log.idleSeconds)}</div>
-                      )}
-                    </div>
-                    <div className="text-[10px] text-gray-400 flex-shrink-0">{timeSince(log.loggedAt)}</div>
+            )}
+            {row.deviceName && (
+              <div className="bg-gray-50 rounded-xl px-3 py-2.5">
+                <div className="text-[10px] text-gray-400 mb-0.5">Device Name</div>
+                <div className="text-xs font-medium text-gray-700">{row.deviceName}</div>
+              </div>
+            )}
+
+            {/* Task summary mini-stats */}
+            <div className="pt-3">
+              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Task Summary</div>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { label: "In Progress", count: tasksByStatus.in_progress.length, color: "text-blue-600 bg-blue-50" },
+                  { label: "To Do", count: tasksByStatus.todo.length, color: "text-gray-600 bg-gray-100" },
+                  { label: "In Review", count: tasksByStatus.review.length, color: "text-amber-600 bg-amber-50" },
+                  { label: "Done", count: tasksByStatus.done.length, color: "text-green-600 bg-green-50" },
+                ].map(s => (
+                  <div key={s.label} className={`rounded-xl px-3 py-2.5 ${s.color}`}>
+                    <div className="text-xl font-bold">{s.count}</div>
+                    <div className="text-[10px] font-medium opacity-80">{s.label}</div>
                   </div>
                 ))}
               </div>
-            )}
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT: Activity + tasks */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-4xl mx-auto p-6 space-y-6">
+
+            {/* Current Activity Banner */}
+            <div className={`rounded-2xl border p-5 ${status === "active" ? "bg-green-50 border-green-200" : status === "idle" ? "bg-amber-50 border-amber-200" : "bg-gray-100 border-gray-200"}`}>
+              <div className="flex items-center gap-2 mb-3">
+                <Monitor className={`w-4 h-4 ${status === "active" ? "text-green-600" : status === "idle" ? "text-amber-600" : "text-gray-400"}`} />
+                <span className="text-sm font-bold text-gray-800">Current Activity</span>
+                <div className="ml-auto flex items-center gap-1.5 text-xs text-gray-400">
+                  <Clock className="w-3.5 h-3.5" /> Updated {timeSince(row.lastSeen)}
+                </div>
+              </div>
+              {status !== "offline" && row.activeApp ? (
+                <div>
+                  <div className="text-xl font-bold text-gray-900 mb-1">{row.activeApp}</div>
+                  {row.windowTitle && row.windowTitle !== row.activeApp && (
+                    <div className="text-sm text-gray-500" title={row.windowTitle}>{row.windowTitle}</div>
+                  )}
+                  {status === "idle" && row.idleSeconds > 0 && (
+                    <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 border border-amber-300 text-amber-700 text-xs font-semibold">
+                      <Coffee className="w-3.5 h-3.5" /> Idle for {formatDuration(row.idleSeconds)} — no keyboard/mouse activity
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-gray-400 italic text-sm">No activity detected — device is offline</div>
+              )}
+            </div>
+
+            {/* Activity History */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <History className="w-4 h-4 text-gray-400" />
+                <h3 className="text-sm font-bold text-gray-800">Activity Timeline</h3>
+                <span className="ml-auto text-xs text-gray-400">Last 50 events</span>
+              </div>
+              {historyLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="w-6 h-6 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : history.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-gray-200 p-6 text-center text-sm text-gray-400 italic">No activity history recorded yet</div>
+              ) : (
+                <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                  <div className="divide-y divide-gray-50">
+                    {history.map((log, i) => (
+                      <div key={log.id} className={`flex items-center gap-4 px-5 py-3 ${i === 0 ? "bg-blue-50/40" : "hover:bg-gray-50"} transition-colors`}>
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${log.isActive ? "bg-green-500" : "bg-amber-400"}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-gray-800 truncate">{log.activeApp || "—"}</div>
+                          {log.windowTitle && log.windowTitle !== log.activeApp && (
+                            <div className="text-xs text-gray-400 truncate">{log.windowTitle}</div>
+                          )}
+                        </div>
+                        {log.idleSeconds > 0 && (
+                          <span className="text-[11px] text-amber-500 font-medium flex-shrink-0">Idle {formatDuration(log.idleSeconds)}</span>
+                        )}
+                        <div className="text-xs text-gray-400 flex-shrink-0 w-16 text-right">{timeSince(log.loggedAt)}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Assigned Tasks */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <ClipboardList className="w-4 h-4 text-gray-400" />
+                <h3 className="text-sm font-bold text-gray-800">Assigned Tasks</h3>
+                <span className="ml-2 px-2 py-0.5 bg-gray-100 rounded-full text-xs font-semibold text-gray-500">{assignedTasks.length}</span>
+              </div>
+              {assignedTasks.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-gray-200 p-6 text-center text-sm text-gray-400 italic">No tasks assigned to this employee</div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {(["in_progress", "todo", "review", "done"] as const).map(s => {
+                    const col = COLUMNS.find(c => c.id === s)!;
+                    const sTasks = tasksByStatus[s];
+                    if (sTasks.length === 0) return null;
+                    return (
+                      <div key={s} className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                        <div className={`px-4 py-2.5 border-b text-xs font-bold flex items-center gap-2 ${s === "in_progress" ? "bg-blue-50 border-blue-100 text-blue-700" : s === "done" ? "bg-green-50 border-green-100 text-green-700" : s === "review" ? "bg-amber-50 border-amber-100 text-amber-700" : "bg-gray-50 border-gray-100 text-gray-600"}`}>
+                          <span className={`w-2 h-2 rounded-full ${col.dot}`} />
+                          {col.label}
+                          <span className="ml-auto opacity-60">{sTasks.length}</span>
+                        </div>
+                        <div className="divide-y divide-gray-50">
+                          {sTasks.map(t => (
+                            <div key={t.id} className="px-4 py-3">
+                              <div className="text-sm font-medium text-gray-800 line-clamp-2 mb-1">{t.title}</div>
+                              {t.description && <div className="text-xs text-gray-400 line-clamp-1 mb-1.5">{t.description}</div>}
+                              <div className="flex items-center gap-2">
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${priorityColor(t.priority)}`}>{t.priority}</span>
+                                {t.dueDate && (
+                                  <span className={`text-[10px] flex items-center gap-0.5 ${new Date(t.dueDate) < new Date() && t.status !== "done" ? "text-red-500" : "text-gray-400"}`}>
+                                    <Calendar className="w-3 h-3" /> {t.dueDate}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
           </div>
         </div>
       </div>
@@ -831,6 +849,10 @@ export default function TaskManagement() {
   const activityIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<SystemActivity | null>(null);
   const [showSummary, setShowSummary] = useState(false);
+  const [monitorView, setMonitorView] = useState<"grid" | "list">("grid");
+  const [monitorSearch, setMonitorSearch] = useState("");
+  const [monitorStatus, setMonitorStatus] = useState("all");
+  const [monitorDept, setMonitorDept] = useState("all");
 
   // Load tasks
   const loadTasks = useCallback(() => {
@@ -946,6 +968,21 @@ export default function TaskManagement() {
   const idleCount = activity.filter(a => activityStatus(a) === "idle").length;
   const offlineCount = activity.filter(a => activityStatus(a) === "offline").length;
 
+  // Monitor filters
+  const monitorDepts = [...new Set(activity.map(a => a.department).filter(Boolean))].sort();
+  const filteredActivity = activity
+    .filter(a => {
+      const name = (a.fullName || a.deviceUsername || a.email).toLowerCase();
+      if (monitorSearch && !name.includes(monitorSearch.toLowerCase()) && !(a.department || "").toLowerCase().includes(monitorSearch.toLowerCase())) return false;
+      if (monitorStatus !== "all" && activityStatus(a) !== monitorStatus) return false;
+      if (monitorDept !== "all" && a.department !== monitorDept) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      const order = { active: 0, idle: 1, offline: 2 };
+      return order[activityStatus(a)] - order[activityStatus(b)];
+    });
+
   const downloadAgent = () => {
     const agentUrl = `${BASE}/tools/flowmatrix_activity_agent.py`;
     const a = document.createElement("a");
@@ -999,7 +1036,7 @@ export default function TaskManagement() {
               </button>
               <button onClick={() => setTab("monitor")}
                 className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${tab === "monitor" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
-                <Activity className="w-3.5 h-3.5" /> Live Monitor
+                <Activity className="w-3.5 h-3.5" /> Team Pulse
                 {activeCount > 0 && <span className="w-4 h-4 rounded-full bg-green-500 text-white text-[9px] flex items-center justify-center font-bold">{activeCount}</span>}
               </button>
             </div>
@@ -1241,59 +1278,182 @@ export default function TaskManagement() {
           </div>
         )}
 
-        {/* ── LIVE MONITOR TAB ── */}
+        {/* ── TEAM PULSE TAB ── */}
         {tab === "monitor" && (
-          <div className="flex-1 overflow-auto p-6">
+          <div className="flex-1 flex flex-col min-h-0">
             {activityLoading ? (
               <div className="flex items-center justify-center h-40">
                 <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
               </div>
             ) : activity.length === 0 ? (
-              <div className="max-w-lg mx-auto mt-12 text-center">
-                <div className="w-16 h-16 rounded-2xl bg-purple-50 flex items-center justify-center mx-auto mb-4">
-                  <Monitor className="w-8 h-8 text-purple-400" />
+              <div className="flex-1 flex items-center justify-center">
+                <div className="max-w-lg text-center px-4">
+                  <div className="w-16 h-16 rounded-2xl bg-purple-50 flex items-center justify-center mx-auto mb-4">
+                    <Monitor className="w-8 h-8 text-purple-400" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-800 mb-2">No agents connected</h3>
+                  <p className="text-sm text-gray-500 mb-6">Install and run the FlowMatriX Activity Agent on each PC to see live activity here. The agent sends heartbeats every 30 seconds.</p>
+                  <div className="bg-gray-900 rounded-xl p-4 text-left text-sm mb-4">
+                    <p className="text-green-400 font-mono text-xs mb-2"># Install and run the agent</p>
+                    <p className="text-gray-300 font-mono text-xs">pip install requests pygetwindow psutil</p>
+                    <p className="text-gray-300 font-mono text-xs mt-1">python flowmatrix_activity_agent.py</p>
+                  </div>
+                  <button onClick={downloadAgent}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold rounded-xl transition-colors">
+                    <Download className="w-4 h-4" /> Download Agent Script
+                  </button>
                 </div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">No agents connected</h3>
-                <p className="text-sm text-gray-500 mb-6">Install and run the FlowMatriX Activity Agent on each PC to see live activity here. The agent sends heartbeats every 30 seconds showing who is active and what they're working on.</p>
-                <div className="bg-gray-900 rounded-xl p-4 text-left text-sm mb-4">
-                  <p className="text-green-400 font-mono text-xs mb-2"># Install and run the agent</p>
-                  <p className="text-gray-300 font-mono text-xs">pip install requests pygetwindow psutil</p>
-                  <p className="text-gray-300 font-mono text-xs mt-1">python flowmatrix_activity_agent.py</p>
-                </div>
-                <button onClick={downloadAgent}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold rounded-xl transition-colors">
-                  <Download className="w-4 h-4" /> Download Agent Script
-                </button>
               </div>
             ) : (
               <>
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-200 rounded-xl text-sm text-green-700 font-medium">
-                    <Zap className="w-3.5 h-3.5" /> {activeCount} Active
+                {/* Filter bar */}
+                <div className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-3 flex-wrap">
+                  {/* Status pills */}
+                  <div className="flex items-center gap-1">
+                    {[
+                      { key: "all", label: `All (${activity.length})` },
+                      { key: "active", label: `Active (${activeCount})` },
+                      { key: "idle", label: `Idle (${idleCount})` },
+                      { key: "offline", label: `Offline (${offlineCount})` },
+                    ].map(s => (
+                      <button key={s.key} onClick={() => setMonitorStatus(s.key)}
+                        className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${monitorStatus === s.key
+                          ? s.key === "active" ? "bg-green-500 text-white" : s.key === "idle" ? "bg-amber-400 text-white" : s.key === "offline" ? "bg-gray-400 text-white" : "bg-gray-900 text-white"
+                          : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>
+                        {s.label}
+                      </button>
+                    ))}
                   </div>
-                  <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700 font-medium">
-                    <Coffee className="w-3.5 h-3.5" /> {idleCount} Idle
+
+                  <div className="h-4 w-px bg-gray-200" />
+
+                  {/* Search */}
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                    <input value={monitorSearch} onChange={e => setMonitorSearch(e.target.value)}
+                      placeholder="Search name or dept…"
+                      className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-48" />
                   </div>
-                  <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-xl text-sm text-gray-500 font-medium">
-                    <WifiOff className="w-3.5 h-3.5" /> {offlineCount} Offline
+
+                  {/* Department filter */}
+                  {monitorDepts.length > 0 && (
+                    <select value={monitorDept} onChange={e => setMonitorDept(e.target.value)}
+                      className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="all">All Departments</option>
+                      {monitorDepts.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  )}
+
+                  <div className="ml-auto flex items-center gap-2">
+                    <span className="text-xs text-gray-400">{filteredActivity.length} shown · refreshes 30s</span>
+                    {/* View toggle */}
+                    <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+                      <button onClick={() => setMonitorView("grid")}
+                        className={`p-1.5 rounded-md transition-all ${monitorView === "grid" ? "bg-white shadow-sm text-gray-700" : "text-gray-400 hover:text-gray-600"}`}>
+                        <LayoutGrid className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => setMonitorView("list")}
+                        className={`p-1.5 rounded-md transition-all ${monitorView === "list" ? "bg-white shadow-sm text-gray-700" : "text-gray-400 hover:text-gray-600"}`}>
+                        <List className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="ml-auto text-xs text-gray-400">Auto-refreshes every 30s</div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                  {activity
-                    .sort((a, b) => {
-                      const order = { active: 0, idle: 1, offline: 2 };
-                      return order[activityStatus(a)] - order[activityStatus(b)];
-                    })
-                    .map(row => (
-                      <ActivityCard
-                        key={row.deviceUsername || row.email}
-                        row={row}
-                        onRefresh={loadActivity}
-                        onClick={() => setSelectedEmployee(row)}
-                      />
-                    ))}
+                {/* Content */}
+                <div className="flex-1 overflow-auto">
+                  {filteredActivity.length === 0 ? (
+                    <div className="flex items-center justify-center h-40">
+                      <div className="text-center">
+                        <Search className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                        <p className="text-sm text-gray-400">No employees match your filters</p>
+                        <button onClick={() => { setMonitorSearch(""); setMonitorStatus("all"); setMonitorDept("all"); }}
+                          className="mt-2 text-xs text-blue-500 hover:underline">Clear filters</button>
+                      </div>
+                    </div>
+                  ) : monitorView === "grid" ? (
+                    <div className="p-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                        {filteredActivity.map(row => (
+                          <ActivityCard
+                            key={row.deviceUsername || row.email}
+                            row={row}
+                            onRefresh={loadActivity}
+                            onClick={() => setSelectedEmployee(row)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    /* LIST VIEW */
+                    <table className="w-full text-sm">
+                      <thead className="sticky top-0 bg-white border-b border-gray-100 z-10">
+                        <tr>
+                          <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 w-56">Employee</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Status</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Current App</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Window / Document</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Idle</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Department</th>
+                          <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500">Last Seen</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {filteredActivity.map(row => {
+                          const st = activityStatus(row);
+                          const displayName = row.fullName || row.deviceUsername || row.email.split("@")[0];
+                          const BASE_PROXY2 = import.meta.env.BASE_URL.replace(/\/$/, "");
+                          const photoUrl2 = row.erpImage ? `${BASE_PROXY2}/api/auth/photo?url=${encodeURIComponent(row.erpImage)}` : null;
+                          return (
+                            <tr key={row.deviceUsername || row.email}
+                              className="hover:bg-blue-50/30 cursor-pointer transition-colors group"
+                              onClick={() => setSelectedEmployee(row)}>
+                              <td className="px-5 py-3">
+                                <div className="flex items-center gap-3">
+                                  <div className="relative flex-shrink-0">
+                                    {photoUrl2 ? (
+                                      <img src={photoUrl2} alt={displayName} className="w-9 h-9 rounded-xl object-cover" />
+                                    ) : (
+                                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold text-white ${st === "active" ? "bg-gradient-to-br from-green-400 to-emerald-600" : st === "idle" ? "bg-gradient-to-br from-amber-400 to-orange-500" : "bg-gradient-to-br from-gray-300 to-gray-400"}`}>
+                                        {initials(displayName)}
+                                      </div>
+                                    )}
+                                    <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${STATUS_DOT[st]}`} />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="font-semibold text-gray-900 text-sm truncate group-hover:text-blue-700 transition-colors">{displayName}</div>
+                                    {row.designation && <div className="text-[11px] text-gray-400 truncate">{row.designation}</div>}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${st === "active" ? "bg-green-100 text-green-700" : st === "idle" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-500"}`}>
+                                  {STATUS_LABEL[st]}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="text-sm font-medium text-gray-800 truncate max-w-[160px]">{row.activeApp || <span className="text-gray-300 italic">—</span>}</div>
+                              </td>
+                              <td className="px-4 py-3 max-w-[200px]">
+                                <div className="text-xs text-gray-500 truncate" title={row.windowTitle}>{row.windowTitle && row.windowTitle !== row.activeApp ? row.windowTitle : <span className="text-gray-300">—</span>}</div>
+                              </td>
+                              <td className="px-4 py-3">
+                                {row.idleSeconds > 0 ? (
+                                  <span className="text-xs font-medium text-amber-600 flex items-center gap-1">
+                                    <Coffee className="w-3 h-3" /> {formatDuration(row.idleSeconds)}
+                                  </span>
+                                ) : <span className="text-gray-300 text-xs">—</span>}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="text-xs text-gray-500 truncate max-w-[120px] block">{row.department || "—"}</span>
+                              </td>
+                              <td className="px-5 py-3 text-right text-xs text-gray-400">{timeSince(row.lastSeen)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
               </>
             )}
