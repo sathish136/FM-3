@@ -1,96 +1,93 @@
 """
-FlowMatriX Activity Agent — GUI Edition
-========================================
-A desktop GUI agent that:
-  • Sends heartbeats every 30 s (active app, idle time, device info)
-  • Shows your assigned tasks in real-time
-  • Pops a toast notification whenever a new task is assigned to you
-  • Sits in the system tray (minimise to tray on close)
+FlowMatriX Activity Agent  v4.0 — Modern GUI
+=============================================
+Desktop app that tracks your activity, shows assigned tasks,
+and fires toast notifications when tasks are assigned to you.
 
-SETUP (run once):
-    pip install requests psutil pillow pystray
+SETUP:
+    pip install requests psutil
 
-Run:
+OPTIONAL (system-tray icon):
+    pip install pillow pystray
+
+RUN:
     python flowmatrix_activity_agent.py
 """
 
-import sys, time, socket, logging, platform, getpass, os, threading, json
+import sys, time, socket, platform, getpass, os, threading, logging
 from datetime import datetime
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CONFIGURATION
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Config ────────────────────────────────────────────────────────────────────
 API_URL         = "https://766e4ea0-5b9e-488a-ad69-f3453d798d6d-00-3m118gokkcn7o.pike.replit.dev/api"
 DEVICE_USERNAME = "AUTO"
 HEARTBEAT_SEC   = 30
 IDLE_THRESHOLD  = 300
 
-# FlowMatriX brand colours
-C_BG        = "#F6F5F4"
-C_DARK      = "#382C4F"
-C_BLUE      = "#2492FF"
-C_ACCENT    = "#FF3C00"
-C_WHITE     = "#FFFFFF"
-C_TEXT      = "#2F3034"
-C_MUTED     = "#6B7280"
-C_BORDER    = "#E5E7EB"
-C_GREEN     = "#10B981"
-C_AMBER     = "#F59E0B"
-C_CARD      = "#FFFFFF"
+# ── Brand palette ─────────────────────────────────────────────────────────────
+BG          = "#F6F5F4"
+SIDEBAR     = "#1E1530"      # deep navy-purple
+SIDEBAR2    = "#2A1F42"      # slightly lighter sidebar
+BLUE        = "#2492FF"
+ACCENT      = "#FF3C00"
+WHITE       = "#FFFFFF"
+TEXT        = "#2F3034"
+MUTED       = "#9CA3AF"
+BORDER      = "#E5E7EB"
+CARD        = "#FFFFFF"
+GREEN       = "#10B981"
+GREEN_LIGHT = "#D1FAE5"
+AMBER       = "#F59E0B"
+AMBER_LIGHT = "#FEF3C7"
+RED         = "#EF4444"
+RED_LIGHT   = "#FEE2E2"
+BLUE_LIGHT  = "#DBEAFE"
+PURPLE      = "#7C3AED"
+GRAY100     = "#F3F4F6"
+GRAY200     = "#E5E7EB"
+GRAY700     = "#374151"
 
 PLATFORM = platform.system()
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+log = logging.getLogger("fm")
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
-log = logging.getLogger("flowmatrix-gui")
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Platform helpers (same as headless agent)
-# ─────────────────────────────────────────────────────────────────────────────
-def detect_username() -> str:
-    if DEVICE_USERNAME != "AUTO":
-        return DEVICE_USERNAME
+# ── Platform helpers ──────────────────────────────────────────────────────────
+def detect_username():
+    if DEVICE_USERNAME != "AUTO": return DEVICE_USERNAME
     if PLATFORM == "Windows":
         try:
             import ctypes
             buf = ctypes.create_unicode_buffer(256)
             size = ctypes.c_ulong(256)
             if ctypes.windll.secur32.GetUserNameExW(2, buf, ctypes.byref(size)):
-                val = buf.value
-                if "\\" in val: return val.split("\\")[-1]
-                if "@" in val: return val.split("@")[0]
-                return val
-        except Exception:
-            pass
-    try:
-        return getpass.getuser()
-    except Exception:
-        pass
+                v = buf.value
+                if "\\" in v: return v.split("\\")[-1]
+                if "@" in v: return v.split("@")[0]
+                return v
+        except Exception: pass
+    try: return getpass.getuser()
+    except Exception: pass
     return (os.environ.get("USERNAME") or os.environ.get("USER")
             or os.environ.get("LOGNAME") or socket.gethostname())
 
-
-def get_idle_seconds() -> float:
+def get_idle_seconds():
     try:
         if PLATFORM == "Windows":
             import ctypes
-            class _LII(ctypes.Structure):
+            class LII(ctypes.Structure):
                 _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_ulong)]
-            lii = _LII()
-            lii.cbSize = ctypes.sizeof(_LII)
+            lii = LII(); lii.cbSize = ctypes.sizeof(LII)
             ctypes.windll.user32.GetLastInputInfo(ctypes.byref(lii))
             return max(0.0, (ctypes.windll.kernel32.GetTickCount() - lii.dwTime) / 1000.0)
-        elif PLATFORM == "Darwin":
+        if PLATFORM == "Darwin":
             import subprocess
-            out = subprocess.check_output(["ioreg", "-c", "IOHIDSystem"], stderr=subprocess.DEVNULL).decode()
+            out = subprocess.check_output(["ioreg","-c","IOHIDSystem"],stderr=subprocess.DEVNULL).decode()
             for line in out.split("\n"):
                 if "HIDIdleTime" in line:
                     return int(line.split("=")[-1].strip()) / 1_000_000_000
-    except Exception:
-        pass
+    except Exception: pass
     return 0.0
 
-
-def get_active_window() -> tuple:
+def get_active_window():
     try:
         if PLATFORM == "Windows":
             import ctypes, ctypes.wintypes as wt
@@ -101,483 +98,558 @@ def get_active_window() -> tuple:
             try:
                 pid = wt.DWORD()
                 ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-                import psutil
-                app = psutil.Process(pid.value).name().replace(".exe","").replace(".EXE","")
-            except Exception:
-                app = "Unknown"
+                import psutil; app = psutil.Process(pid.value).name().replace(".exe","").replace(".EXE","")
+            except Exception: app = "Unknown"
             return app, title
-        elif PLATFORM == "Darwin":
+        if PLATFORM == "Darwin":
             from AppKit import NSWorkspace  # type: ignore
-            ws = NSWorkspace.sharedWorkspace()
-            app = ws.frontmostApplication().localizedName() or "Unknown"
+            app = NSWorkspace.sharedWorkspace().frontmostApplication().localizedName() or "Unknown"
             return app, app
-        elif PLATFORM == "Linux":
+        if PLATFORM == "Linux":
             import subprocess
-            wid = subprocess.check_output(["xdotool","getactivewindow"], stderr=subprocess.DEVNULL).strip().decode()
-            title = subprocess.check_output(["xdotool","getwindowname",wid], stderr=subprocess.DEVNULL).strip().decode()
+            wid = subprocess.check_output(["xdotool","getactivewindow"],stderr=subprocess.DEVNULL).strip().decode()
+            title = subprocess.check_output(["xdotool","getwindowname",wid],stderr=subprocess.DEVNULL).strip().decode()
             app = title.split(" — ")[-1] if " — " in title else title.split(" - ")[-1] if " - " in title else title
             return app[:60], title
-    except Exception:
-        pass
+    except Exception: pass
     return "Unknown", "Unknown"
 
-
-def fmt_idle(seconds: float) -> str:
-    s = int(seconds)
+def fmt_idle(s):
+    s = int(s)
     if s < 60: return f"{s}s"
     m = s // 60
-    if m < 60: return f"{m}m"
-    return f"{m//60}h {m%60}m"
+    if m < 60: return f"{m}m idle"
+    return f"{m//60}h {m%60}m idle"
 
+def initials(name):
+    parts = (name or "?").split()
+    return "".join(p[0].upper() for p in parts[:2]) or "?"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# GUI
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Tkinter ───────────────────────────────────────────────────────────────────
 try:
     import tkinter as tk
-    from tkinter import ttk, font as tkfont
+    from tkinter import ttk
 except ImportError:
-    print("tkinter not available. Install it via your system package manager.")
-    sys.exit(1)
+    print("tkinter is not available. Please install it."); sys.exit(1)
 
 
-class ToastNotification(tk.Toplevel):
-    """Small slide-in toast shown in the bottom-right corner."""
+# ── Rounded-rectangle helper on Canvas ───────────────────────────────────────
+def round_rect(canvas, x1, y1, x2, y2, r=8, **kw):
+    pts = [
+        x1+r, y1,   x2-r, y1,
+        x2,   y1,   x2,   y1+r,
+        x2,   y2-r, x2,   y2,
+        x2-r, y2,   x1+r, y2,
+        x1,   y2,   x1,   y2-r,
+        x1,   y1+r, x1,   y1,
+        x1+r, y1,
+    ]
+    return canvas.create_polygon(pts, smooth=True, **kw)
 
-    def __init__(self, master, title: str, body: str, duration_ms: int = 5000):
+
+# ── Toast ─────────────────────────────────────────────────────────────────────
+class Toast(tk.Toplevel):
+    def __init__(self, master, title, body, ms=6000):
         super().__init__(master)
         self.overrideredirect(True)
         self.attributes("-topmost", True)
-        self.configure(bg=C_DARK)
+        try: self.attributes("-alpha", 0.97)
+        except Exception: pass
 
-        try:
-            self.attributes("-alpha", 0.95)
-        except Exception:
-            pass
+        W, PAD = 320, 16
+        self.configure(bg=SIDEBAR)
 
-        # Layout
-        pad = tk.Frame(self, bg=C_DARK, padx=16, pady=14)
-        pad.pack(fill="both", expand=True)
+        # Blue left accent
+        accent = tk.Frame(self, bg=BLUE, width=4)
+        accent.place(relx=0, rely=0, relheight=1)
 
-        # Accent bar
-        bar = tk.Frame(self, bg=C_BLUE, width=4)
-        bar.place(relx=0, rely=0, relheight=1)
+        wrap = tk.Frame(self, bg=SIDEBAR, padx=PAD+4, pady=14)
+        wrap.pack(fill="both", expand=True)
 
-        hdr = tk.Frame(pad, bg=C_DARK)
+        # header row
+        hdr = tk.Frame(wrap, bg=SIDEBAR)
         hdr.pack(fill="x")
+        dot = tk.Label(hdr, text="⚡", font=("Segoe UI", 10), fg=BLUE, bg=SIDEBAR)
+        dot.pack(side="left")
+        tk.Label(hdr, text=" FlowMatriX", font=("Segoe UI", 9, "bold"), fg=BLUE, bg=SIDEBAR).pack(side="left")
+        ts = tk.Label(hdr, text=datetime.now().strftime("%H:%M"), font=("Segoe UI", 8), fg=MUTED, bg=SIDEBAR)
+        ts.pack(side="right")
 
-        tk.Label(hdr, text="⚡ FlowMatriX", font=("Helvetica", 9, "bold"),
-                 fg=C_BLUE, bg=C_DARK).pack(side="left")
-        tk.Label(hdr, text="×", font=("Helvetica", 12),
-                 fg=C_MUTED, bg=C_DARK, cursor="hand2").pack(side="right")
+        tk.Frame(wrap, bg="#2E2A45", height=1).pack(fill="x", pady=(8, 8))
 
-        tk.Label(pad, text=title, font=("Helvetica", 11, "bold"),
-                 fg=C_WHITE, bg=C_DARK, wraplength=280, justify="left").pack(anchor="w", pady=(6, 2))
-        tk.Label(pad, text=body, font=("Helvetica", 10),
-                 fg="#CBD5E1", bg=C_DARK, wraplength=280, justify="left").pack(anchor="w")
+        tk.Label(wrap, text=title, font=("Segoe UI", 10, "bold"), fg=WHITE, bg=SIDEBAR,
+                 wraplength=W-2*PAD-20, justify="left", anchor="w").pack(fill="x")
+        if body:
+            tk.Label(wrap, text=body, font=("Segoe UI", 9), fg="#94A3B8", bg=SIDEBAR,
+                     wraplength=W-2*PAD-20, justify="left", anchor="w").pack(fill="x", pady=(4, 0))
 
         self.update_idletasks()
-        sw = self.winfo_screenwidth()
-        sh = self.winfo_screenheight()
-        w, h = 310, self.winfo_reqheight() + 20
-        x = sw - w - 24
-        y = sh - h - 60
-        self.geometry(f"{w}x{h}+{x}+{y}")
-
-        self.after(duration_ms, self.destroy)
+        h = self.winfo_reqheight() + 10
+        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+        self.geometry(f"{W}x{h}+{sw-W-20}+{sh-h-60}")
+        self.after(ms, self.destroy)
 
 
-class FlowMatrixAgent(tk.Tk):
+# ── Pill label ────────────────────────────────────────────────────────────────
+def pill(parent, text, fg, bg, pad_x=10, pad_y=3, size=8):
+    return tk.Label(parent, text=text, font=("Segoe UI", size, "bold"),
+                    fg=fg, bg=bg, padx=pad_x, pady=pad_y)
+
+
+# ── Main window ───────────────────────────────────────────────────────────────
+class App(tk.Tk):
+    W, H = 860, 620
+
     def __init__(self):
         super().__init__()
-        self.title("FlowMatriX Activity Agent")
-        self.configure(bg=C_BG)
-        self.resizable(False, False)
+        self.title("FlowMatriX · Activity Agent")
+        self.configure(bg=SIDEBAR)
+        self.resizable(True, True)
+        self.minsize(740, 520)
 
         # State
-        self.device_username = detect_username()
-        self.session         = None
-        self.status_text     = tk.StringVar(value="Connecting…")
-        self.hb_status       = tk.StringVar(value="—")
-        self.app_var         = tk.StringVar(value="—")
-        self.window_var      = tk.StringVar(value="—")
-        self.idle_var        = tk.StringVar(value="—")
-        self.user_state      = tk.StringVar(value="ACTIVE")
-        self.resolved_name   = tk.StringVar(value=self.device_username)
-        self.resolved_dept   = tk.StringVar(value="")
-        self.last_hb         = tk.StringVar(value="Never")
-        self.tasks           : list[dict] = []
-        self.seen_task_ids   : set        = set()
-        self._running        = True
-        self._hb_count       = 0
+        self.dev_user   = detect_username()
+        self.session    = None
+        self._running   = True
+        self._hb_ok     = 0
+        self.seen_ids   : set  = set()
+        self.tasks      : list = []
 
-        self._build_ui()
-        self._start_agent()
+        # Live vars
+        self.v_name   = tk.StringVar(value=self.dev_user)
+        self.v_dept   = tk.StringVar(value="Not linked to ERPNext")
+        self.v_desig  = tk.StringVar(value="")
+        self.v_emp_id = tk.StringVar(value="")
+        self.v_app    = tk.StringVar(value="—")
+        self.v_win    = tk.StringVar(value="—")
+        self.v_idle   = tk.StringVar(value="—")
+        self.v_state  = tk.StringVar(value="Connecting…")
+        self.v_hb     = tk.StringVar(value="Never")
+        self.v_hb_cnt = tk.StringVar(value="0 sent")
 
-        self.protocol("WM_DELETE_WINDOW", self._on_close)
-        w, h = 480, 680
-        sw = self.winfo_screenwidth()
-        sh = self.winfo_screenheight()
-        self.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
+        self._build()
+        self._start()
+        self.protocol("WM_DELETE_WINDOW", self._quit)
 
-    # ── UI construction ──────────────────────────────────────────────────────
+        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+        self.geometry(f"{self.W}x{self.H}+{(sw-self.W)//2}+{(sh-self.H)//2}")
 
-    def _build_ui(self):
-        # ── Header ──
-        header = tk.Frame(self, bg=C_DARK, height=72)
-        header.pack(fill="x")
-        header.pack_propagate(False)
+    # ── Layout ───────────────────────────────────────────────────────────────
 
-        tk.Label(header, text="⚡", font=("Helvetica", 22),
-                 fg=C_BLUE, bg=C_DARK).place(x=18, y=18)
-        tk.Label(header, text="FlowMatriX", font=("Helvetica", 17, "bold"),
-                 fg=C_WHITE, bg=C_DARK).place(x=52, y=14)
-        tk.Label(header, text="Activity Agent", font=("Helvetica", 9),
-                 fg="#94A3B8", bg=C_DARK).place(x=54, y=38)
+    def _build(self):
+        # Two columns: sidebar + main
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
 
-        self._status_dot = tk.Label(header, text="●", font=("Helvetica", 11),
-                                    fg=C_AMBER, bg=C_DARK)
-        self._status_dot.place(relx=1, x=-80, y=26, anchor="nw")
-        tk.Label(header, textvariable=self.status_text, font=("Helvetica", 9),
-                 fg="#94A3B8", bg=C_DARK).place(relx=1, x=-64, y=28, anchor="nw")
+        self._build_sidebar()
+        self._build_main()
 
-        # ── User card ──
-        user_frame = tk.Frame(self, bg=C_CARD, bd=0,
-                              highlightbackground=C_BORDER, highlightthickness=1)
-        user_frame.pack(fill="x", padx=16, pady=(14, 0))
+    # ── Sidebar ──────────────────────────────────────────────────────────────
 
-        inner = tk.Frame(user_frame, bg=C_CARD, padx=16, pady=12)
-        inner.pack(fill="x")
+    def _build_sidebar(self):
+        sb = tk.Frame(self, bg=SIDEBAR, width=230)
+        sb.grid(row=0, column=0, sticky="nsew")
+        sb.grid_propagate(False)
+        sb.grid_rowconfigure(9, weight=1)
 
-        # Avatar circle (canvas)
-        av = tk.Canvas(inner, width=44, height=44, bg=C_CARD, bd=0,
-                       highlightthickness=0)
-        av.pack(side="left", padx=(0, 12))
-        av.create_oval(2, 2, 42, 42, fill=C_BLUE, outline="")
-        initials = "".join([w[0].upper() for w in self.device_username.split()[:2]]) or self.device_username[:2].upper()
-        av.create_text(22, 22, text=initials, fill=C_WHITE,
-                       font=("Helvetica", 14, "bold"))
+        # Logo area
+        logo_area = tk.Frame(sb, bg=SIDEBAR, pady=20, padx=20)
+        logo_area.grid(row=0, column=0, sticky="ew")
 
-        info = tk.Frame(inner, bg=C_CARD)
-        info.pack(side="left", fill="x", expand=True)
-        tk.Label(info, textvariable=self.resolved_name,
-                 font=("Helvetica", 12, "bold"), fg=C_TEXT, bg=C_CARD,
-                 anchor="w").pack(fill="x")
-        tk.Label(info, textvariable=self.resolved_dept,
-                 font=("Helvetica", 9), fg=C_MUTED, bg=C_CARD,
-                 anchor="w").pack(fill="x")
+        logo_row = tk.Frame(logo_area, bg=SIDEBAR)
+        logo_row.pack(anchor="w")
+        tk.Label(logo_row, text="⚡", font=("Segoe UI", 18), fg=BLUE, bg=SIDEBAR).pack(side="left")
+        tk.Label(logo_row, text="FlowMatriX", font=("Segoe UI", 14, "bold"), fg=WHITE, bg=SIDEBAR).pack(side="left", padx=(4, 0))
+        tk.Label(logo_area, text="Activity Agent", font=("Segoe UI", 8), fg=MUTED, bg=SIDEBAR).pack(anchor="w", pady=(2, 0))
 
-        self._state_badge = tk.Label(inner, textvariable=self.user_state,
-                                     font=("Helvetica", 9, "bold"),
-                                     fg=C_WHITE, bg=C_GREEN,
-                                     padx=10, pady=3)
-        self._state_badge.pack(side="right")
+        # Divider
+        tk.Frame(sb, bg="#2A1F42", height=1).grid(row=1, column=0, sticky="ew", padx=16)
 
-        # ── Live Activity ──
-        self._section("Live Activity", 14)
-        act_card = self._card(padx=16, pady=12)
+        # ── Avatar + employee card ──
+        emp_pad = tk.Frame(sb, bg=SIDEBAR, padx=20, pady=20)
+        emp_pad.grid(row=2, column=0, sticky="ew")
 
-        row1 = tk.Frame(act_card, bg=C_CARD)
-        row1.pack(fill="x", pady=(0, 6))
-        tk.Label(row1, text="App", font=("Helvetica", 9, "bold"),
-                 fg=C_MUTED, bg=C_CARD, width=10, anchor="w").pack(side="left")
-        tk.Label(row1, textvariable=self.app_var, font=("Helvetica", 10, "bold"),
-                 fg=C_TEXT, bg=C_CARD, anchor="w").pack(side="left", fill="x", expand=True)
+        # Avatar circle
+        self._av_canvas = tk.Canvas(emp_pad, width=56, height=56, bg=SIDEBAR, bd=0, highlightthickness=0)
+        self._av_canvas.pack(anchor="center")
+        self._av_canvas.create_oval(3, 3, 53, 53, fill=BLUE, outline=BLUE)
+        self._av_initials = self._av_canvas.create_text(
+            28, 28, text=initials(self.dev_user), fill=WHITE, font=("Segoe UI", 16, "bold"))
 
-        row2 = tk.Frame(act_card, bg=C_CARD)
-        row2.pack(fill="x", pady=(0, 6))
-        tk.Label(row2, text="Window", font=("Helvetica", 9, "bold"),
-                 fg=C_MUTED, bg=C_CARD, width=10, anchor="w").pack(side="left")
-        tk.Label(row2, textvariable=self.window_var, font=("Helvetica", 9),
-                 fg=C_TEXT, bg=C_CARD, anchor="w", wraplength=310).pack(side="left", fill="x", expand=True)
+        # Status dot on avatar
+        self._av_dot = self._av_canvas.create_oval(38, 38, 52, 52, fill=AMBER, outline=SIDEBAR, width=2)
 
-        row3 = tk.Frame(act_card, bg=C_CARD)
-        row3.pack(fill="x")
-        tk.Label(row3, text="Idle", font=("Helvetica", 9, "bold"),
-                 fg=C_MUTED, bg=C_CARD, width=10, anchor="w").pack(side="left")
-        tk.Label(row3, textvariable=self.idle_var, font=("Helvetica", 10),
-                 fg=C_AMBER, bg=C_CARD, anchor="w").pack(side="left")
+        emp_info = tk.Frame(emp_pad, bg=SIDEBAR)
+        emp_info.pack(fill="x", pady=(12, 0))
 
-        # ── Heartbeat ──
-        hb_row = tk.Frame(self, bg=C_BG)
-        hb_row.pack(fill="x", padx=16, pady=(6, 0))
-        tk.Label(hb_row, text="Last heartbeat:", font=("Helvetica", 9),
-                 fg=C_MUTED, bg=C_BG).pack(side="left")
-        tk.Label(hb_row, textvariable=self.last_hb, font=("Helvetica", 9, "bold"),
-                 fg=C_TEXT, bg=C_BG).pack(side="left", padx=4)
-        tk.Label(hb_row, textvariable=self.hb_status, font=("Helvetica", 9),
-                 fg=C_GREEN, bg=C_BG).pack(side="right")
+        tk.Label(emp_info, textvariable=self.v_name, font=("Segoe UI", 11, "bold"),
+                 fg=WHITE, bg=SIDEBAR, anchor="center", wraplength=190, justify="center").pack(fill="x")
+        tk.Label(emp_info, textvariable=self.v_desig, font=("Segoe UI", 8, "bold"),
+                 fg=BLUE, bg=SIDEBAR, anchor="center").pack(fill="x", pady=(2, 0))
+        tk.Label(emp_info, textvariable=self.v_dept, font=("Segoe UI", 8),
+                 fg=MUTED, bg=SIDEBAR, anchor="center", wraplength=190, justify="center").pack(fill="x", pady=(1, 0))
+        tk.Label(emp_info, textvariable=self.v_emp_id, font=("Courier", 8),
+                 fg="#6B7280", bg=SIDEBAR, anchor="center").pack(fill="x", pady=(2, 0))
 
-        # ── My Tasks ──
-        self._section("My Assigned Tasks", 12)
+        # State pill
+        self._state_pill = tk.Label(emp_info, textvariable=self.v_state,
+                                    font=("Segoe UI", 8, "bold"),
+                                    fg=WHITE, bg=AMBER, padx=12, pady=4)
+        self._state_pill.pack(pady=(10, 0))
 
-        tasks_wrapper = tk.Frame(self, bg=C_BG)
-        tasks_wrapper.pack(fill="both", expand=True, padx=16, pady=(0, 12))
+        # Divider
+        tk.Frame(sb, bg="#2A1F42", height=1).grid(row=3, column=0, sticky="ew", padx=16)
 
-        # Scrollable task list
-        self._tasks_canvas = tk.Canvas(tasks_wrapper, bg=C_BG, bd=0,
-                                       highlightthickness=0)
-        scrollbar = ttk.Scrollbar(tasks_wrapper, orient="vertical",
-                                  command=self._tasks_canvas.yview)
-        self._tasks_canvas.configure(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side="right", fill="y")
-        self._tasks_canvas.pack(side="left", fill="both", expand=True)
+        # ── Stats grid ──
+        stats_frame = tk.Frame(sb, bg=SIDEBAR, padx=20, pady=16)
+        stats_frame.grid(row=4, column=0, sticky="ew")
 
-        self._tasks_inner = tk.Frame(self._tasks_canvas, bg=C_BG)
-        self._tasks_canvas_window = self._tasks_canvas.create_window(
-            (0, 0), window=self._tasks_inner, anchor="nw")
-        self._tasks_inner.bind("<Configure>", self._on_tasks_configure)
-        self._tasks_canvas.bind("<Configure>", self._on_canvas_resize)
+        self._stat_boxes = {}
+        stats_defs = [
+            ("hb_cnt", "Heartbeats",   self.v_hb_cnt, BLUE),
+            ("hb_time","Last Sync",    self.v_hb,     GREEN),
+        ]
+        for i, (key, label, var, color) in enumerate(stats_defs):
+            box = tk.Frame(stats_frame, bg=SIDEBAR2, padx=10, pady=8)
+            box.grid(row=i, column=0, sticky="ew", pady=(0, 6))
+            stats_frame.grid_columnconfigure(0, weight=1)
+            tk.Label(box, text=label, font=("Segoe UI", 7, "bold"), fg=MUTED, bg=SIDEBAR2).pack(anchor="w")
+            tk.Label(box, textvariable=var, font=("Segoe UI", 10, "bold"), fg=color, bg=SIDEBAR2).pack(anchor="w")
+            self._stat_boxes[key] = box
 
-        self._no_tasks_label = tk.Label(self._tasks_inner,
-                                        text="No tasks assigned to you yet.",
-                                        font=("Helvetica", 10), fg=C_MUTED, bg=C_BG,
-                                        pady=20)
-        self._no_tasks_label.pack()
+        # Divider
+        tk.Frame(sb, bg="#2A1F42", height=1).grid(row=5, column=0, sticky="ew", padx=16)
 
-    def _section(self, title: str, top_pad: int = 14):
-        f = tk.Frame(self, bg=C_BG)
-        f.pack(fill="x", padx=16, pady=(top_pad, 6))
-        tk.Label(f, text=title, font=("Helvetica", 10, "bold"),
-                 fg=C_DARK, bg=C_BG).pack(side="left")
-        tk.Frame(f, bg=C_BORDER, height=1).pack(side="left", fill="x",
-                                                  expand=True, padx=(8, 0), pady=6)
+        # ── Live activity ──
+        act_frame = tk.Frame(sb, bg=SIDEBAR, padx=20, pady=16)
+        act_frame.grid(row=6, column=0, sticky="ew")
 
-    def _card(self, padx=12, pady=10) -> tk.Frame:
-        outer = tk.Frame(self, bg=C_CARD,
-                         highlightbackground=C_BORDER, highlightthickness=1)
-        outer.pack(fill="x", padx=16, pady=(0, 4))
-        inner = tk.Frame(outer, bg=C_CARD, padx=padx, pady=pady)
-        inner.pack(fill="x")
-        return inner
+        tk.Label(act_frame, text="LIVE ACTIVITY", font=("Segoe UI", 7, "bold"),
+                 fg=MUTED, bg=SIDEBAR).pack(anchor="w", pady=(0, 8))
 
-    def _on_tasks_configure(self, event):
-        self._tasks_canvas.configure(
-            scrollregion=self._tasks_canvas.bbox("all"))
+        for label, var in [("App", self.v_app), ("Window", self.v_win), ("Idle", self.v_idle)]:
+            row = tk.Frame(act_frame, bg=SIDEBAR)
+            row.pack(fill="x", pady=(0, 6))
+            tk.Label(row, text=label, font=("Segoe UI", 8), fg=MUTED, bg=SIDEBAR, width=7, anchor="w").pack(side="left")
+            color = AMBER if label == "Idle" else WHITE
+            font_extra = "" if label != "App" else "bold"
+            tk.Label(row, textvariable=var, font=("Segoe UI", 8, font_extra),
+                     fg=color, bg=SIDEBAR, anchor="w", wraplength=140, justify="left").pack(side="left", fill="x", expand=True)
 
-    def _on_canvas_resize(self, event):
-        self._tasks_canvas.itemconfig(
-            self._tasks_canvas_window, width=event.width)
+        # Spacer
+        tk.Frame(sb, bg=SIDEBAR).grid(row=9, column=0, sticky="nsew")
+
+        # Bottom: device info
+        bottom = tk.Frame(sb, bg="#120E22", padx=16, pady=12)
+        bottom.grid(row=10, column=0, sticky="ew")
+        tk.Label(bottom, text=f"🖥  {socket.gethostname()}", font=("Segoe UI", 8), fg=MUTED, bg="#120E22", anchor="w").pack(fill="x")
+        tk.Label(bottom, text=f"👤 {self.dev_user}", font=("Segoe UI", 8), fg=MUTED, bg="#120E22", anchor="w").pack(fill="x", pady=(2, 0))
+
+    # ── Main panel ───────────────────────────────────────────────────────────
+
+    def _build_main(self):
+        main = tk.Frame(self, bg=BG)
+        main.grid(row=0, column=1, sticky="nsew")
+        main.grid_rowconfigure(1, weight=1)
+        main.grid_columnconfigure(0, weight=1)
+
+        # ── Top bar ──
+        topbar = tk.Frame(main, bg=WHITE, height=56,
+                          highlightbackground=GRAY200, highlightthickness=1)
+        topbar.grid(row=0, column=0, sticky="ew")
+        topbar.grid_propagate(False)
+
+        tb_inner = tk.Frame(topbar, bg=WHITE)
+        tb_inner.place(relx=0, rely=0, relwidth=1, relheight=1)
+
+        tk.Label(tb_inner, text="My Tasks", font=("Segoe UI", 13, "bold"),
+                 fg=TEXT, bg=WHITE).place(x=20, rely=0.5, anchor="w")
+
+        # Task count badge
+        self._task_count_lbl = tk.Label(tb_inner, text="0", font=("Segoe UI", 9, "bold"),
+                                         fg=WHITE, bg=BLUE, padx=10, pady=3)
+        self._task_count_lbl.place(x=115, rely=0.5, anchor="w")
+
+        # Refresh button
+        ref_btn = tk.Label(tb_inner, text="↻  Refresh", font=("Segoe UI", 9, "bold"),
+                           fg=BLUE, bg=GRAY100, padx=12, pady=5, cursor="hand2")
+        ref_btn.place(relx=1, x=-16, rely=0.5, anchor="e")
+        ref_btn.bind("<Button-1>", lambda e: threading.Thread(target=self._fetch_tasks, daemon=True).start())
+
+        # ── Scroll area ──
+        scroll_frame = tk.Frame(main, bg=BG)
+        scroll_frame.grid(row=1, column=0, sticky="nsew")
+        scroll_frame.grid_rowconfigure(0, weight=1)
+        scroll_frame.grid_columnconfigure(0, weight=1)
+
+        self._canvas = tk.Canvas(scroll_frame, bg=BG, bd=0, highlightthickness=0)
+        self._vsb = ttk.Scrollbar(scroll_frame, orient="vertical", command=self._canvas.yview)
+        self._canvas.configure(yscrollcommand=self._vsb.set)
+        self._vsb.grid(row=0, column=1, sticky="ns")
+        self._canvas.grid(row=0, column=0, sticky="nsew")
+
+        self._list_frame = tk.Frame(self._canvas, bg=BG)
+        self._list_win = self._canvas.create_window((0, 0), window=self._list_frame, anchor="nw")
+
+        self._list_frame.bind("<Configure>", lambda e: self._canvas.configure(
+            scrollregion=self._canvas.bbox("all")))
+        self._canvas.bind("<Configure>", lambda e: self._canvas.itemconfig(
+            self._list_win, width=e.width))
+        self._canvas.bind_all("<MouseWheel>", lambda e: self._canvas.yview_scroll(-1*(e.delta//120), "units"))
+
+        self._render_empty("Loading your tasks…")
 
     # ── Task rendering ───────────────────────────────────────────────────────
 
+    STATUS_META = {
+        "todo":        ("To Do",       GRAY700, GRAY100),
+        "in_progress": ("In Progress", BLUE,    BLUE_LIGHT),
+        "review":      ("In Review",   AMBER,   AMBER_LIGHT),
+        "done":        ("Done",        GREEN,   GREEN_LIGHT),
+    }
+    PRIORITY_META = {
+        "high":   (RED,   RED_LIGHT,   "●  High"),
+        "medium": (AMBER, AMBER_LIGHT, "●  Medium"),
+        "low":    (GREEN, GREEN_LIGHT, "●  Low"),
+    }
+    PRIORITY_STRIPE = {"high": RED, "medium": AMBER, "low": GREEN}
+
+    def _render_empty(self, msg="No tasks assigned to you yet."):
+        for w in self._list_frame.winfo_children(): w.destroy()
+        wrap = tk.Frame(self._list_frame, bg=BG)
+        wrap.pack(expand=True, pady=60)
+        tk.Label(wrap, text="📋", font=("Segoe UI", 32), bg=BG).pack()
+        tk.Label(wrap, text=msg, font=("Segoe UI", 11), fg=MUTED, bg=BG).pack(pady=(8, 0))
+
     def _render_tasks(self):
-        for w in self._tasks_inner.winfo_children():
-            w.destroy()
+        for w in self._list_frame.winfo_children(): w.destroy()
 
         if not self.tasks:
-            tk.Label(self._tasks_inner, text="No tasks assigned to you yet.",
-                     font=("Helvetica", 10), fg=C_MUTED, bg=C_BG, pady=20).pack()
+            self._render_empty()
+            self._task_count_lbl.configure(text="0")
             return
 
-        STATUS_COLORS = {
-            "todo":        (C_MUTED,  "To Do"),
-            "in_progress": (C_BLUE,   "In Progress"),
-            "review":      (C_AMBER,  "Review"),
-            "done":        (C_GREEN,  "Done"),
-        }
-        PRIORITY_COLORS = {
-            "high":   C_ACCENT,
-            "medium": C_AMBER,
-            "low":    C_GREEN,
-        }
+        self._task_count_lbl.configure(text=str(len(self.tasks)))
 
-        for task in self.tasks:
-            status_color, status_label = STATUS_COLORS.get(
-                task.get("status", "todo"), (C_MUTED, task.get("status", "—")))
-            priority_color = PRIORITY_COLORS.get(task.get("priority", "medium"), C_MUTED)
-            is_overdue = (task.get("dueDate") and
-                          task["dueDate"] < datetime.now().strftime("%Y-%m-%d") and
-                          task.get("status") != "done")
+        # Group header: In Progress first, then rest
+        groups = [
+            ("In Progress", [t for t in self.tasks if t.get("status") == "in_progress"]),
+            ("To Do",       [t for t in self.tasks if t.get("status") == "todo"]),
+            ("In Review",   [t for t in self.tasks if t.get("status") == "review"]),
+            ("Done",        [t for t in self.tasks if t.get("status") == "done"]),
+        ]
 
-            # Card frame
-            card = tk.Frame(self._tasks_inner, bg=C_CARD,
-                            highlightbackground=C_BORDER, highlightthickness=1)
-            card.pack(fill="x", pady=(0, 6))
+        for group_name, group_tasks in groups:
+            if not group_tasks: continue
+            self._render_group_header(group_name, len(group_tasks))
+            for task in group_tasks:
+                self._render_task_card(task)
 
-            # Priority stripe
-            stripe = tk.Frame(card, bg=priority_color, width=4)
-            stripe.pack(side="left", fill="y")
+    def _render_group_header(self, title, count):
+        row = tk.Frame(self._list_frame, bg=BG)
+        row.pack(fill="x", padx=20, pady=(16, 4))
+        tk.Label(row, text=title, font=("Segoe UI", 9, "bold"),
+                 fg=GRAY700, bg=BG).pack(side="left")
+        tk.Label(row, text=f"  {count}", font=("Segoe UI", 9),
+                 fg=MUTED, bg=BG).pack(side="left")
+        tk.Frame(row, bg=GRAY200, height=1).pack(side="left", fill="x", expand=True, padx=(10, 0), pady=6)
 
-            body = tk.Frame(card, bg=C_CARD, padx=12, pady=10)
-            body.pack(side="left", fill="x", expand=True)
+    def _render_task_card(self, task):
+        status_key = task.get("status", "todo")
+        priority   = task.get("priority", "medium")
+        s_label, s_fg, s_bg = self.STATUS_META.get(status_key, ("—", MUTED, GRAY100))
+        p_fg, p_bg, p_label = self.PRIORITY_META.get(priority, (MUTED, GRAY100, "● Medium"))
+        stripe_color         = self.PRIORITY_STRIPE.get(priority, GRAY200)
 
-            # Title row
-            title_row = tk.Frame(body, bg=C_CARD)
-            title_row.pack(fill="x")
-            tk.Label(title_row, text=task.get("title", "Untitled"),
-                     font=("Helvetica", 10, "bold"), fg=C_TEXT, bg=C_CARD,
-                     anchor="w", wraplength=320, justify="left").pack(side="left", fill="x", expand=True)
+        due       = task.get("dueDate") or ""
+        title_txt = task.get("title", "Untitled")
+        desc_txt  = task.get("description") or ""
+        is_over   = due and due < datetime.now().strftime("%Y-%m-%d") and status_key != "done"
 
-            # Status badge
-            tk.Label(title_row, text=status_label,
-                     font=("Helvetica", 8, "bold"), fg=C_WHITE,
-                     bg=status_color, padx=7, pady=2).pack(side="right")
+        # Outer shadow effect (via slightly offset frame)
+        shadow = tk.Frame(self._list_frame, bg=GRAY200)
+        shadow.pack(fill="x", padx=20, pady=(0, 2))
 
-            # Description
-            if task.get("description"):
-                tk.Label(body, text=task["description"][:120] + ("…" if len(task.get("description","")) > 120 else ""),
-                         font=("Helvetica", 9), fg=C_MUTED, bg=C_CARD,
-                         anchor="w", wraplength=360, justify="left").pack(fill="x", pady=(2, 0))
+        card = tk.Frame(shadow, bg=WHITE)
+        card.pack(fill="x", padx=0, pady=(0, 2))
 
-            # Meta row
-            meta = tk.Frame(body, bg=C_CARD)
-            meta.pack(fill="x", pady=(6, 0))
+        # Priority stripe
+        stripe = tk.Frame(card, bg=stripe_color, width=4)
+        stripe.pack(side="left", fill="y")
 
-            if task.get("projectId"):
-                tk.Label(meta, text=f"📁 Project #{task['projectId']}",
-                         font=("Helvetica", 8), fg=C_BLUE, bg=C_CARD).pack(side="left", padx=(0, 8))
+        body = tk.Frame(card, bg=WHITE, padx=16, pady=14)
+        body.pack(side="left", fill="both", expand=True)
 
-            priority_text = f"● {task.get('priority','medium').capitalize()}"
-            tk.Label(meta, text=priority_text,
-                     font=("Helvetica", 8, "bold"), fg=priority_color, bg=C_CARD).pack(side="left")
+        # ── Row 1: title + status badge ──
+        row1 = tk.Frame(body, bg=WHITE)
+        row1.pack(fill="x")
 
-            if task.get("dueDate"):
-                due_color = C_ACCENT if is_overdue else C_MUTED
-                due_icon  = "⚠ " if is_overdue else "📅 "
-                tk.Label(meta, text=f"{due_icon}{task['dueDate']}",
-                         font=("Helvetica", 8), fg=due_color, bg=C_CARD).pack(side="right")
+        title_lbl = tk.Label(row1, text=title_txt, font=("Segoe UI", 11, "bold"),
+                             fg=TEXT, bg=WHITE, anchor="w", justify="left", wraplength=360)
+        title_lbl.pack(side="left", fill="x", expand=True)
 
-        self._tasks_canvas.update_idletasks()
-        self._tasks_canvas.configure(scrollregion=self._tasks_canvas.bbox("all"))
+        status_badge = tk.Label(row1, text=s_label, font=("Segoe UI", 8, "bold"),
+                                fg=s_fg, bg=s_bg, padx=10, pady=4)
+        status_badge.pack(side="right", padx=(8, 0))
+
+        # ── Row 2: description ──
+        if desc_txt.strip():
+            short = desc_txt[:160] + ("…" if len(desc_txt) > 160 else "")
+            tk.Label(body, text=short, font=("Segoe UI", 9), fg=MUTED, bg=WHITE,
+                     anchor="w", justify="left", wraplength=420).pack(fill="x", pady=(4, 0))
+
+        # ── Row 3: meta pills ──
+        meta = tk.Frame(body, bg=WHITE)
+        meta.pack(fill="x", pady=(10, 0))
+
+        # Priority
+        p_pill = tk.Label(meta, text=p_label, font=("Segoe UI", 8, "bold"),
+                          fg=p_fg, bg=p_bg, padx=8, pady=3)
+        p_pill.pack(side="left")
+
+        # Tags
+        tags = task.get("tags") or ""
+        for tag in [t.strip() for t in tags.split(",") if t.strip()][:3]:
+            tk.Label(meta, text=f"# {tag}", font=("Segoe UI", 8),
+                     fg=PURPLE, bg="#F3E8FF", padx=8, pady=3).pack(side="left", padx=(6, 0))
+
+        # Due date
+        if due:
+            due_fg  = RED   if is_over else MUTED
+            due_bg  = RED_LIGHT if is_over else GRAY100
+            due_txt = ("⚠  Overdue " if is_over else "📅  ") + due
+            tk.Label(meta, text=due_txt, font=("Segoe UI", 8, "bold" if is_over else ""),
+                     fg=due_fg, bg=due_bg, padx=8, pady=3).pack(side="right")
+
+        # Created by
+        if task.get("createdBy"):
+            by = task["createdBy"].split("@")[0]
+            tk.Label(meta, text=f"by {by}", font=("Segoe UI", 8),
+                     fg=MUTED, bg=WHITE).pack(side="right", padx=(0, 8))
+
+        # Subtle separator at bottom
+        tk.Frame(body, bg=GRAY100, height=1).pack(fill="x", pady=(10, 0))
 
     # ── Agent logic ──────────────────────────────────────────────────────────
 
-    def _start_agent(self):
+    def _start(self):
         try:
             import requests
             self.session = requests.Session()
-            self.session.headers.update({
-                "Content-Type": "application/json",
-                "User-Agent": "FlowMatriX-Agent-GUI/3.0",
-            })
+            self.session.headers.update({"Content-Type":"application/json","User-Agent":"FlowMatriX-Agent/4.0"})
         except ImportError:
-            self.status_text.set("requests not installed")
-            return
+            self.v_state.set("requests not installed"); return
+        threading.Thread(target=self._hb_loop,   daemon=True).start()
+        threading.Thread(target=self._task_loop, daemon=True).start()
 
-        threading.Thread(target=self._heartbeat_loop, daemon=True).start()
-        threading.Thread(target=self._task_poll_loop, daemon=True).start()
-
-    def _heartbeat_loop(self):
+    def _hb_loop(self):
         while self._running:
-            self._send_heartbeat()
+            self._heartbeat()
             time.sleep(HEARTBEAT_SEC)
 
-    def _send_heartbeat(self):
-        app, title = get_active_window()
-        idle = get_idle_seconds()
-        is_active = idle < IDLE_THRESHOLD
-
-        payload = {
-            "deviceUsername": self.device_username,
-            "activeApp":      app,
-            "windowTitle":    title[:250],
-            "isActive":       is_active,
-            "idleSeconds":    int(idle),
-            "deviceName":     socket.gethostname(),
-        }
-
-        try:
-            r = self.session.post(f"{API_URL}/activity/heartbeat", json=payload, timeout=10)
-            if r.status_code == 200:
-                data = r.json()
-                self._hb_count += 1
-                self.after(0, self._update_ui, app, title, idle, is_active, data)
-            else:
-                self.after(0, self._set_error, f"Server {r.status_code}")
-        except Exception as exc:
-            self.after(0, self._set_error, str(exc)[:40])
-
-    def _task_poll_loop(self):
-        time.sleep(5)
+    def _task_loop(self):
+        time.sleep(3)
         while self._running:
             self._fetch_tasks()
             time.sleep(30)
 
+    def _heartbeat(self):
+        app, win = get_active_window()
+        idle     = get_idle_seconds()
+        active   = idle < IDLE_THRESHOLD
+        payload  = {
+            "deviceUsername": self.dev_user,
+            "activeApp":      app,
+            "windowTitle":    win[:250],
+            "isActive":       active,
+            "idleSeconds":    int(idle),
+            "deviceName":     socket.gethostname(),
+        }
+        try:
+            r = self.session.post(f"{API_URL}/activity/heartbeat", json=payload, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                self._hb_ok += 1
+                self.after(0, self._on_hb_ok, app, win, idle, active, data)
+            else:
+                self.after(0, self._set_err, f"HTTP {r.status_code}")
+        except Exception as e:
+            self.after(0, self._set_err, str(e)[:50])
+
     def _fetch_tasks(self):
         try:
             r = self.session.get(f"{API_URL}/fm-tasks", timeout=10)
-            if r.status_code == 200:
-                all_tasks = r.json()
-                my_name   = (self.resolved_name.get() or self.device_username).lower()
-                my_tasks  = [
-                    t for t in all_tasks
-                    if (t.get("assigneeName") or "").lower() in my_name
-                    or my_name in (t.get("assigneeName") or "").lower()
-                ]
-                # Notify for newly seen tasks
-                new_ids = {t["id"] for t in my_tasks} - self.seen_task_ids
+            if r.status_code != 200: return
+            all_tasks = r.json()
+            my = self.v_name.get().lower()
+            my_tasks = [
+                t for t in all_tasks
+                if my and (
+                    my in (t.get("assigneeName") or "").lower() or
+                    (t.get("assigneeName") or "").lower() in my
+                )
+            ]
+            # toast for newly assigned
+            new_ids = {t["id"] for t in my_tasks} - self.seen_ids
+            if self.seen_ids:   # skip first load
                 for t in my_tasks:
                     if t["id"] in new_ids:
-                        self.after(0, self._show_task_toast, t)
-                self.seen_task_ids = {t["id"] for t in my_tasks}
-                self.tasks = sorted(
-                    my_tasks,
-                    key=lambda t: (0 if t.get("status") == "in_progress" else
-                                   1 if t.get("status") == "todo" else
-                                   2 if t.get("status") == "review" else 3)
-                )
-                self.after(0, self._render_tasks)
-        except Exception as exc:
-            log.warning("Task fetch failed: %s", exc)
+                        self.after(0, self._toast_task, t)
+            self.seen_ids = {t["id"] for t in my_tasks}
+            self.tasks    = my_tasks
+            self.after(0, self._render_tasks)
+        except Exception as e:
+            log.warning("task fetch: %s", e)
 
-    def _show_task_toast(self, task: dict):
-        if not self.seen_task_ids:
-            return
-        title = f"New Task Assigned: {task.get('title','')}"
-        due   = f"Due: {task['dueDate']}" if task.get("dueDate") else ""
-        prio  = f"Priority: {task.get('priority','medium').capitalize()}"
-        body  = " · ".join(filter(None, [prio, due]))
-        try:
-            ToastNotification(self, title, body)
-        except Exception:
-            pass
+    def _on_hb_ok(self, app, win, idle, active, data):
+        name  = data.get("resolvedName") or self.dev_user
+        dept  = data.get("resolvedDept") or ""
+        desig = data.get("resolvedDesignation") or ""
+        emp   = data.get("erpEmployeeId") or ""
 
-    def _update_ui(self, app: str, title: str, idle: float, is_active: bool, data: dict):
-        name = data.get("resolvedName") or self.device_username
-        dept = " · ".join(filter(None, [data.get("resolvedDesignation",""), data.get("resolvedDept","")]))
+        self.v_name.set(name)
+        self.v_dept.set(dept or "Not linked to ERPNext")
+        self.v_desig.set(desig)
+        self.v_emp_id.set(emp)
+        self.v_app.set(app or "—")
+        self.v_win.set((win[:55]+"…") if len(win) > 55 else (win or "—"))
+        self.v_idle.set(fmt_idle(idle) if idle > 5 else "None")
+        self.v_hb.set(datetime.now().strftime("%H:%M:%S"))
+        self.v_hb_cnt.set(f"{self._hb_ok} sent")
 
-        self.resolved_name.set(name)
-        self.resolved_dept.set(dept or "Not linked to ERPNext")
-        self.app_var.set(app or "—")
-        self.window_var.set((title[:80] + "…") if len(title) > 80 else (title or "—"))
-        self.idle_var.set(fmt_idle(idle) if idle > 5 else "None")
-        self.last_hb.set(datetime.now().strftime("%H:%M:%S"))
-        self.hb_status.set(f"✓  {self._hb_count} sent")
+        # Update avatar initials
+        self._av_canvas.itemconfig(self._av_initials, text=initials(name))
 
-        if is_active:
-            self.user_state.set("ACTIVE")
-            self._state_badge.configure(bg=C_GREEN)
-            self._status_dot.configure(fg=C_GREEN)
-            self.status_text.set("Connected · Active")
+        if active:
+            self.v_state.set("● ACTIVE")
+            self._state_pill.configure(bg=GREEN)
+            self._av_canvas.itemconfig(self._av_dot, fill=GREEN)
         else:
-            self.user_state.set("IDLE")
-            self._state_badge.configure(bg=C_AMBER)
-            self._status_dot.configure(fg=C_AMBER)
-            self.status_text.set(f"Connected · Idle {fmt_idle(idle)}")
+            self.v_state.set(f"● {fmt_idle(idle).upper()}")
+            self._state_pill.configure(bg=AMBER)
+            self._av_canvas.itemconfig(self._av_dot, fill=AMBER)
 
-    def _set_error(self, msg: str):
-        self.status_text.set(f"Error: {msg}")
-        self._status_dot.configure(fg=C_ACCENT)
+    def _set_err(self, msg):
+        self.v_state.set("Offline")
+        self._state_pill.configure(bg=RED)
 
-    def _on_close(self):
+    def _toast_task(self, task):
+        prio = task.get("priority", "medium").capitalize()
+        due  = (f"  ·  Due {task['dueDate']}" if task.get("dueDate") else "")
+        Toast(self, f"📌  {task.get('title','New Task')}", f"{prio} priority{due}")
+
+    def _quit(self):
         self._running = False
         self.destroy()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Entry point
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Entry ─────────────────────────────────────────────────────────────────────
 def main():
     try:
-        import requests  # noqa: F401
+        import requests  # noqa
     except ImportError:
-        print("ERROR: 'requests' is not installed.\nRun:  pip install requests psutil")
-        sys.exit(1)
-
-    app = FlowMatrixAgent()
-    app.mainloop()
-
+        print("Install requests first:  pip install requests psutil"); sys.exit(1)
+    App().mainloop()
 
 if __name__ == "__main__":
     main()
