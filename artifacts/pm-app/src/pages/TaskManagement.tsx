@@ -7,6 +7,7 @@ import {
   Activity, Download, X, ChevronDown, Search, Filter,
   AlertCircle, CheckCircle2, Timer, CircleDot, Coffee, Zap,
   Building2, MapPin, Phone, BadgeCheck, Users, Link2, Check, Loader2,
+  BarChart2, FileText, ChevronRight, History, ClipboardList,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -67,6 +68,15 @@ interface SystemActivity {
   deviceName: string;
   lastSeen: string;
   createdAt: string;
+}
+
+interface ActivityLog {
+  id: number;
+  activeApp: string;
+  windowTitle: string;
+  isActive: boolean;
+  idleSeconds: number;
+  loggedAt: string;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -228,10 +238,410 @@ function TaskModal({
   );
 }
 
+// ── Employee Detail Panel ──────────────────────────────────────────────────────
+function EmployeeDetailPanel({ row, tasks, onClose }: {
+  row: SystemActivity;
+  tasks: FmTask[];
+  onClose: () => void;
+}) {
+  const BASE_PROXY = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const status = activityStatus(row);
+  const displayName = row.fullName || row.deviceUsername || row.email.split("@")[0];
+  const photoUrl = row.erpImage
+    ? `${BASE_PROXY}/api/auth/photo?url=${encodeURIComponent(row.erpImage)}`
+    : null;
+
+  const [history, setHistory] = useState<ActivityLog[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+
+  const assignedTasks = tasks.filter(t =>
+    (t.assigneeName && displayName && t.assigneeName.toLowerCase().includes(displayName.split(" ")[0].toLowerCase())) ||
+    (t.assigneeEmail && row.email && t.assigneeEmail.toLowerCase() === row.email.toLowerCase())
+  );
+
+  useEffect(() => {
+    if (!row.deviceUsername) { setHistoryLoading(false); return; }
+    fetch(`${BASE_PROXY}/api/activity/${encodeURIComponent(row.deviceUsername)}/history`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setHistory(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => setHistoryLoading(false));
+  }, [row.deviceUsername]);
+
+  const tasksByStatus = {
+    todo: assignedTasks.filter(t => t.status === "todo"),
+    in_progress: assignedTasks.filter(t => t.status === "in_progress"),
+    review: assignedTasks.filter(t => t.status === "review"),
+    done: assignedTasks.filter(t => t.status === "done"),
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex" onClick={onClose}>
+      {/* Backdrop */}
+      <div className="flex-1 bg-black/30" />
+      {/* Panel */}
+      <div
+        className="w-[480px] bg-white h-full shadow-2xl flex flex-col overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className={`px-6 pt-6 pb-5 flex-shrink-0 ${status === "active" ? "bg-gradient-to-br from-green-50 to-emerald-50 border-b border-green-100" : status === "idle" ? "bg-gradient-to-br from-amber-50 to-orange-50 border-b border-amber-100" : "bg-gray-50 border-b border-gray-200"}`}>
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                {photoUrl ? (
+                  <img src={photoUrl} alt={displayName} className="w-16 h-16 rounded-2xl object-cover border-2 border-white shadow-md" />
+                ) : (
+                  <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-xl font-bold text-white shadow-md ${status === "active" ? "bg-gradient-to-br from-green-400 to-emerald-600" : status === "idle" ? "bg-gradient-to-br from-amber-400 to-orange-500" : "bg-gradient-to-br from-gray-300 to-gray-400"}`}>
+                    {initials(displayName)}
+                  </div>
+                )}
+                <span className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${STATUS_DOT[status]}`} />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">{displayName}</h2>
+                {row.designation && <div className="text-sm text-blue-600 font-medium">{row.designation}</div>}
+                {row.department && <div className="text-xs text-gray-500">{row.department}</div>}
+              </div>
+            </div>
+            <button onClick={onClose} className="p-2 rounded-xl hover:bg-white/70 text-gray-400 hover:text-gray-600">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Status badges */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 ${status === "active" ? "bg-green-100 text-green-700 border border-green-200" : status === "idle" ? "bg-amber-100 text-amber-700 border border-amber-200" : "bg-gray-200 text-gray-600"}`}>
+              <span className={`w-2 h-2 rounded-full ${STATUS_DOT[status]} ${status === "active" ? "animate-pulse" : ""}`} />
+              {STATUS_LABEL[status]}
+            </span>
+            {status === "idle" && row.idleSeconds > 0 && (
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-600 border border-amber-200 flex items-center gap-1">
+                <Coffee className="w-3 h-3" /> Idle {formatDuration(row.idleSeconds)}
+              </span>
+            )}
+            {status === "offline" && (
+              <span className="text-xs text-gray-400">Last seen {timeSince(row.lastSeen)}</span>
+            )}
+            {row.erpEmployeeId && (
+              <span className="px-2 py-1 rounded-full text-[10px] font-mono bg-white border border-gray-200 text-gray-500">
+                {row.erpEmployeeId}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
+
+          {/* Current Activity */}
+          <div className="px-6 py-4">
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-1.5">
+              <Monitor className="w-3.5 h-3.5" /> Current Activity
+            </div>
+            {status !== "offline" && row.activeApp ? (
+              <div className="bg-gray-50 rounded-xl p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                    <Monitor className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-gray-800">{row.activeApp}</div>
+                    {row.windowTitle && row.windowTitle !== row.activeApp && (
+                      <div className="text-xs text-gray-500 truncate" title={row.windowTitle}>{row.windowTitle}</div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 text-xs text-gray-500 pt-1 border-t border-gray-200">
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3 h-3" /> Updated {timeSince(row.lastSeen)}
+                  </span>
+                  {row.deviceName && (
+                    <span className="flex items-center gap-1">
+                      <Monitor className="w-3 h-3" /> {row.deviceName}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-gray-400 italic">No active app detected</div>
+            )}
+          </div>
+
+          {/* Info */}
+          <div className="px-6 py-4">
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-1.5">
+              <User className="w-3.5 h-3.5" /> Details
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              {row.email && (
+                <div className="col-span-2">
+                  <span className="text-gray-400">Email</span>
+                  <div className="font-medium text-gray-700 truncate">{row.email}</div>
+                </div>
+              )}
+              {row.deviceUsername && (
+                <div>
+                  <span className="text-gray-400">Device User</span>
+                  <div className="font-medium text-gray-700 font-mono">{row.deviceUsername}</div>
+                </div>
+              )}
+              {row.deviceName && (
+                <div>
+                  <span className="text-gray-400">Device</span>
+                  <div className="font-medium text-gray-700 truncate">{row.deviceName}</div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Assigned Tasks */}
+          <div className="px-6 py-4">
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-1.5">
+              <ClipboardList className="w-3.5 h-3.5" /> Assigned Tasks
+              <span className="ml-auto px-2 py-0.5 bg-gray-100 rounded-full text-gray-500 font-semibold">{assignedTasks.length}</span>
+            </div>
+            {assignedTasks.length === 0 ? (
+              <div className="text-xs text-gray-400 italic">No tasks assigned</div>
+            ) : (
+              <div className="space-y-2">
+                {(["in_progress", "todo", "review", "done"] as const).map(s => {
+                  const col = COLUMNS.find(c => c.id === s)!;
+                  const sTasks = tasksByStatus[s];
+                  if (sTasks.length === 0) return null;
+                  return (
+                    <div key={s}>
+                      <div className={`text-[10px] font-semibold mb-1 flex items-center gap-1 ${s === "in_progress" ? "text-blue-600" : s === "done" ? "text-green-600" : s === "review" ? "text-amber-600" : "text-gray-500"}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${col.dot}`} />
+                        {col.label} ({sTasks.length})
+                      </div>
+                      {sTasks.map(t => (
+                        <div key={t.id} className="bg-gray-50 rounded-lg px-3 py-2 mb-1 border border-gray-100">
+                          <div className="text-xs font-medium text-gray-800 line-clamp-1">{t.title}</div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${priorityColor(t.priority)}`}>{t.priority}</span>
+                            {t.dueDate && <span className="text-[10px] text-gray-400 flex items-center gap-0.5"><Calendar className="w-2.5 h-2.5" />{t.dueDate}</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Activity History */}
+          <div className="px-6 py-4">
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-1.5">
+              <History className="w-3.5 h-3.5" /> Recent Activity Log
+            </div>
+            {historyLoading ? (
+              <div className="flex items-center justify-center py-4">
+                <div className="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : history.length === 0 ? (
+              <div className="text-xs text-gray-400 italic">No activity history yet</div>
+            ) : (
+              <div className="space-y-1 max-h-64 overflow-y-auto">
+                {history.map((log, i) => (
+                  <div key={log.id} className={`flex items-start gap-2 py-1.5 border-b border-gray-50 last:border-0 ${i === 0 ? "opacity-100" : "opacity-80"}`}>
+                    <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${log.isActive ? "bg-green-500" : "bg-amber-400"}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium text-gray-700 truncate">{log.activeApp || "—"}</div>
+                      {log.windowTitle && log.windowTitle !== log.activeApp && (
+                        <div className="text-[10px] text-gray-400 truncate">{log.windowTitle}</div>
+                      )}
+                      {log.idleSeconds > 0 && (
+                        <div className="text-[10px] text-amber-500">Idle {formatDuration(log.idleSeconds)}</div>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-gray-400 flex-shrink-0">{timeSince(log.loggedAt)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Summary Report ─────────────────────────────────────────────────────────────
+function SummaryReport({ activity, tasks, onClose }: {
+  activity: SystemActivity[];
+  tasks: FmTask[];
+  onClose: () => void;
+}) {
+  const BASE_PROXY = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+  const rows = activity.map(row => {
+    const status = activityStatus(row);
+    const displayName = row.fullName || row.deviceUsername || row.email.split("@")[0];
+    const assignedTasks = tasks.filter(t =>
+      (t.assigneeName && displayName && t.assigneeName.toLowerCase().includes(displayName.split(" ")[0].toLowerCase())) ||
+      (t.assigneeEmail && row.email && t.assigneeEmail.toLowerCase() === row.email.toLowerCase())
+    );
+    return {
+      ...row,
+      status,
+      displayName,
+      totalTasks: assignedTasks.length,
+      inProgress: assignedTasks.filter(t => t.status === "in_progress").length,
+      done: assignedTasks.filter(t => t.status === "done").length,
+      todo: assignedTasks.filter(t => t.status === "todo").length,
+      photoUrl: row.erpImage ? `${BASE_PROXY}/api/auth/photo?url=${encodeURIComponent(row.erpImage)}` : null,
+    };
+  }).sort((a, b) => {
+    const order = { active: 0, idle: 1, offline: 2 };
+    return order[a.status] - order[b.status];
+  });
+
+  const exportCsv = () => {
+    const header = ["Name", "Department", "Designation", "Status", "Current App", "Window Title", "Idle Time", "Last Seen", "Tasks Total", "In Progress", "Done", "Todo"];
+    const csvRows = rows.map(r => [
+      r.displayName, r.department, r.designation, r.status,
+      r.activeApp, r.windowTitle, r.idleSeconds > 0 ? formatDuration(r.idleSeconds) : "-",
+      timeSince(r.lastSeen), r.totalTasks, r.inProgress, r.done, r.todo,
+    ].map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","));
+    const csv = [header.join(","), ...csvRows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `activity_summary_${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+          <div>
+            <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+              <BarChart2 className="w-4 h-4 text-purple-500" /> Activity Summary Report
+            </h2>
+            <p className="text-xs text-gray-400 mt-0.5">Live snapshot — {new Date().toLocaleString()}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={exportCsv}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition-colors">
+              <Download className="w-3.5 h-3.5" /> Export CSV
+            </button>
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Stats bar */}
+        <div className="flex items-center gap-4 px-6 py-3 bg-gray-50 border-b border-gray-100 flex-shrink-0">
+          <div className="flex items-center gap-2 text-sm text-green-700 font-medium">
+            <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
+            {rows.filter(r => r.status === "active").length} Active
+          </div>
+          <div className="flex items-center gap-2 text-sm text-amber-700 font-medium">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+            {rows.filter(r => r.status === "idle").length} Idle
+          </div>
+          <div className="flex items-center gap-2 text-sm text-gray-500 font-medium">
+            <span className="w-2.5 h-2.5 rounded-full bg-gray-300" />
+            {rows.filter(r => r.status === "offline").length} Offline
+          </div>
+          <div className="ml-auto text-xs text-gray-400">{rows.length} employees total</div>
+        </div>
+
+        {/* Table */}
+        <div className="flex-1 overflow-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-white border-b border-gray-100 z-10">
+              <tr>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 w-52">Employee</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Status</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">What They're Doing</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Idle</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500">Tasks</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-blue-600">In Progress</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-green-600">Done</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500">Last Seen</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {rows.map(r => (
+                <tr key={r.deviceUsername || r.email} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-shrink-0">
+                        {r.photoUrl ? (
+                          <img src={r.photoUrl} alt={r.displayName} className="w-8 h-8 rounded-full object-cover" />
+                        ) : (
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white ${r.status === "active" ? "bg-gradient-to-br from-green-400 to-emerald-600" : r.status === "idle" ? "bg-gradient-to-br from-amber-400 to-orange-500" : "bg-gradient-to-br from-gray-300 to-gray-400"}`}>
+                            {initials(r.displayName)}
+                          </div>
+                        )}
+                        <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${STATUS_DOT[r.status]}`} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-semibold text-gray-900 truncate text-xs">{r.displayName}</div>
+                        <div className="text-[10px] text-gray-400 truncate">{r.department || r.designation || r.email}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${r.status === "active" ? "bg-green-100 text-green-700" : r.status === "idle" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-500"}`}>
+                      {STATUS_LABEL[r.status]}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 max-w-[240px]">
+                    {r.status !== "offline" && r.activeApp ? (
+                      <div>
+                        <div className="text-xs font-medium text-gray-800 truncate">{r.activeApp}</div>
+                        {r.windowTitle && r.windowTitle !== r.activeApp && (
+                          <div className="text-[10px] text-gray-400 truncate" title={r.windowTitle}>{r.windowTitle}</div>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-gray-400 italic">No activity</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {r.idleSeconds > 0 ? (
+                      <span className="text-xs text-amber-600 font-medium">{formatDuration(r.idleSeconds)}</span>
+                    ) : (
+                      <span className="text-xs text-gray-300">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <span className="text-xs font-semibold text-gray-700">{r.totalTasks}</span>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {r.inProgress > 0 ? (
+                      <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-semibold">{r.inProgress}</span>
+                    ) : <span className="text-gray-300 text-xs">—</span>}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {r.done > 0 ? (
+                      <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-[10px] font-semibold">{r.done}</span>
+                    ) : <span className="text-gray-300 text-xs">—</span>}
+                  </td>
+                  <td className="px-4 py-3 text-right text-[10px] text-gray-400">{timeSince(r.lastSeen)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Activity Card ──────────────────────────────────────────────────────────────
 const BASE_PROXY = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-function ActivityCard({ row, onRefresh }: { row: SystemActivity; onRefresh: () => void }) {
+function ActivityCard({ row, onRefresh, onClick }: { row: SystemActivity; onRefresh: () => void; onClick: () => void }) {
   const status = activityStatus(row);
   const displayName = row.fullName || row.deviceUsername || row.email.split("@")[0];
   const photoUrl = row.erpImage
@@ -267,7 +677,10 @@ function ActivityCard({ row, onRefresh }: { row: SystemActivity; onRefresh: () =
   };
 
   return (
-    <div className={`bg-white rounded-2xl border shadow-sm hover:shadow-md transition-all overflow-hidden ${status === "active" ? "border-green-200" : status === "idle" ? "border-amber-200" : "border-gray-200 opacity-70"}`}>
+    <div
+      className={`bg-white rounded-2xl border shadow-sm hover:shadow-md transition-all overflow-hidden cursor-pointer ${status === "active" ? "border-green-200 hover:border-green-300" : status === "idle" ? "border-amber-200 hover:border-amber-300" : "border-gray-200 opacity-70 hover:opacity-100"}`}
+      onClick={onClick}
+    >
       {/* Employee header */}
       <div className={`px-4 pt-4 pb-3 ${status === "active" ? "bg-green-50/40" : status === "idle" ? "bg-amber-50/40" : "bg-gray-50/40"}`}>
         <div className="flex items-start gap-3">
@@ -326,7 +739,7 @@ function ActivityCard({ row, onRefresh }: { row: SystemActivity; onRefresh: () =
 
           {/* Link / Edit button */}
           <button
-            onClick={() => { setEditing(e => !e); setSaveError(""); setErpInput(""); }}
+            onClick={e => { e.stopPropagation(); setEditing(v => !v); setSaveError(""); setErpInput(""); }}
             title={isUnmatched ? "Link to ERPNext employee" : "Change ERPNext link"}
             className={`flex-shrink-0 p-1.5 rounded-lg transition-colors ${isUnmatched ? "bg-amber-50 text-amber-500 hover:bg-amber-100" : "text-gray-300 hover:text-gray-500 hover:bg-gray-100"}`}>
             <Link2 className="w-3.5 h-3.5" />
@@ -335,7 +748,7 @@ function ActivityCard({ row, onRefresh }: { row: SystemActivity; onRefresh: () =
 
         {/* Inline override form */}
         {editing && (
-          <div className="mt-3 p-3 bg-white border border-blue-200 rounded-xl space-y-2">
+          <div className="mt-3 p-3 bg-white border border-blue-200 rounded-xl space-y-2" onClick={e => e.stopPropagation()}>
             <div className="text-[11px] font-semibold text-gray-600">Enter ERPNext username or employee ID</div>
             <div className="text-[10px] text-gray-400">e.g. WTT1194 or john.doe</div>
             <div className="flex gap-1.5">
@@ -383,7 +796,12 @@ function ActivityCard({ row, onRefresh }: { row: SystemActivity; onRefresh: () =
       {/* Footer */}
       <div className="px-4 pb-3 pt-1 border-t border-gray-100 flex items-center justify-between">
         <div className="text-[10px] text-gray-400 truncate max-w-[120px]" title={row.deviceName}>{row.deviceName || row.deviceUsername}</div>
-        <div className="text-[10px] text-gray-400">{timeSince(row.lastSeen)}</div>
+        <div className="flex items-center gap-2">
+          <div className="text-[10px] text-gray-400">{timeSince(row.lastSeen)}</div>
+          <span className="text-[10px] text-blue-400 font-medium flex items-center gap-0.5">
+            Details <ChevronRight className="w-3 h-3" />
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -411,6 +829,8 @@ export default function TaskManagement() {
   const [activity, setActivity] = useState<SystemActivity[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
   const activityIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<SystemActivity | null>(null);
+  const [showSummary, setShowSummary] = useState(false);
 
   // Load tasks
   const loadTasks = useCallback(() => {
@@ -552,10 +972,16 @@ export default function TaskManagement() {
                 </button>
               )}
               {tab === "monitor" && (
-                <button onClick={downloadAgent}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm">
-                  <Download className="w-4 h-4" /> Download Agent
-                </button>
+                <>
+                  <button onClick={() => setShowSummary(true)}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm">
+                    <BarChart2 className="w-4 h-4" /> Summary Report
+                  </button>
+                  <button onClick={downloadAgent}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm">
+                    <Download className="w-4 h-4" /> Download Agent
+                  </button>
+                </>
               )}
               <button onClick={tab === "tasks" ? loadTasks : loadActivity}
                 className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors">
@@ -860,7 +1286,14 @@ export default function TaskManagement() {
                       const order = { active: 0, idle: 1, offline: 2 };
                       return order[activityStatus(a)] - order[activityStatus(b)];
                     })
-                    .map(row => <ActivityCard key={row.deviceUsername || row.email} row={row} onRefresh={loadActivity} />)}
+                    .map(row => (
+                      <ActivityCard
+                        key={row.deviceUsername || row.email}
+                        row={row}
+                        onRefresh={loadActivity}
+                        onClick={() => setSelectedEmployee(row)}
+                      />
+                    ))}
                 </div>
               </>
             )}
@@ -877,6 +1310,24 @@ export default function TaskManagement() {
           defaultStatus={modal.defaultStatus}
           onClose={() => setModal({ open: false })}
           onSave={data => modal.task ? updateTask(modal.task.id, data) : createTask(data)}
+        />
+      )}
+
+      {/* Employee Detail Panel */}
+      {selectedEmployee && (
+        <EmployeeDetailPanel
+          row={selectedEmployee}
+          tasks={tasks}
+          onClose={() => setSelectedEmployee(null)}
+        />
+      )}
+
+      {/* Summary Report Modal */}
+      {showSummary && (
+        <SummaryReport
+          activity={activity}
+          tasks={tasks}
+          onClose={() => setShowSummary(false)}
         />
       )}
     </Layout>
