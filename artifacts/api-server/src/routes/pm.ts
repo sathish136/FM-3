@@ -134,6 +134,16 @@ pool
       ALTER TABLE system_activity ADD CONSTRAINT system_activity_device_username_unique UNIQUE (device_username);
     END IF;
   END $$;
+  CREATE TABLE IF NOT EXISTS activity_log (
+    id SERIAL PRIMARY KEY,
+    device_username TEXT NOT NULL,
+    active_app TEXT NOT NULL DEFAULT '',
+    window_title TEXT NOT NULL DEFAULT '',
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    idle_seconds INTEGER NOT NULL DEFAULT 0,
+    logged_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS activity_log_device_idx ON activity_log (device_username, logged_at DESC);
 `,
   )
   .then(() => console.log("PM tables ready"))
@@ -1648,6 +1658,19 @@ router.post("/activity/heartbeat", async (req, res) => {
       } catch {}
     }
 
+    // Fetch existing row to detect app/status changes for logging
+    const existingRows = await db
+      .select({ activeApp: systemActivityTable.activeApp, isActive: systemActivityTable.isActive })
+      .from(systemActivityTable)
+      .where(eq(systemActivityTable.deviceUsername, identifier))
+      .limit(1);
+    const existing = existingRows[0];
+
+    const newApp = activeApp ?? "";
+    const newIsActive = isActive !== false;
+    const appChanged = !existing || existing.activeApp !== newApp;
+    const statusChanged = !existing || existing.isActive !== newIsActive;
+
     await db
       .insert(systemActivityTable)
       .values({
@@ -1658,9 +1681,9 @@ router.post("/activity/heartbeat", async (req, res) => {
         designation: resolvedDesignation,
         erpEmployeeId: resolvedEmpId,
         erpImage: resolvedImage,
-        activeApp: activeApp ?? "",
+        activeApp: newApp,
         windowTitle: (windowTitle ?? "").substring(0, 300),
-        isActive: isActive !== false,
+        isActive: newIsActive,
         idleSeconds: idleSeconds ?? 0,
         deviceName: deviceName ?? "",
         lastSeen: new Date(),
@@ -1674,14 +1697,31 @@ router.post("/activity/heartbeat", async (req, res) => {
           designation: resolvedDesignation,
           erpEmployeeId: resolvedEmpId,
           erpImage: resolvedImage,
-          activeApp: activeApp ?? "",
+          activeApp: newApp,
           windowTitle: (windowTitle ?? "").substring(0, 300),
-          isActive: isActive !== false,
+          isActive: newIsActive,
           idleSeconds: idleSeconds ?? 0,
           deviceName: deviceName ?? "",
           lastSeen: new Date(),
         },
       });
+
+    // Log to activity_log when app or idle/active status changes
+    if (appChanged || statusChanged) {
+      await pool.query(
+        `INSERT INTO activity_log (device_username, active_app, window_title, is_active, idle_seconds)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [identifier, newApp, (windowTitle ?? "").substring(0, 300), newIsActive, idleSeconds ?? 0]
+      );
+      // Trim old logs — keep last 200 per device
+      await pool.query(
+        `DELETE FROM activity_log WHERE device_username = $1 AND id NOT IN (
+           SELECT id FROM activity_log WHERE device_username = $1 ORDER BY logged_at DESC LIMIT 200
+         )`,
+        [identifier]
+      );
+    }
+
     res.json({ ok: true, resolvedName: resolvedFullName, resolvedDept, resolvedDesignation });
   } catch (e) {
     res.status(500).json({ error: String(e) });
@@ -1698,6 +1738,31 @@ router.get("/activity/live", async (_req, res) => {
       ...r,
       lastSeen: r.lastSeen?.toISOString?.() ?? r.lastSeen,
       createdAt: r.createdAt?.toISOString?.() ?? r.createdAt,
+    })));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Activity history for a specific device
+router.get("/activity/:deviceUsername/history", async (req, res) => {
+  try {
+    const { deviceUsername } = req.params;
+    const result = await pool.query(
+      `SELECT id, active_app, window_title, is_active, idle_seconds, logged_at
+       FROM activity_log
+       WHERE device_username = $1
+       ORDER BY logged_at DESC
+       LIMIT 50`,
+      [deviceUsername]
+    );
+    res.json(result.rows.map((r: any) => ({
+      id: r.id,
+      activeApp: r.active_app,
+      windowTitle: r.window_title,
+      isActive: r.is_active,
+      idleSeconds: r.idle_seconds,
+      loggedAt: r.logged_at,
     })));
   } catch (e) {
     res.status(500).json({ error: String(e) });
