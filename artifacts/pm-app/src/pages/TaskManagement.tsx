@@ -303,6 +303,12 @@ function EmployeeDetailPanel({ row, tasks, onClose }: {
 
   const [history, setHistory] = useState<ActivityLog[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+  const [costInfo, setCostInfo] = useState<{
+    available: boolean; monthlySalary?: number|null; monthlyNet?: number|null;
+    hourlyRate?: number|null; dailyRate?: number|null; slipDate?: string|null;
+    activeHoursToday?: number; workingCostToday?: number|null; idleCostToday?: number|null;
+  } | null>(null);
+  const [erpProjects, setErpProjects] = useState<Array<{ id: number; name: string; erpnextName: string }>>([]);
 
   const assignedTasks = tasks.filter(t =>
     (t.assigneeName && displayName && t.assigneeName.toLowerCase().includes(displayName.split(" ")[0].toLowerCase())) ||
@@ -318,6 +324,48 @@ function EmployeeDetailPanel({ row, tasks, onClose }: {
       .finally(() => setHistoryLoading(false));
   }, [row.deviceUsername]);
 
+  useEffect(() => {
+    if (!row.deviceUsername) return;
+    fetch(`${BASE_PROXY}/api/activity/${encodeURIComponent(row.deviceUsername)}/cost-info`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setCostInfo(d))
+      .catch(() => {});
+  }, [row.deviceUsername]);
+
+  useEffect(() => {
+    fetch(`${BASE_PROXY}/api/projects`)
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setErpProjects(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, []);
+
+  // Extract project numbers from a string (e.g. "WTT-PROJ-001", "PRJ-0023", "2425-XX-001")
+  function extractProjectRefs(text: string): string[] {
+    if (!text) return [];
+    const matches: string[] = [];
+    // ERPNext project name pattern (e.g. WTT-PROJ-0001)
+    const m1 = text.match(/\b[A-Z]{2,6}-[A-Z]{2,6}-\d{3,5}\b/g);
+    if (m1) matches.push(...m1);
+    // Year-based pattern like 2425-ME-001
+    const m2 = text.match(/\b\d{4}-[A-Z]{2,4}-\d{3,4}\b/g);
+    if (m2) matches.push(...m2);
+    // Generic project code fallback
+    const m3 = text.match(/\bPROJ-\d{3,5}\b/gi);
+    if (m3) matches.push(...m3.map(s => s.toUpperCase()));
+    return [...new Set(matches)];
+  }
+
+  function matchProject(refs: string[]): { id: number; name: string; erpnextName: string } | null {
+    for (const ref of refs) {
+      const found = erpProjects.find(p =>
+        p.erpnextName?.toLowerCase() === ref.toLowerCase() ||
+        p.name?.toLowerCase().includes(ref.toLowerCase())
+      );
+      if (found) return found;
+    }
+    return null;
+  }
+
   const tasksByStatus = {
     todo: assignedTasks.filter(t => t.status === "todo"),
     in_progress: assignedTasks.filter(t => t.status === "in_progress"),
@@ -327,6 +375,31 @@ function EmployeeDetailPanel({ row, tasks, onClose }: {
 
   const productivityScore = calcProductivityScore(history, row);
   const currentAppClass = classifyApp(row.activeApp);
+
+  // Project matching per history entry
+  const historyWithProject = history.map(e => {
+    const refs = extractProjectRefs((e.windowTitle || "") + " " + (e.activeApp || ""));
+    const project = matchProject(refs);
+    return { ...e, matchedProject: project, projectRefs: refs };
+  });
+
+  const projectWorkEntries = historyWithProject.filter(e => e.matchedProject);
+  const nonProjectEntries = historyWithProject.filter(e => !e.matchedProject);
+  const projectWorkPct = history.length > 0 ? Math.round((projectWorkEntries.length / history.length) * 100) : 0;
+
+  // Group project work by project
+  const projectWorkByProject = Object.entries(
+    projectWorkEntries.reduce((acc, e) => {
+      const key = e.matchedProject!.erpnextName;
+      if (!acc[key]) acc[key] = { project: e.matchedProject!, count: 0 };
+      acc[key].count++;
+      return acc;
+    }, {} as Record<string, { project: { id: number; name: string; erpnextName: string }; count: number }>)
+  ).sort((a, b) => b[1].count - a[1].count);
+
+  // Current window's project match
+  const currentRefs = extractProjectRefs((row.windowTitle || "") + " " + (row.activeApp || ""));
+  const currentProject = matchProject(currentRefs);
 
   // App usage breakdown from history
   const appUsage = Object.entries(
@@ -341,7 +414,6 @@ function EmployeeDetailPanel({ row, tasks, onClose }: {
 
   const productiveCount = history.filter(e => classifyApp(e.activeApp) === "productive").length;
   const unproductiveCount = history.filter(e => classifyApp(e.activeApp) === "unproductive").length;
-  const neutralCount = history.filter(e => classifyApp(e.activeApp) === "neutral" || !e.activeApp).length;
   const totalHistory = history.length || 1;
   const productivePct = Math.round((productiveCount / totalHistory) * 100);
   const unproductivePct = Math.round((unproductiveCount / totalHistory) * 100);
@@ -444,6 +516,48 @@ function EmployeeDetailPanel({ row, tasks, onClose }: {
             </div>
           )}
 
+          {/* Working Cost */}
+          {costInfo && costInfo.available && costInfo.hourlyRate && (
+            <div className="px-5 py-4 border-b border-gray-100">
+              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Working Cost</div>
+              <div className="space-y-2">
+                <div className="bg-violet-50 border border-violet-100 rounded-xl px-3 py-2.5">
+                  <div className="text-[10px] text-violet-400 mb-0.5">Monthly Salary (Gross)</div>
+                  <div className="text-base font-black text-violet-700">₹{costInfo.monthlySalary?.toLocaleString("en-IN")}</div>
+                  {costInfo.monthlyNet && (
+                    <div className="text-[10px] text-violet-400">Net ₹{costInfo.monthlyNet?.toLocaleString("en-IN")}</div>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+                    <div className="text-[10px] text-gray-400 mb-0.5">Per Day</div>
+                    <div className="text-sm font-bold text-gray-700">₹{costInfo.dailyRate?.toLocaleString("en-IN")}</div>
+                  </div>
+                  <div className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+                    <div className="text-[10px] text-gray-400 mb-0.5">Per Hour</div>
+                    <div className="text-sm font-bold text-gray-700">₹{costInfo.hourlyRate?.toFixed(0)}</div>
+                  </div>
+                </div>
+                <div className="bg-green-50 border border-green-200 rounded-xl px-3 py-2.5">
+                  <div className="text-[10px] text-green-600 font-semibold mb-0.5">Today's Working Cost</div>
+                  <div className="text-lg font-black text-green-700">
+                    ₹{costInfo.workingCostToday?.toLocaleString("en-IN") ?? "0"}
+                  </div>
+                  <div className="text-[10px] text-green-500">{costInfo.activeHoursToday?.toFixed(2)}h active today</div>
+                </div>
+                {costInfo.idleCostToday && costInfo.idleCostToday > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                    <div className="text-[10px] text-amber-600 font-semibold mb-0.5">Idle Cost (Lost)</div>
+                    <div className="text-sm font-bold text-amber-700">₹{costInfo.idleCostToday.toFixed(0)}</div>
+                  </div>
+                )}
+                {costInfo.slipDate && (
+                  <div className="text-[10px] text-gray-400 text-center">Salary slip: {costInfo.slipDate}</div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Employee info */}
           <div className="px-5 py-4 space-y-2 flex-1">
             <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Device Info</div>
@@ -503,7 +617,7 @@ function EmployeeDetailPanel({ row, tasks, onClose }: {
                       {row.windowTitle && row.windowTitle !== row.activeApp && (
                         <div className="text-sm text-gray-500 mt-0.5 line-clamp-2">{row.windowTitle}</div>
                       )}
-                      <div className="flex items-center gap-2 mt-2">
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
                         <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
                           currentAppClass === "productive" ? "bg-green-100 text-green-700 border border-green-200" :
                           currentAppClass === "unproductive" ? "bg-red-100 text-red-700 border border-red-200" :
@@ -511,6 +625,16 @@ function EmployeeDetailPanel({ row, tasks, onClose }: {
                         }`}>
                           {currentAppClass === "productive" ? "✓ Productive" : currentAppClass === "unproductive" ? "✗ Unproductive" : "~ Neutral"}
                         </span>
+                        {currentProject && (
+                          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-violet-100 text-violet-700 border border-violet-200 flex items-center gap-1">
+                            <Briefcase className="w-3 h-3" /> {currentProject.erpnextName} — {currentProject.name}
+                          </span>
+                        )}
+                        {!currentProject && currentRefs.length > 0 && (
+                          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-500 border border-gray-200">
+                            Ref: {currentRefs[0]}
+                          </span>
+                        )}
                         {status === "idle" && row.idleSeconds > 0 && (
                           <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200 flex items-center gap-1">
                             <Coffee className="w-3 h-3" /> Idle {formatDuration(row.idleSeconds)}
@@ -524,6 +648,72 @@ function EmployeeDetailPanel({ row, tasks, onClose }: {
                 )}
               </div>
             </div>
+
+            {/* Project Work vs Non-Project Work */}
+            {!historyLoading && history.length > 0 && erpProjects.length > 0 && (
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
+                  <Briefcase className="w-4 h-4 text-violet-500" />
+                  <span className="text-sm font-bold text-gray-800">Project Work Analysis</span>
+                  <span className="ml-auto text-xs text-gray-400">from last {history.length} events</span>
+                </div>
+                <div className="px-5 py-4">
+                  {/* Bar */}
+                  <div className="flex rounded-xl overflow-hidden h-7 mb-3 border border-gray-100">
+                    <div className="bg-violet-500 flex items-center justify-center text-white text-xs font-bold transition-all"
+                      style={{ width: `${projectWorkPct}%`, minWidth: projectWorkPct > 0 ? "2rem" : 0 }}>
+                      {projectWorkPct > 5 ? `${projectWorkPct}%` : ""}
+                    </div>
+                    <div className="bg-gray-100 flex items-center justify-center text-gray-400 text-xs font-medium flex-1">
+                      {100 - projectWorkPct > 5 ? `${100 - projectWorkPct}% Non-Project` : ""}
+                    </div>
+                  </div>
+                  {/* Legend */}
+                  <div className="flex items-center gap-4 mb-4 text-xs">
+                    <span className="flex items-center gap-1.5 font-semibold text-violet-700">
+                      <span className="w-3 h-3 rounded bg-violet-500 inline-block" />
+                      Project Work: {projectWorkPct}% ({projectWorkEntries.length} events)
+                    </span>
+                    <span className="flex items-center gap-1.5 text-gray-500">
+                      <span className="w-3 h-3 rounded bg-gray-200 inline-block" />
+                      Non-Project: {100 - projectWorkPct}% ({nonProjectEntries.length} events)
+                    </span>
+                  </div>
+                  {/* Per-project breakdown */}
+                  {projectWorkByProject.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Project Breakdown</div>
+                      {projectWorkByProject.map(([key, { project, count }]) => {
+                        const pPct = Math.round((count / history.length) * 100);
+                        return (
+                          <div key={key} className="flex items-center gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs font-semibold text-gray-800 truncate">{project.erpnextName}</span>
+                                <span className="text-[10px] text-gray-500 truncate">— {project.name}</span>
+                              </div>
+                              <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div className="h-full rounded-full bg-violet-400 transition-all duration-500"
+                                  style={{ width: `${pPct}%` }} />
+                              </div>
+                            </div>
+                            <div className="flex-shrink-0 text-right">
+                              <div className="text-sm font-bold text-violet-600">{pPct}%</div>
+                              <div className="text-[10px] text-gray-400">{count} events</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {projectWorkByProject.length === 0 && (
+                    <div className="text-center py-2 text-sm text-gray-400 italic">
+                      No project numbers detected in window titles yet
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* App usage breakdown */}
             {!historyLoading && appUsage.length > 0 && (

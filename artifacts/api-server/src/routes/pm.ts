@@ -387,7 +387,7 @@ router.get("/projects", async (req, res) => {
       return res.json(projects);
     }
     const rows = await db.select().from(projectsTable).orderBy(projectsTable.createdAt);
-    let all = rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
+    let all = rows.map((r) => ({ ...r, erpnextName: r.name, createdAt: r.createdAt.toISOString() }));
     if (allowedProjects.length > 0) all = all.filter(p => allowedProjects.includes(p.name));
     res.json(all);
   } catch (e) {
@@ -1802,6 +1802,90 @@ router.patch("/activity/:deviceUsername/erp-override", async (req, res) => {
       resolvedDept: emp.department,
       resolvedDesignation: emp.designation,
       erpEmployeeId: emp.erpEmployeeId,
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Employee cost info — fetches latest salary slip from ERPNext
+router.get("/activity/:deviceUsername/cost-info", async (req, res) => {
+  try {
+    const { deviceUsername } = req.params;
+
+    // Get the ERP employee ID from the live activity record
+    const rows = await db
+      .select({ erpEmployeeId: systemActivityTable.erpEmployeeId, fullName: systemActivityTable.fullName })
+      .from(systemActivityTable)
+      .where(eq(systemActivityTable.deviceUsername, deviceUsername))
+      .limit(1);
+
+    const erpId = rows[0]?.erpEmployeeId;
+    if (!erpId) return res.json({ available: false, reason: "No ERP employee linked" });
+
+    const ERP_URL = (process.env.ERPNEXT_URL || "https://erp.wttint.com").replace(/\/$/, "");
+    const API_KEY = process.env.ERPNEXT_API_KEY || "";
+    const API_SECRET = process.env.ERPNEXT_API_SECRET || "";
+    const hdr: Record<string, string> = { Accept: "application/json", Authorization: `token ${API_KEY}:${API_SECRET}` };
+
+    // Fetch latest submitted salary slip for this employee
+    const params = new URLSearchParams({
+      filters: JSON.stringify([["employee", "=", erpId], ["docstatus", "=", "1"]]),
+      fields: JSON.stringify(["gross_pay", "net_pay", "total_deduction", "posting_date", "start_date", "end_date", "employee", "employee_name"]),
+      limit_page_length: "1",
+      order_by: "posting_date desc",
+    });
+
+    let monthlySalary: number | null = null;
+    let monthlyNet: number | null = null;
+    let slipDate: string | null = null;
+
+    try {
+      const r = await fetch(`${ERP_URL}/api/resource/Salary%20Slip?${params}`, { headers: hdr });
+      if (r.ok) {
+        const data = (await r.json()) as any;
+        const slip = data?.data?.[0];
+        if (slip) {
+          monthlySalary = Number(slip.gross_pay) || null;
+          monthlyNet = Number(slip.net_pay) || null;
+          slipDate = slip.posting_date || null;
+        }
+      }
+    } catch {}
+
+    // Working days per month = 26, hours per day = 8
+    const hourlyRate = monthlySalary ? Math.round((monthlySalary / (26 * 8)) * 100) / 100 : null;
+    const dailyRate = monthlySalary ? Math.round((monthlySalary / 26) * 100) / 100 : null;
+    const minuteRate = hourlyRate ? Math.round((hourlyRate / 60) * 100) / 100 : null;
+
+    // Count today's active seconds from activity_log
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayResult = await pool.query(
+      `SELECT COALESCE(SUM(CASE WHEN is_active THEN 30 ELSE 0 END), 0) AS active_secs,
+              COALESCE(SUM(idle_seconds), 0) AS total_idle
+       FROM activity_log
+       WHERE device_username = $1 AND logged_at >= $2`,
+      [deviceUsername, today.toISOString()]
+    );
+    const activeSecsToday: number = Number(todayResult.rows[0]?.active_secs) || 0;
+    const idleSecsToday: number = Number(todayResult.rows[0]?.total_idle) || 0;
+    const activeHoursToday = Math.round((activeSecsToday / 3600) * 100) / 100;
+    const workingCostToday = hourlyRate ? Math.round(hourlyRate * activeHoursToday * 100) / 100 : null;
+    const idleCostToday = hourlyRate ? Math.round(hourlyRate * (idleSecsToday / 3600) * 100) / 100 : null;
+
+    res.json({
+      available: true,
+      erpEmployeeId: erpId,
+      monthlySalary,
+      monthlyNet,
+      hourlyRate,
+      dailyRate,
+      minuteRate,
+      slipDate,
+      activeHoursToday,
+      workingCostToday,
+      idleCostToday,
     });
   } catch (e) {
     res.status(500).json({ error: String(e) });
