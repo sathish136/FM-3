@@ -239,6 +239,55 @@ function TaskModal({
   );
 }
 
+// ── Productivity helpers ────────────────────────────────────────────────────────
+const PRODUCTIVE_APPS = [
+  "autocad","solidworks","catia","inventor","fusion","freecad","sketchup","revit",
+  "word","excel","powerpoint","outlook","onenote","access","publisher","visio",
+  "teams","zoom","meet","webex","slack","skype",
+  "erpnext","sap","tally","quickbooks","odoo","frappe",
+  "code","vscode","pycharm","intellij","eclipse","android studio","xcode","netbeans","sublime","atom","vim","notepad++",
+  "photoshop","illustrator","premiere","after effects","lightroom","indesign","figma","sketch","affinity","blender",
+  "terminal","cmd","powershell","bash","git","postman","filezilla","putty","winscp",
+  "chrome","firefox","edge","safari","brave",
+  "acrobat","pdf","reader","foxit",
+  "autocorrect","notepad","wordpad",
+];
+const UNPRODUCTIVE_APPS = [
+  "youtube","netflix","prime","hotstar","disney","hbo","hulu","twitch","spotify",
+  "facebook","instagram","twitter","x.com","tiktok","snapchat","reddit","pinterest","telegram","whatsapp",
+  "steam","epic games","battlenet","valorant","minecraft","gta","fortnite","pubg","roblox",
+  "vlc","wmplayer","media player","winamp","itunes","groove music",
+  "solitaire","minesweeper","chess","candy crush","game",
+];
+
+function classifyApp(app: string): "productive" | "unproductive" | "neutral" {
+  if (!app) return "neutral";
+  const lower = app.toLowerCase();
+  if (UNPRODUCTIVE_APPS.some(u => lower.includes(u))) return "unproductive";
+  if (PRODUCTIVE_APPS.some(p => lower.includes(p))) return "productive";
+  return "neutral";
+}
+
+function calcProductivityScore(history: ActivityLog[], currentRow: SystemActivity): number {
+  const entries = history.length > 0 ? history : [];
+  if (entries.length === 0) {
+    if (activityStatus(currentRow) === "active") return 70;
+    if (activityStatus(currentRow) === "idle") return 20;
+    return 0;
+  }
+  let score = 0;
+  let total = 0;
+  for (const e of entries) {
+    const cls = classifyApp(e.activeApp);
+    const idlePenalty = Math.min(e.idleSeconds / 300, 1);
+    const pts = cls === "productive" ? 1 : cls === "unproductive" ? 0 : 0.5;
+    const weight = 1 - idlePenalty * 0.7;
+    score += pts * weight;
+    total += 1;
+  }
+  return total === 0 ? 50 : Math.round((score / total) * 100);
+}
+
 // ── Employee Detail Panel ──────────────────────────────────────────────────────
 function EmployeeDetailPanel({ row, tasks, onClose }: {
   row: SystemActivity;
@@ -276,202 +325,283 @@ function EmployeeDetailPanel({ row, tasks, onClose }: {
     done: assignedTasks.filter(t => t.status === "done"),
   };
 
+  const productivityScore = calcProductivityScore(history, row);
+  const currentAppClass = classifyApp(row.activeApp);
+
+  // App usage breakdown from history
+  const appUsage = Object.entries(
+    history.reduce((acc, e) => {
+      const key = e.activeApp || "Unknown";
+      if (!acc[key]) acc[key] = { count: 0, idleTotal: 0, cls: classifyApp(e.activeApp) };
+      acc[key].count++;
+      acc[key].idleTotal += e.idleSeconds;
+      return acc;
+    }, {} as Record<string, { count: number; idleTotal: number; cls: "productive"|"unproductive"|"neutral" }>)
+  ).sort((a, b) => b[1].count - a[1].count).slice(0, 8);
+
+  const productiveCount = history.filter(e => classifyApp(e.activeApp) === "productive").length;
+  const unproductiveCount = history.filter(e => classifyApp(e.activeApp) === "unproductive").length;
+  const neutralCount = history.filter(e => classifyApp(e.activeApp) === "neutral" || !e.activeApp).length;
+  const totalHistory = history.length || 1;
+  const productivePct = Math.round((productiveCount / totalHistory) * 100);
+  const unproductivePct = Math.round((unproductiveCount / totalHistory) * 100);
+  const idleEntries = history.filter(e => e.idleSeconds > 60).length;
+  const idlePct = Math.round((idleEntries / totalHistory) * 100);
+
+  const scoreColor = productivityScore >= 70 ? "#10b981" : productivityScore >= 40 ? "#f59e0b" : "#ef4444";
+  const scoreLabel = productivityScore >= 70 ? "Productive" : productivityScore >= 40 ? "Moderate" : "Unproductive";
+  const scoreBg = productivityScore >= 70 ? "from-green-500 to-emerald-600" : productivityScore >= 40 ? "from-amber-400 to-orange-500" : "from-red-500 to-rose-600";
+
   return (
-    <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col overflow-hidden">
-      {/* Top bar */}
-      <div className={`flex-shrink-0 border-b ${status === "active" ? "bg-gradient-to-r from-green-600 to-emerald-600 border-green-700" : status === "idle" ? "bg-gradient-to-r from-amber-500 to-orange-500 border-amber-600" : "bg-gradient-to-r from-gray-600 to-gray-700 border-gray-700"}`}>
-        <div className="px-6 py-3 flex items-center gap-4">
-          <button onClick={onClose} className="flex items-center gap-2 text-white/80 hover:text-white text-sm font-medium transition-colors">
-            <ArrowLeft className="w-4 h-4" /> Back to Team Pulse
-          </button>
-          <span className="text-white/40">|</span>
-          <div className="flex items-center gap-2">
-            <span className={`w-2.5 h-2.5 rounded-full bg-white ${status === "active" ? "animate-pulse" : "opacity-60"}`} />
-            <span className="text-white text-sm font-semibold">{STATUS_LABEL[status]}</span>
-          </div>
-          {status === "idle" && row.idleSeconds > 0 && (
-            <span className="text-white/80 text-xs flex items-center gap-1">
-              <Coffee className="w-3.5 h-3.5" /> Idle for {formatDuration(row.idleSeconds)}
-            </span>
-          )}
-          {status === "offline" && (
-            <span className="text-white/70 text-xs">Last seen {timeSince(row.lastSeen)}</span>
-          )}
-          <div className="ml-auto text-white/60 text-xs">{timeSince(row.lastSeen)}</div>
+    <div className="fixed inset-0 z-50 bg-gray-100 flex flex-col overflow-hidden">
+      {/* Top nav bar */}
+      <div className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-4 shadow-sm">
+        <button onClick={onClose} className="flex items-center gap-2 text-gray-500 hover:text-gray-900 text-sm font-medium transition-colors">
+          <ArrowLeft className="w-4 h-4" /> Team Pulse
+        </button>
+        <ChevronRight className="w-3.5 h-3.5 text-gray-300" />
+        <span className="text-sm font-semibold text-gray-900">{displayName}</span>
+        <span className={`ml-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${status === "active" ? "bg-green-100 text-green-700" : status === "idle" ? "bg-amber-100 text-amber-700" : "bg-gray-200 text-gray-500"}`}>
+          {STATUS_LABEL[status]}
+        </span>
+        {status === "idle" && row.idleSeconds > 0 && (
+          <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
+            <Coffee className="w-3.5 h-3.5" /> Idle {formatDuration(row.idleSeconds)}
+          </span>
+        )}
+        <div className="ml-auto flex items-center gap-3 text-xs text-gray-400">
+          <Clock className="w-3.5 h-3.5" /> Updated {timeSince(row.lastSeen)}
         </div>
       </div>
 
-      {/* Main layout: left profile + right content */}
+      {/* Main 3-col layout */}
       <div className="flex-1 flex overflow-hidden">
 
-        {/* LEFT: Employee profile sidebar */}
-        <div className="w-72 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-y-auto">
-          {/* Avatar + name */}
-          <div className="px-6 pt-8 pb-6 text-center border-b border-gray-100">
-            <div className="relative inline-block mb-4">
+        {/* LEFT sidebar: Profile + score */}
+        <div className="w-64 flex-shrink-0 bg-white border-r border-gray-200 overflow-y-auto flex flex-col">
+          {/* Profile */}
+          <div className="px-5 pt-6 pb-5 text-center border-b border-gray-100">
+            <div className="relative inline-block mb-3">
               {photoUrl ? (
-                <img src={photoUrl} alt={displayName} className="w-24 h-24 rounded-2xl object-cover border-4 border-gray-100 shadow-lg mx-auto" />
+                <img src={photoUrl} alt={displayName} className="w-20 h-20 rounded-2xl object-cover border-4 border-gray-100 shadow-md" />
               ) : (
-                <div className={`w-24 h-24 rounded-2xl flex items-center justify-center text-3xl font-bold text-white shadow-lg mx-auto ${status === "active" ? "bg-gradient-to-br from-green-400 to-emerald-600" : status === "idle" ? "bg-gradient-to-br from-amber-400 to-orange-500" : "bg-gradient-to-br from-gray-300 to-gray-500"}`}>
+                <div className={`w-20 h-20 rounded-2xl flex items-center justify-center text-2xl font-bold text-white shadow-md bg-gradient-to-br ${scoreBg}`}>
                   {initials(displayName)}
                 </div>
               )}
-              <span className={`absolute bottom-0 right-0 w-5 h-5 rounded-full border-2 border-white ${STATUS_DOT[status]}`} />
+              <span className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-white shadow ${STATUS_DOT[status]}`} />
             </div>
-            <h2 className="text-base font-bold text-gray-900">{displayName}</h2>
-            {row.designation && <div className="text-sm text-blue-600 font-medium mt-0.5">{row.designation}</div>}
-            {row.department && <div className="text-xs text-gray-500 mt-0.5">{row.department}</div>}
-            {row.erpEmployeeId && (
-              <div className="mt-2 inline-block px-3 py-1 bg-gray-100 rounded-full text-[11px] font-mono text-gray-500">{row.erpEmployeeId}</div>
+            <div className="font-bold text-gray-900 text-sm">{displayName}</div>
+            {row.designation && <div className="text-xs text-blue-600 font-medium mt-0.5">{row.designation}</div>}
+            {row.department && <div className="text-[11px] text-gray-400 mt-0.5">{row.department}</div>}
+            {row.erpEmployeeId && <div className="mt-1.5 text-[10px] font-mono text-gray-400">{row.erpEmployeeId}</div>}
+          </div>
+
+          {/* Productivity score ring */}
+          <div className="px-5 py-5 border-b border-gray-100 text-center">
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Productivity Score</div>
+            <div className="relative inline-flex items-center justify-center">
+              <svg width="100" height="100" className="-rotate-90">
+                <circle cx="50" cy="50" r="40" fill="none" stroke="#f3f4f6" strokeWidth="10" />
+                <circle cx="50" cy="50" r="40" fill="none" stroke={scoreColor} strokeWidth="10"
+                  strokeDasharray={`${2 * Math.PI * 40}`}
+                  strokeDashoffset={`${2 * Math.PI * 40 * (1 - productivityScore / 100)}`}
+                  strokeLinecap="round" style={{ transition: "stroke-dashoffset 0.6s ease" }} />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-2xl font-black" style={{ color: scoreColor }}>{productivityScore}</span>
+                <span className="text-[9px] font-bold text-gray-400 uppercase">/ 100</span>
+              </div>
+            </div>
+            <div className={`mt-2 text-sm font-bold ${productivityScore >= 70 ? "text-green-600" : productivityScore >= 40 ? "text-amber-600" : "text-red-500"}`}>
+              {scoreLabel}
+            </div>
+            {!historyLoading && history.length === 0 && (
+              <div className="text-[10px] text-gray-400 mt-1">Based on current status</div>
             )}
           </div>
 
-          {/* Details */}
-          <div className="px-5 py-4 space-y-3 flex-1">
-            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Employee Details</div>
+          {/* Breakdown bars */}
+          {!historyLoading && history.length > 0 && (
+            <div className="px-5 py-4 border-b border-gray-100 space-y-2">
+              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Session Breakdown</div>
+              {[
+                { label: "Productive", pct: productivePct, color: "bg-green-500", textColor: "text-green-600" },
+                { label: "Unproductive", pct: unproductivePct, color: "bg-red-400", textColor: "text-red-500" },
+                { label: "Neutral / Other", pct: Math.max(0, 100 - productivePct - unproductivePct), color: "bg-gray-300", textColor: "text-gray-400" },
+                { label: "Idle Periods", pct: idlePct, color: "bg-amber-400", textColor: "text-amber-600" },
+              ].map(b => (
+                <div key={b.label}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] text-gray-600">{b.label}</span>
+                    <span className={`text-[11px] font-bold ${b.textColor}`}>{b.pct}%</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full ${b.color} transition-all duration-500`} style={{ width: `${b.pct}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Employee info */}
+          <div className="px-5 py-4 space-y-2 flex-1">
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Device Info</div>
             {row.email && (
-              <div className="bg-gray-50 rounded-xl px-3 py-2.5">
-                <div className="text-[10px] text-gray-400 mb-0.5">Email</div>
+              <div>
+                <div className="text-[10px] text-gray-400">Email</div>
                 <div className="text-xs font-medium text-gray-700 break-all">{row.email}</div>
               </div>
             )}
             {row.deviceUsername && (
-              <div className="bg-gray-50 rounded-xl px-3 py-2.5">
-                <div className="text-[10px] text-gray-400 mb-0.5">Device User</div>
-                <div className="text-xs font-mono font-medium text-gray-700">{row.deviceUsername}</div>
+              <div>
+                <div className="text-[10px] text-gray-400">Device User</div>
+                <div className="text-xs font-mono text-gray-700">{row.deviceUsername}</div>
               </div>
             )}
             {row.deviceName && (
-              <div className="bg-gray-50 rounded-xl px-3 py-2.5">
-                <div className="text-[10px] text-gray-400 mb-0.5">Device Name</div>
-                <div className="text-xs font-medium text-gray-700">{row.deviceName}</div>
+              <div>
+                <div className="text-[10px] text-gray-400">Device Name</div>
+                <div className="text-xs text-gray-700">{row.deviceName}</div>
               </div>
             )}
-
-            {/* Task summary mini-stats */}
-            <div className="pt-3">
-              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Task Summary</div>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { label: "In Progress", count: tasksByStatus.in_progress.length, color: "text-blue-600 bg-blue-50" },
-                  { label: "To Do", count: tasksByStatus.todo.length, color: "text-gray-600 bg-gray-100" },
-                  { label: "In Review", count: tasksByStatus.review.length, color: "text-amber-600 bg-amber-50" },
-                  { label: "Done", count: tasksByStatus.done.length, color: "text-green-600 bg-green-50" },
-                ].map(s => (
-                  <div key={s.label} className={`rounded-xl px-3 py-2.5 ${s.color}`}>
-                    <div className="text-xl font-bold">{s.count}</div>
-                    <div className="text-[10px] font-medium opacity-80">{s.label}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
         </div>
 
-        {/* RIGHT: Activity + tasks */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-4xl mx-auto p-6 space-y-6">
+        {/* CENTER: Current activity + timeline */}
+        <div className="flex-1 overflow-y-auto bg-gray-100">
+          <div className="p-5 space-y-4">
 
-            {/* Current Activity Banner */}
-            <div className={`rounded-2xl border p-5 ${status === "active" ? "bg-green-50 border-green-200" : status === "idle" ? "bg-amber-50 border-amber-200" : "bg-gray-100 border-gray-200"}`}>
-              <div className="flex items-center gap-2 mb-3">
-                <Monitor className={`w-4 h-4 ${status === "active" ? "text-green-600" : status === "idle" ? "text-amber-600" : "text-gray-400"}`} />
-                <span className="text-sm font-bold text-gray-800">Current Activity</span>
-                <div className="ml-auto flex items-center gap-1.5 text-xs text-gray-400">
-                  <Clock className="w-3.5 h-3.5" /> Updated {timeSince(row.lastSeen)}
-                </div>
+            {/* Current activity hero card */}
+            <div className={`rounded-2xl overflow-hidden shadow-sm border ${
+              status === "active" && currentAppClass === "productive" ? "border-green-200" :
+              status === "active" && currentAppClass === "unproductive" ? "border-red-200" :
+              status === "idle" ? "border-amber-200" : "border-gray-200"
+            }`}>
+              <div className={`px-5 py-2 text-xs font-bold flex items-center gap-2 ${
+                status === "active" && currentAppClass === "productive" ? "bg-green-500 text-white" :
+                status === "active" && currentAppClass === "unproductive" ? "bg-red-500 text-white" :
+                status === "idle" ? "bg-amber-400 text-white" : "bg-gray-400 text-white"
+              }`}>
+                <Monitor className="w-3.5 h-3.5" />
+                {status === "offline" ? "Offline" :
+                 status === "idle" ? "Idle — No Input Detected" :
+                 currentAppClass === "productive" ? "Productive Activity" :
+                 currentAppClass === "unproductive" ? "Unproductive Activity" : "Active — Neutral App"}
               </div>
-              {status !== "offline" && row.activeApp ? (
-                <div>
-                  <div className="text-xl font-bold text-gray-900 mb-1">{row.activeApp}</div>
-                  {row.windowTitle && row.windowTitle !== row.activeApp && (
-                    <div className="text-sm text-gray-500" title={row.windowTitle}>{row.windowTitle}</div>
-                  )}
-                  {status === "idle" && row.idleSeconds > 0 && (
-                    <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 border border-amber-300 text-amber-700 text-xs font-semibold">
-                      <Coffee className="w-3.5 h-3.5" /> Idle for {formatDuration(row.idleSeconds)} — no keyboard/mouse activity
+              <div className="bg-white px-5 py-4">
+                {status !== "offline" && row.activeApp ? (
+                  <div className="flex items-start gap-4">
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 text-white font-bold text-lg shadow-sm ${
+                      currentAppClass === "productive" ? "bg-gradient-to-br from-green-400 to-emerald-600" :
+                      currentAppClass === "unproductive" ? "bg-gradient-to-br from-red-400 to-rose-600" :
+                      "bg-gradient-to-br from-blue-400 to-indigo-500"}`}>
+                      {(row.activeApp[0] || "?").toUpperCase()}
                     </div>
-                  )}
-                </div>
-              ) : (
-                <div className="text-gray-400 italic text-sm">No activity detected — device is offline</div>
-              )}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-lg font-bold text-gray-900">{row.activeApp}</div>
+                      {row.windowTitle && row.windowTitle !== row.activeApp && (
+                        <div className="text-sm text-gray-500 mt-0.5 line-clamp-2">{row.windowTitle}</div>
+                      )}
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                          currentAppClass === "productive" ? "bg-green-100 text-green-700 border border-green-200" :
+                          currentAppClass === "unproductive" ? "bg-red-100 text-red-700 border border-red-200" :
+                          "bg-blue-50 text-blue-600 border border-blue-100"
+                        }`}>
+                          {currentAppClass === "productive" ? "✓ Productive" : currentAppClass === "unproductive" ? "✗ Unproductive" : "~ Neutral"}
+                        </span>
+                        {status === "idle" && row.idleSeconds > 0 && (
+                          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200 flex items-center gap-1">
+                            <Coffee className="w-3 h-3" /> Idle {formatDuration(row.idleSeconds)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-gray-400 italic py-2">Device is offline — last seen {timeSince(row.lastSeen)}</div>
+                )}
+              </div>
             </div>
 
-            {/* Activity History */}
-            <div>
-              <div className="flex items-center gap-2 mb-3">
+            {/* App usage breakdown */}
+            {!historyLoading && appUsage.length > 0 && (
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
+                  <BarChart2 className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm font-bold text-gray-800">App Usage Breakdown</span>
+                  <span className="ml-auto text-xs text-gray-400">from last {history.length} events</span>
+                </div>
+                <div className="divide-y divide-gray-50">
+                  {appUsage.map(([app, info]) => {
+                    const pct = Math.round((info.count / totalHistory) * 100);
+                    return (
+                      <div key={app} className="px-5 py-3 flex items-center gap-3">
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${info.cls === "productive" ? "bg-green-500" : info.cls === "unproductive" ? "bg-red-400" : "bg-gray-300"}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-semibold text-gray-800 truncate">{app}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0 ${
+                              info.cls === "productive" ? "bg-green-50 text-green-600" :
+                              info.cls === "unproductive" ? "bg-red-50 text-red-500" :
+                              "bg-gray-100 text-gray-400"
+                            }`}>
+                              {info.cls === "productive" ? "Productive" : info.cls === "unproductive" ? "Unproductive" : "Neutral"}
+                            </span>
+                          </div>
+                          <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full transition-all duration-500 ${info.cls === "productive" ? "bg-green-400" : info.cls === "unproductive" ? "bg-red-400" : "bg-gray-300"}`}
+                              style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                        <div className="flex-shrink-0 text-right">
+                          <div className="text-sm font-bold text-gray-700">{pct}%</div>
+                          <div className="text-[10px] text-gray-400">{info.count} events</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Activity Timeline */}
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
                 <History className="w-4 h-4 text-gray-400" />
-                <h3 className="text-sm font-bold text-gray-800">Activity Timeline</h3>
+                <span className="text-sm font-bold text-gray-800">Activity Timeline</span>
                 <span className="ml-auto text-xs text-gray-400">Last 50 events</span>
               </div>
               {historyLoading ? (
-                <div className="flex items-center justify-center py-8">
+                <div className="flex items-center justify-center py-10">
                   <div className="w-6 h-6 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
                 </div>
               ) : history.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-gray-200 p-6 text-center text-sm text-gray-400 italic">No activity history recorded yet</div>
+                <div className="p-8 text-center text-sm text-gray-400 italic">No activity history yet</div>
               ) : (
-                <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-                  <div className="divide-y divide-gray-50">
-                    {history.map((log, i) => (
-                      <div key={log.id} className={`flex items-center gap-4 px-5 py-3 ${i === 0 ? "bg-blue-50/40" : "hover:bg-gray-50"} transition-colors`}>
-                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${log.isActive ? "bg-green-500" : "bg-amber-400"}`} />
+                <div className="divide-y divide-gray-50 max-h-72 overflow-y-auto">
+                  {history.map((log, i) => {
+                    const cls = classifyApp(log.activeApp);
+                    return (
+                      <div key={log.id} className={`flex items-center gap-3 px-5 py-2.5 ${i === 0 ? "bg-blue-50/30" : "hover:bg-gray-50"} transition-colors`}>
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${cls === "productive" ? "bg-green-500" : cls === "unproductive" ? "bg-red-400" : log.isActive ? "bg-blue-400" : "bg-amber-400"}`} />
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-gray-800 truncate">{log.activeApp || "—"}</div>
+                          <div className="text-xs font-semibold text-gray-800 truncate">{log.activeApp || "—"}</div>
                           {log.windowTitle && log.windowTitle !== log.activeApp && (
-                            <div className="text-xs text-gray-400 truncate">{log.windowTitle}</div>
+                            <div className="text-[10px] text-gray-400 truncate">{log.windowTitle}</div>
                           )}
                         </div>
-                        {log.idleSeconds > 0 && (
-                          <span className="text-[11px] text-amber-500 font-medium flex-shrink-0">Idle {formatDuration(log.idleSeconds)}</span>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ${
+                          cls === "productive" ? "bg-green-50 text-green-600" :
+                          cls === "unproductive" ? "bg-red-50 text-red-500" :
+                          "bg-gray-100 text-gray-400"}`}>
+                          {cls === "productive" ? "✓" : cls === "unproductive" ? "✗" : "~"}
+                        </span>
+                        {log.idleSeconds > 60 && (
+                          <span className="text-[10px] text-amber-500 font-medium flex-shrink-0">⏸ {formatDuration(log.idleSeconds)}</span>
                         )}
-                        <div className="text-xs text-gray-400 flex-shrink-0 w-16 text-right">{timeSince(log.loggedAt)}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Assigned Tasks */}
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <ClipboardList className="w-4 h-4 text-gray-400" />
-                <h3 className="text-sm font-bold text-gray-800">Assigned Tasks</h3>
-                <span className="ml-2 px-2 py-0.5 bg-gray-100 rounded-full text-xs font-semibold text-gray-500">{assignedTasks.length}</span>
-              </div>
-              {assignedTasks.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-gray-200 p-6 text-center text-sm text-gray-400 italic">No tasks assigned to this employee</div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {(["in_progress", "todo", "review", "done"] as const).map(s => {
-                    const col = COLUMNS.find(c => c.id === s)!;
-                    const sTasks = tasksByStatus[s];
-                    if (sTasks.length === 0) return null;
-                    return (
-                      <div key={s} className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-                        <div className={`px-4 py-2.5 border-b text-xs font-bold flex items-center gap-2 ${s === "in_progress" ? "bg-blue-50 border-blue-100 text-blue-700" : s === "done" ? "bg-green-50 border-green-100 text-green-700" : s === "review" ? "bg-amber-50 border-amber-100 text-amber-700" : "bg-gray-50 border-gray-100 text-gray-600"}`}>
-                          <span className={`w-2 h-2 rounded-full ${col.dot}`} />
-                          {col.label}
-                          <span className="ml-auto opacity-60">{sTasks.length}</span>
-                        </div>
-                        <div className="divide-y divide-gray-50">
-                          {sTasks.map(t => (
-                            <div key={t.id} className="px-4 py-3">
-                              <div className="text-sm font-medium text-gray-800 line-clamp-2 mb-1">{t.title}</div>
-                              {t.description && <div className="text-xs text-gray-400 line-clamp-1 mb-1.5">{t.description}</div>}
-                              <div className="flex items-center gap-2">
-                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${priorityColor(t.priority)}`}>{t.priority}</span>
-                                {t.dueDate && (
-                                  <span className={`text-[10px] flex items-center gap-0.5 ${new Date(t.dueDate) < new Date() && t.status !== "done" ? "text-red-500" : "text-gray-400"}`}>
-                                    <Calendar className="w-3 h-3" /> {t.dueDate}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
+                        <div className="text-[10px] text-gray-400 flex-shrink-0 w-14 text-right">{timeSince(log.loggedAt)}</div>
                       </div>
                     );
                   })}
@@ -479,6 +609,90 @@ function EmployeeDetailPanel({ row, tasks, onClose }: {
               )}
             </div>
 
+          </div>
+        </div>
+
+        {/* RIGHT sidebar: Tasks */}
+        <div className="w-72 flex-shrink-0 bg-white border-l border-gray-200 overflow-y-auto flex flex-col">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2 flex-shrink-0">
+            <ClipboardList className="w-4 h-4 text-gray-400" />
+            <span className="text-sm font-bold text-gray-800">Assigned Tasks</span>
+            <span className="ml-auto px-2 py-0.5 bg-gray-100 rounded-full text-xs font-semibold text-gray-500">{assignedTasks.length}</span>
+          </div>
+
+          {/* Task stats */}
+          <div className="px-4 py-3 grid grid-cols-2 gap-2 border-b border-gray-100 flex-shrink-0">
+            {[
+              { label: "In Progress", count: tasksByStatus.in_progress.length, color: "text-blue-600 bg-blue-50 border-blue-100" },
+              { label: "To Do", count: tasksByStatus.todo.length, color: "text-gray-600 bg-gray-100 border-gray-200" },
+              { label: "Review", count: tasksByStatus.review.length, color: "text-amber-600 bg-amber-50 border-amber-100" },
+              { label: "Done", count: tasksByStatus.done.length, color: "text-green-600 bg-green-50 border-green-100" },
+            ].map(s => (
+              <div key={s.label} className={`rounded-xl border px-3 py-2 ${s.color}`}>
+                <div className="text-lg font-black">{s.count}</div>
+                <div className="text-[10px] font-semibold opacity-75">{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Task completion bar */}
+          {assignedTasks.length > 0 && (
+            <div className="px-4 py-3 border-b border-gray-100 flex-shrink-0">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] text-gray-500 font-medium">Completion</span>
+                <span className="text-[11px] font-bold text-green-600">
+                  {Math.round((tasksByStatus.done.length / assignedTasks.length) * 100)}%
+                </span>
+              </div>
+              <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden flex">
+                <div className="h-full bg-green-500 transition-all" style={{ width: `${(tasksByStatus.done.length / assignedTasks.length) * 100}%` }} />
+                <div className="h-full bg-blue-400 transition-all" style={{ width: `${(tasksByStatus.in_progress.length / assignedTasks.length) * 100}%` }} />
+                <div className="h-full bg-amber-400 transition-all" style={{ width: `${(tasksByStatus.review.length / assignedTasks.length) * 100}%` }} />
+              </div>
+              <div className="flex items-center gap-3 mt-1.5 text-[10px] text-gray-400">
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Done</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />Active</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Review</span>
+              </div>
+            </div>
+          )}
+
+          {/* Task list */}
+          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+            {assignedTasks.length === 0 ? (
+              <div className="text-center py-8 text-sm text-gray-400 italic">No tasks assigned</div>
+            ) : (
+              (["in_progress", "todo", "review", "done"] as const).map(s => {
+                const col = COLUMNS.find(c => c.id === s)!;
+                const sTasks = tasksByStatus[s];
+                if (sTasks.length === 0) return null;
+                return (
+                  <div key={s}>
+                    <div className={`text-[10px] font-bold mb-1.5 flex items-center gap-1.5 ${s === "in_progress" ? "text-blue-600" : s === "done" ? "text-green-600" : s === "review" ? "text-amber-600" : "text-gray-500"}`}>
+                      <span className={`w-2 h-2 rounded-full ${col.dot}`} />
+                      {col.label.toUpperCase()} ({sTasks.length})
+                    </div>
+                    {sTasks.map(t => {
+                      const overdue = t.dueDate && new Date(t.dueDate) < new Date() && t.status !== "done";
+                      return (
+                        <div key={t.id} className={`rounded-xl border px-3 py-2.5 mb-1.5 ${s === "in_progress" ? "border-blue-100 bg-blue-50/50" : s === "done" ? "border-green-100 bg-green-50/50" : "border-gray-100 bg-gray-50"}`}>
+                          <div className="text-xs font-semibold text-gray-800 line-clamp-2 mb-1">{t.title}</div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold border ${priorityColor(t.priority)}`}>{t.priority}</span>
+                            {t.dueDate && (
+                              <span className={`text-[10px] flex items-center gap-0.5 font-medium ${overdue ? "text-red-500" : "text-gray-400"}`}>
+                                <Calendar className="w-2.5 h-2.5" /> {t.dueDate}
+                                {overdue && " ⚠"}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       </div>
