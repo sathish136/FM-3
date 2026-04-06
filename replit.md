@@ -127,6 +127,35 @@ Generated Zod schemas from the OpenAPI spec (e.g. `HealthCheckResponse`). Used b
 
 Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHealthCheck`, `healthCheck`).
 
+## Task Management Module (`/task-management`)
+
+Full task management + live employee activity monitor.
+
+### Tasks (Kanban Board)
+- Kanban columns: To Do | In Progress | Review | Done
+- Create, edit, delete, and move tasks between columns
+- Filters: search, priority (low/medium/high), project
+- Task card: title, description snippet, priority badge, project tag, assignee avatar, due date
+- Quick "move to" buttons at bottom of each card
+- Backend: `GET/POST /api/fm-tasks`, `PATCH/DELETE /api/fm-tasks/:id`
+- DB: `fm_tasks` table (id, title, description, projectId, status, priority, assigneeEmail, assigneeName, createdBy, dueDate, tags, etc.)
+
+### Live Monitor
+- Shows all employees running the Windows Activity Agent
+- Each card: name, department, status badge (Active/Idle/Offline), current app, window title, idle duration, device name, last seen time
+- Color-coded: green = active (<5 min idle), amber = idle (5+ min idle), gray = offline (>5 min since last heartbeat)
+- Auto-refreshes every 30 seconds
+- "Download Agent" button serves the Python script from `/tools/flowmatrix_activity_agent.py`
+- Backend: `POST /api/activity/heartbeat` (upsert), `GET /api/activity/live`, `DELETE /api/activity/:email`
+- DB: `system_activity` table (email UNIQUE, fullName, department, activeApp, windowTitle, isActive, idleSeconds, deviceName, lastSeen)
+
+### Python Activity Agent (`/tools/flowmatrix_activity_agent.py`)
+- Runs on Windows/Mac/Linux in background
+- Sends heartbeat every 30 seconds with: active app, window title, idle seconds (via Win32 GetLastInputInfo), device hostname
+- Configure `USER_EMAIL`, `USER_FULLNAME`, `DEPARTMENT`, `API_URL` at top of script
+- Dependencies: `pip install requests psutil`
+- Startup instruction for Windows: place shortcut in Startup folder
+
 ### `scripts` (`@workspace/scripts`)
 
 Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.

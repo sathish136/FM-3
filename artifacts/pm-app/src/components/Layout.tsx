@@ -213,6 +213,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     items: [
       { path: "/projects",          label: "Projects",          icon: Briefcase,        color: "text-blue-400",   bgColor: "bg-blue-500/15" },
       { path: "/project-board",     label: "Project Board",     icon: LayoutGrid,       color: "text-indigo-400", bgColor: "bg-indigo-500/15" },
+      { path: "/task-management",   label: "Task Management",   icon: Activity,         color: "text-purple-400", bgColor: "bg-purple-500/15" },
       { path: "/project-timeline",  label: "Timeline",          icon: GanttChartSquare, color: "text-cyan-400",   bgColor: "bg-cyan-500/15" },
       { path: "/meeting-minutes",   label: "Meeting Minutes",   icon: FileText,         color: "text-teal-400",   bgColor: "bg-teal-500/15" },
       { path: "/project-drawings",  label: "Project Drawings",  icon: FolderOpen,       color: "text-sky-400",    bgColor: "bg-sky-500/15" },
@@ -319,6 +320,7 @@ const PATH_TO_MODULE: Record<string, string> = {
   "/tasks":                 "tasks",
   "/projects":              "projects",
   "/project-board":         "project-board",
+  "/task-management":       "task-management",
   "/project-timeline":      "project-timeline",
   "/meeting-minutes":       "meeting-minutes",
   "/project-drawings":      "project-drawings",

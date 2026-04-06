@@ -13,8 +13,9 @@ import {
   userPermissionsTable,
   roleTemplatesTable,
   projectDrawingsTable,
+  systemActivityTable,
 } from "@workspace/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, desc, gt } from "drizzle-orm";
 
 // Ensure all PM tables exist on startup
 pool
@@ -1445,6 +1446,134 @@ router.post("/project-drawings/:id/send-approval", async (req, res) => {
     }
 
     res.json({ success: true, sent, errors });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ── FM Tasks CRUD ─────────────────────────────────────────────────────────────
+
+router.get("/fm-tasks", async (_req, res) => {
+  try {
+    const rows = await db.select().from(fmTasksTable).orderBy(desc(fmTasksTable.createdAt));
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.post("/fm-tasks", async (req, res) => {
+  try {
+    const { title, description, projectId, status, priority, assigneeEmail, assigneeName, createdBy, dueDate, startDate, tags, isSelfAssigned, notes } = req.body;
+    if (!title) return res.status(400).json({ error: "title required" });
+    const [row] = await db.insert(fmTasksTable).values({
+      title, description: description ?? null, projectId: projectId ?? null,
+      status: status ?? "todo", priority: priority ?? "medium",
+      assigneeEmail: assigneeEmail ?? null, assigneeName: assigneeName ?? null,
+      createdBy: createdBy ?? "unknown",
+      dueDate: dueDate ?? null, startDate: startDate ?? null,
+      tags: tags ?? null, isSelfAssigned: isSelfAssigned ?? false,
+      notes: notes ?? null,
+    }).returning();
+    res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.patch("/fm-tasks/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { title, description, projectId, status, priority, assigneeEmail, assigneeName, dueDate, startDate, tags, isSelfAssigned, notes } = req.body;
+    const update: Record<string, unknown> = { updatedAt: new Date() };
+    if (title !== undefined) update.title = title;
+    if (description !== undefined) update.description = description;
+    if (projectId !== undefined) update.projectId = projectId;
+    if (status !== undefined) update.status = status;
+    if (priority !== undefined) update.priority = priority;
+    if (assigneeEmail !== undefined) update.assigneeEmail = assigneeEmail;
+    if (assigneeName !== undefined) update.assigneeName = assigneeName;
+    if (dueDate !== undefined) update.dueDate = dueDate;
+    if (startDate !== undefined) update.startDate = startDate;
+    if (tags !== undefined) update.tags = tags;
+    if (isSelfAssigned !== undefined) update.isSelfAssigned = isSelfAssigned;
+    if (notes !== undefined) update.notes = notes;
+    const [row] = await db.update(fmTasksTable).set(update).where(eq(fmTasksTable.id, id)).returning();
+    if (!row) return res.status(404).json({ error: "not found" });
+    res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.delete("/fm-tasks/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    await db.delete(fmTasksTable).where(eq(fmTasksTable.id, id));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ── System Activity (Python Agent Heartbeat) ──────────────────────────────────
+
+router.post("/activity/heartbeat", async (req, res) => {
+  try {
+    const { email, fullName, department, activeApp, windowTitle, isActive, idleSeconds, deviceName } = req.body;
+    if (!email) return res.status(400).json({ error: "email required" });
+    await db
+      .insert(systemActivityTable)
+      .values({
+        email,
+        fullName: fullName ?? "",
+        department: department ?? "",
+        activeApp: activeApp ?? "",
+        windowTitle: (windowTitle ?? "").substring(0, 300),
+        isActive: isActive !== false,
+        idleSeconds: idleSeconds ?? 0,
+        deviceName: deviceName ?? "",
+        lastSeen: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: systemActivityTable.email,
+        set: {
+          fullName: fullName ?? "",
+          department: department ?? "",
+          activeApp: activeApp ?? "",
+          windowTitle: (windowTitle ?? "").substring(0, 300),
+          isActive: isActive !== false,
+          idleSeconds: idleSeconds ?? 0,
+          deviceName: deviceName ?? "",
+          lastSeen: new Date(),
+        },
+      });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get("/activity/live", async (_req, res) => {
+  try {
+    const rows = await db
+      .select()
+      .from(systemActivityTable)
+      .orderBy(desc(systemActivityTable.lastSeen));
+    res.json(rows.map(r => ({
+      ...r,
+      lastSeen: r.lastSeen?.toISOString?.() ?? r.lastSeen,
+      createdAt: r.createdAt?.toISOString?.() ?? r.createdAt,
+    })));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.delete("/activity/:email", async (req, res) => {
+  try {
+    await db.delete(systemActivityTable).where(eq(systemActivityTable.email, req.params.email));
+    res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

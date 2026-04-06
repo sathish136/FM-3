@@ -249,6 +249,21 @@ export const insertTaskCommentSchema = createInsertSchema(taskCommentsTable).omi
 export type InsertTaskComment = z.infer<typeof insertTaskCommentSchema>;
 export type TaskComment = typeof taskCommentsTable.$inferSelect;
 
+export const systemActivityTable = pgTable("system_activity", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  fullName: text("full_name").notNull().default(""),
+  department: text("department").notNull().default(""),
+  activeApp: text("active_app").notNull().default(""),
+  windowTitle: text("window_title").notNull().default(""),
+  isActive: boolean("is_active").notNull().default(true),
+  idleSeconds: integer("idle_seconds").notNull().default(0),
+  deviceName: text("device_name").notNull().default(""),
+  lastSeen: timestamp("last_seen").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type SystemActivity = typeof systemActivityTable.$inferSelect;
+
 export const resumeAnalysisCacheTable = pgTable("resume_analysis_cache", {
   id: serial("id").primaryKey(),
   fileHash: text("file_hash").notNull().unique(),
