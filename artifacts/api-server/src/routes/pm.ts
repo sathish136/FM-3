@@ -106,6 +106,34 @@ pool
   ALTER TABLE tasks ADD COLUMN IF NOT EXISTS estimated_hours NUMERIC(8,2);
   ALTER TABLE tasks ADD COLUMN IF NOT EXISTS erp_task_id TEXT;
   ALTER TABLE tasks ADD COLUMN IF NOT EXISTS erp_status TEXT;
+  CREATE TABLE IF NOT EXISTS system_activity (
+    id SERIAL PRIMARY KEY,
+    device_username TEXT NOT NULL UNIQUE DEFAULT '',
+    email TEXT NOT NULL DEFAULT '',
+    full_name TEXT NOT NULL DEFAULT '',
+    department TEXT NOT NULL DEFAULT '',
+    designation TEXT NOT NULL DEFAULT '',
+    erp_employee_id TEXT NOT NULL DEFAULT '',
+    erp_image TEXT NOT NULL DEFAULT '',
+    active_app TEXT NOT NULL DEFAULT '',
+    window_title TEXT NOT NULL DEFAULT '',
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    idle_seconds INTEGER NOT NULL DEFAULT 0,
+    device_name TEXT NOT NULL DEFAULT '',
+    last_seen TIMESTAMP NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+  ALTER TABLE system_activity ADD COLUMN IF NOT EXISTS device_username TEXT NOT NULL DEFAULT '';
+  ALTER TABLE system_activity ADD COLUMN IF NOT EXISTS designation TEXT NOT NULL DEFAULT '';
+  ALTER TABLE system_activity ADD COLUMN IF NOT EXISTS erp_employee_id TEXT NOT NULL DEFAULT '';
+  ALTER TABLE system_activity ADD COLUMN IF NOT EXISTS erp_image TEXT NOT NULL DEFAULT '';
+  DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint WHERE conname = 'system_activity_device_username_unique'
+    ) THEN
+      ALTER TABLE system_activity ADD CONSTRAINT system_activity_device_username_unique UNIQUE (device_username);
+    END IF;
+  END $$;
 `,
   )
   .then(() => console.log("PM tables ready"))
