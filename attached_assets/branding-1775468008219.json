@@ -1,0 +1,135 @@
+{
+  "colorScheme": "light",
+  "fonts": [
+    {
+      "family": "IBM Plex Sans",
+      "role": "body"
+    },
+    {
+      "family": "ABC Diatype Variable",
+      "role": "unknown"
+    },
+    {
+      "family": "ABC Diatype Plus Variable",
+      "role": "unknown"
+    }
+  ],
+  "colors": {
+    "primary": "#2492FF",
+    "secondary": "#382C4F",
+    "accent": "#FF3C00",
+    "background": "#F6F5F4",
+    "textPrimary": "#2F3034",
+    "link": "#FF3C00"
+  },
+  "typography": {
+    "fontFamilies": {
+      "primary": "IBM Plex Sans",
+      "heading": "IBM Plex Sans"
+    },
+    "fontStacks": {
+      "heading": [
+        "IBM Plex Sans",
+        "sans-serif"
+      ],
+      "body": [
+        "IBM Plex Sans",
+        "sans-serif"
+      ],
+      "paragraph": [
+        "IBM Plex Sans",
+        "sans-serif"
+      ]
+    },
+    "fontSizes": {
+      "h1": "24px",
+      "h2": "24px",
+      "body": "14px"
+    }
+  },
+  "spacing": {
+    "baseUnit": 4,
+    "borderRadius": "6px"
+  },
+  "components": {
+    "buttonPrimary": {
+      "background": "#E7E7F4",
+      "textColor": "#382C4F",
+      "borderRadius": "6px",
+      "borderRadiusCorners": {
+        "topLeft": "6px",
+        "topRight": "0px",
+        "bottomRight": "0px",
+        "bottomLeft": "6px"
+      },
+      "shadow": "none"
+    },
+    "buttonSecondary": {
+      "background": "#F6F5F4",
+      "textColor": "#2492FF",
+      "borderRadius": "4px",
+      "borderRadiusCorners": {
+        "topLeft": "0px",
+        "topRight": "0px",
+        "bottomRight": "4px",
+        "bottomLeft": "4px"
+      },
+      "shadow": "none"
+    }
+  },
+  "images": {
+    "logo": "File saved at: attached_assets/logo.svg",
+    "favicon": "File saved at: attached_assets/favicon.png",
+    "ogImage": "https://storage.googleapis.com/replit/images/1773724400047_ed91cbc3fc2b705b87905b57354b63e4.png",
+    "logoHref": "File saved at: attached_assets/logoHref.html"
+  },
+  "__llm_logo_reasoning": {
+    "selectedIndex": 0,
+    "reasoning": "Selected #0 because it is visible, located in the header, and links to the homepage, matching the brand 'replit'.",
+    "confidence": 0.95,
+    "source": "llm"
+  },
+  "__llm_button_reasoning": {
+    "primary": {
+      "index": 0,
+      "text": "Remix this app",
+      "reasoning": "Button #0 ('Remix this app') has a more vibrant and distinctive background color (#E7E7F4) compared to Button #1. It also has action-oriented text, making it the primary CTA."
+    },
+    "secondary": {
+      "index": 1,
+      "text": "Skip to content",
+      "reasoning": "Button #1 ('Skip to content') has a more neutral background color (#F6F5F4) and serves a navigational purpose, making it suitable as a secondary button."
+    },
+    "confidence": 0.9
+  },
+  "personality": {
+    "tone": "modern",
+    "energy": "medium",
+    "targetAudience": "developers and tech enthusiasts"
+  },
+  "designSystem": {
+    "framework": "custom",
+    "componentLibrary": ""
+  },
+  "confidence": {
+    "buttons": 0.9,
+    "colors": 0.9,
+    "overall": 0.9
+  },
+  "__llm_metadata": {
+    "logoSelection": {
+      "llmCalled": true,
+      "llmSucceeded": true,
+      "finalSource": "llm",
+      "rawLogoSelection": {
+        "selectedLogoIndex": 0,
+        "selectedLogoReasoning": "Selected #0 because it is visible, located in the header, and links to the homepage, matching the brand 'replit'.",
+        "confidence": 0.95
+      }
+    },
+    "buttonClassification": {
+      "llmCalled": true,
+      "llmSucceeded": true
+    }
+  }
+}
