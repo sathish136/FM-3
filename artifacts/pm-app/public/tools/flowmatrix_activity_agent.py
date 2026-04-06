@@ -32,7 +32,7 @@ import os
 # ─────────────────────────────────────────────────────────────────
 # CONFIGURATION — change only if auto-detection fails
 # ─────────────────────────────────────────────────────────────────
-API_URL         = "https://225c2066-465f-4f25-be56-82d920826ba6-00-l4ly2mlawd6s.sisko.replit.dev/api"
+API_URL         = "https://766e4ea0-5b9e-488a-ad69-f3453d798d6d-00-3m118gokkcn7o.pike.replit.dev/api"
 DEVICE_USERNAME = "AUTO"      # "AUTO" = detect from Windows login; or set e.g. "WTT1194"
 HEARTBEAT_SEC   = 30          # How often to send (seconds)
 IDLE_THRESHOLD  = 300         # Seconds of no input = idle (5 min)
