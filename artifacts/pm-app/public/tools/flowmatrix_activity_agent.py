@@ -2,16 +2,19 @@
 FlowMatriX Activity Agent
 =========================
 Runs silently in the background on Windows/Mac/Linux.
+Automatically detects your Windows/system username and matches it to your
+ERPNext employee profile — no manual configuration needed.
+
 Sends a heartbeat to FlowMatriX every 30 seconds with:
+  - Your device username (auto-detected)
   - Current active application + window title
   - Idle time (seconds since last mouse/keyboard input)
   - Device hostname
 
 SETUP (run once):
-    pip install requests psutil pygetwindow
+    pip install requests psutil
 
-CONFIGURE below then run:
-    python flowmatrix_activity_agent.py
+OPTIONAL: Override username or API URL below, or leave as AUTO.
 
 To run at Windows startup:
     Place a shortcut to this script in:
@@ -23,17 +26,18 @@ import time
 import socket
 import logging
 import platform
+import getpass
+import os
 
 # ─────────────────────────────────────────────────────────────────
-# CONFIGURE THESE BEFORE RUNNING
+# CONFIGURATION — change only if auto-detection fails
 # ─────────────────────────────────────────────────────────────────
-API_URL       = "https://225c2066-465f-4f25-be56-82d920826ba6-00-l4ly2mlawd6s.sisko.replit.dev/api"
-USER_EMAIL    = "your.email@company.com"      # e.g. john.doe@wtt.com
-USER_FULLNAME = "Your Full Name"              # e.g. John Doe
-DEPARTMENT    = "Engineering"                 # e.g. Engineering / HR / Procurement
-HEARTBEAT_SEC = 30                            # How often to send (seconds)
-IDLE_THRESHOLD = 300                          # Seconds of no input = idle (5 min)
+API_URL         = "https://225c2066-465f-4f25-be56-82d920826ba6-00-l4ly2mlawd6s.sisko.replit.dev/api"
+DEVICE_USERNAME = "AUTO"      # "AUTO" = detect from Windows login; or set e.g. "WTT1194"
+HEARTBEAT_SEC   = 30          # How often to send (seconds)
+IDLE_THRESHOLD  = 300         # Seconds of no input = idle (5 min)
 # ─────────────────────────────────────────────────────────────────
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,6 +47,44 @@ logging.basicConfig(
 log = logging.getLogger("flowmatrix-agent")
 
 PLATFORM = platform.system()  # "Windows" | "Darwin" | "Linux"
+
+
+def detect_username() -> str:
+    """Auto-detect the current logged-in username."""
+    if DEVICE_USERNAME != "AUTO":
+        return DEVICE_USERNAME
+
+    # Try Windows-specific methods first for domain/AD usernames
+    if PLATFORM == "Windows":
+        try:
+            import ctypes
+            buf = ctypes.create_unicode_buffer(256)
+            size = ctypes.c_ulong(256)
+            if ctypes.windll.secur32.GetUserNameExW(2, buf, ctypes.byref(size)):
+                # Returns DOMAIN\\username or UPN — extract the short username
+                val = buf.value
+                if "\\" in val:
+                    return val.split("\\")[-1]
+                if "@" in val:
+                    return val.split("@")[0]
+                return val
+        except Exception:
+            pass
+
+    # Fallback: standard Python method
+    try:
+        name = getpass.getuser()
+        return name
+    except Exception:
+        pass
+
+    # Last resort: environment variables
+    return (
+        os.environ.get("USERNAME")
+        or os.environ.get("USER")
+        or os.environ.get("LOGNAME")
+        or socket.gethostname()
+    )
 
 
 def get_idle_seconds() -> float:
@@ -74,7 +116,7 @@ def get_idle_seconds() -> float:
     return 0.0
 
 
-def get_active_window() -> tuple[str, str]:
+def get_active_window() -> tuple:
     """Return (app_name, window_title)."""
     try:
         if PLATFORM == "Windows":
@@ -86,7 +128,6 @@ def get_active_window() -> tuple[str, str]:
             ctypes.windll.user32.GetWindowTextW(hwnd, buf, 512)
             title = buf.value or ""
 
-            # Try to get the process name via psutil
             try:
                 import ctypes as ct
                 pid = wintypes.DWORD()
@@ -125,27 +166,32 @@ def get_active_window() -> tuple[str, str]:
     return "Unknown", "Unknown"
 
 
-def send_heartbeat(session) -> bool:
+def send_heartbeat(session, device_username: str) -> bool:
     app, title = get_active_window()
     idle_secs = get_idle_seconds()
     is_active = idle_secs < IDLE_THRESHOLD
 
     payload = {
-        "email":       USER_EMAIL,
-        "fullName":    USER_FULLNAME,
-        "department":  DEPARTMENT,
-        "activeApp":   app,
-        "windowTitle": title[:250],
-        "isActive":    is_active,
-        "idleSeconds": int(idle_secs),
-        "deviceName":  socket.gethostname(),
+        "deviceUsername": device_username,
+        "activeApp":      app,
+        "windowTitle":    title[:250],
+        "isActive":       is_active,
+        "idleSeconds":    int(idle_secs),
+        "deviceName":     socket.gethostname(),
     }
 
     try:
         r = session.post(f"{API_URL}/activity/heartbeat", json=payload, timeout=10)
         if r.status_code == 200:
-            status = "active" if is_active else f"idle {int(idle_secs // 60)}m"
-            log.info("OK  [%s]  %s — %s", status, app, title[:60])
+            data = r.json()
+            resolved = data.get("resolvedName", device_username)
+            dept = data.get("resolvedDept", "")
+            desig = data.get("resolvedDesignation", "")
+            status_str = "active" if is_active else f"idle {int(idle_secs // 60)}m"
+            info = f"{resolved}"
+            if desig: info += f" | {desig}"
+            if dept: info += f" | {dept}"
+            log.info("OK  [%s]  %s  →  %s — %s", status_str, info, app, title[:50])
             return True
         else:
             log.warning("Server returned %d: %s", r.status_code, r.text[:120])
@@ -155,11 +201,16 @@ def send_heartbeat(session) -> bool:
 
 
 def main():
+    device_username = detect_username()
+
     log.info("FlowMatriX Activity Agent starting…")
-    log.info("  User    : %s (%s)", USER_FULLNAME, USER_EMAIL)
-    log.info("  API URL : %s", API_URL)
-    log.info("  Platform: %s | Host: %s", PLATFORM, socket.gethostname())
+    log.info("  Device Username : %s  (will be matched to ERPNext)", device_username)
+    log.info("  API URL         : %s", API_URL)
+    log.info("  Platform        : %s | Host: %s", PLATFORM, socket.gethostname())
     log.info("  Heartbeat every %ds, idle threshold %ds", HEARTBEAT_SEC, IDLE_THRESHOLD)
+    log.info("")
+    log.info("  The server will automatically look up your ERPNext employee")
+    log.info("  profile using your device username — no manual setup needed.")
 
     try:
         import requests
@@ -167,16 +218,12 @@ def main():
         log.error("'requests' not installed. Run:  pip install requests psutil")
         sys.exit(1)
 
-    if USER_EMAIL == "your.email@company.com":
-        log.error("Please set USER_EMAIL and USER_FULLNAME at the top of this script before running.")
-        sys.exit(1)
-
     session = requests.Session()
-    session.headers.update({"Content-Type": "application/json", "User-Agent": "FlowMatriX-Agent/1.0"})
+    session.headers.update({"Content-Type": "application/json", "User-Agent": "FlowMatriX-Agent/2.0"})
 
     while True:
         try:
-            send_heartbeat(session)
+            send_heartbeat(session, device_username)
         except Exception as exc:
             log.error("Unexpected error: %s", exc)
         time.sleep(HEARTBEAT_SEC)

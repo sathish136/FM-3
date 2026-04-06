@@ -1518,16 +1518,118 @@ router.delete("/fm-tasks/:id", async (req, res) => {
 
 // ── System Activity (Python Agent Heartbeat) ──────────────────────────────────
 
+// In-memory cache: deviceUsername → enriched employee data (TTL 1 hour)
+const erpUserCache = new Map<string, { data: Record<string, any>; ts: number }>();
+const ERP_CACHE_TTL = 3600_000;
+
+async function resolveErpEmployee(deviceUsername: string): Promise<{
+  email: string; fullName: string; department: string; designation: string;
+  erpEmployeeId: string; erpImage: string;
+}> {
+  const cached = erpUserCache.get(deviceUsername.toLowerCase());
+  if (cached && Date.now() - cached.ts < ERP_CACHE_TTL) return cached.data as any;
+
+  const ERP_URL = process.env.ERPNEXT_URL || "https://erp.wttint.com";
+  const API_KEY = process.env.ERPNEXT_API_KEY || "";
+  const API_SECRET = process.env.ERPNEXT_API_SECRET || "";
+  const hdr = { Accept: "application/json", Authorization: `token ${API_KEY}:${API_SECRET}` };
+
+  let email = "";
+  let fullName = deviceUsername;
+
+  // Step 1: find User by username field
+  try {
+    const uFields = `["email","full_name","username","user_image"]`;
+    const ur = await fetch(
+      `${ERP_URL}/api/resource/User?filters=${encodeURIComponent(`[["username","=","${deviceUsername}"]]`)}&fields=${encodeURIComponent(uFields)}&limit=1`,
+      { headers: hdr }
+    );
+    if (ur.ok) {
+      const list = ((await ur.json()) as any)?.data || [];
+      if (list.length > 0) { email = list[0].email || ""; fullName = list[0].full_name || deviceUsername; }
+    }
+  } catch {}
+
+  // Step 2: find Employee by user_id = email or employee name = username
+  let designation = ""; let department = ""; let erpEmployeeId = ""; let erpImage = "";
+  try {
+    const eFields = `["name","employee_name","designation","department","status","image","user_id"]`;
+    let empData: Record<string, any> | null = null;
+
+    // Try by user_id
+    if (email) {
+      const er = await fetch(
+        `${ERP_URL}/api/resource/Employee?filters=${encodeURIComponent(`[["user_id","=","${email}"]]`)}&fields=${encodeURIComponent(eFields)}&limit=1`,
+        { headers: hdr }
+      );
+      if (er.ok) { const list = ((await er.json()) as any)?.data || []; if (list.length > 0) empData = list[0]; }
+    }
+
+    // Try by employee name (e.g. WTT1194)
+    if (!empData) {
+      const er2 = await fetch(
+        `${ERP_URL}/api/resource/Employee/${encodeURIComponent(deviceUsername.toUpperCase())}?fields=${encodeURIComponent(eFields)}`,
+        { headers: hdr }
+      );
+      if (er2.ok) { const d = ((await er2.json()) as any)?.data; if (d?.name) empData = d; }
+    }
+
+    if (empData) {
+      designation = empData.designation || "";
+      department = empData.department || "";
+      erpEmployeeId = empData.name || "";
+      if (empData.image) {
+        const img = String(empData.image);
+        erpImage = img.startsWith("http") ? img : `${ERP_URL}${img}`;
+      }
+      if (!fullName && empData.employee_name) fullName = empData.employee_name;
+    }
+  } catch {}
+
+  const result = { email, fullName, department, designation, erpEmployeeId, erpImage };
+  erpUserCache.set(deviceUsername.toLowerCase(), { data: result, ts: Date.now() });
+  return result;
+}
+
 router.post("/activity/heartbeat", async (req, res) => {
   try {
-    const { email, fullName, department, activeApp, windowTitle, isActive, idleSeconds, deviceName } = req.body;
-    if (!email) return res.status(400).json({ error: "email required" });
+    const { deviceUsername, email: legacyEmail, fullName: legacyFullName, department: legacyDept,
+            activeApp, windowTitle, isActive, idleSeconds, deviceName } = req.body;
+
+    // Require at least deviceUsername or legacy email
+    const identifier = deviceUsername || legacyEmail;
+    if (!identifier) return res.status(400).json({ error: "deviceUsername required" });
+
+    // Resolve ERPNext employee details (auto or from legacy fields)
+    let resolvedEmail = legacyEmail || "";
+    let resolvedFullName = legacyFullName || "";
+    let resolvedDept = legacyDept || "";
+    let resolvedDesignation = "";
+    let resolvedEmpId = "";
+    let resolvedImage = "";
+
+    if (deviceUsername) {
+      try {
+        const emp = await resolveErpEmployee(deviceUsername);
+        resolvedEmail = emp.email || legacyEmail || "";
+        resolvedFullName = emp.fullName || legacyFullName || deviceUsername;
+        resolvedDept = emp.department || legacyDept || "";
+        resolvedDesignation = emp.designation || "";
+        resolvedEmpId = emp.erpEmployeeId || "";
+        resolvedImage = emp.erpImage || "";
+      } catch {}
+    }
+
     await db
       .insert(systemActivityTable)
       .values({
-        email,
-        fullName: fullName ?? "",
-        department: department ?? "",
+        deviceUsername: identifier,
+        email: resolvedEmail,
+        fullName: resolvedFullName,
+        department: resolvedDept,
+        designation: resolvedDesignation,
+        erpEmployeeId: resolvedEmpId,
+        erpImage: resolvedImage,
         activeApp: activeApp ?? "",
         windowTitle: (windowTitle ?? "").substring(0, 300),
         isActive: isActive !== false,
@@ -1536,10 +1638,14 @@ router.post("/activity/heartbeat", async (req, res) => {
         lastSeen: new Date(),
       })
       .onConflictDoUpdate({
-        target: systemActivityTable.email,
+        target: systemActivityTable.deviceUsername,
         set: {
-          fullName: fullName ?? "",
-          department: department ?? "",
+          email: resolvedEmail,
+          fullName: resolvedFullName,
+          department: resolvedDept,
+          designation: resolvedDesignation,
+          erpEmployeeId: resolvedEmpId,
+          erpImage: resolvedImage,
           activeApp: activeApp ?? "",
           windowTitle: (windowTitle ?? "").substring(0, 300),
           isActive: isActive !== false,
@@ -1548,7 +1654,7 @@ router.post("/activity/heartbeat", async (req, res) => {
           lastSeen: new Date(),
         },
       });
-    res.json({ ok: true });
+    res.json({ ok: true, resolvedName: resolvedFullName, resolvedDept, resolvedDesignation });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

@@ -53,9 +53,13 @@ interface EmployeeProfile {
 
 interface SystemActivity {
   id: number;
+  deviceUsername: string;
   email: string;
   fullName: string;
   department: string;
+  designation: string;
+  erpEmployeeId: string;
+  erpImage: string;
   activeApp: string;
   windowTitle: string;
   isActive: boolean;
@@ -216,47 +220,80 @@ function TaskModal({
 }
 
 // ── Activity Card ──────────────────────────────────────────────────────────────
+const BASE_PROXY = import.meta.env.BASE_URL.replace(/\/$/, "");
+
 function ActivityCard({ row }: { row: SystemActivity }) {
   const status = activityStatus(row);
   const idleMin = Math.floor(row.idleSeconds / 60);
+  const displayName = row.fullName || row.deviceUsername || row.email.split("@")[0];
+  const photoUrl = row.erpImage
+    ? `${BASE_PROXY}/api/auth/photo?url=${encodeURIComponent(row.erpImage)}`
+    : null;
+
   return (
-    <div className={`bg-white rounded-2xl border p-4 shadow-sm hover:shadow-md transition-all ${status === "active" ? "border-green-200" : status === "idle" ? "border-amber-200" : "border-gray-200 opacity-70"}`}>
-      <div className="flex items-start justify-between gap-2 mb-3">
-        <div className="flex items-center gap-2.5">
-          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0 ${status === "active" ? "bg-green-500" : status === "idle" ? "bg-amber-400" : "bg-gray-300"}`}>
-            {initials(row.fullName || row.email)}
+    <div className={`bg-white rounded-2xl border shadow-sm hover:shadow-md transition-all overflow-hidden ${status === "active" ? "border-green-200" : status === "idle" ? "border-amber-200" : "border-gray-200 opacity-70"}`}>
+      {/* Employee header */}
+      <div className={`px-4 pt-4 pb-3 ${status === "active" ? "bg-green-50/40" : status === "idle" ? "bg-amber-50/40" : "bg-gray-50/40"}`}>
+        <div className="flex items-start gap-3">
+          {/* Photo or initials */}
+          <div className="flex-shrink-0 relative">
+            {photoUrl ? (
+              <img src={photoUrl} alt={displayName}
+                className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm" />
+            ) : (
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0 border-2 border-white shadow-sm ${status === "active" ? "bg-gradient-to-br from-green-400 to-emerald-600" : status === "idle" ? "bg-gradient-to-br from-amber-400 to-orange-500" : "bg-gradient-to-br from-gray-300 to-gray-400"}`}>
+                {initials(displayName)}
+              </div>
+            )}
+            <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${STATUS_DOT[status]}`} />
           </div>
-          <div className="min-w-0">
-            <div className="text-sm font-semibold text-gray-900 truncate">{row.fullName || row.email.split("@")[0]}</div>
-            <div className="text-xs text-gray-400 truncate">{row.department || row.email}</div>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-bold text-gray-900 truncate">{displayName}</span>
+              <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-semibold ${status === "active" ? "bg-green-100 text-green-700" : status === "idle" ? "bg-amber-100 text-amber-700" : "bg-gray-200 text-gray-500"}`}>
+                {STATUS_LABEL[status]}
+              </span>
+            </div>
+            {row.designation && (
+              <div className="text-[11px] text-blue-600 font-medium truncate mt-0.5">{row.designation}</div>
+            )}
+            {row.department && (
+              <div className="text-[11px] text-gray-500 truncate">{row.department}</div>
+            )}
+            {row.erpEmployeeId && (
+              <div className="text-[10px] text-gray-400 font-mono mt-0.5">ID: {row.erpEmployeeId}</div>
+            )}
           </div>
-        </div>
-        <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${status === "active" ? "bg-green-50 text-green-700" : status === "idle" ? "bg-amber-50 text-amber-700" : "bg-gray-100 text-gray-500"}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[status]}`} />
-          {STATUS_LABEL[status]}
         </div>
       </div>
 
-      {status !== "offline" && (
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-1.5 text-xs text-gray-600">
-            <Monitor className="w-3 h-3 text-gray-400 flex-shrink-0" />
-            <span className="font-medium truncate">{row.activeApp || "—"}</span>
-          </div>
-          {row.windowTitle && row.windowTitle !== row.activeApp && (
-            <div className="text-[11px] text-gray-400 truncate pl-4.5" title={row.windowTitle}>{row.windowTitle}</div>
-          )}
-          {status === "idle" && idleMin > 0 && (
-            <div className="flex items-center gap-1 text-xs text-amber-600">
-              <Coffee className="w-3 h-3" />
-              <span>Idle {idleMin}m</span>
+      {/* Activity */}
+      <div className="px-4 py-3 space-y-1.5">
+        {status !== "offline" ? (
+          <>
+            <div className="flex items-center gap-1.5 text-xs text-gray-700">
+              <Monitor className="w-3 h-3 text-gray-400 flex-shrink-0" />
+              <span className="font-medium truncate">{row.activeApp || "—"}</span>
             </div>
-          )}
-        </div>
-      )}
+            {row.windowTitle && row.windowTitle !== row.activeApp && (
+              <div className="text-[11px] text-gray-400 truncate ml-4" title={row.windowTitle}>{row.windowTitle}</div>
+            )}
+            {status === "idle" && idleMin > 0 && (
+              <div className="flex items-center gap-1 text-xs text-amber-600">
+                <Coffee className="w-3 h-3" />
+                <span>Idle {idleMin}m</span>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-xs text-gray-400 italic">No recent activity</div>
+        )}
+      </div>
 
-      <div className="mt-2.5 pt-2 border-t border-gray-100 flex items-center justify-between">
-        <div className="text-[10px] text-gray-400">{row.deviceName}</div>
+      {/* Footer */}
+      <div className="px-4 pb-3 pt-1 border-t border-gray-100 flex items-center justify-between">
+        <div className="text-[10px] text-gray-400 truncate max-w-[120px]" title={row.deviceName}>{row.deviceName || row.deviceUsername}</div>
         <div className="text-[10px] text-gray-400">{timeSince(row.lastSeen)}</div>
       </div>
     </div>
