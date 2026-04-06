@@ -1847,19 +1847,23 @@ router.get("/activity/checkins-today", async (req, res) => {
   try {
     const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
     const checkins = await fetchErpNextCheckins({ from_date: date, to_date: date });
+    console.log(`[checkins-today] date=${date} records=${checkins.length} sample=`, JSON.stringify(checkins.slice(0, 3)));
     const map: Record<string, { checkIn?: string; checkOut?: string }> = {};
     for (const c of checkins) {
       const emp = c.employee || "";
       if (!map[emp]) map[emp] = {};
-      if (c.log_type === "IN") {
+      const logType = (c.log_type || "").toUpperCase();
+      // "IN" or no log_type (treat as IN if earliest) → checkIn
+      if (logType === "IN" || !logType) {
         if (!map[emp].checkIn || c.time < map[emp].checkIn!) map[emp].checkIn = c.time;
       }
-      if (c.log_type === "OUT") {
+      if (logType === "OUT") {
         if (!map[emp].checkOut || c.time > map[emp].checkOut!) map[emp].checkOut = c.time;
       }
     }
     res.json(map);
-  } catch {
+  } catch (e) {
+    console.log("[checkins-today] error:", e);
     res.json({});
   }
 });
@@ -1950,7 +1954,7 @@ router.get("/activity/:deviceUsername/cost-info", async (req, res) => {
 
     // Fetch latest submitted salary slip for this employee
     const params = new URLSearchParams({
-      filters: JSON.stringify([["employee", "=", erpId], ["docstatus", "=", "1"]]),
+      filters: JSON.stringify([["employee", "=", erpId], ["docstatus", "=", 1]]),
       fields: JSON.stringify(["gross_pay", "net_pay", "total_deduction", "posting_date", "start_date", "end_date", "employee", "employee_name"]),
       limit_page_length: "1",
       order_by: "posting_date desc",
@@ -1963,37 +1967,57 @@ router.get("/activity/:deviceUsername/cost-info", async (req, res) => {
 
     try {
       const r = await fetch(`${ERP_URL}/api/resource/Salary%20Slip?${params}`, { headers: hdr });
+      const data = (await r.json()) as any;
+      console.log(`[cost-info] Salary Slip query for ${erpId}: status=${r.status}, count=${data?.data?.length ?? "?"}`);
       if (r.ok) {
-        const data = (await r.json()) as any;
         const slip = data?.data?.[0];
         if (slip) {
           monthlySalary = Number(slip.gross_pay) || null;
           monthlyNet = Number(slip.net_pay) || null;
           slipDate = slip.posting_date || null;
         }
+      } else {
+        console.log(`[cost-info] Salary Slip error:`, JSON.stringify(data).slice(0, 300));
       }
-    } catch {}
+    } catch (e) { console.log("[cost-info] Salary Slip fetch error:", e); }
 
     // Fallback: try Salary Structure Assignment if no salary slip found
     if (!monthlySalary) {
       try {
+        // SSAs can be docstatus=0 (saved) or 1 (submitted) — try without docstatus filter
         const saParams = new URLSearchParams({
-          filters: JSON.stringify([["employee", "=", erpId], ["docstatus", "=", "1"]]),
-          fields: JSON.stringify(["base", "from_date", "salary_structure"]),
+          filters: JSON.stringify([["employee", "=", erpId]]),
+          fields: JSON.stringify(["base", "from_date", "salary_structure", "docstatus"]),
           limit_page_length: "1",
           order_by: "from_date desc",
         });
         const saR = await fetch(`${ERP_URL}/api/resource/Salary%20Structure%20Assignment?${saParams}`, { headers: hdr });
+        const saData = (await saR.json()) as any;
+        console.log(`[cost-info] SSA query for ${erpId}: status=${saR.status}, count=${saData?.data?.length ?? "?"}, record=`, JSON.stringify(saData?.data?.[0]));
         if (saR.ok) {
-          const saData = (await saR.json()) as any;
           const sa = saData?.data?.[0];
-          if (sa?.base) {
-            monthlySalary = Number(sa.base) || null;
-            slipDate = sa.from_date || null;
-            salarySource = "salary_structure_assignment";
+          if (sa) {
+            // SSA may return the name only (no base in list view) — fetch the full document
+            if (!sa.base && sa.name) {
+              try {
+                const fullR = await fetch(`${ERP_URL}/api/resource/Salary%20Structure%20Assignment/${encodeURIComponent(sa.name)}`, { headers: hdr });
+                const fullData = (await fullR.json()) as any;
+                const fullDoc = fullData?.data;
+                console.log(`[cost-info] SSA full doc for ${sa.name}:`, JSON.stringify(fullDoc?.base), fullDoc?.from_date);
+                if (fullDoc?.base) {
+                  monthlySalary = Number(fullDoc.base) || null;
+                  slipDate = fullDoc.from_date || null;
+                  salarySource = "salary_structure_assignment";
+                }
+              } catch {}
+            } else if (sa.base) {
+              monthlySalary = Number(sa.base) || null;
+              slipDate = sa.from_date || null;
+              salarySource = "salary_structure_assignment";
+            }
           }
         }
-      } catch {}
+      } catch (e) { console.log("[cost-info] SSA fetch error:", e); }
     }
 
     // Working days per month = 26, hours per day = 8
