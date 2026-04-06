@@ -4350,6 +4350,7 @@ export default function ProjectDrawings() {
     setUploadStep("uploading");
     setUploadProgress({ current: 0, total: items.length });
     const saved: ProjectDrawing[] = [];
+    const failed: string[] = [];
     for (let i = 0; i < items.length; i++) {
       const data = items[i];
       setUploadProgress({ current: i + 1, total: items.length });
@@ -4418,9 +4419,14 @@ export default function ProjectDrawings() {
               }
             })();
           }
+        } else {
+          const errBody = await res.json().catch(() => ({}));
+          console.error("Drawing upload failed (server error):", data.drawingNo, res.status, errBody);
+          failed.push(data.drawingNo || data.fileName);
         }
       } catch (err) {
-        console.error("Drawing upload failed:", err);
+        console.error("Drawing upload failed:", data.drawingNo, err);
+        failed.push(data.drawingNo || data.fileName);
       }
     }
     setUploadAnalyzing(false);
@@ -4428,6 +4434,9 @@ export default function ProjectDrawings() {
     setUploadProgress(null);
     if (saved.length > 0) {
       setDrawings((prev) => [...saved, ...prev]);
+    }
+    if (failed.length > 0) {
+      alert(`⚠️ ${failed.length} drawing(s) failed to upload and were not saved:\n\n${failed.join("\n")}\n\nPlease re-upload these files.`);
     }
     setModal({ type: "none" });
   };
