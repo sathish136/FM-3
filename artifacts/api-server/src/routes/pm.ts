@@ -14,6 +14,7 @@ import {
   roleTemplatesTable,
   projectDrawingsTable,
   systemActivityTable,
+  inAppNotificationsTable,
 } from "@workspace/db/schema";
 import { eq, sql, desc, gt } from "drizzle-orm";
 import { sendNotification } from "./notifications";
@@ -2016,11 +2017,13 @@ router.get("/emp-agent/data", async (req, res) => {
       ))
     );
 
-    // 4. Fetch notifications
-    const { rows: notifRows } = await pool.query(
-      `SELECT * FROM notifications WHERE email = $1 ORDER BY created_at DESC LIMIT 20`,
-      [email]
-    );
+    // 4. Fetch notifications from in_app_notifications
+    const notifRows = await db
+      .select()
+      .from(inAppNotificationsTable)
+      .where(eq(inAppNotificationsTable.userEmail, email))
+      .orderBy(desc(inAppNotificationsTable.createdAt))
+      .limit(20);
 
     res.json({
       activity: act ? {
@@ -2032,7 +2035,7 @@ router.get("/emp-agent/data", async (req, res) => {
       tasks: myTasks,
       notifications: notifRows.map((n: any) => ({
         id: n.id, title: n.title, message: n.message, type: n.type,
-        read: n.read, createdAt: n.created_at,
+        read: n.read, createdAt: n.createdAt?.toISOString?.() ?? n.createdAt,
       })),
     });
   } catch (e) {
