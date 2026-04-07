@@ -388,7 +388,7 @@ export function UserManagementContent() {
       setTemplates(tData);
       setDepartments(
         dData.length > 0
-          ? dData.map(d => d.department_name || d.name).filter(Boolean).sort()
+          ? dData.map(d => d.name).filter(n => n && n !== "All Departments").sort()
           : ["Mechanical","Electrical","Civil","Instrumentation","Process","Project","Quality","HSE"]
       );
       const map: Record<string, Permission> = {};

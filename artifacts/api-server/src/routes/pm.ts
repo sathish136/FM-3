@@ -166,7 +166,6 @@ import {
   fetchErpNextWarehouses,
   fetchErpNextCompanies,
   fetchErpNextUsers,
-  fetchErpNextDepartments,
   fetchErpNextPurchaseOrders,
   fetchErpNextPurchaseOrder,
   fetchErpNextSuppliers,
@@ -1020,8 +1019,14 @@ router.get("/companies", async (_req, res) => {
 
 router.get("/departments", async (_req, res) => {
   try {
-    const depts = await fetchErpNextDepartments();
-    res.json(depts);
+    const fields = JSON.stringify(["name", "department_name", "parent_department", "is_group", "disabled"]);
+    const filters = JSON.stringify([["Department", "disabled", "=", 0]]);
+    const params = new URLSearchParams({ fields, filters, limit_page_length: "500", order_by: "department_name asc" });
+    const url = `${ERP_URL}/api/resource/Department?${params}`;
+    const r = await fetch(url, { headers: { Authorization: ERP_AUTH(), Accept: "application/json" } });
+    if (!r.ok) return res.json([]);
+    const data = await r.json();
+    res.json(data.data || []);
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
