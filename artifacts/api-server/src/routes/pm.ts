@@ -1764,6 +1764,11 @@ router.post("/activity/heartbeat", async (req, res) => {
     const existingErp = existingErpRows[0];
     const alreadyLinked = !!(existingErp?.erpEmployeeId);
 
+    // Debug log for troubleshooting ERP link persistence
+    if (identifier.toUpperCase() === "IT" || alreadyLinked) {
+      console.log(`[heartbeat] ${identifier} | alreadyLinked=${alreadyLinked} | existingErpId="${existingErp?.erpEmployeeId ?? ""}" | resolvedEmpId="${resolvedEmpId}"`);
+    }
+
     // If already linked, keep the existing ERP data; otherwise use auto-resolved data
     const finalErpId    = alreadyLinked ? existingErp!.erpEmployeeId  : resolvedEmpId;
     const finalErpImage = alreadyLinked ? existingErp!.erpImage        : resolvedImage;
@@ -1933,6 +1938,11 @@ router.patch("/activity/:deviceUsername/erp-override", async (req, res) => {
     // Resolve using the provided ERPNext username
     const emp = await resolveErpEmployee(erpUsername);
 
+    // Always store a non-empty erpEmployeeId so the heartbeat's alreadyLinked check
+    // stays true even if ERP is unreachable at the moment of saving.
+    // Fall back to the user-provided username so the lock is never erased.
+    const effectiveErpId = emp.erpEmployeeId || erpUsername;
+
     // Update the record
     await db
       .update(systemActivityTable)
@@ -1941,17 +1951,19 @@ router.patch("/activity/:deviceUsername/erp-override", async (req, res) => {
         fullName: emp.fullName || erpUsername,
         department: emp.department || "",
         designation: emp.designation || "",
-        erpEmployeeId: emp.erpEmployeeId || "",
+        erpEmployeeId: effectiveErpId,
         erpImage: emp.erpImage || "",
       })
       .where(eq(systemActivityTable.deviceUsername, deviceUsername));
+
+    console.log(`[erp-override] Locked ${deviceUsername} → ${effectiveErpId} (resolved: ${emp.erpEmployeeId || "none"})`);
 
     res.json({
       ok: true,
       resolvedName: emp.fullName,
       resolvedDept: emp.department,
       resolvedDesignation: emp.designation,
-      erpEmployeeId: emp.erpEmployeeId,
+      erpEmployeeId: effectiveErpId,
     });
   } catch (e) {
     res.status(500).json({ error: String(e) });
