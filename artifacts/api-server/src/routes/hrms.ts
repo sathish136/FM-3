@@ -457,14 +457,18 @@ router.get("/hrms/image-proxy", async (req, res) => {
 
 router.get("/employees", async (req, res) => {
   try {
-    const { q = "" } = req.query as Record<string, string>;
+    const { q = "", department = "", limit = "300" } = req.query as Record<string, string>;
     const employees = await fetchErpNextEmployees({ status: "Active" });
+    const pageLimit = Math.min(Number(limit) || 300, 500);
     const filtered = employees
       .filter(e => {
         const name = (e.employee_name || "").toLowerCase();
-        return !q || name.includes(q.toLowerCase());
+        const dept = (e.department || "").toLowerCase();
+        if (q && !name.includes(q.toLowerCase())) return false;
+        if (department && !dept.includes(department.toLowerCase())) return false;
+        return true;
       })
-      .slice(0, 30)
+      .slice(0, pageLimit)
       .map(e => ({
         id: e.name,
         name: e.employee_name,

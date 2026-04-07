@@ -3,8 +3,8 @@ import { Layout } from "@/components/Layout";
 import { useAuth } from "@/hooks/useAuth";
 import {
   ClipboardList, RefreshCw, Calendar, User, Building2, Clock,
-  CheckCircle2, X, Loader2, Minus, Shield, ChevronLeft, ChevronRight,
-  Eye, Filter, Search, BarChart2,
+  CheckCircle2, XCircle, X, Loader2, Shield, Search,
+  AlertTriangle, ChevronRight, FileText, Layers, Hash,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -26,7 +26,27 @@ type ReportSummary = {
   creation: string;
 };
 
-type ReportDetail = ReportSummary & { [key: string]: any };
+type ReportDetail = ReportSummary & {
+  daily_reporting_detail?: ActivityRow[];
+  [key: string]: any;
+};
+
+type ActivityRow = {
+  activity?: string;
+  project?: string;
+  no_of_hours?: number;
+  remarks?: string;
+  [key: string]: any;
+};
+
+type EmpRecord = {
+  id: string;
+  name: string;
+  designation: string;
+  department: string;
+};
+
+function todayISO() { return new Date().toISOString().split("T")[0]; }
 
 function fmtDate(d: string) {
   if (!d) return "—";
@@ -41,27 +61,23 @@ function fmtDateTime(d: string) {
 function deptShort(dept: string) {
   return (dept || "").replace(/ - WTT$/i, "").replace(/ - wtt$/i, "");
 }
-function todayISO() { return new Date().toISOString().split("T")[0]; }
 
-function statusBadge(status: string) {
-  switch ((status || "").toLowerCase()) {
-    case "submitted": return "bg-emerald-100 text-emerald-700 border-emerald-200";
-    case "draft":     return "bg-amber-100 text-amber-700 border-amber-200";
-    case "cancelled": return "bg-red-100 text-red-600 border-red-200";
-    default:          return "bg-gray-100 text-gray-600 border-gray-200";
-  }
-}
-function statusIcon(status: string) {
-  switch ((status || "").toLowerCase()) {
-    case "submitted": return <CheckCircle2 className="w-3 h-3" />;
-    case "draft":     return <Clock className="w-3 h-3" />;
-    case "cancelled": return <X className="w-3 h-3" />;
-    default:          return <Minus className="w-3 h-3" />;
-  }
+function initials(name: string) {
+  if (!name) return "?";
+  return name.trim().split(/\s+/).map(w => w[0]).join("").toUpperCase().slice(0, 2);
 }
 
-// ─── Detail Modal ──────────────────────────────────────────────────────────────
-function ReportDetailModal({ name, onClose }: { name: string; onClose: () => void }) {
+const STATUS_CONFIG: Record<string, { bg: string; text: string; border: string; dot: string; label: string }> = {
+  submitted: { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", dot: "bg-emerald-500", label: "Submitted" },
+  draft:     { bg: "bg-amber-50",   text: "text-amber-700",   border: "border-amber-200",   dot: "bg-amber-400",   label: "Draft"     },
+  cancelled: { bg: "bg-red-50",     text: "text-red-600",     border: "border-red-200",     dot: "bg-red-400",     label: "Cancelled" },
+};
+function getStatus(s: string) {
+  return STATUS_CONFIG[(s || "").toLowerCase()] ?? { bg: "bg-gray-100", text: "text-gray-600", border: "border-gray-200", dot: "bg-gray-300", label: s || "—" };
+}
+
+// ─── Detail Panel ──────────────────────────────────────────────────────────────
+function DetailPanel({ name, onClose }: { name: string; onClose: () => void }) {
   const [report, setReport] = useState<ReportDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -75,137 +91,177 @@ function ReportDetailModal({ name, onClose }: { name: string; onClose: () => voi
       .finally(() => setLoading(false));
   }, [name]);
 
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("keydown", h);
-    return () => document.removeEventListener("keydown", h);
-  }, [onClose]);
+  const SKIP = new Set(["doctype","idx","docstatus","__islocal","__unsaved","owner","__last_sync_on",
+    "name","employee","employee_name","department","date","status","modified","modified_by",
+    "creation","amended_from","daily_reporting_detail"]);
 
-  const SKIP = new Set(["doctype","idx","docstatus","__islocal","__unsaved","owner","__last_sync_on","name","employee","employee_name","department","date","status","modified","modified_by","creation","amended_from"]);
-  const childTables = report ? Object.entries(report).filter(([, v]) => Array.isArray(v) && (v as any[]).length > 0) : [];
-  const scalarFields = report ? Object.entries(report).filter(([k, v]) => !SKIP.has(k) && !Array.isArray(v) && v !== null && v !== "" && v !== 0) : [];
+  const scalarFields = report
+    ? Object.entries(report).filter(([k, v]) => !SKIP.has(k) && !Array.isArray(v) && v !== null && v !== "" && v !== 0 && v !== false)
+    : [];
+
+  const activities: ActivityRow[] = report?.daily_reporting_detail ?? [];
+  const totalHours = activities.reduce((s, a) => s + (Number(a.no_of_hours) || 0), 0);
+  const st = report ? getStatus(report.status) : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-indigo-50 to-white shrink-0">
-          <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0">
-            <ClipboardList className="w-4 h-4 text-indigo-600" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">Daily Report</p>
-            <p className="text-sm font-black text-gray-900 leading-tight truncate">{name}</p>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors shrink-0">
-            <X className="w-4 h-4" />
-          </button>
+    <div className="flex flex-col h-full bg-white border-l border-gray-200">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-indigo-50/60 to-white shrink-0">
+        <div className="w-8 h-8 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0">
+          <FileText className="w-4 h-4 text-indigo-600" />
         </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest">Daily Report</p>
+          <p className="text-xs font-bold text-gray-800 truncate">{name}</p>
+        </div>
+        <button onClick={onClose} className="w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors shrink-0">
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
 
-        {report && (
-          <div className="flex items-center gap-4 flex-wrap px-5 py-3 border-b border-gray-50 bg-gray-50/50 shrink-0">
-            <div className="flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="text-xs font-bold text-gray-700">{report.employee_name || report.employee}</span>
-            </div>
-            {report.department && (
-              <div className="flex items-center gap-1.5">
-                <Building2 className="w-3.5 h-3.5 text-indigo-400" />
-                <span className="text-xs text-gray-500">{deptShort(report.department)}</span>
-              </div>
-            )}
-            {report.date && (
-              <div className="flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-indigo-400" />
-                <span className="text-xs text-gray-500">{fmtDate(report.date)}</span>
-              </div>
-            )}
-            <span className={cn("text-[9px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1", statusBadge(report.status))}>
-              {statusIcon(report.status)} {report.status}
-            </span>
+      <div className="flex-1 overflow-y-auto">
+        {loading && (
+          <div className="flex items-center justify-center h-40">
+            <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
+          </div>
+        )}
+        {error && (
+          <div className="m-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 flex items-center gap-2">
+            <XCircle className="w-4 h-4 shrink-0" /> {error}
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto p-5 space-y-5">
-          {loading && (
-            <div className="flex flex-col items-center justify-center py-16 gap-3">
-              <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
-              <p className="text-xs text-gray-400">Loading report…</p>
-            </div>
-          )}
-          {error && (
-            <div className="flex items-center gap-2 p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">
-              <X className="w-4 h-4 shrink-0" /> {error}
-            </div>
-          )}
-          {report && !loading && (
-            <>
-              {scalarFields.length > 0 && (
+        {report && !loading && (
+          <>
+            {/* Employee + meta */}
+            <div className="px-5 py-4 border-b border-gray-50 space-y-3">
+              {/* Avatar + name */}
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-sm shrink-0">
+                  {initials(report.employee_name || report.employee)}
+                </div>
                 <div>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Details</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    {scalarFields.map(([k, v]) => (
-                      <div key={k} className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
-                        <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">
-                          {k.replace(/_/g, " ")}
-                        </p>
-                        <p className="text-sm text-gray-800 font-medium">{String(v)}</p>
-                      </div>
-                    ))}
+                  <p className="text-sm font-bold text-gray-900">{report.employee_name || report.employee}</p>
+                  <p className="text-xs text-indigo-500 font-medium">{deptShort(report.department) || "—"}</p>
+                  {report.employee && report.employee_name && (
+                    <p className="text-[10px] text-gray-400 font-mono">{report.employee}</p>
+                  )}
+                </div>
+                {st && (
+                  <div className={cn("ml-auto flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full border", st.bg, st.text, st.border)}>
+                    <span className={cn("w-1.5 h-1.5 rounded-full", st.dot)} />
+                    {st.label}
                   </div>
+                )}
+              </div>
+
+              {/* Date + modified */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-gray-50 rounded-xl px-3 py-2.5 flex items-center gap-2">
+                  <Calendar className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                  <div>
+                    <p className="text-[9px] text-gray-400 font-semibold uppercase tracking-wide">Report Date</p>
+                    <p className="text-xs font-bold text-gray-800">{fmtDate(report.date)}</p>
+                  </div>
+                </div>
+                <div className="bg-gray-50 rounded-xl px-3 py-2.5 flex items-center gap-2">
+                  <Clock className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                  <div>
+                    <p className="text-[9px] text-gray-400 font-semibold uppercase tracking-wide">Last Modified</p>
+                    <p className="text-xs font-bold text-gray-800">{fmtDateTime(report.modified)}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Extra scalar fields */}
+            {scalarFields.length > 0 && (
+              <div className="px-5 py-4 border-b border-gray-50">
+                <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-3">Additional Info</p>
+                <div className="grid grid-cols-1 gap-2">
+                  {scalarFields.map(([k, v]) => (
+                    <div key={k} className="bg-gray-50 rounded-lg px-3 py-2">
+                      <p className="text-[9px] text-gray-400 font-semibold uppercase tracking-wide mb-0.5">{k.replace(/_/g, " ")}</p>
+                      <p className="text-xs text-gray-700">{String(v)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Activities Table */}
+            <div className="px-5 py-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                  <Layers className="w-3 h-3" /> Activities / Tasks
+                </p>
+                {totalHours > 0 && (
+                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
+                    {totalHours.toFixed(1)}h total
+                  </span>
+                )}
+              </div>
+
+              {activities.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 gap-2 text-center bg-gray-50 rounded-2xl border border-gray-100">
+                  <ClipboardList className="w-8 h-8 text-gray-200" />
+                  <p className="text-xs text-gray-400">No activities logged</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {activities.map((row, i) => {
+                    const hrs = Number(row.no_of_hours) || 0;
+                    const hasProject = row.project && row.project !== "";
+                    return (
+                      <div key={i} className="bg-gray-50 rounded-2xl border border-gray-100 p-4">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 text-[9px] font-black flex items-center justify-center shrink-0">
+                              {i + 1}
+                            </span>
+                            <p className="text-xs font-bold text-gray-900 leading-tight">
+                              {row.activity || <span className="text-gray-400 italic">No activity description</span>}
+                            </p>
+                          </div>
+                          {hrs > 0 && (
+                            <span className="flex items-center gap-1 text-[10px] font-black text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full shrink-0">
+                              <Clock className="w-2.5 h-2.5" /> {hrs}h
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {hasProject && (
+                            <span className="flex items-center gap-1 text-[10px] text-violet-600 bg-violet-50 border border-violet-100 px-2 py-0.5 rounded-full font-semibold">
+                              <Hash className="w-2.5 h-2.5" /> {row.project}
+                            </span>
+                          )}
+                          {row.remarks && (
+                            <span className="text-[10px] text-gray-500 italic">"{row.remarks}"</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
-              {childTables.map(([key, rows]) => (
-                <div key={key}>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">
-                    {key.replace(/_/g, " ")} ({(rows as any[]).length})
-                  </p>
-                  <div className="space-y-2">
-                    {(rows as any[]).map((row, i) => {
-                      const rowEntries = Object.entries(row).filter(([k]) => !["name","doctype","idx","docstatus","parent","parentfield","parenttype"].includes(k) && row[k] !== null && row[k] !== "");
-                      return (
-                        <div key={i} className="bg-gray-50 border border-gray-100 rounded-xl p-4">
-                          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-                            {rowEntries.map(([k, v]) => (
-                              <div key={k} className="flex flex-col">
-                                <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wide">{k.replace(/_/g, " ")}</span>
-                                <span className="text-xs text-gray-700 font-medium">{String(v)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-              <div className="text-[10px] text-gray-400 pt-2">
-                Last modified: {fmtDateTime(report.modified)}
-              </div>
-            </>
-          )}
-        </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-// ─── Stats Card ────────────────────────────────────────────────────────────────
-function StatsCard({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div className={cn("flex flex-col items-center justify-center rounded-2xl border px-4 py-3 min-w-[80px]", color)}>
-      <span className="text-2xl font-black leading-none">{value}</span>
-      <span className="text-[10px] font-semibold opacity-70 mt-0.5">{label}</span>
-    </div>
-  );
-}
-
 // ─── Main Page ─────────────────────────────────────────────────────────────────
+type ViewTab = "reported" | "not-reported";
+
 export default function TeamReporting() {
   const { user } = useAuth();
 
   const [reports, setReports] = useState<ReportSummary[]>([]);
+  const [allEmployees, setAllEmployees] = useState<EmpRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [empLoading, setEmpLoading] = useState(false);
   const [error, setError] = useState("");
   const [selectedReport, setSelectedReport] = useState<string | null>(null);
 
@@ -215,15 +271,13 @@ export default function TeamReporting() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [activeTab, setActiveTab] = useState<ViewTab>("reported");
   const [dateMode, setDateMode] = useState<DateMode>("today");
   const [fromDate, setFromDate] = useState(todayISO());
   const [toDate, setToDate] = useState(todayISO());
-  const [page, setPage] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
   const [total, setTotal] = useState(0);
 
   const isAdmin = ADMIN_EMAILS.includes((user?.email ?? "").toLowerCase());
-  const LIMIT = 50;
 
   const today = todayISO();
   const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
@@ -258,28 +312,18 @@ export default function TeamReporting() {
 
   const canAccess = isAdmin || (hodDept != null && hodDept !== "") || hasModuleAccess;
 
-  const load = useCallback(async (p = 0) => {
+  const load = useCallback(async () => {
     if (!canAccess) return;
     setLoading(true); setError("");
     try {
-      const params = new URLSearchParams({
-        from_date: fromDate,
-        to_date: toDate,
-        limit: String(LIMIT),
-        page: String(p),
-      });
+      const params = new URLSearchParams({ from_date: fromDate, to_date: toDate, limit: "200", page: "0" });
       if (statusFilter) params.set("status", statusFilter);
-      // If HOD, filter by their department
-      if (!isAdmin && hodDept && hodDept !== "") {
-        params.set("department", hodDept);
-      }
+      if (!isAdmin && hodDept && hodDept !== "") params.set("department", hodDept);
       const r = await fetch(`${API_BASE}/daily-reporting?${params}`);
       if (!r.ok) { const e = await r.json(); throw new Error(e.error || "Failed"); }
       const data = await r.json();
-      setHasMore(!!data.hasMore);
       setTotal(data.total ?? 0);
       setReports(data.reports || []);
-      setPage(p);
     } catch (e: any) {
       setError(e.message || "Failed to load reports");
     } finally {
@@ -287,29 +331,56 @@ export default function TeamReporting() {
     }
   }, [fromDate, toDate, statusFilter, canAccess, isAdmin, hodDept]);
 
+  // Load employees for "not reported" — only for single-day view
   useEffect(() => {
-    if (!permLoading) load(0);
-  }, [permLoading, load]);
+    if (!canAccess || fromDate !== toDate) return;
+    setEmpLoading(true);
+    const dept = (!isAdmin && hodDept && hodDept !== "") ? hodDept : "";
+    fetch(`${API_BASE}/employees?limit=300${dept ? `&department=${encodeURIComponent(dept)}` : ""}`)
+      .then(r => r.ok ? r.json() : [])
+      .then((data: EmpRecord[]) => {
+        let emps = Array.isArray(data) ? data : [];
+        if (dept) emps = emps.filter(e => (e.department || "").toLowerCase().includes(dept.toLowerCase()));
+        setAllEmployees(emps);
+      })
+      .catch(() => {})
+      .finally(() => setEmpLoading(false));
+  }, [canAccess, fromDate, toDate, isAdmin, hodDept]);
 
-  // Client-side search + filter
+  useEffect(() => { if (!permLoading) load(); }, [permLoading, load]);
+
+  // "Not reported" calculation
+  const reportedNames = new Set(
+    reports.map(r => (r.employee_name || r.employee || "").toUpperCase().trim())
+  );
+  const reportedIds = new Set(
+    reports.map(r => (r.employee || "").toUpperCase().trim())
+  );
+  const notReported = allEmployees.filter(e => {
+    const n = e.name.toUpperCase().trim();
+    const id = e.id.toUpperCase().trim();
+    return !reportedNames.has(n) && !reportedIds.has(id);
+  });
+
+  // Client-side filter
   const filtered = reports.filter(r => {
     if (search) {
       const q = search.toLowerCase();
-      if (!((r.employee_name || r.employee || "").toLowerCase().includes(q) ||
-            (r.department || "").toLowerCase().includes(q) ||
-            r.name.toLowerCase().includes(q))) return false;
+      return (r.employee_name || r.employee || "").toLowerCase().includes(q) ||
+             (r.department || "").toLowerCase().includes(q) ||
+             r.name.toLowerCase().includes(q);
     }
     return true;
   });
 
-  // Stats
-  const submitted = filtered.filter(r => r.status?.toLowerCase() === "submitted").length;
-  const draft = filtered.filter(r => r.status?.toLowerCase() === "draft").length;
-  const cancelled = filtered.filter(r => r.status?.toLowerCase() === "cancelled").length;
+  const notReportedFiltered = notReported.filter(e =>
+    !search || e.name.toLowerCase().includes(search.toLowerCase()) || (e.designation || "").toLowerCase().includes(search.toLowerCase())
+  );
 
-  // Unique employees who submitted
-  const uniqueEmployees = new Set(filtered.map(r => r.employee || r.employee_name)).size;
-  const uniqueDepts = new Set(filtered.map(r => deptShort(r.department)).filter(Boolean)).size;
+  const submitted = reports.filter(r => r.status?.toLowerCase() === "submitted").length;
+  const draft = reports.filter(r => r.status?.toLowerCase() === "draft").length;
+
+  const isSingleDay = fromDate === toDate;
 
   if (permLoading) {
     return (
@@ -343,233 +414,238 @@ export default function TeamReporting() {
 
   return (
     <Layout>
-      <div className="flex flex-col h-full bg-gray-50 overflow-hidden">
+      <div className="flex h-full overflow-hidden bg-gray-50">
 
-        {/* ── Header ── */}
-        <div className="bg-white border-b border-gray-200 px-6 py-4 flex-shrink-0">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-500 flex items-center justify-center shadow-sm shadow-indigo-200">
+        {/* ── Left Panel: List ── */}
+        <div className={cn("flex flex-col border-r border-gray-200 bg-white transition-all duration-200", selectedReport ? "w-[420px] shrink-0" : "flex-1")}>
+
+          {/* Header */}
+          <div className="border-b border-gray-100 px-5 pt-5 pb-4 shrink-0">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-500 flex items-center justify-center shadow-sm">
                 <ClipboardList className="w-5 h-5 text-white" />
               </div>
-              <div>
-                <h1 className="text-lg font-black text-gray-900 leading-tight">Team Reporting</h1>
-                <p className="text-xs text-gray-400">
-                  {hodDept && !isAdmin
-                    ? `${deptShort(hodDept)} · Daily Reports`
-                    : "All Departments · Daily Reports"}
+              <div className="flex-1 min-w-0">
+                <h1 className="text-base font-black text-gray-900 leading-tight">Team Reporting</h1>
+                <p className="text-[11px] text-gray-400">
+                  {hodDept && !isAdmin ? `${deptShort(hodDept)}` : "All Departments"} · Daily Reports
                 </p>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => load(page)}
-                disabled={loading}
-                className="p-2 rounded-xl bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors disabled:opacity-50"
-                title="Refresh"
-              >
+              <button onClick={load} disabled={loading}
+                className="p-2 rounded-xl border border-gray-200 text-gray-400 hover:bg-gray-50 transition-colors disabled:opacity-50 shrink-0">
                 <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
               </button>
             </div>
-          </div>
 
-          {/* Stats row */}
-          <div className="flex items-center gap-3 mt-4 flex-wrap">
-            <StatsCard label="Total" value={filtered.length} color="bg-blue-50 text-blue-700 border-blue-200" />
-            <StatsCard label="Submitted" value={submitted} color="bg-emerald-50 text-emerald-700 border-emerald-200" />
-            <StatsCard label="Draft" value={draft} color="bg-amber-50 text-amber-700 border-amber-200" />
-            <StatsCard label="Employees" value={uniqueEmployees} color="bg-violet-50 text-violet-700 border-violet-200" />
-            {isAdmin && <StatsCard label="Depts" value={uniqueDepts} color="bg-pink-50 text-pink-700 border-pink-200" />}
-            {hodDept && !isAdmin && (
-              <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-semibold ml-auto">
-                <Building2 className="w-3.5 h-3.5" /> {deptShort(hodDept)}
-              </span>
-            )}
-          </div>
-        </div>
+            {/* Stats */}
+            <div className="grid grid-cols-4 gap-2 mb-4">
+              {[
+                { label: "Total", value: reports.length, color: "text-blue-700", bg: "bg-blue-50 border-blue-100" },
+                { label: "Submitted", value: submitted, color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-100" },
+                { label: "Draft", value: draft, color: "text-amber-700", bg: "bg-amber-50 border-amber-100" },
+                { label: "Not Filed", value: isSingleDay ? notReported.length : 0, color: "text-red-600", bg: "bg-red-50 border-red-100" },
+              ].map(s => (
+                <div key={s.label} className={cn("flex flex-col items-center justify-center rounded-xl border py-2 px-1", s.bg)}>
+                  <span className={cn("text-xl font-black leading-none", s.color)}>{s.value}</span>
+                  <span className={cn("text-[9px] font-semibold mt-0.5 opacity-70", s.color)}>{s.label}</span>
+                </div>
+              ))}
+            </div>
 
-        {/* ── Filter Bar ── */}
-        <div className="bg-white border-b border-gray-100 px-6 py-3 flex-shrink-0">
-          <div className="flex items-center gap-3 flex-wrap">
             {/* Date mode tabs */}
-            <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
-              {(["today", "yesterday", "week", "month", "custom"] as DateMode[]).map(m => (
+            <div className="flex items-center bg-gray-100 rounded-xl p-0.5 gap-0.5 mb-3">
+              {(["today","yesterday","week","month","custom"] as DateMode[]).map(m => (
                 <button key={m} onClick={() => setDateMode(m)}
                   className={cn(
-                    "px-3 py-1.5 rounded-md text-xs font-semibold transition-colors capitalize",
-                    dateMode === m ? "bg-white text-indigo-700 shadow-sm font-bold" : "text-gray-500 hover:text-gray-700"
+                    "flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-colors",
+                    dateMode === m ? "bg-white text-indigo-700 shadow-sm" : "text-gray-500 hover:text-gray-700"
                   )}>
                   {dateModeLabel[m]}
                 </button>
               ))}
             </div>
 
-            {/* Status filter */}
-            <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); }}
-              className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-400 bg-white text-gray-600">
-              <option value="">All Statuses</option>
-              <option value="Draft">Draft</option>
-              <option value="Submitted">Submitted</option>
-              <option value="Cancelled">Cancelled</option>
-            </select>
+            {dateMode === "custom" && (
+              <div className="flex items-center gap-2 mb-3">
+                <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
+                  className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-400" />
+                <span className="text-gray-400 text-xs">–</span>
+                <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
+                  className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-indigo-400" />
+                <button onClick={load} className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-colors">Go</button>
+              </div>
+            )}
 
-            {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search employee, dept…"
-                className="border border-gray-200 rounded-lg pl-9 pr-3 py-1.5 text-xs focus:outline-none focus:border-indigo-400 w-48 bg-white"
-              />
+            {/* Status + search row */}
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…"
+                  className="w-full border border-gray-200 rounded-lg pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:border-indigo-400 bg-white" />
+              </div>
+              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+                className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-indigo-400 bg-white text-gray-600">
+                <option value="">All</option>
+                <option value="Draft">Draft</option>
+                <option value="Submitted">Submitted</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
             </div>
 
-            <div className="flex-1" />
-
-            {/* Date range (shown always for reference) */}
-            <div className="flex items-center gap-2 text-xs text-gray-400">
-              <Calendar className="w-3.5 h-3.5" />
-              {fromDate === toDate ? fmtDate(fromDate) : `${fmtDate(fromDate)} – ${fmtDate(toDate)}`}
-            </div>
+            {/* Tabs — only for single-day */}
+            {isSingleDay && (
+              <div className="flex items-center gap-1 mt-3">
+                {([
+                  { id: "reported" as ViewTab, label: `Reported (${filtered.length})` },
+                  { id: "not-reported" as ViewTab, label: `Not Reported (${notReportedFiltered.length})`, alert: notReportedFiltered.length > 0 },
+                ]).map(tab => (
+                  <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-colors",
+                      activeTab === tab.id
+                        ? tab.id === "not-reported" && tab.alert
+                          ? "bg-red-500 text-white"
+                          : "bg-indigo-600 text-white"
+                        : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                    )}>
+                    {tab.id === "not-reported" && tab.alert && <AlertTriangle className="w-3 h-3" />}
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Custom range inputs */}
-          {dateMode === "custom" && (
-            <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100">
-              <label className="text-[10px] font-bold text-gray-400 uppercase">From</label>
-              <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
-                className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-400" />
-              <label className="text-[10px] font-bold text-gray-400 uppercase">To</label>
-              <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
-                className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-400" />
-              <button onClick={() => load(0)}
-                className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 transition-colors">
-                Apply
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* ── Report List ── */}
-        <div className="flex-1 overflow-y-auto">
-          {loading && (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 className="w-7 h-7 animate-spin text-indigo-400" />
-            </div>
-          )}
-
-          {!loading && error && (
-            <div className="m-6 p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 flex items-center gap-2">
-              <X className="w-4 h-4 shrink-0" /> {error}
-            </div>
-          )}
-
-          {!loading && !error && filtered.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
-              <ClipboardList className="w-12 h-12 text-gray-200" />
-              <p className="text-sm font-semibold text-gray-400">No reports found</p>
-              <p className="text-xs text-gray-300">
-                {hodDept ? `No daily reports for ${deptShort(hodDept)} in this period` : "No daily reports match the selected filters"}
-              </p>
-            </div>
-          )}
-
-          {!loading && !error && filtered.length > 0 && (
-            <div className="p-6 space-y-3">
-              {/* Group by date */}
-              {(() => {
-                const grouped: Record<string, ReportSummary[]> = {};
-                filtered.forEach(r => {
-                  const d = r.date || r.creation?.split(" ")[0] || "Unknown";
-                  if (!grouped[d]) grouped[d] = [];
-                  grouped[d].push(r);
-                });
-                return Object.entries(grouped)
-                  .sort(([a], [b]) => b.localeCompare(a))
-                  .map(([date, rows]) => (
-                    <div key={date}>
-                      {/* Date group header */}
-                      <div className="flex items-center gap-3 mb-2">
-                        <span className="text-xs font-bold text-gray-500">{fmtDate(date)}</span>
-                        <div className="flex-1 h-px bg-gray-100" />
-                        <span className="text-[10px] text-gray-400">{rows.length} report{rows.length !== 1 ? "s" : ""}</span>
-                      </div>
-
-                      {/* Report cards */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                        {rows.map(r => {
-                          const status = (r.status || "").toLowerCase();
-                          return (
-                            <button
-                              key={r.name}
-                              onClick={() => setSelectedReport(r.name)}
-                              className={cn(
-                                "text-left bg-white rounded-2xl border p-4 shadow-sm hover:shadow-md transition-all hover:scale-[1.01] cursor-pointer",
-                                status === "submitted" ? "border-emerald-100" :
-                                status === "draft" ? "border-amber-100" :
-                                status === "cancelled" ? "border-red-100" : "border-gray-100"
-                              )}
-                            >
-                              <div className="flex items-start justify-between gap-2 mb-3">
-                                <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
-                                  <User className="w-4 h-4 text-indigo-500" />
-                                </div>
-                                <span className={cn("text-[9px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1", statusBadge(r.status))}>
-                                  {statusIcon(r.status)} {r.status || "—"}
-                                </span>
-                              </div>
-                              <p className="text-sm font-bold text-gray-900 leading-tight mb-0.5 line-clamp-1">
-                                {r.employee_name || r.employee || "—"}
-                              </p>
-                              {r.department && (
-                                <p className="text-[11px] text-indigo-500 font-medium mb-2 line-clamp-1">
-                                  {deptShort(r.department)}
-                                </p>
-                              )}
-                              <div className="flex items-center gap-1 text-[10px] text-gray-400">
-                                <Clock className="w-3 h-3" />
-                                {r.modified ? fmtDateTime(r.modified) : fmtDate(r.date)}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ));
-              })()}
-
-              {/* Pagination */}
-              <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                <span className="text-xs text-gray-400">
-                  Showing {filtered.length} of {total} reports
-                </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => load(page - 1)}
-                    disabled={page === 0 || loading}
-                    className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <span className="text-xs font-semibold text-gray-500">Page {page + 1}</span>
-                  <button
-                    onClick={() => load(page + 1)}
-                    disabled={!hasMore || loading}
-                    className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
+          {/* List body */}
+          <div className="flex-1 overflow-y-auto">
+            {loading && (
+              <div className="flex items-center justify-center h-32">
+                <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
               </div>
-            </div>
-          )}
-        </div>
-      </div>
+            )}
+            {!loading && error && (
+              <div className="m-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 flex items-center gap-2">
+                <XCircle className="w-4 h-4 shrink-0" /> {error}
+              </div>
+            )}
 
-      {/* Detail modal */}
-      {selectedReport && (
-        <ReportDetailModal name={selectedReport} onClose={() => setSelectedReport(null)} />
-      )}
+            {/* Reported list */}
+            {!loading && !error && (activeTab === "reported" || !isSingleDay) && (
+              <>
+                {filtered.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 gap-2 text-center">
+                    <ClipboardList className="w-10 h-10 text-gray-200" />
+                    <p className="text-sm text-gray-400 font-medium">No reports found</p>
+                    <p className="text-xs text-gray-300">
+                      {hodDept ? `No reports from ${deptShort(hodDept)} in this period` : "No reports match the selected filters"}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-50">
+                    {filtered.map(r => {
+                      const st = getStatus(r.status);
+                      const isSelected = selectedReport === r.name;
+                      return (
+                        <button key={r.name} onClick={() => setSelectedReport(isSelected ? null : r.name)}
+                          className={cn(
+                            "w-full text-left px-4 py-3.5 flex items-center gap-3 hover:bg-gray-50 transition-colors border-l-2",
+                            isSelected ? "bg-indigo-50 border-indigo-500" : "border-transparent"
+                          )}>
+                          {/* Avatar */}
+                          <div className={cn("w-10 h-10 rounded-2xl flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-sm",
+                            r.status?.toLowerCase() === "submitted" ? "bg-gradient-to-br from-emerald-400 to-green-500" :
+                            r.status?.toLowerCase() === "draft" ? "bg-gradient-to-br from-amber-400 to-orange-400" :
+                            "bg-gradient-to-br from-indigo-400 to-blue-500")}>
+                            {initials(r.employee_name || r.employee)}
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <p className="text-sm font-bold text-gray-900 truncate">{r.employee_name || r.employee || "—"}</p>
+                              <span className={cn("shrink-0 flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full border", st.bg, st.text, st.border)}>
+                                <span className={cn("w-1 h-1 rounded-full", st.dot)} />
+                                {st.label}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-indigo-500 font-medium truncate">{deptShort(r.department) || "—"}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-[10px] text-gray-400 flex items-center gap-1">
+                                <Calendar className="w-2.5 h-2.5" />
+                                {r.date ? fmtDate(r.date) : "—"}
+                              </span>
+                              <span className="text-[10px] text-gray-300">·</span>
+                              <span className="text-[10px] text-gray-400">{r.modified ? fmtDateTime(r.modified) : "—"}</span>
+                            </div>
+                          </div>
+
+                          <ChevronRight className={cn("w-3.5 h-3.5 shrink-0 transition-transform text-gray-300", isSelected && "rotate-90 text-indigo-500")} />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Not reported list */}
+            {!loading && !error && activeTab === "not-reported" && isSingleDay && (
+              <>
+                {empLoading && (
+                  <div className="flex items-center justify-center h-20">
+                    <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                  </div>
+                )}
+                {!empLoading && notReportedFiltered.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-16 gap-2 text-center">
+                    <CheckCircle2 className="w-10 h-10 text-emerald-300" />
+                    <p className="text-sm font-bold text-emerald-600">All members reported!</p>
+                    <p className="text-xs text-gray-400">Everyone has submitted a daily report for this date.</p>
+                  </div>
+                )}
+                {!empLoading && notReportedFiltered.length > 0 && (
+                  <div className="divide-y divide-gray-50">
+                    {notReportedFiltered.map(e => (
+                      <div key={e.id} className="px-4 py-3.5 flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-gray-100 flex items-center justify-center text-gray-500 text-xs font-bold shrink-0">
+                          {initials(e.name)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-gray-800 truncate">{e.name}</p>
+                          <p className="text-[11px] text-indigo-400 font-medium truncate">{deptShort(e.department) || "—"}</p>
+                          {e.designation && <p className="text-[10px] text-gray-400 truncate">{e.designation}</p>}
+                        </div>
+                        <div className="flex items-center gap-1 text-[10px] font-bold text-red-500 bg-red-50 border border-red-100 px-2 py-0.5 rounded-full shrink-0">
+                          <AlertTriangle className="w-2.5 h-2.5" /> Not Filed
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* ── Right Panel: Detail ── */}
+        {selectedReport && (
+          <div className="flex-1 overflow-hidden">
+            <DetailPanel name={selectedReport} onClose={() => setSelectedReport(null)} />
+          </div>
+        )}
+
+        {/* Empty detail state */}
+        {!selectedReport && (
+          <div className="flex-1 hidden lg:flex flex-col items-center justify-center gap-3 text-center bg-gray-50/50 border-l border-gray-100">
+            <div className="w-16 h-16 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center">
+              <FileText className="w-7 h-7 text-indigo-300" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-gray-400">Select a report to view details</p>
+              <p className="text-xs text-gray-300 mt-1">Click any report from the list to see activities and details</p>
+            </div>
+          </div>
+        )}
+      </div>
     </Layout>
   );
 }
