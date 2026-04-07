@@ -15,7 +15,11 @@ function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VER);
     req.onupgradeneeded = () => {
-      req.result.createObjectStore(STORE, { keyPath: "key" });
+      const db = req.result;
+      if (db.objectStoreNames.contains(STORE)) {
+        db.deleteObjectStore(STORE);
+      }
+      db.createObjectStore(STORE, { keyPath: "key" });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror   = () => reject(req.error);
