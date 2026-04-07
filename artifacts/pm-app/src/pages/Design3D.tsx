@@ -35,6 +35,10 @@ function formatDate(iso: string) {
   }
 }
 
+function stepFileUrl(attach: string, modified: string) {
+  return `${BASE}/api/step-file?url=${encodeURIComponent(attach)}&modified=${encodeURIComponent(modified)}`;
+}
+
 function proxyUrl(attach: string) {
   return `${BASE}/api/file-proxy?url=${encodeURIComponent(attach)}`;
 }
@@ -290,7 +294,9 @@ function ModelViewer({
 
   const viewerRef = useRef<ViewerRef>(null);
 
-  const loadFromUrl = useCallback(async (attachUrl: string) => {
+  const [fromDiskCache, setFromDiskCache] = useState<boolean | null>(null);
+
+  const loadFromUrl = useCallback(async (attachUrl: string, modified: string) => {
     setStatus("loading");
     setProgress("Checking local cache…");
     setMeshes([]);
@@ -298,25 +304,36 @@ function ModelViewer({
     setHiddenMeshes(new Set());
     setError("");
     setMeasureResult(null);
+    setFromDiskCache(null);
+
+    // IndexedDB key includes the modified timestamp → auto-invalidated when ERP file changes
+    const idbKey = `${attachUrl}::${modified}`;
+
     try {
-      const cached = await getCached(attachUrl);
+      const cached = await getCached(idbKey);
       if (cached) {
-        setProgress("Loading from cache…");
+        setProgress("Loading from browser cache…");
         setMeshes(cached.meshes);
         setTreeRoot(cached.root);
+        setFromDiskCache(true);
         setStatus("loaded");
         return;
       }
+
+      // Fetch from our server-side disk cache (downloads from ERP only on first request)
       setProgress("Fetching file from server…");
-      const res = await fetch(proxyUrl(attachUrl));
+      const res = await fetch(stepFileUrl(attachUrl, modified));
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const diskHit = res.headers.get("X-Step-Cache") === "HIT";
+      setFromDiskCache(diskHit);
       setProgress("Reading file…");
       const buffer = await res.arrayBuffer();
       const result = await loadStepFile(buffer, msg => setProgress(msg));
       setMeshes(result.meshes);
       setTreeRoot(result.root);
       setStatus("loaded");
-      setCached(attachUrl, result.meshes, result.root);
+      // Store parsed geometry in IndexedDB so next open is instant
+      setCached(idbKey, result.meshes, result.root);
     } catch (e: any) {
       setError(e.message || "Failed to load model");
       setStatus("error");
@@ -325,11 +342,11 @@ function ModelViewer({
 
   useEffect(() => {
     if (record.attach) {
-      loadFromUrl(record.attach);
+      loadFromUrl(record.attach, record.modified || "");
     } else {
       setStatus("idle");
     }
-  }, [record.name, record.attach]);
+  }, [record.name, record.attach, record.modified]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -380,7 +397,18 @@ function ModelViewer({
         <div className="h-5 w-px bg-gray-700" />
 
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-white truncate">{record.name}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold text-white truncate">{record.name}</p>
+            {status === "loaded" && fromDiskCache !== null && (
+              <span className={`flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full font-semibold border ${
+                fromDiskCache
+                  ? "bg-green-900/50 text-green-300 border-green-700/50"
+                  : "bg-blue-900/50 text-blue-300 border-blue-700/50"
+              }`}>
+                {fromDiskCache ? "⚡ Cached" : "⬇ Downloaded & cached"}
+              </span>
+            )}
+          </div>
           <p className="text-xs text-gray-400 truncate">
             {record.project_name || record.project}
             {record.revision ? ` · Rev ${record.revision}` : ""}

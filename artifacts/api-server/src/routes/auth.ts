@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { writeFile, readFile, unlink, mkdtemp } from "node:fs/promises";
+import { writeFile, readFile, unlink, mkdtemp, mkdir, access, readdir, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, extname } from "node:path";
+import { createHash } from "node:crypto";
 import nodemailer from "nodemailer";
 import { db } from "@workspace/db";
 import { userPermissionsTable } from "@workspace/db/schema";
@@ -535,6 +536,104 @@ authRouter.get("/file-proxy", async (req, res) => {
   } catch (err) {
     console.error("File proxy error:", err);
     res.status(500).send("Failed to fetch file");
+  }
+});
+
+// ── STEP / 3D file disk cache ─────────────────────────────────────────────────
+// Files are downloaded from ERPNext once and stored on disk.
+// The `modified` query param (ISO date string from the ERP record) is used as a
+// version tag: if it changes, the old file is replaced by a fresh download.
+
+const STEP_CACHE_DIR = join(process.cwd(), ".step-cache");
+mkdir(STEP_CACHE_DIR, { recursive: true }).catch(() => {});
+
+function stepCacheKey(url: string, modified: string): string {
+  return createHash("sha256").update(`${url}::${modified}`).digest("hex");
+}
+
+async function diskCacheHas(key: string): Promise<boolean> {
+  try {
+    await access(join(STEP_CACHE_DIR, key));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Serve a 3D file from disk cache (download from ERP on first access, or when modified date changes)
+authRouter.get("/step-file", async (req, res) => {
+  const url      = req.query.url      as string | undefined;
+  const modified = req.query.modified as string | undefined;
+
+  if (!url) return res.status(400).send("Missing url");
+
+  const ext = extname(url.split("?")[0]).toLowerCase().replace(".", "") || "step";
+  const cacheKey = stepCacheKey(url, modified || "");
+  const cachePath = join(STEP_CACHE_DIR, cacheKey);
+
+  const mimeMap: Record<string, string> = {
+    step: "application/octet-stream", stp: "application/octet-stream",
+    obj: "model/obj", stl: "application/octet-stream",
+    gltf: "model/gltf+json", glb: "model/gltf-binary",
+  };
+  const contentType = mimeMap[ext] || "application/octet-stream";
+
+  // Serve from disk if available
+  if (await diskCacheHas(cacheKey)) {
+    const data = await readFile(cachePath);
+    console.log(`[step-file] cache HIT: ${url.split("/").pop()} (${data.length} bytes)`);
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.setHeader("X-Step-Cache", "HIT");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    return res.send(data);
+  }
+
+  // Download from ERPNext
+  try {
+    const target = url.startsWith("http") ? url : `${ERP_URL}${url}`;
+    console.log(`[step-file] cache MISS — downloading: ${url.split("/").pop()}`);
+    const fileRes = await fetch(target, {
+      headers: { Authorization: `token ${API_KEY}:${API_SECRET}` },
+    });
+    if (!fileRes.ok) {
+      console.error(`[step-file] ERP returned ${fileRes.status} for ${url}`);
+      return res.status(fileRes.status).send("File not found in ERPNext");
+    }
+
+    const buf = Buffer.from(await fileRes.arrayBuffer());
+    // Save to disk (non-blocking — don't block the response)
+    writeFile(cachePath, buf).then(() => {
+      console.log(`[step-file] saved to disk: ${cacheKey} (${buf.length} bytes)`);
+    }).catch(e => {
+      console.warn(`[step-file] disk write failed: ${e.message}`);
+    });
+
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.setHeader("X-Step-Cache", "MISS");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    return res.send(buf);
+  } catch (err: any) {
+    console.error("[step-file] error:", err.message);
+    return res.status(500).send("Failed to fetch 3D file");
+  }
+});
+
+// List cached STEP files (admin info)
+authRouter.get("/step-file/cache-info", async (_req, res) => {
+  try {
+    const files = await readdir(STEP_CACHE_DIR);
+    const stats = await Promise.all(
+      files.map(async f => {
+        const s = await stat(join(STEP_CACHE_DIR, f));
+        return { key: f, sizeKB: Math.round(s.size / 1024), cachedAt: s.mtime };
+      })
+    );
+    const totalMB = Math.round(stats.reduce((s, f) => s + f.sizeKB, 0) / 1024);
+    res.json({ count: files.length, totalMB, files: stats });
+  } catch {
+    res.json({ count: 0, totalMB: 0, files: [] });
   }
 });
 
