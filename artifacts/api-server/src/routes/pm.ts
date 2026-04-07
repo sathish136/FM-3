@@ -1749,30 +1749,36 @@ router.post("/activity/heartbeat", async (req, res) => {
     const appChanged = !existing || existing.activeApp !== newApp;
     const statusChanged = !existing || existing.isActive !== newIsActive;
 
-    // Fetch the existing ERP link so we never overwrite a manually-saved override with an empty auto-resolve
+    // Fetch the existing ERP link — if already matched, never overwrite it
     const existingErpRows = await db
-      .select({ erpEmployeeId: systemActivityTable.erpEmployeeId, erpImage: systemActivityTable.erpImage })
+      .select({
+        erpEmployeeId: systemActivityTable.erpEmployeeId,
+        erpImage: systemActivityTable.erpImage,
+        fullName: systemActivityTable.fullName,
+        department: systemActivityTable.department,
+        designation: systemActivityTable.designation,
+      })
       .from(systemActivityTable)
       .where(eq(systemActivityTable.deviceUsername, identifier))
       .limit(1);
-    const existingErpId = existingErpRows[0]?.erpEmployeeId || "";
-    const existingErpImage = existingErpRows[0]?.erpImage || "";
+    const existingErp = existingErpRows[0];
+    const alreadyLinked = !!(existingErp?.erpEmployeeId);
 
-    // Only replace the saved ERP link if auto-resolve returned a real value
-    const finalErpId = resolvedEmpId || existingErpId;
-    const finalErpImage = resolvedImage || existingErpImage;
-    const finalFullName = resolvedFullName || (existingRows[0] ? undefined : deviceUsername);
-    const finalDept = resolvedDept || "";
-    const finalDesignation = resolvedDesignation || "";
+    // If already linked, keep the existing ERP data; otherwise use auto-resolved data
+    const finalErpId    = alreadyLinked ? existingErp!.erpEmployeeId  : resolvedEmpId;
+    const finalErpImage = alreadyLinked ? existingErp!.erpImage        : resolvedImage;
+    const finalFullName = alreadyLinked ? existingErp!.fullName        : (resolvedFullName || deviceUsername);
+    const finalDept     = alreadyLinked ? existingErp!.department      : resolvedDept;
+    const finalDesig    = alreadyLinked ? existingErp!.designation     : resolvedDesignation;
 
     await db
       .insert(systemActivityTable)
       .values({
         deviceUsername: identifier,
         email: resolvedEmail,
-        fullName: finalFullName || deviceUsername,
+        fullName: finalFullName,
         department: finalDept,
-        designation: finalDesignation,
+        designation: finalDesig,
         erpEmployeeId: finalErpId,
         erpImage: finalErpImage,
         activeApp: newApp,
@@ -1786,10 +1792,14 @@ router.post("/activity/heartbeat", async (req, res) => {
         target: systemActivityTable.deviceUsername,
         set: {
           email: resolvedEmail,
-          ...(resolvedFullName ? { fullName: resolvedFullName } : {}),
-          ...(resolvedDept ? { department: resolvedDept } : {}),
-          ...(resolvedDesignation ? { designation: resolvedDesignation } : {}),
-          ...(resolvedEmpId ? { erpEmployeeId: resolvedEmpId, erpImage: resolvedImage } : {}),
+          // Only update ERP-linked fields if not already manually/auto linked
+          ...(alreadyLinked ? {} : {
+            fullName: finalFullName,
+            department: finalDept,
+            designation: finalDesig,
+            erpEmployeeId: finalErpId,
+            erpImage: finalErpImage,
+          }),
           activeApp: newApp,
           windowTitle: (windowTitle ?? "").substring(0, 300),
           isActive: newIsActive,
