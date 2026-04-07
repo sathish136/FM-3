@@ -84,6 +84,7 @@ interface Permission {
   roleType: string | null;
   allowedProjects: string;
   allowedDrawingDepts: string;
+  hodDept: string | null;
   twoFaEnabled: boolean;
   theme: ThemeOption;
   navbarStyle: NavbarStyleOption;
@@ -333,6 +334,7 @@ export function UserManagementContent() {
   const [perms, setPerms]         = useState<Record<string, Permission>>({});
   const [projects, setProjects]   = useState<Project[]>([]);
   const [templates, setTemplates] = useState<RoleTemplate[]>([]);
+  const [departments, setDepartments] = useState<string[]>([]);
   const [loading, setLoading]     = useState(true);
   const [saving, setSaving]       = useState(false);
   const [search, setSearch]       = useState("");
@@ -348,6 +350,7 @@ export function UserManagementContent() {
   const [draftRoleType, setDraftRoleType]     = useState<string | null>(null);
   const [draftProjects, setDraftProjects]         = useState<string[]>([]);
   const [draftDrawingDepts, setDraftDrawingDepts] = useState<string[]>([]);
+  const [draftHodDept, setDraftHodDept]           = useState<string | null>(null);
   const [draftTwoFa, setDraftTwoFa]               = useState(false);
   const [draftTheme, setDraftTheme]               = useState<ThemeOption>("system");
   const [draftNavbarStyle, setDraftNavbarStyle]   = useState<NavbarStyleOption>("full");
@@ -368,19 +371,26 @@ export function UserManagementContent() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [uRes, pRes, prRes, tRes] = await Promise.all([
+      const [uRes, pRes, prRes, tRes, dRes] = await Promise.all([
         fetch(`${BASE}/api/erpnext-users`),
         fetch(`${BASE}/api/user-permissions`),
         fetch(`${BASE}/api/projects`),
         fetch(`${BASE}/api/role-templates`),
+        fetch(`${BASE}/api/departments`),
       ]);
       const uData: ErpUser[]       = uRes.ok  ? await uRes.json()  : [];
       const pData: Permission[]    = pRes.ok  ? await pRes.json()  : [];
       const prData: Project[]      = prRes.ok ? await prRes.json() : [];
       const tData: RoleTemplate[]  = tRes.ok  ? await tRes.json()  : [];
+      const dData: { name: string; department_name: string }[] = dRes.ok ? await dRes.json() : [];
       setUsers(uData);
       setProjects(prData);
       setTemplates(tData);
+      setDepartments(
+        dData.length > 0
+          ? dData.map(d => d.department_name || d.name).filter(Boolean).sort()
+          : ["Mechanical","Electrical","Civil","Instrumentation","Process","Project","Quality","HSE"]
+      );
       const map: Record<string, Permission> = {};
       pData.forEach(p => { map[p.email] = p; });
       setPerms(map);
@@ -402,6 +412,7 @@ export function UserManagementContent() {
     setDraftRoleType(p ? (p.roleType ?? null) : null);
     setDraftProjects(p ? JSON.parse(p.allowedProjects || "[]") : []);
     setDraftDrawingDepts(p ? (() => { try { return JSON.parse(p.allowedDrawingDepts || "[]"); } catch { return []; } })() : []);
+    setDraftHodDept(p ? (p.hodDept ?? null) : null);
     setDraftTwoFa(p ? (p.twoFaEnabled ?? false) : false);
     setDraftTheme(p ? (p.theme ?? "system") : "system");
     setDraftNavbarStyle(p ? (p.navbarStyle ?? "full") : "full");
@@ -423,6 +434,7 @@ export function UserManagementContent() {
           roleType: draftRoleType,
           allowedProjects: draftProjects,
           allowedDrawingDepts: draftDrawingDepts,
+          hodDept: draftHodDept,
           twoFaEnabled: draftTwoFa,
           theme: draftTheme,
           navbarStyle: draftNavbarStyle,
@@ -560,6 +572,7 @@ export function UserManagementContent() {
     setDraftRoles(rolesFromPermission(p));
     setDraftProjects((() => { try { return JSON.parse(p.allowedProjects || "[]"); } catch { return []; } })());
     setDraftDrawingDepts((() => { try { return JSON.parse(p.allowedDrawingDepts || "[]"); } catch { return []; } })());
+    setDraftHodDept(p.hodDept ?? null);
     setDraftTwoFa(p.twoFaEnabled ?? false);
     setDraftTheme(p.theme ?? "system");
     setDraftNavbarStyle(p.navbarStyle ?? "full");
@@ -879,6 +892,11 @@ export function UserManagementContent() {
                         }
                         return null;
                       })()}
+                      {perms[u.email]?.hodDept && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                          HOD · {perms[u.email]!.hodDept}
+                        </span>
+                      )}
                       {!summary ? (
                         <span className="text-[9px] text-muted-foreground/40">Default</span>
                       ) : isBlocked ? (
@@ -1202,6 +1220,40 @@ export function UserManagementContent() {
                       <p className="text-sm text-muted-foreground">Restrict which projects and drawing categories this user can access.</p>
                     </div>
 
+                    {/* Team HOD */}
+                    <div className={`mb-6 rounded-2xl border-2 p-5 transition-all ${draftHodDept ? "border-emerald-200 bg-emerald-50/40" : "border-border bg-card"}`}>
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${draftHodDept ? "bg-emerald-100" : "bg-muted"}`}>
+                          <Users className={`w-4.5 h-4.5 ${draftHodDept ? "text-emerald-600" : "text-muted-foreground"}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-bold ${draftHodDept ? "text-emerald-800" : "text-foreground"}`}>Team HOD (Head of Department)</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">Assign this user as HOD for a team — grants department-level visibility in HRMS.</p>
+                        </div>
+                        {draftHodDept && (
+                          <button onClick={() => setDraftHodDept(null)}
+                            className="text-xs text-emerald-600 hover:text-emerald-800 font-medium px-2 py-1 rounded-lg hover:bg-emerald-100 transition-colors shrink-0">
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {departments.map(dept => {
+                          const active = draftHodDept === dept;
+                          return (
+                            <button key={dept} onClick={() => setDraftHodDept(active ? null : dept)}
+                              className={`px-4 py-2 rounded-xl border-2 text-sm font-semibold transition-all ${
+                                active
+                                  ? "bg-emerald-500 border-emerald-500 text-white shadow-sm"
+                                  : "bg-card border-border text-muted-foreground hover:border-emerald-300 hover:text-emerald-700"
+                              }`}>
+                              {dept}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-6">
                       {/* Project access */}
                       <div>
@@ -1255,7 +1307,7 @@ export function UserManagementContent() {
                         </div>
                         <p className="text-[11px] text-muted-foreground mb-3">If none are selected, user cannot view any drawings.</p>
                         <div className="space-y-2">
-                          {["Mechanical","Electrical","Civil","Instrumentation","Process","Project","Quality","HSE"].map(dept => {
+                          {departments.map(dept => {
                             const on = draftDrawingDepts.includes(dept);
                             return (
                               <button key={dept} onClick={() => toggleDrawingDept(dept)}

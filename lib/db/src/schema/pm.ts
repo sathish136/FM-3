@@ -144,6 +144,7 @@ export const userPermissionsTable = pgTable("user_permissions", {
   twoFaEnabled: boolean("two_fa_enabled").notNull().default(false),
   theme: text("theme").notNull().default("system"),
   navbarStyle: text("navbar_style").notNull().default("full"),
+  hodDept: text("hod_dept"),
   notifWhatsapp: boolean("notif_whatsapp").notNull().default(false),
   notifWhatsappPhone: text("notif_whatsapp_phone"),
   notifEmail: boolean("notif_email").notNull().default(true),

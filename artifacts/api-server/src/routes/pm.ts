@@ -61,6 +61,7 @@ pool
   ALTER TABLE user_permissions ADD COLUMN IF NOT EXISTS two_fa_enabled BOOLEAN NOT NULL DEFAULT false;
   ALTER TABLE user_permissions ADD COLUMN IF NOT EXISTS theme TEXT NOT NULL DEFAULT 'system';
   ALTER TABLE user_permissions ADD COLUMN IF NOT EXISTS navbar_style TEXT NOT NULL DEFAULT 'full';
+  ALTER TABLE user_permissions ADD COLUMN IF NOT EXISTS hod_dept TEXT;
   CREATE TABLE IF NOT EXISTS drawing_approval_recipients (
     id SERIAL PRIMARY KEY,
     employee_id TEXT NOT NULL UNIQUE,
@@ -165,6 +166,7 @@ import {
   fetchErpNextWarehouses,
   fetchErpNextCompanies,
   fetchErpNextUsers,
+  fetchErpNextDepartments,
   fetchErpNextPurchaseOrders,
   fetchErpNextPurchaseOrder,
   fetchErpNextSuppliers,
@@ -1014,6 +1016,17 @@ router.get("/companies", async (_req, res) => {
   }
 });
 
+// ─── Departments ─────────────────────────────────────────────────────────────
+
+router.get("/departments", async (_req, res) => {
+  try {
+    const depts = await fetchErpNextDepartments();
+    res.json(depts);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 // ─── User Management ─────────────────────────────────────────────────────────
 
 router.get("/erpnext-users", async (_req, res) => {
@@ -1129,7 +1142,7 @@ router.get("/user-permissions/:email", async (req, res) => {
 router.put("/user-permissions/:email", async (req, res) => {
   try {
     const { email } = req.params;
-    const { fullName, hasAccess, modules, moduleRoles, roleType, allowedProjects, allowedDrawingDepts, twoFaEnabled, theme, navbarStyle } = req.body;
+    const { fullName, hasAccess, modules, moduleRoles, roleType, allowedProjects, allowedDrawingDepts, twoFaEnabled, theme, navbarStyle, hodDept } = req.body;
     const derivedModules = moduleRoles
       ? Object.entries(moduleRoles as Record<string, string>)
           .filter(([, role]) => role !== "none")
@@ -1149,6 +1162,7 @@ router.put("/user-permissions/:email", async (req, res) => {
         twoFaEnabled: twoFaEnabled ?? false,
         theme: theme ?? "system",
         navbarStyle: navbarStyle ?? "full",
+        hodDept: hodDept ?? null,
         updatedAt: new Date(),
       })
       .onConflictDoUpdate({
@@ -1164,6 +1178,7 @@ router.put("/user-permissions/:email", async (req, res) => {
           twoFaEnabled: twoFaEnabled ?? false,
           theme: theme ?? "system",
           navbarStyle: navbarStyle ?? "full",
+          hodDept: hodDept ?? null,
           updatedAt: new Date(),
         },
       })
