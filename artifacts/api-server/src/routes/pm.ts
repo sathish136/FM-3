@@ -1817,14 +1817,14 @@ router.post("/activity/heartbeat", async (req, res) => {
         target: systemActivityTable.deviceUsername,
         set: {
           email: resolvedEmail,
-          // Only update ERP-linked fields if not already manually/auto linked
-          ...(alreadyLinked ? {} : {
-            fullName: finalFullName,
-            department: finalDept,
-            designation: finalDesig,
-            erpEmployeeId: finalErpId,
-            erpImage: finalErpImage,
-          }),
+          // Use SQL CASE to atomically preserve ERP fields if already linked,
+          // avoiding a race condition where a concurrent erp-override could be overwritten
+          // by a stale alreadyLinked flag read earlier in this request.
+          fullName: sql`CASE WHEN system_activity.erp_employee_id != '' THEN system_activity.full_name ELSE ${finalFullName} END`,
+          department: sql`CASE WHEN system_activity.erp_employee_id != '' THEN system_activity.department ELSE ${finalDept} END`,
+          designation: sql`CASE WHEN system_activity.erp_employee_id != '' THEN system_activity.designation ELSE ${finalDesig} END`,
+          erpEmployeeId: sql`CASE WHEN system_activity.erp_employee_id != '' THEN system_activity.erp_employee_id ELSE ${finalErpId} END`,
+          erpImage: sql`CASE WHEN system_activity.erp_employee_id != '' THEN system_activity.erp_image ELSE ${finalErpImage} END`,
           activeApp: newApp,
           windowTitle: (windowTitle ?? "").substring(0, 300),
           isActive: newIsActive,
