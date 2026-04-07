@@ -207,7 +207,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     items: [
       { path: "/", label: "Dashboard", icon: LayoutDashboard, color: "text-sky-400", bgColor: "bg-sky-500/15" },
       { path: "/team-pulse", label: "Team Pulse", icon: Activity, color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
-      { path: "/user-management", label: "User Management", icon: Users, color: "text-red-400", bgColor: "bg-red-500/15" },
+      { path: "/team-reporting", label: "Team Reporting", icon: ClipboardList, color: "text-indigo-400", bgColor: "bg-indigo-500/15" },
     ],
   },
   {
@@ -324,6 +324,7 @@ const PATH_TO_MODULE: Record<string, string> = {
   "/project-board":         "project-board",
   "/task-management":       "task-management",
   "/team-pulse":            "team-pulse",
+  "/team-reporting":        "team-reporting",
   "/project-timeline":      "project-timeline",
   "/meeting-minutes":       "meeting-minutes",
   "/project-drawings":      "project-drawings",

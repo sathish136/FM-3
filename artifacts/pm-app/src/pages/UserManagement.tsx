@@ -16,6 +16,7 @@ const APP_MODULES = [
   { key: "calendar",               label: "Calendar",             group: "Core" },
   { key: "tasks",                  label: "Tasks (Kanban)",       group: "Core" },
   { key: "team-pulse",             label: "Team Pulse",           group: "Core" },
+  { key: "team-reporting",         label: "Team Reporting",       group: "Core" },
   { key: "projects",               label: "Projects",             group: "Project Management" },
   { key: "project-board",          label: "Project Board",        group: "Project Management" },
   { key: "project-timeline",       label: "Project Timeline",     group: "Project Management" },

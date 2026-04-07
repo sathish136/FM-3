@@ -66,6 +66,7 @@ import FinanceDashboard from "@/pages/FinanceDashboard";
 import StockReports from "@/pages/StockReports";
 import TaskManagement from "@/pages/TaskManagement";
 import TeamPulse from "@/pages/TeamPulse";
+import TeamReporting from "@/pages/TeamReporting";
 import EmpAgent from "@/pages/EmpAgent";
 import { SlideshowProvider } from "@/contexts/SlideshowContext";
 
@@ -215,6 +216,7 @@ function ProtectedRoutes() {
       <Route path="/stock-reports" component={StockReports} />
       <Route path="/task-management" component={TaskManagement} />
       <Route path="/team-pulse" component={TeamPulse} />
+      <Route path="/team-reporting" component={TeamReporting} />
       <Route component={NotFound} />
     </Switch>
   );
