@@ -8,7 +8,7 @@ import {
   AlertCircle, CheckCircle2, Timer, CircleDot, Coffee, Zap,
   Building2, MapPin, Phone, BadgeCheck, Users, Link2, Check, Loader2,
   BarChart2, FileText, ChevronRight, History, ClipboardList,
-  LayoutGrid, List, ArrowLeft, SlidersHorizontal,
+  LayoutGrid, List, ArrowLeft, SlidersHorizontal, GitBranch, ChevronUp, Star,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -1249,6 +1249,269 @@ function SummaryReport({ activity, tasks, onClose }: {
   );
 }
 
+// ── Department Tree View ────────────────────────────────────────────────────────
+function DeptTreeView({
+  activity,
+  hodPermissions,
+  erpCheckinMap,
+  onSelectEmployee,
+  onRefresh,
+}: {
+  activity: SystemActivity[];
+  hodPermissions: Array<{ email: string; fullName: string | null; hodDept: string | null }>;
+  erpCheckinMap: Record<string, { checkIn?: string; checkOut?: string }>;
+  onSelectEmployee: (row: SystemActivity) => void;
+  onRefresh: () => void;
+}) {
+  const BASE_PX = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const [expandedDepts, setExpandedDepts] = useState<Set<string>>(new Set());
+
+  const toggleDept = (dept: string) =>
+    setExpandedDepts(prev => {
+      const next = new Set(prev);
+      next.has(dept) ? next.delete(dept) : next.add(dept);
+      return next;
+    });
+
+  // Group employees by department
+  const deptGroups: Record<string, SystemActivity[]> = {};
+  for (const emp of activity) {
+    const dept = emp.department || "Unassigned";
+    if (!deptGroups[dept]) deptGroups[dept] = [];
+    deptGroups[dept].push(emp);
+  }
+
+  const deptNames = Object.keys(deptGroups).sort((a, b) => {
+    if (a === "Unassigned") return 1;
+    if (b === "Unassigned") return -1;
+    return a.localeCompare(b);
+  });
+
+  // Build HOD map: dept → { email, fullName }
+  const hodMap: Record<string, { email: string; fullName: string | null }> = {};
+  for (const h of hodPermissions) {
+    if (h.hodDept) hodMap[h.hodDept] = { email: h.email, fullName: h.fullName };
+  }
+
+  // Find HOD's activity entry to get photo
+  function getHodActivity(dept: string): SystemActivity | null {
+    const hod = hodMap[dept];
+    if (!hod) return null;
+    return activity.find(a => a.email?.toLowerCase() === hod.email?.toLowerCase()) ?? null;
+  }
+
+  // Department rating (0-5 stars) based on active % of employees
+  function deptRating(emps: SystemActivity[]): number {
+    if (emps.length === 0) return 0;
+    const active = emps.filter(e => activityStatus(e) === "active").length;
+    return Math.round((active / emps.length) * 5);
+  }
+
+  // Color for rating
+  function ratingColor(r: number) {
+    if (r >= 4) return "text-green-500";
+    if (r >= 2) return "text-amber-400";
+    return "text-red-400";
+  }
+
+  return (
+    <div className="p-6 space-y-4">
+      <div className="flex items-center gap-2 mb-2">
+        <GitBranch className="w-4 h-4 text-violet-500" />
+        <span className="text-sm font-bold text-gray-800">Department Tree — {deptNames.length} departments</span>
+        <span className="ml-auto text-xs text-gray-400">{activity.length} employees total</span>
+      </div>
+
+      {deptNames.map(dept => {
+        const emps = deptGroups[dept];
+        const active = emps.filter(e => activityStatus(e) === "active");
+        const idle = emps.filter(e => activityStatus(e) === "idle");
+        const offline = emps.filter(e => activityStatus(e) === "offline");
+        const rating = deptRating(emps);
+        const activePct = emps.length > 0 ? Math.round((active.length / emps.length) * 100) : 0;
+        const hod = hodMap[dept];
+        const hodActivity = getHodActivity(dept);
+        const hodPhoto = hodActivity?.erpImage
+          ? `${BASE_PX}/api/auth/photo?url=${encodeURIComponent(hodActivity.erpImage)}`
+          : null;
+        const isExpanded = expandedDepts.has(dept);
+
+        return (
+          <div key={dept} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            {/* Department Header */}
+            <button
+              onClick={() => toggleDept(dept)}
+              className="w-full px-5 py-4 flex items-center gap-4 hover:bg-gray-50 transition-colors text-left"
+            >
+              {/* Expand arrow */}
+              <div className={`transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`}>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              </div>
+
+              {/* Dept icon */}
+              <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center flex-shrink-0">
+                <Building2 className="w-5 h-5 text-violet-600" />
+              </div>
+
+              {/* Dept name + HOD */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-bold text-gray-900">{dept}</span>
+                  {hod && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      {hodPhoto ? (
+                        <img src={hodPhoto} className="w-4 h-4 rounded-full object-cover" alt="" />
+                      ) : (
+                        <Users className="w-3 h-3" />
+                      )}
+                      HOD · {hod.fullName || hod.email.split("@")[0]}
+                    </span>
+                  )}
+                </div>
+                {/* Progress bar */}
+                <div className="flex items-center gap-2 mt-1.5">
+                  <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-green-400 transition-all duration-500"
+                      style={{ width: `${activePct}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] text-gray-400 flex-shrink-0">{activePct}% active</span>
+                </div>
+              </div>
+
+              {/* Stats chips */}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-green-50 text-green-700 border border-green-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                  {active.length} Active
+                </span>
+                <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
+                  {idle.length} Idle
+                </span>
+                <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-500 border border-gray-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400 inline-block" />
+                  {offline.length} Offline
+                </span>
+                {/* Star rating */}
+                <div className="flex items-center gap-0.5 ml-1">
+                  {[1, 2, 3, 4, 5].map(s => (
+                    <Star
+                      key={s}
+                      className={`w-3.5 h-3.5 ${s <= rating ? ratingColor(rating) : "text-gray-200"}`}
+                      fill={s <= rating ? "currentColor" : "none"}
+                    />
+                  ))}
+                </div>
+                <span className="text-xs text-gray-400 font-medium ml-1">{emps.length} staff</span>
+              </div>
+
+              {isExpanded
+                ? <ChevronUp className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                : <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />}
+            </button>
+
+            {/* Employees (expanded) */}
+            {isExpanded && (
+              <div className="border-t border-gray-100">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="text-left px-5 py-2.5 text-[11px] font-semibold text-gray-500 w-56">Employee</th>
+                      <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-500">Status</th>
+                      <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-500">Designation</th>
+                      <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-500">Current App</th>
+                      <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-500">Check-In</th>
+                      <th className="px-4 py-2.5" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {emps
+                      .sort((a, b) => {
+                        const o = { active: 0, idle: 1, offline: 2 } as Record<string, number>;
+                        return o[activityStatus(a)] - o[activityStatus(b)];
+                      })
+                      .map(emp => {
+                        const st = activityStatus(emp);
+                        const name = emp.fullName || emp.deviceUsername || emp.email.split("@")[0];
+                        const photo = emp.erpImage
+                          ? `${BASE_PX}/api/auth/photo?url=${encodeURIComponent(emp.erpImage)}`
+                          : null;
+                        const checkin = emp.erpEmployeeId ? erpCheckinMap[emp.erpEmployeeId] : undefined;
+                        const isHod = hod && emp.email?.toLowerCase() === hod.email?.toLowerCase();
+                        return (
+                          <tr
+                            key={emp.deviceUsername || emp.email}
+                            className={`hover:bg-violet-50/30 cursor-pointer transition-colors ${isHod ? "bg-emerald-50/40" : ""}`}
+                            onClick={() => onSelectEmployee(emp)}
+                          >
+                            <td className="px-5 py-3">
+                              <div className="flex items-center gap-2.5">
+                                <div className="relative flex-shrink-0">
+                                  {photo ? (
+                                    <img src={photo} className="w-7 h-7 rounded-full object-cover border border-gray-200" alt="" />
+                                  ) : (
+                                    <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center">
+                                      <User className="w-4 h-4 text-gray-400" />
+                                    </div>
+                                  )}
+                                  <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${
+                                    st === "active" ? "bg-green-500" : st === "idle" ? "bg-amber-400" : "bg-gray-300"
+                                  }`} />
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-xs font-semibold text-gray-800 truncate max-w-[140px]">{name}</span>
+                                    {isHod && (
+                                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold flex-shrink-0">HOD</span>
+                                    )}
+                                  </div>
+                                  <div className="text-[10px] text-gray-400 truncate">{emp.email}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-semibold ${
+                                st === "active" ? "bg-green-50 text-green-700" :
+                                st === "idle" ? "bg-amber-50 text-amber-600" :
+                                "bg-gray-100 text-gray-400"
+                              }`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${
+                                  st === "active" ? "bg-green-500" : st === "idle" ? "bg-amber-400" : "bg-gray-300"
+                                }`} />
+                                {st.charAt(0).toUpperCase() + st.slice(1)}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-[11px] text-gray-500">{emp.designation || "—"}</td>
+                            <td className="px-4 py-3 text-[11px] text-gray-700 truncate max-w-[160px]">{emp.activeApp || "—"}</td>
+                            <td className="px-4 py-3 text-[11px] text-gray-500">
+                              {checkin?.checkIn
+                                ? new Date(checkin.checkIn).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
+                                : "—"}
+                            </td>
+                            <td className="px-4 py-3">
+                              <button
+                                onClick={e => { e.stopPropagation(); onSelectEmployee(emp); }}
+                                className="text-[11px] text-violet-600 hover:text-violet-800 font-medium"
+                              >
+                                Details →
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Activity Card ──────────────────────────────────────────────────────────────
 const BASE_PROXY = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -1613,7 +1876,8 @@ export default function TaskManagement() {
   const activityIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<SystemActivity | null>(null);
   const [showSummary, setShowSummary] = useState(false);
-  const [monitorView, setMonitorView] = useState<"grid" | "list">("grid");
+  const [monitorView, setMonitorView] = useState<"grid" | "list" | "tree">("grid");
+  const [hodPermissions, setHodPermissions] = useState<Array<{ email: string; fullName: string | null; hodDept: string | null }>>([]);
   const [monitorSearch, setMonitorSearch] = useState("");
   const [monitorStatus, setMonitorStatus] = useState("all");
   const [monitorDept, setMonitorDept] = useState("all");
@@ -1695,6 +1959,20 @@ export default function TaskManagement() {
       .then(data => setErpCheckinMap(typeof data === "object" && data !== null ? data : {}))
       .catch(() => {});
   }, [tab, monitorDate]);
+
+  useEffect(() => {
+    if (tab !== "monitor") return;
+    fetch(`${BASE}/api/user-permissions`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => {
+        if (Array.isArray(data)) {
+          setHodPermissions(data.filter((d: { hodDept?: string | null }) => d.hodDept).map((d: { email: string; fullName?: string | null; hodDept: string | null }) => ({
+            email: d.email, fullName: d.fullName ?? null, hodDept: d.hodDept,
+          })));
+        }
+      })
+      .catch(() => {});
+  }, [tab]);
 
   // Task CRUD
   const createTask = async (data: Partial<FmTask>) => {
@@ -2163,13 +2441,17 @@ export default function TaskManagement() {
                     <span className="text-xs text-gray-400">{filteredActivity.length} shown · refreshes 30s</span>
                     {/* View toggle */}
                     <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
-                      <button onClick={() => setMonitorView("grid")}
+                      <button onClick={() => setMonitorView("grid")} title="Grid View"
                         className={`p-1.5 rounded-md transition-all ${monitorView === "grid" ? "bg-white shadow-sm text-gray-700" : "text-gray-400 hover:text-gray-600"}`}>
                         <LayoutGrid className="w-4 h-4" />
                       </button>
-                      <button onClick={() => setMonitorView("list")}
+                      <button onClick={() => setMonitorView("list")} title="List View"
                         className={`p-1.5 rounded-md transition-all ${monitorView === "list" ? "bg-white shadow-sm text-gray-700" : "text-gray-400 hover:text-gray-600"}`}>
                         <List className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => setMonitorView("tree")} title="Tree View (Department Summary)"
+                        className={`p-1.5 rounded-md transition-all ${monitorView === "tree" ? "bg-white shadow-sm text-violet-600" : "text-gray-400 hover:text-gray-600"}`}>
+                        <GitBranch className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
@@ -2177,7 +2459,16 @@ export default function TaskManagement() {
 
                 {/* Content */}
                 <div className="flex-1 overflow-auto">
-                  {filteredActivity.length === 0 ? (
+                  {monitorView === "tree" ? (
+                    /* ── TREE VIEW ── department-wise summary ───────────────────────── */
+                    <DeptTreeView
+                      activity={activity}
+                      hodPermissions={hodPermissions}
+                      erpCheckinMap={erpCheckinMap}
+                      onSelectEmployee={setSelectedEmployee}
+                      onRefresh={loadActivity}
+                    />
+                  ) : filteredActivity.length === 0 ? (
                     <div className="flex items-center justify-center h-40">
                       <div className="text-center">
                         <Search className="w-8 h-8 text-gray-300 mx-auto mb-2" />
