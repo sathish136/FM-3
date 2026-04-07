@@ -51,7 +51,6 @@ const APP_MODULES = [
   { key: "hrms-team-performance",  label: "Team Dashboard",       group: "HR" },
   { key: "hrms-task-summary",      label: "Task Summary",         group: "HR" },
   { key: "hrms-daily-reporting",   label: "Daily Reporting",      group: "HR" },
-  { key: "team-pulse",             label: "Team Pulse",           group: "Monitoring" },
   { key: "site-data",              label: "Site Data",            group: "Monitoring" },
   { key: "cctv",                   label: "CCTV",                 group: "Monitoring" },
   { key: "mis-report",             label: "MD Dashboard",         group: "Executive" },
