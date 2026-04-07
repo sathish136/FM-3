@@ -1872,13 +1872,14 @@ router.get("/activity/checkins-today", async (req, res) => {
 router.get("/activity/:deviceUsername/history", async (req, res) => {
   try {
     const { deviceUsername } = req.params;
+    const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
     const result = await pool.query(
       `SELECT id, active_app, window_title, is_active, idle_seconds, logged_at
        FROM activity_log
-       WHERE device_username = $1
+       WHERE device_username = $1 AND logged_at::date = $2::date
        ORDER BY logged_at DESC
-       LIMIT 50`,
-      [deviceUsername]
+       LIMIT 200`,
+      [deviceUsername, date]
     );
     res.json(result.rows.map((r: any) => ({
       id: r.id,
@@ -2025,15 +2026,14 @@ router.get("/activity/:deviceUsername/cost-info", async (req, res) => {
     const dailyRate = monthlySalary ? Math.round((monthlySalary / 26) * 100) / 100 : null;
     const minuteRate = hourlyRate ? Math.round((hourlyRate / 60) * 100) / 100 : null;
 
-    // Count today's active seconds from activity_log
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Count active seconds from activity_log for the requested date
+    const dateParam = (req.query.date as string) || new Date().toISOString().slice(0, 10);
     const todayResult = await pool.query(
       `SELECT COALESCE(SUM(CASE WHEN is_active THEN 30 ELSE 0 END), 0) AS active_secs,
               COALESCE(SUM(idle_seconds), 0) AS total_idle
        FROM activity_log
-       WHERE device_username = $1 AND logged_at >= $2`,
-      [deviceUsername, today.toISOString()]
+       WHERE device_username = $1 AND logged_at::date = $2::date`,
+      [deviceUsername, dateParam]
     );
     const activeSecsToday: number = Number(todayResult.rows[0]?.active_secs) || 0;
     const idleSecsToday: number = Number(todayResult.rows[0]?.total_idle) || 0;

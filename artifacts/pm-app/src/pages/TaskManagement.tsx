@@ -386,11 +386,12 @@ function calcProductivityScore(history: ActivityLog[], currentRow: SystemActivit
 }
 
 // ── Employee Detail Panel ──────────────────────────────────────────────────────
-function EmployeeDetailPanel({ row, tasks, onClose, erpCheckin }: {
+function EmployeeDetailPanel({ row, tasks, onClose, erpCheckin, date }: {
   row: SystemActivity;
   tasks: FmTask[];
   onClose: () => void;
   erpCheckin?: { checkIn?: string; checkOut?: string };
+  date: string;
 }) {
   const BASE_PROXY = import.meta.env.BASE_URL.replace(/\/$/, "");
   const status = activityStatus(row);
@@ -417,31 +418,31 @@ function EmployeeDetailPanel({ row, tasks, onClose, erpCheckin }: {
 
   useEffect(() => {
     if (!row.deviceUsername) { setHistoryLoading(false); return; }
-    fetch(`${BASE_PROXY}/api/activity/${encodeURIComponent(row.deviceUsername)}/history`)
+    setHistoryLoading(true);
+    fetch(`${BASE_PROXY}/api/activity/${encodeURIComponent(row.deviceUsername)}/history?date=${date}`)
       .then(r => r.ok ? r.json() : [])
       .then(data => setHistory(Array.isArray(data) ? data : []))
       .catch(() => {})
       .finally(() => setHistoryLoading(false));
-  }, [row.deviceUsername]);
+  }, [row.deviceUsername, date]);
 
   useEffect(() => {
     if (!row.deviceUsername) return;
-    fetch(`${BASE_PROXY}/api/activity/${encodeURIComponent(row.deviceUsername)}/cost-info`)
+    fetch(`${BASE_PROXY}/api/activity/${encodeURIComponent(row.deviceUsername)}/cost-info?date=${date}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => setCostInfo(d))
       .catch(() => {});
-  }, [row.deviceUsername]);
+  }, [row.deviceUsername, date]);
 
   useEffect(() => {
     if (!row.erpEmployeeId) return;
-    const today = new Date().toISOString().slice(0, 10);
-    fetch(`${BASE_PROXY}/api/activity/checkins-today?date=${today}`)
+    fetch(`${BASE_PROXY}/api/activity/checkins-today?date=${date}`)
       .then(r => r.ok ? r.json() : {})
       .then((map: Record<string, { checkIn?: string; checkOut?: string }>) => {
         setErpCheckinDirect(map[row.erpEmployeeId] ?? null);
       })
       .catch(() => {});
-  }, [row.erpEmployeeId]);
+  }, [row.erpEmployeeId, date]);
 
   useEffect(() => {
     fetch(`${BASE_PROXY}/api/projects`)
@@ -553,6 +554,7 @@ function EmployeeDetailPanel({ row, tasks, onClose, erpCheckin }: {
           </span>
         )}
         <div className="ml-auto flex items-center gap-3 text-xs text-gray-400">
+          <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-lg font-semibold border border-blue-100">{date}</span>
           <Clock className="w-3.5 h-3.5" /> Updated {timeSince(row.lastSeen)}
         </div>
       </div>
@@ -582,7 +584,7 @@ function EmployeeDetailPanel({ row, tasks, onClose, erpCheckin }: {
 
           {/* Attendance & System Times */}
           <div className="px-5 py-4 border-b border-gray-100">
-            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Today's Attendance</div>
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Attendance · {date}</div>
             <div className="space-y-2.5">
               {/* Check-In */}
               <div className="flex items-center justify-between bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">
@@ -2212,6 +2214,7 @@ export default function TaskManagement() {
           tasks={tasks}
           onClose={() => setSelectedEmployee(null)}
           erpCheckin={selectedEmployee.erpEmployeeId ? erpCheckinMap[selectedEmployee.erpEmployeeId] : undefined}
+          date={monitorDate}
         />
       )}
 
