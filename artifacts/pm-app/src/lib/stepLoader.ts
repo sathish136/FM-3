@@ -25,131 +25,56 @@ export interface LoadResult {
   root: TreeNode;
 }
 
-let occtInstance: unknown = null;
+// Singleton worker — created once, kept alive so OCCT stays initialised between files.
+let worker: Worker | null = null;
+let nextId = 1;
 
-async function ensureOcctScript(): Promise<void> {
-  if ((window as any).occtimportjs) return;
-
-  await new Promise<void>((resolve, reject) => {
-    const existing = document.querySelector("script[data-occt]");
-    if (existing) { resolve(); return; }
-
-    const script = document.createElement("script");
-    script.src = `${import.meta.env.BASE_URL}occt-import-js.js`;
-    script.setAttribute("data-occt", "1");
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Failed to load OpenCascade script from public folder"));
-    document.head.appendChild(script);
-  });
-}
-
-async function getOcct(): Promise<unknown> {
-  if (occtInstance) return occtInstance;
-
-  await ensureOcctScript();
-
-  const initFn = (window as any).occtimportjs;
-  if (!initFn || typeof initFn !== "function") {
-    throw new Error("OpenCascade failed to initialize");
+function getWorker(): Worker {
+  if (!worker) {
+    const base = import.meta.env.BASE_URL;
+    worker = new Worker(`${base}step-parser-worker.js`);
   }
-
-  const base = import.meta.env.BASE_URL;
-  occtInstance = await initFn({
-    locateFile: (path: string) => {
-      if (path.endsWith(".wasm")) return `${base}occt-import-js.wasm`;
-      return `${base}${path}`;
-    },
-  });
-
-  return occtInstance;
-}
-
-function buildTree(node: any, parentId: string, counter: { n: number }): TreeNode {
-  const id = `${parentId}-${counter.n++}`;
-  return {
-    id,
-    name: node.name || "Unnamed",
-    meshIndices: Array.isArray(node.meshes) ? node.meshes : [],
-    children: Array.isArray(node.children)
-      ? node.children.map((c: any) => buildTree(c, id, counter))
-      : [],
-  };
+  return worker;
 }
 
 export async function loadStepFile(
   fileBuffer: ArrayBuffer,
   onProgress: (msg: string) => void
 ): Promise<LoadResult> {
-  onProgress("Loading OpenCascade engine...");
+  return new Promise<LoadResult>((resolve, reject) => {
+    const id = nextId++;
+    const w = getWorker();
 
-  const occt = (await getOcct()) as any;
+    const handler = (ev: MessageEvent) => {
+      const msg = ev.data;
+      if (msg.id !== id) return;
 
-  onProgress("Parsing STEP file...");
-
-  const fileData = new Uint8Array(fileBuffer);
-  const result = occt.ReadStepFile(fileData, null);
-
-  if (!result || !result.success) {
-    throw new Error("Failed to parse STEP file. The file may be corrupt or in an unsupported format.");
-  }
-
-  const total: number = result.meshes.length;
-  onProgress(`Extracting ${total} part(s)...`);
-
-  const meshes: MeshData[] = [];
-
-  for (let i = 0; i < total; i++) {
-    const mesh = result.meshes[i];
-
-    const positions: number[] = Array.from(mesh.attributes.position.array as Float32Array);
-    const normals: number[] = mesh.attributes.normal
-      ? Array.from(mesh.attributes.normal.array as Float32Array)
-      : [];
-    const indices: number[] = Array.from(mesh.index.array as Uint32Array | Uint16Array);
-
-    let color: [number, number, number] | null = null;
-    if (mesh.color) color = [mesh.color[0], mesh.color[1], mesh.color[2]];
-
-    const brepFaces: BrepFace[] = [];
-    if (Array.isArray(mesh.brep_faces)) {
-      for (const face of mesh.brep_faces) {
-        brepFaces.push({
-          first: face.first,
-          last: face.last,
-          color: face.color ? [face.color[0], face.color[1], face.color[2]] : null,
-        });
+      if (msg.type === "progress") {
+        onProgress(msg.msg);
+        return;
       }
-    }
 
-    meshes.push({
-      positions,
-      normals,
-      indices,
-      color,
-      brepFaces,
-      name: mesh.name || `Part ${i + 1}`,
-    });
+      // Terminal message — remove listener
+      w.removeEventListener("message", handler);
+      w.removeEventListener("error", errHandler);
 
-    if (i % 10 === 0 && i > 0) {
-      onProgress(`Processed ${i + 1} of ${total} parts...`);
-      await new Promise((r) => setTimeout(r, 0));
-    }
-  }
-
-  let root: TreeNode;
-  if (result.root) {
-    root = buildTree(result.root, "root", { n: 0 });
-    if (!root.name || root.name === "" || root.name === "Unnamed") {
-      root.name = "Assembly";
-    }
-  } else {
-    root = {
-      id: "root",
-      name: "Assembly",
-      meshIndices: meshes.map((_, i) => i),
-      children: [],
+      if (msg.type === "done") {
+        resolve({ meshes: msg.meshes as MeshData[], root: msg.root as TreeNode });
+      } else {
+        reject(new Error(msg.error || "Worker parse failed"));
+      }
     };
-  }
 
-  return { meshes, root };
+    const errHandler = (ev: ErrorEvent) => {
+      w.removeEventListener("message", handler);
+      w.removeEventListener("error", errHandler);
+      reject(new Error(ev.message || "Worker error"));
+    };
+
+    w.addEventListener("message", handler);
+    w.addEventListener("error", errHandler);
+
+    // Transfer the buffer to the worker (zero-copy)
+    w.postMessage({ id, buffer: fileBuffer }, [fileBuffer]);
+  });
 }
