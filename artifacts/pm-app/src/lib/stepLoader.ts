@@ -1,8 +1,15 @@
+export interface BrepFace {
+  first: number;
+  last: number;
+  color: [number, number, number] | null;
+}
+
 export interface MeshData {
   positions: number[];
   normals: number[];
   indices: number[];
   color: [number, number, number] | null;
+  brepFaces: BrepFace[];
   name: string;
 }
 
@@ -103,11 +110,23 @@ export async function loadStepFile(
     let color: [number, number, number] | null = null;
     if (mesh.color) color = [mesh.color[0], mesh.color[1], mesh.color[2]];
 
+    const brepFaces: BrepFace[] = [];
+    if (Array.isArray(mesh.brep_faces)) {
+      for (const face of mesh.brep_faces) {
+        brepFaces.push({
+          first: face.first,
+          last: face.last,
+          color: face.color ? [face.color[0], face.color[1], face.color[2]] : null,
+        });
+      }
+    }
+
     meshes.push({
       positions,
       normals,
       indices,
       color,
+      brepFaces,
       name: mesh.name || `Part ${i + 1}`,
     });
 

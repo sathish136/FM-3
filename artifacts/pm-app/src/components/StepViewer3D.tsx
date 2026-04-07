@@ -405,58 +405,100 @@ const StepViewer3D = forwardRef<ViewerRef, StepViewer3DProps>(function StepViewe
       }
       if (md.indices.length) geo.setIndex(md.indices);
 
-      // Use STEP colour if available, otherwise neutral industrial grey
-      let col: THREE.Color;
+      // Resolve mesh-level fallback colour
+      let fallbackCol: THREE.Color;
       if (md.color && (md.color[0] !== 0 || md.color[1] !== 0 || md.color[2] !== 0)) {
-        col = new THREE.Color(md.color[0], md.color[1], md.color[2]);
-      } else if (md.color) {
-        // Colour provided but is pure black – likely a default; use our neutral grey
-        col = DEFAULT_PART_COLOR.clone();
+        fallbackCol = new THREE.Color(md.color[0], md.color[1], md.color[2]);
       } else {
-        col = DEFAULT_PART_COLOR.clone();
+        fallbackCol = DEFAULT_PART_COLOR.clone();
+      }
+
+      // Helper to build a single material for a given colour
+      function makeMat(col: THREE.Color): THREE.Material {
+        if (viewMode === "wireframe") {
+          return new THREE.MeshBasicMaterial({ color: col, wireframe: true });
+        } else if (viewMode === "flat") {
+          return new THREE.MeshLambertMaterial({ color: col, side: THREE.DoubleSide, flatShading: true });
+        } else if (viewMode === "edges") {
+          return new THREE.MeshBasicMaterial({ color: 0x111122, side: THREE.DoubleSide });
+        } else {
+          return new THREE.MeshPhongMaterial({
+            color: col,
+            specular: new THREE.Color(0x333333),
+            shininess: 60,
+            side: THREE.DoubleSide,
+          });
+        }
       }
 
       const partGrp = new THREE.Group();
       partGrp.name = md.name;
 
-      let mat: THREE.Material;
-      if (viewMode === "wireframe") {
-        mat = new THREE.MeshBasicMaterial({ color: col, wireframe: true });
-      } else if (viewMode === "flat") {
-        mat = new THREE.MeshLambertMaterial({ color: col, side: THREE.DoubleSide, flatShading: true });
-      } else if (viewMode === "edges") {
-        mat = new THREE.MeshBasicMaterial({ color: 0x111122, side: THREE.DoubleSide });
-        const edgeGeo = new THREE.EdgesGeometry(geo, 10);
-        partGrp.add(new THREE.LineSegments(edgeGeo, new THREE.LineBasicMaterial({ color: col })));
+      // Build material list and geometry groups from brep_faces if available
+      const hasFaceColors = Array.isArray(md.brepFaces) && md.brepFaces.length > 0;
+      let materials: THREE.Material[];
+      let primaryMat: THREE.Material;
+
+      if (hasFaceColors) {
+        // Default material at index 0 (for triangles not covered by any face group)
+        const defaultMat = makeMat(fallbackCol);
+        materials = [defaultMat];
+        for (const face of md.brepFaces) {
+          const fc = face.color && (face.color[0] !== 0 || face.color[1] !== 0 || face.color[2] !== 0)
+            ? new THREE.Color(face.color[0], face.color[1], face.color[2])
+            : fallbackCol.clone();
+          materials.push(makeMat(fc));
+        }
+
+        // Add geometry groups matching the occt-import-js brep_faces convention
+        const triangleCount = md.indices.length / 3;
+        let triangleIndex = 0;
+        let faceIdx = 0;
+        while (triangleIndex < triangleCount) {
+          const firstIndex = triangleIndex;
+          let lastIndex: number;
+          let matIndex: number;
+          if (faceIdx >= md.brepFaces.length) {
+            lastIndex = triangleCount;
+            matIndex = 0;
+          } else if (triangleIndex < md.brepFaces[faceIdx].first) {
+            lastIndex = md.brepFaces[faceIdx].first;
+            matIndex = 0;
+          } else {
+            lastIndex = md.brepFaces[faceIdx].last + 1;
+            matIndex = faceIdx + 1;
+            faceIdx++;
+          }
+          geo.addGroup(firstIndex * 3, (lastIndex - firstIndex) * 3, matIndex);
+          triangleIndex = lastIndex;
+        }
+        primaryMat = defaultMat;
       } else {
-        // Shaded – physically-inspired: decent specular for metal/plastic look
-        mat = new THREE.MeshPhongMaterial({
-          color: col,
-          specular: new THREE.Color(0x444444),
-          shininess: 60,
-          side: THREE.DoubleSide,
-        });
+        primaryMat = makeMat(fallbackCol);
+        materials = [primaryMat];
       }
 
-      const mesh3 = new THREE.Mesh(geo, mat);
+      const mesh3 = new THREE.Mesh(geo, materials.length > 1 ? materials : primaryMat);
       mesh3.name = md.name;
       mesh3.castShadow    = true;
       mesh3.receiveShadow = true;
       partGrp.add(mesh3);
 
-      // Subtle edge lines for shaded mode
-      if (viewMode === "shaded") {
-        const edgeGeo = new THREE.EdgesGeometry(geo, 15);
+      // Edge overlay for shaded/edges mode
+      if (viewMode === "shaded" || viewMode === "edges") {
+        const edgeGeo = new THREE.EdgesGeometry(geo, viewMode === "edges" ? 10 : 15);
+        const edgeColor = viewMode === "edges" ? fallbackCol : new THREE.Color(0x000000);
+        const edgeOpacity = viewMode === "edges" ? 1.0 : 0.15;
         partGrp.add(new THREE.LineSegments(
           edgeGeo,
-          new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.15 })
+          new THREE.LineBasicMaterial({ color: edgeColor, transparent: viewMode === "shaded", opacity: edgeOpacity })
         ));
       }
 
       partGrp.visible = !hiddenMeshes.has(i);
       partGroupsRef.current.set(i, partGrp);
       mesh3dRef.current.set(i, mesh3);
-      origMatRef.current.set(i, mat);
+      origMatRef.current.set(i, primaryMat);
       group.add(partGrp);
 
       geo.computeBoundingBox();

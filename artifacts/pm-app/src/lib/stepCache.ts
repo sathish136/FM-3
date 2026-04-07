@@ -2,7 +2,7 @@ import type { MeshData, TreeNode } from "./stepLoader";
 
 const DB_NAME = "wtt-step-cache";
 const STORE   = "models";
-const DB_VER  = 1;
+const DB_VER  = 2;
 
 interface CacheEntry {
   key: string;
