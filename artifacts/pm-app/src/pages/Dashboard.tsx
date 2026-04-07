@@ -1,7 +1,7 @@
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   FolderOpen, CheckCircle2, RefreshCw, Briefcase, ArrowRight,
   Sparkles, Clock, PauseCircle, UserCircle, BarChart3, Star,
@@ -22,18 +22,18 @@ const STATUS_CONFIG: Record<string, { label: string; textColor: string; badgeBg:
   completed: { label: "Completed", textColor: "text-green-700",  badgeBg: "bg-green-50 border-green-200",   dot: "#22c55e", barColor: "#22c55e" },
 };
 
-const QUICK_ACCESS = [
-  { label: "Activity Sheet",       icon: ClipboardList,  path: "/hrms",                color: "#3b82f6" },
-  { label: "Say It Do It",         icon: CheckSquare,    path: "/tasks",               color: "#10b981" },
-  { label: "Leave Request",        icon: CalendarDays,   path: "/hrms/leave-request",  color: "#f59e0b" },
-  { label: "On Duty Request",      icon: UserCheck,      path: "/hrms/checkin",        color: "#06b6d4" },
-  { label: "Incident",             icon: ShieldAlert,    path: "/hrms/incidents",      color: "#ef4444" },
-  { label: "Grievance",            icon: MessageCircle,  path: "/hrms",                color: "#a855f7" },
-  { label: "IT Support",           icon: Headphones,     path: "/hrms",                color: "#6366f1" },
-  { label: "Vacancies",            icon: Building2,      path: "/hrms",                color: "#78716c" },
-  { label: "Technical Criteria",   icon: Wrench,         path: "/hrms/performance",    color: "#0ea5e9" },
-  { label: "Behavioural Criteria", icon: HeartHandshake, path: "/hrms/performance",    color: "#ec4899" },
-  { label: "Task Allocation",      icon: GitPullRequest, path: "/task-management",     color: "#22c55e" },
+const QUICK_ACCESS: { label: string; icon: React.ElementType; path: string; color: string; module: string }[] = [
+  { label: "Activity Sheet",       icon: ClipboardList,  path: "/hrms",                color: "#3b82f6", module: "hrms" },
+  { label: "Say It Do It",         icon: CheckSquare,    path: "/tasks",               color: "#10b981", module: "tasks" },
+  { label: "Leave Request",        icon: CalendarDays,   path: "/hrms/leave-request",  color: "#f59e0b", module: "hrms-leave-request" },
+  { label: "On Duty Request",      icon: UserCheck,      path: "/hrms/checkin",        color: "#06b6d4", module: "hrms-checkin" },
+  { label: "Incident",             icon: ShieldAlert,    path: "/hrms/incidents",      color: "#ef4444", module: "hrms-incidents" },
+  { label: "Grievance",            icon: MessageCircle,  path: "/hrms",                color: "#a855f7", module: "hrms" },
+  { label: "IT Support",           icon: Headphones,     path: "/hrms",                color: "#6366f1", module: "hrms" },
+  { label: "Vacancies",            icon: Building2,      path: "/hrms/recruitment",    color: "#78716c", module: "hrms-recruitment" },
+  { label: "Technical Criteria",   icon: Wrench,         path: "/hrms/performance",    color: "#0ea5e9", module: "hrms-performance" },
+  { label: "Behavioural Criteria", icon: HeartHandshake, path: "/hrms/performance",    color: "#ec4899", module: "hrms-performance" },
+  { label: "Task Allocation",      icon: GitPullRequest, path: "/task-management",     color: "#22c55e", module: "task-management" },
 ];
 
 interface EmpDashData {
@@ -126,6 +126,44 @@ export default function Dashboard() {
   const [empData, setEmpData] = useState<EmpDashData | null>(null);
   const [empLoading, setEmpLoading] = useState(true);
   const [empError, setEmpError] = useState<string | null>(null);
+
+  // Module permissions (same logic as Layout sidebar)
+  const ADMIN_EMAILS = ["edp@wttindia.com", "venkat@wttindia.com"];
+  const isAdmin = user ? ADMIN_EMAILS.includes(user.email.toLowerCase()) : false;
+  const [moduleRoles, setModuleRoles] = useState<Record<string, string> | null>(null);
+
+  useEffect(() => {
+    if (!user || isAdmin) { setModuleRoles(null); return; }
+    fetch(`${BASE_URL}/api/user-permissions/${encodeURIComponent(user.email)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) { setModuleRoles({}); return; }
+        if (data.moduleRoles) {
+          try {
+            const parsed = JSON.parse(data.moduleRoles) as Record<string, string>;
+            if (Object.keys(parsed).length > 0) { setModuleRoles(parsed); return; }
+          } catch {}
+        }
+        if (data.modules) {
+          try {
+            const mods = JSON.parse(data.modules) as string[];
+            const roles: Record<string, string> = {};
+            mods.forEach(m => { roles[m] = "write"; });
+            setModuleRoles(roles); return;
+          } catch {}
+        }
+        setModuleRoles({});
+      })
+      .catch(() => setModuleRoles(null));
+  }, [user?.email, isAdmin]);
+
+  const visibleQuickAccess = useMemo(() => {
+    if (isAdmin || moduleRoles === null) return QUICK_ACCESS;
+    return QUICK_ACCESS.filter(item => {
+      const role = moduleRoles[item.module];
+      return role === "read" || role === "write";
+    });
+  }, [isAdmin, moduleRoles]);
 
   const fetchProjects = useCallback(() => {
     if (!user?.email) return;
@@ -309,11 +347,12 @@ export default function Dashboard() {
                   <h3 className="text-xs font-bold text-foreground uppercase tracking-wide">Attendance</h3>
                   <span className="ml-auto text-[10px] text-muted-foreground">This Month</span>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-4 gap-2">
                   {[
-                    { label: "Half Day", value: empData?.half_day_count, color: "#f59e0b", icon: "🌓" },
-                    { label: "Absent",   value: empData?.absent_days_this_month, color: "#ef4444", icon: "🔴" },
-                    { label: "Late",     value: empData?.checkin, color: "#f97316", icon: "⏰" },
+                    { label: "Present",  value: empData?.present_days_this_month, color: "#22c55e", icon: "✅" },
+                    { label: "Half Day", value: empData?.half_day_count,           color: "#f59e0b", icon: "🌓" },
+                    { label: "Absent",   value: empData?.absent_days_this_month,   color: "#ef4444", icon: "🔴" },
+                    { label: "Late",     value: empData?.checkin,                  color: "#f97316", icon: "⏰" },
                   ].map(({ label, value, color, icon }) => (
                     <div key={label} className="text-center p-2 rounded-xl bg-muted/50">
                       <p className="text-base">{icon}</p>
@@ -559,19 +598,23 @@ export default function Dashboard() {
               <LayoutGrid className="w-4 h-4" style={{ color: theme.accent }} />
               <h3 className="text-sm font-bold text-foreground">Quick Access</h3>
             </div>
-            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-11 gap-2">
-              {QUICK_ACCESS.map(({ label, icon: Icon, path, color }) => (
-                <Link key={path + label} href={path}>
-                  <div className="group flex flex-col items-center gap-1.5 py-3 px-1 rounded-xl hover:bg-muted/60 transition-all cursor-pointer text-center">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm"
-                      style={{ backgroundColor: color + "18" }}>
-                      <Icon className="w-5 h-5" style={{ color }} />
+            {visibleQuickAccess.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-4">No quick access items available for your account.</p>
+            ) : (
+              <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-11 gap-2">
+                {visibleQuickAccess.map(({ label, icon: Icon, path, color }) => (
+                  <Link key={path + label} href={path}>
+                    <div className="group flex flex-col items-center gap-1.5 py-3 px-1 rounded-xl hover:bg-muted/60 transition-all cursor-pointer text-center">
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm"
+                        style={{ backgroundColor: color + "18" }}>
+                        <Icon className="w-5 h-5" style={{ color }} />
+                      </div>
+                      <p className="text-[10px] font-semibold text-foreground/80 group-hover:text-foreground leading-tight">{label}</p>
                     </div>
-                    <p className="text-[10px] font-semibold text-foreground/80 group-hover:text-foreground leading-tight">{label}</p>
-                  </div>
-                </Link>
-              ))}
-            </div>
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
 
         </div>
