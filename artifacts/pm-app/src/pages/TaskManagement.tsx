@@ -1234,6 +1234,21 @@ function ActivityCard({ row, onRefresh, onClick, erpCheckin }: {
   const [erpInput, setErpInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirmDelete) { setConfirmDelete(true); return; }
+    setDeleting(true);
+    try {
+      await fetch(`${BASE_PROXY}/api/activity/${encodeURIComponent(row.deviceUsername)}`, { method: "DELETE" });
+      onRefresh();
+    } catch {
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  };
 
   const handleSaveOverride = async () => {
     if (!erpInput.trim()) return;
@@ -1394,11 +1409,133 @@ function ActivityCard({ row, onRefresh, onClick, erpCheckin }: {
       {/* Footer */}
       <div className="px-4 pb-3 pt-1 flex items-center justify-between">
         <div className="text-[10px] text-gray-400 truncate max-w-[120px]" title={row.deviceName}>{row.deviceName || row.deviceUsername}</div>
-        <span className="text-[10px] text-blue-400 font-medium flex items-center gap-0.5">
-          Details <ChevronRight className="w-3 h-3" />
-        </span>
+        <div className="flex items-center gap-2">
+          {confirmDelete ? (
+            <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+              <span className="text-[10px] text-red-500 font-semibold">Remove?</span>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="px-2 py-0.5 bg-red-500 hover:bg-red-600 text-white text-[10px] font-bold rounded transition-colors disabled:opacity-50">
+                {deleting ? "…" : "Yes"}
+              </button>
+              <button
+                onClick={e => { e.stopPropagation(); setConfirmDelete(false); }}
+                className="px-2 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-600 text-[10px] font-bold rounded transition-colors">
+                No
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={e => { e.stopPropagation(); setConfirmDelete(true); }}
+              title="Remove this device from Team Pulse"
+              className="p-1 text-gray-300 hover:text-red-400 hover:bg-red-50 rounded transition-colors">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <span className="text-[10px] text-blue-400 font-medium flex items-center gap-0.5">
+            Details <ChevronRight className="w-3 h-3" />
+          </span>
+        </div>
       </div>
     </div>
+  );
+}
+
+// ── List Activity Row ──────────────────────────────────────────────────────────
+function ListActivityRow({ row, st, displayName, photoUrl2, erpCheckin, onSelect, onRefresh }: {
+  row: SystemActivity;
+  st: string;
+  displayName: string;
+  photoUrl2: string | null;
+  erpCheckin?: { checkIn?: string; checkOut?: string };
+  onSelect: () => void;
+  onRefresh: () => void;
+}) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const BASE_PROXY2 = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDeleting(true);
+    try {
+      await fetch(`${BASE_PROXY2}/api/activity/${encodeURIComponent(row.deviceUsername)}`, { method: "DELETE" });
+      onRefresh();
+    } catch {
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  };
+
+  return (
+    <tr className="hover:bg-blue-50/30 cursor-pointer transition-colors group" onClick={onSelect}>
+      <td className="px-5 py-3">
+        <div className="flex items-center gap-3">
+          <div className="relative flex-shrink-0">
+            {photoUrl2 ? (
+              <img src={photoUrl2} alt={displayName} className="w-9 h-9 rounded-xl object-cover" />
+            ) : (
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold text-white ${st === "active" ? "bg-gradient-to-br from-green-400 to-emerald-600" : st === "idle" ? "bg-gradient-to-br from-amber-400 to-orange-500" : "bg-gradient-to-br from-gray-300 to-gray-400"}`}>
+                {initials(displayName)}
+              </div>
+            )}
+            <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${STATUS_DOT[st]}`} />
+          </div>
+          <div className="min-w-0">
+            <div className="font-semibold text-gray-900 text-sm truncate group-hover:text-blue-700 transition-colors">{displayName}</div>
+            {row.designation && <div className="text-[11px] text-gray-400 truncate">{row.designation}</div>}
+          </div>
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${st === "active" ? "bg-green-100 text-green-700" : st === "idle" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-500"}`}>
+          {STATUS_LABEL[st]}
+        </span>
+      </td>
+      <td className="px-4 py-3">
+        {erpCheckin?.checkIn
+          ? <span className="text-xs font-semibold text-emerald-600">{formatTime(erpCheckin.checkIn)}</span>
+          : <span className="text-gray-300 text-xs">—</span>}
+      </td>
+      <td className="px-4 py-3">
+        <span className="text-xs font-semibold text-blue-600">{formatTime(row.systemLoginToday)}</span>
+      </td>
+      <td className="px-4 py-3">
+        <span className="text-xs font-semibold text-gray-600">{formatTime(row.systemLogoutToday || row.lastSeen)}</span>
+      </td>
+      <td className="px-4 py-3">
+        <div className="text-xs font-medium text-gray-800 truncate max-w-[140px]">{row.activeApp || <span className="text-gray-300 italic">—</span>}</div>
+      </td>
+      <td className="px-4 py-3">
+        <span className="text-xs text-gray-500 truncate max-w-[120px] block">{row.department || "—"}</span>
+      </td>
+      <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
+        {confirmDelete ? (
+          <div className="flex items-center justify-end gap-1">
+            <span className="text-[10px] text-red-500 font-semibold">Remove?</span>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="px-2 py-0.5 bg-red-500 hover:bg-red-600 text-white text-[10px] font-bold rounded transition-colors disabled:opacity-50">
+              {deleting ? "…" : "Yes"}
+            </button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="px-2 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-600 text-[10px] font-bold rounded transition-colors">
+              No
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setConfirmDelete(true)}
+            title="Remove this device from Team Pulse"
+            className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </td>
+    </tr>
   );
 }
 
@@ -2025,6 +2162,7 @@ export default function TaskManagement() {
                           <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Last Active</th>
                           <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Current App</th>
                           <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Department</th>
+                          <th className="px-4 py-3" />
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
@@ -2034,55 +2172,16 @@ export default function TaskManagement() {
                           const BASE_PROXY2 = import.meta.env.BASE_URL.replace(/\/$/, "");
                           const photoUrl2 = row.erpImage ? `${BASE_PROXY2}/api/auth/photo?url=${encodeURIComponent(row.erpImage)}` : null;
                           return (
-                            <tr key={row.deviceUsername || row.email}
-                              className="hover:bg-blue-50/30 cursor-pointer transition-colors group"
-                              onClick={() => setSelectedEmployee(row)}>
-                              <td className="px-5 py-3">
-                                <div className="flex items-center gap-3">
-                                  <div className="relative flex-shrink-0">
-                                    {photoUrl2 ? (
-                                      <img src={photoUrl2} alt={displayName} className="w-9 h-9 rounded-xl object-cover" />
-                                    ) : (
-                                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold text-white ${st === "active" ? "bg-gradient-to-br from-green-400 to-emerald-600" : st === "idle" ? "bg-gradient-to-br from-amber-400 to-orange-500" : "bg-gradient-to-br from-gray-300 to-gray-400"}`}>
-                                        {initials(displayName)}
-                                      </div>
-                                    )}
-                                    <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${STATUS_DOT[st]}`} />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <div className="font-semibold text-gray-900 text-sm truncate group-hover:text-blue-700 transition-colors">{displayName}</div>
-                                    {row.designation && <div className="text-[11px] text-gray-400 truncate">{row.designation}</div>}
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3">
-                                <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${st === "active" ? "bg-green-100 text-green-700" : st === "idle" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-500"}`}>
-                                  {STATUS_LABEL[st]}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3">
-                                {(() => {
-                                  const ci = row.erpEmployeeId ? erpCheckinMap[row.erpEmployeeId]?.checkIn : undefined;
-                                  return ci
-                                    ? <span className="text-xs font-semibold text-emerald-600">{formatTime(ci)}</span>
-                                    : <span className="text-gray-300 text-xs">—</span>;
-                                })()}
-                              </td>
-                              <td className="px-4 py-3">
-                                <span className="text-xs font-semibold text-blue-600">{formatTime(row.systemLoginToday)}</span>
-                              </td>
-                              <td className="px-4 py-3">
-                                <span className="text-xs font-semibold text-gray-600">
-                                  {formatTime(row.systemLogoutToday || row.lastSeen)}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3">
-                                <div className="text-xs font-medium text-gray-800 truncate max-w-[140px]">{row.activeApp || <span className="text-gray-300 italic">—</span>}</div>
-                              </td>
-                              <td className="px-4 py-3">
-                                <span className="text-xs text-gray-500 truncate max-w-[120px] block">{row.department || "—"}</span>
-                              </td>
-                            </tr>
+                            <ListActivityRow
+                              key={row.deviceUsername || row.email}
+                              row={row}
+                              st={st}
+                              displayName={displayName}
+                              photoUrl2={photoUrl2}
+                              erpCheckin={row.erpEmployeeId ? erpCheckinMap[row.erpEmployeeId] : undefined}
+                              onSelect={() => setSelectedEmployee(row)}
+                              onRefresh={loadActivity}
+                            />
                           );
                         })}
                       </tbody>
