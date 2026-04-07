@@ -67,6 +67,7 @@ import StockReports from "@/pages/StockReports";
 import TaskManagement from "@/pages/TaskManagement";
 import TeamPulse from "@/pages/TeamPulse";
 import TeamReporting from "@/pages/TeamReporting";
+import IPCallLogs from "@/pages/IPCallLogs";
 import EmpAgent from "@/pages/EmpAgent";
 import { SlideshowProvider } from "@/contexts/SlideshowContext";
 
@@ -217,6 +218,7 @@ function ProtectedRoutes() {
       <Route path="/task-management" component={TaskManagement} />
       <Route path="/team-pulse" component={TeamPulse} />
       <Route path="/team-reporting" component={TeamReporting} />
+      <Route path="/ip-call-logs" component={IPCallLogs} />
       <Route component={NotFound} />
     </Switch>
   );

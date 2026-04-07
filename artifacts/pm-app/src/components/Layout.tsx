@@ -4,7 +4,7 @@ import {
   Briefcase, FileText,
   LogOut, ChevronDown, ChevronRight as ChevronRightIcon, Menu, MoreHorizontal,
   MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp, ListChecks, ClipboardList, Truck, Building2, Package,
-  Play, Square,
+  Play, Square, Phone,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -208,6 +208,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { path: "/", label: "Dashboard", icon: LayoutDashboard, color: "text-sky-400", bgColor: "bg-sky-500/15" },
       { path: "/team-pulse", label: "Team Pulse", icon: Activity, color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
       { path: "/team-reporting", label: "Team Reporting", icon: ClipboardList, color: "text-indigo-400", bgColor: "bg-indigo-500/15" },
+      { path: "/ip-call-logs",   label: "IP Call Logs",   icon: Phone,         color: "text-violet-400", bgColor: "bg-violet-500/15" },
     ],
   },
   {
@@ -325,6 +326,7 @@ const PATH_TO_MODULE: Record<string, string> = {
   "/task-management":       "task-management",
   "/team-pulse":            "team-pulse",
   "/team-reporting":        "team-reporting",
+  "/ip-call-logs":          "ip-call-logs",
   "/project-timeline":      "project-timeline",
   "/meeting-minutes":       "meeting-minutes",
   "/project-drawings":      "project-drawings",

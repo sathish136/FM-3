@@ -32,6 +32,7 @@ import processProposalRouter from "./process-proposal";
 import financeDashboardRouter from "./finance-dashboard";
 import civilDrawingRouter from "./civil-drawing";
 import stockReportsRouter from "./stock-reports";
+import callLogsRouter from "./call-logs";
 
 const router: IRouter = Router();
 
@@ -68,5 +69,6 @@ router.use(processProposalRouter);
 router.use(financeDashboardRouter);
 router.use(civilDrawingRouter);
 router.use(stockReportsRouter);
+router.use(callLogsRouter);
 
 export default router;
