@@ -311,6 +311,7 @@ function ModelViewer({
     const idbKey = `${attachUrl}::${modified}`;
 
     try {
+      // 1. Check browser IndexedDB cache first (instant)
       const cached = await getCached(idbKey);
       if (cached) {
         setProgress("Loading from browser cache…");
@@ -321,7 +322,26 @@ function ModelViewer({
         return;
       }
 
-      // Fetch from our server-side disk cache (downloads from ERP only on first request)
+      // 2. Try server-side pre-parsed mesh (works for any file size — server does the heavy OCCT work)
+      setProgress("Requesting server conversion… (first open may take a while for large files)");
+      const meshUrl = `${BASE}/api/step-mesh?url=${encodeURIComponent(attachUrl)}&modified=${encodeURIComponent(modified)}`;
+      const meshRes = await fetch(meshUrl);
+
+      if (meshRes.ok) {
+        setProgress("Downloading pre-parsed geometry…");
+        const json = await meshRes.json() as { meshes: MeshData[]; root: TreeNode };
+        if (json.meshes && json.root) {
+          setFromDiskCache(meshRes.headers.get("X-Mesh-Cache") === "HIT");
+          setMeshes(json.meshes);
+          setTreeRoot(json.root);
+          setStatus("loaded");
+          // Persist to IndexedDB for instant next open
+          setCached(idbKey, json.meshes, json.root);
+          return;
+        }
+      }
+
+      // 3. Fall back to browser-side OCCT parsing (for smaller files / server errors)
       setProgress("Fetching file from server…");
       const res = await fetch(stepFileUrl(attachUrl, modified));
       if (!res.ok) throw new Error(`Server returned ${res.status}`);

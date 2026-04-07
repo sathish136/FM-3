@@ -5,6 +5,7 @@ import { writeFile, readFile, unlink, mkdtemp, mkdir, access, readdir, stat } fr
 import { tmpdir } from "node:os";
 import { join, extname } from "node:path";
 import { createHash } from "node:crypto";
+import { gzip } from "node:zlib";
 import nodemailer from "nodemailer";
 import { db } from "@workspace/db";
 import { userPermissionsTable } from "@workspace/db/schema";
@@ -634,6 +635,176 @@ authRouter.get("/step-file/cache-info", async (_req, res) => {
     res.json({ count: files.length, totalMB, files: stats });
   } catch {
     res.json({ count: 0, totalMB: 0, files: [] });
+  }
+});
+
+// ── Server-side STEP → mesh conversion ───────────────────────────────────────
+// Parses the STEP file on the server using occt-import-js (Node.js WASM),
+// serialises the mesh data to gzipped JSON, and caches it on disk.
+// The browser receives only compact geometry — no browser-side OCCT needed.
+
+const gzipAsync = promisify(gzip);
+const MESH_CACHE_DIR = join(process.cwd(), ".mesh-cache");
+mkdir(MESH_CACHE_DIR, { recursive: true }).catch(() => {});
+
+function meshCacheKey(url: string, modified: string): string {
+  return createHash("sha256").update(`mesh::${url}::${modified}`).digest("hex") + ".gz";
+}
+
+async function hasMeshCache(key: string): Promise<boolean> {
+  try { await access(join(MESH_CACHE_DIR, key)); return true; }
+  catch { return false; }
+}
+
+// Singleton OCCT instance (loaded once, reused for all conversions)
+let occtPromise: Promise<any> | null = null;
+function getServerOcct(): Promise<any> {
+  if (!occtPromise) {
+    occtPromise = (async () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const occtimportjs = require("occt-import-js");
+      const occtDir = join(process.cwd(), "node_modules", "occt-import-js", "dist");
+      return await occtimportjs({
+        locateFile: (p: string) =>
+          p.endsWith(".wasm") ? join(occtDir, "occt-import-js.wasm") : join(occtDir, p),
+      });
+    })();
+  }
+  return occtPromise;
+}
+
+// Per-URL conversion deduplication: prevents two requests from converting
+// the same file simultaneously.
+const conversionLock = new Map<string, Promise<Buffer>>();
+
+function buildMeshTree(node: any, parentId: string, counter: { n: number }): any {
+  const id = `${parentId}-${counter.n++}`;
+  return {
+    id,
+    name: node.name || "Unnamed",
+    meshIndices: Array.isArray(node.meshes) ? node.meshes : [],
+    children: Array.isArray(node.children)
+      ? node.children.map((c: any) => buildMeshTree(c, id, counter))
+      : [],
+  };
+}
+
+async function convertStepToMeshGz(
+  stepBuffer: Buffer,
+  logPrefix: string
+): Promise<Buffer> {
+  console.log(`[step-mesh] ${logPrefix} loading OCCT engine…`);
+  const occt = await getServerOcct();
+
+  console.log(`[step-mesh] ${logPrefix} parsing ${Math.round(stepBuffer.length / 1024 / 1024)}MB STEP file…`);
+  const result = occt.ReadStepFile(new Uint8Array(stepBuffer), null);
+
+  if (!result?.success) {
+    throw new Error("OCCT failed to parse STEP file");
+  }
+
+  const total: number = result.meshes.length;
+  console.log(`[step-mesh] ${logPrefix} tessellating ${total} parts…`);
+
+  const meshes: any[] = [];
+  for (let i = 0; i < total; i++) {
+    const mesh = result.meshes[i];
+    meshes.push({
+      positions:  Array.from(mesh.attributes.position.array as Float32Array),
+      normals:    mesh.attributes.normal ? Array.from(mesh.attributes.normal.array as Float32Array) : [],
+      indices:    Array.from(mesh.index.array as Uint32Array | Uint16Array),
+      color:      mesh.color ? [mesh.color[0], mesh.color[1], mesh.color[2]] : null,
+      brepFaces:  Array.isArray(mesh.brep_faces)
+        ? mesh.brep_faces.map((f: any) => ({
+            first: f.first, last: f.last,
+            color: f.color ? [f.color[0], f.color[1], f.color[2]] : null,
+          }))
+        : [],
+      name: mesh.name || `Part ${i + 1}`,
+    });
+  }
+
+  let root: any;
+  if (result.root) {
+    root = buildMeshTree(result.root, "root", { n: 0 });
+    if (!root.name || root.name === "Unnamed") root.name = "Assembly";
+  } else {
+    root = { id: "root", name: "Assembly", meshIndices: meshes.map((_, k) => k), children: [] };
+  }
+
+  const json = JSON.stringify({ meshes, root });
+  const gz = await gzipAsync(Buffer.from(json, "utf8"), { level: 6 });
+  console.log(`[step-mesh] ${logPrefix} done — ${Math.round(json.length / 1024)}kB JSON → ${Math.round(gz.length / 1024)}kB gz`);
+  return gz;
+}
+
+// GET /api/step-mesh?url=...&modified=...
+// Returns pre-parsed mesh JSON (gzipped). The browser renders it directly with Three.js.
+authRouter.get("/step-mesh", async (req, res) => {
+  const url      = req.query.url      as string | undefined;
+  const modified = req.query.modified as string | undefined;
+
+  if (!url) return res.status(400).json({ error: "Missing url" });
+
+  const meshKey   = meshCacheKey(url, modified || "");
+  const meshPath  = join(MESH_CACHE_DIR, meshKey);
+  const logPrefix = url.split("/").pop() || url;
+
+  // --- Serve from mesh cache if available ---
+  if (await hasMeshCache(meshKey)) {
+    console.log(`[step-mesh] cache HIT: ${logPrefix}`);
+    const gz = await readFile(meshPath);
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Content-Encoding", "gzip");
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.setHeader("X-Mesh-Cache", "HIT");
+    return res.send(gz);
+  }
+
+  // --- Deduplicate concurrent conversions for the same file ---
+  if (!conversionLock.has(meshKey)) {
+    const convert = (async (): Promise<Buffer> => {
+      // Step 1: get the STEP file (disk cache → ERP)
+      const stepCacheKey2 = stepCacheKey(url, modified || "");
+      const stepPath      = join(STEP_CACHE_DIR, stepCacheKey2);
+      let stepBuf: Buffer;
+
+      if (await diskCacheHas(stepCacheKey2)) {
+        console.log(`[step-mesh] reading STEP from disk cache: ${logPrefix}`);
+        stepBuf = await readFile(stepPath);
+      } else {
+        const target = url.startsWith("http") ? url : `${ERP_URL}${url}`;
+        console.log(`[step-mesh] downloading STEP from ERP: ${logPrefix}`);
+        const r = await fetch(target, { headers: { Authorization: `token ${API_KEY}:${API_SECRET}` } });
+        if (!r.ok) throw new Error(`ERP returned ${r.status}`);
+        stepBuf = Buffer.from(await r.arrayBuffer());
+        // Save to step-cache as well
+        writeFile(stepPath, stepBuf).catch(() => {});
+      }
+
+      // Step 2: convert
+      const gz = await convertStepToMeshGz(stepBuf, logPrefix);
+
+      // Step 3: persist mesh cache
+      await writeFile(meshPath, gz);
+      conversionLock.delete(meshKey);
+      return gz;
+    })();
+
+    convert.catch(() => conversionLock.delete(meshKey));
+    conversionLock.set(meshKey, convert);
+  }
+
+  try {
+    const gz = await conversionLock.get(meshKey)!;
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Content-Encoding", "gzip");
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.setHeader("X-Mesh-Cache", "MISS");
+    return res.send(gz);
+  } catch (err: any) {
+    console.error("[step-mesh] conversion failed:", err.message);
+    return res.status(500).json({ error: err.message || "Conversion failed" });
   }
 });
 
