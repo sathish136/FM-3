@@ -1749,16 +1749,32 @@ router.post("/activity/heartbeat", async (req, res) => {
     const appChanged = !existing || existing.activeApp !== newApp;
     const statusChanged = !existing || existing.isActive !== newIsActive;
 
+    // Fetch the existing ERP link so we never overwrite a manually-saved override with an empty auto-resolve
+    const existingErpRows = await db
+      .select({ erpEmployeeId: systemActivityTable.erpEmployeeId, erpImage: systemActivityTable.erpImage })
+      .from(systemActivityTable)
+      .where(eq(systemActivityTable.deviceUsername, identifier))
+      .limit(1);
+    const existingErpId = existingErpRows[0]?.erpEmployeeId || "";
+    const existingErpImage = existingErpRows[0]?.erpImage || "";
+
+    // Only replace the saved ERP link if auto-resolve returned a real value
+    const finalErpId = resolvedEmpId || existingErpId;
+    const finalErpImage = resolvedImage || existingErpImage;
+    const finalFullName = resolvedFullName || (existingRows[0] ? undefined : deviceUsername);
+    const finalDept = resolvedDept || "";
+    const finalDesignation = resolvedDesignation || "";
+
     await db
       .insert(systemActivityTable)
       .values({
         deviceUsername: identifier,
         email: resolvedEmail,
-        fullName: resolvedFullName,
-        department: resolvedDept,
-        designation: resolvedDesignation,
-        erpEmployeeId: resolvedEmpId,
-        erpImage: resolvedImage,
+        fullName: finalFullName || deviceUsername,
+        department: finalDept,
+        designation: finalDesignation,
+        erpEmployeeId: finalErpId,
+        erpImage: finalErpImage,
         activeApp: newApp,
         windowTitle: (windowTitle ?? "").substring(0, 300),
         isActive: newIsActive,
@@ -1770,11 +1786,10 @@ router.post("/activity/heartbeat", async (req, res) => {
         target: systemActivityTable.deviceUsername,
         set: {
           email: resolvedEmail,
-          fullName: resolvedFullName,
-          department: resolvedDept,
-          designation: resolvedDesignation,
-          erpEmployeeId: resolvedEmpId,
-          erpImage: resolvedImage,
+          ...(resolvedFullName ? { fullName: resolvedFullName } : {}),
+          ...(resolvedDept ? { department: resolvedDept } : {}),
+          ...(resolvedDesignation ? { designation: resolvedDesignation } : {}),
+          ...(resolvedEmpId ? { erpEmployeeId: resolvedEmpId, erpImage: resolvedImage } : {}),
           activeApp: newApp,
           windowTitle: (windowTitle ?? "").substring(0, 300),
           isActive: newIsActive,
