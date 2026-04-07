@@ -451,31 +451,47 @@ function EmployeeDetailPanel({ row, tasks, onClose, erpCheckin, date }: {
       .catch(() => {});
   }, []);
 
-  // Extract project numbers from a string (e.g. "WTT-PROJ-001", "PRJ-0023", "2425-XX-001")
+  // Extract project code references from a window title / app name string
   function extractProjectRefs(text: string): string[] {
     if (!text) return [];
     const matches: string[] = [];
-    // ERPNext project name pattern (e.g. WTT-PROJ-0001)
-    const m1 = text.match(/\b[A-Z]{2,6}-[A-Z]{2,6}-\d{3,5}\b/g);
+    // Multi-segment ERPNext codes: WTT-PROJ-0001, GET-MECH-001, etc.
+    const m1 = text.match(/\b[A-Z]{2,6}-[A-Z]{2,6}-\d{3,6}\b/g);
     if (m1) matches.push(...m1);
-    // Year-based pattern like 2425-ME-001
+    // Year-prefixed codes: 2425-ME-001
     const m2 = text.match(/\b\d{4}-[A-Z]{2,4}-\d{3,4}\b/g);
     if (m2) matches.push(...m2);
-    // Generic project code fallback
+    // Generic PROJ- codes
     const m3 = text.match(/\bPROJ-\d{3,5}\b/gi);
     if (m3) matches.push(...m3.map(s => s.toUpperCase()));
+    // Short letter-dash-number codes: WTT-0528, GET-1234, MS-001, etc.
+    const m4 = text.match(/\b[A-Z]{2,6}-\d{3,6}\b/g);
+    if (m4) matches.push(...m4);
     return [...new Set(matches)];
   }
 
-  function matchProject(refs: string[]): { id: number; name: string; erpnextName: string } | null {
+  // Match extracted refs against loaded projects, or scan project codes directly in text
+  function findProjectInText(text: string): { id: number; name: string; erpnextName: string } | null {
+    if (!text || erpProjects.length === 0) return null;
+    const textUpper = text.toUpperCase();
+
+    // 1. Regex-extracted refs matched against projects
+    const refs = extractProjectRefs(text.toUpperCase());
     for (const ref of refs) {
       const found = erpProjects.find(p =>
-        p.erpnextName?.toLowerCase() === ref.toLowerCase() ||
-        p.name?.toLowerCase().includes(ref.toLowerCase())
+        p.erpnextName?.toUpperCase() === ref ||
+        p.erpnextName?.toUpperCase().includes(ref) ||
+        p.name?.toUpperCase().includes(ref)
       );
       if (found) return found;
     }
-    return null;
+
+    // 2. Direct scan: check if any project's erpnextName appears literally in the text
+    //    (catches codes the regex may miss, e.g. unusual formats)
+    return erpProjects.find(p => {
+      const code = p.erpnextName?.toUpperCase();
+      return code && code.length >= 4 && textUpper.includes(code);
+    }) ?? null;
   }
 
   const tasksByStatus = {
@@ -488,10 +504,11 @@ function EmployeeDetailPanel({ row, tasks, onClose, erpCheckin, date }: {
   const productivityScore = calcProductivityScore(history, row);
   const currentAppClass = classifyApp(row.activeApp);
 
-  // Project matching per history entry
+  // Project matching per history entry — uses findProjectInText for broadest coverage
   const historyWithProject = history.map(e => {
-    const refs = extractProjectRefs((e.windowTitle || "") + " " + (e.activeApp || ""));
-    const project = matchProject(refs);
+    const text = (e.windowTitle || "") + " " + (e.activeApp || "");
+    const project = findProjectInText(text);
+    const refs = extractProjectRefs(text.toUpperCase());
     return { ...e, matchedProject: project, projectRefs: refs };
   });
 
@@ -510,8 +527,8 @@ function EmployeeDetailPanel({ row, tasks, onClose, erpCheckin, date }: {
   ).sort((a, b) => b[1].count - a[1].count);
 
   // Current window's project match
-  const currentRefs = extractProjectRefs((row.windowTitle || "") + " " + (row.activeApp || ""));
-  const currentProject = matchProject(currentRefs);
+  const currentProject = findProjectInText((row.windowTitle || "") + " " + (row.activeApp || ""));
+  const currentRefs = extractProjectRefs(((row.windowTitle || "") + " " + (row.activeApp || "")).toUpperCase());
 
   // App usage breakdown from history
   const appUsage = Object.entries(
@@ -926,27 +943,44 @@ function EmployeeDetailPanel({ row, tasks, onClose, erpCheckin, date }: {
                 <div className="p-8 text-center text-sm text-gray-400 italic">No activity history yet</div>
               ) : (
                 <div className="divide-y divide-gray-50 max-h-72 overflow-y-auto">
-                  {history.map((log, i) => {
+                  {historyWithProject.map((log, i) => {
                     const cls = classifyApp(log.activeApp);
                     return (
-                      <div key={log.id} className={`flex items-center gap-3 px-5 py-2.5 ${i === 0 ? "bg-blue-50/30" : "hover:bg-gray-50"} transition-colors`}>
-                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${cls === "productive" ? "bg-green-500" : cls === "unproductive" ? "bg-red-400" : log.isActive ? "bg-blue-400" : "bg-amber-400"}`} />
+                      <div key={log.id} className={`flex items-start gap-3 px-5 py-2.5 ${i === 0 ? "bg-blue-50/30" : log.matchedProject ? "bg-violet-50/40 hover:bg-violet-50" : "hover:bg-gray-50"} transition-colors`}>
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${cls === "productive" ? "bg-green-500" : cls === "unproductive" ? "bg-red-400" : log.isActive ? "bg-blue-400" : "bg-amber-400"}`} />
                         <div className="flex-1 min-w-0">
                           <div className="text-xs font-semibold text-gray-800 truncate">{log.activeApp || "—"}</div>
                           {log.windowTitle && log.windowTitle !== log.activeApp && (
                             <div className="text-[10px] text-gray-400 truncate">{log.windowTitle}</div>
                           )}
+                          {log.matchedProject && (
+                            <div className="mt-1">
+                              <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold bg-violet-100 text-violet-700 border border-violet-200">
+                                <Briefcase className="w-2.5 h-2.5" />
+                                {log.matchedProject.erpnextName} — {log.matchedProject.name}
+                              </span>
+                            </div>
+                          )}
+                          {!log.matchedProject && log.projectRefs.length > 0 && (
+                            <div className="mt-1">
+                              <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold bg-gray-100 text-gray-500 border border-gray-200">
+                                Ref: {log.projectRefs[0]}
+                              </span>
+                            </div>
+                          )}
                         </div>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ${
-                          cls === "productive" ? "bg-green-50 text-green-600" :
-                          cls === "unproductive" ? "bg-red-50 text-red-500" :
-                          "bg-gray-100 text-gray-400"}`}>
-                          {cls === "productive" ? "✓" : cls === "unproductive" ? "✗" : "~"}
-                        </span>
-                        {log.idleSeconds > 60 && (
-                          <span className="text-[10px] text-amber-500 font-medium flex-shrink-0">⏸ {formatDuration(log.idleSeconds)}</span>
-                        )}
-                        <div className="text-[10px] text-gray-400 flex-shrink-0 w-14 text-right">{timeSince(log.loggedAt)}</div>
+                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                            cls === "productive" ? "bg-green-50 text-green-600" :
+                            cls === "unproductive" ? "bg-red-50 text-red-500" :
+                            "bg-gray-100 text-gray-400"}`}>
+                            {cls === "productive" ? "✓" : cls === "unproductive" ? "✗" : "~"}
+                          </span>
+                          {log.idleSeconds > 60 && (
+                            <span className="text-[10px] text-amber-500 font-medium">⏸ {formatDuration(log.idleSeconds)}</span>
+                          )}
+                          <div className="text-[10px] text-gray-400 w-14 text-right">{timeSince(log.loggedAt)}</div>
+                        </div>
                       </div>
                     );
                   })}
