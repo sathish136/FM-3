@@ -1,21 +1,22 @@
-import { useState, useEffect, useCallback } from "react";
-import { Phone, PhoneIncoming, PhoneOutgoing, Search, Loader2,
-  XCircle, ChevronDown, ChevronUp, User, Mic, Sparkles,
-  Calendar, Clock, Hash, RefreshCw, PhoneMissed, Filter } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import {
+  Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed,
+  Search, Loader2, XCircle, Mic, Sparkles, RefreshCw,
+  Calendar, Clock, Hash, ChevronDown, ChevronUp,
+  Play, Download, User, X, Filter, BarChart3, TrendingUp,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useLocation } from "wouter";
 
-const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
+const API_BASE    = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 const ADMIN_EMAILS = ["edp@wttindia.com", "venkat@wttindia.com"];
 
-type Contact = {
-  name: string;
-  phone_number: string;
-};
+const OWNERS = ["Preethi", "Praveen", "Sri Vatsan"];
 
-type CallRow = {
-  name?: string;
+type FlatCall = {
+  contact_name: string;
+  phone_number: string;
   call_date?: string;
   call_time?: string;
   call_type?: string;
@@ -24,285 +25,333 @@ type CallRow = {
   recording?: string;
   call_transcript?: string;
   summary?: string;
-  phone_number?: string;
-  [key: string]: any;
+  row_name?: string;
 };
 
+type Stats = {
+  total: number;
+  incoming: number;
+  outgoing: number;
+  transcribed: number;
+  recorded: number;
+};
+
+// ─── Helpers ───────────────────────────────────────────────────────────────────
 function fmtDateTime(s?: string) {
   if (!s) return "—";
   try {
-    const d = new Date(s.replace(" ", "T"));
-    return d.toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    return new Date(s.replace(" ", "T")).toLocaleString("en-IN", {
+      day: "2-digit", month: "short", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    });
   } catch { return s; }
 }
 
-function fmtDate(s?: string) {
+function fmtDateShort(s?: string) {
   if (!s) return "—";
   try {
-    const d = new Date(s + "T00:00:00");
-    return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    const d = new Date(s.replace(" ", "T"));
+    return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
   } catch { return s; }
+}
+
+function fmtTimeOnly(s?: string) {
+  if (!s) return "";
+  try {
+    return new Date(s.replace(" ", "T")).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+  } catch { return ""; }
 }
 
 function timeAgo(s?: string) {
   if (!s) return "";
   try {
-    const d = new Date(s.replace(" ", "T"));
-    const diffMs = Date.now() - d.getTime();
-    const mins = Math.floor(diffMs / 60000);
-    if (mins < 1) return "just now";
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    const days = Math.floor(hrs / 24);
-    return `${days}d ago`;
+    const ms = Date.now() - new Date(s.replace(" ", "T")).getTime();
+    const m  = Math.floor(ms / 60000);
+    if (m < 1)   return "just now";
+    if (m < 60)  return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24)  return `${h}h ago`;
+    return `${Math.floor(h / 24)}d ago`;
   } catch { return ""; }
 }
 
-function initials(name?: string) {
-  if (!name) return "?";
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
+function todayStr()     { return new Date().toISOString().slice(0, 10); }
+function addDays(d: number) {
+  const dt = new Date(); dt.setDate(dt.getDate() + d);
+  return dt.toISOString().slice(0, 10);
+}
+function mondayStr() {
+  const d = new Date();
+  const day = d.getDay();
+  const diff = (day === 0 ? -6 : 1 - day);
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+function firstOfMonth() {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
 }
 
-function typeColor(type?: string) {
-  if (type === "Incoming") return { bg: "bg-green-50", text: "text-green-700", border: "border-green-200", icon: PhoneIncoming, dot: "bg-green-500" };
-  if (type === "Outgoing") return { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200", icon: PhoneOutgoing, dot: "bg-blue-500" };
-  return { bg: "bg-gray-50", text: "text-gray-600", border: "border-gray-200", icon: PhoneMissed, dot: "bg-gray-400" };
+type DatePreset = "today" | "yesterday" | "week" | "month" | "all";
+function presetRange(p: DatePreset): [string, string] {
+  const today = todayStr();
+  switch (p) {
+    case "today":     return [today, today];
+    case "yesterday": { const y = addDays(-1); return [y, y]; }
+    case "week":      return [mondayStr(), today];
+    case "month":     return [firstOfMonth(), today];
+    case "all":       return ["", ""];
+  }
 }
 
 function ownerColor(owner?: string) {
-  const colors: Record<string, string> = {
-    "Preethi": "bg-pink-100 text-pink-700",
-    "Praveen": "bg-purple-100 text-purple-700",
-    "Sri Vatsan": "bg-teal-100 text-teal-700",
+  const m: Record<string, string> = {
+    Preethi:      "bg-pink-100 text-pink-700 border-pink-200",
+    Praveen:      "bg-purple-100 text-purple-700 border-purple-200",
+    "Sri Vatsan": "bg-teal-100 text-teal-700 border-teal-200",
   };
-  return colors[owner || ""] || "bg-gray-100 text-gray-700";
+  return m[owner || ""] || "bg-gray-100 text-gray-600 border-gray-200";
 }
 
-// ─── Call Card ─────────────────────────────────────────────────────────────────
-function CallCard({ call, idx }: { call: CallRow; idx: number }) {
-  const [expanded, setExpanded] = useState(false);
-  const tc = typeColor(call.call_type);
-  const TypeIcon = tc.icon;
-  const hasTranscript = !!(call.call_transcript && call.call_transcript.trim());
-  const hasSummary    = !!(call.summary && call.summary.trim());
-
-  return (
-    <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-      {/* Header row */}
-      <div className="flex items-center gap-3 px-4 py-3">
-        <span className={cn("w-7 h-7 rounded-full flex items-center justify-center shrink-0", tc.bg, tc.border, "border")}>
-          <TypeIcon className={cn("w-3.5 h-3.5", tc.text)} />
-        </span>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full", tc.bg, tc.text, "border", tc.border)}>
-              {call.call_type || "Unknown"}
-            </span>
-            {call.extension_owner && (
-              <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-full", ownerColor(call.extension_owner))}>
-                {call.extension_owner}
-              </span>
-            )}
-            {call.extension && (
-              <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
-                <Hash className="w-2.5 h-2.5" /> Ext {call.extension}
-              </span>
-            )}
-          </div>
-          <p className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-1">
-            <Clock className="w-2.5 h-2.5 shrink-0" />
-            {fmtDateTime(call.call_time)}
-          </p>
-        </div>
-        {(hasTranscript || hasSummary) && (
-          <button
-            onClick={() => setExpanded(p => !p)}
-            className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors"
-          >
-            {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          </button>
-        )}
-      </div>
-
-      {/* Recording badge */}
-      {call.recording && (
-        <div className="px-4 pb-2">
-          <span className="inline-flex items-center gap-1 text-[10px] text-violet-600 bg-violet-50 border border-violet-100 px-2 py-0.5 rounded-full font-medium">
-            <Mic className="w-2.5 h-2.5" /> Recording available
-          </span>
-        </div>
-      )}
-
-      {/* Expanded: Transcript + Summary */}
-      {expanded && (hasTranscript || hasSummary) && (
-        <div className="border-t border-gray-100 bg-gray-50/50">
-          {hasTranscript && (
-            <div className="px-4 py-3 border-b border-gray-100 last:border-0">
-              <div className="flex items-center gap-1.5 mb-2">
-                <Mic className="w-3 h-3 text-indigo-400" />
-                <p className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest">Transcript</p>
-              </div>
-              <div className="bg-white rounded-xl border border-gray-100 p-3 max-h-60 overflow-y-auto">
-                <pre className="text-[11px] text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">
-                  {call.call_transcript}
-                </pre>
-              </div>
-            </div>
-          )}
-          {hasSummary && (
-            <div className="px-4 py-3">
-              <div className="flex items-center gap-1.5 mb-2">
-                <Sparkles className="w-3 h-3 text-amber-400" />
-                <p className="text-[9px] font-bold text-amber-500 uppercase tracking-widest">AI Analysis</p>
-              </div>
-              <div className="bg-amber-50/50 rounded-xl border border-amber-100 p-3">
-                <div
-                  className="text-[11px] text-gray-700 leading-relaxed [&_b]:font-bold [&_b]:text-amber-800"
-                  dangerouslySetInnerHTML={{ __html: call.summary.replace(/•\s*/g, "").split("\n").filter(Boolean).map(l => `<p class="mb-1">• ${l.replace(/^•\s*/, "")}</p>`).join("") }}
-                />
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {!hasTranscript && !hasSummary && (
-        <div className="px-4 pb-3">
-          <p className="text-[10px] text-gray-400 italic">No transcript or analysis available</p>
-        </div>
-      )}
-    </div>
-  );
+function typeStyle(type?: string) {
+  if (type === "Incoming")  return { bg: "bg-green-50",  text: "text-green-700",  border: "border-green-200",  Icon: PhoneIncoming,  dot: "bg-green-500" };
+  if (type === "Outgoing")  return { bg: "bg-blue-50",   text: "text-blue-700",   border: "border-blue-200",   Icon: PhoneOutgoing,  dot: "bg-blue-500"  };
+  return { bg: "bg-gray-50", text: "text-gray-500", border: "border-gray-200", Icon: PhoneMissed, dot: "bg-gray-400" };
 }
 
-// ─── Detail Panel ──────────────────────────────────────────────────────────────
-function DetailPanel({ phone, onClose }: { phone: string; onClose: () => void }) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState("");
-  const [calls, setCalls]     = useState<CallRow[]>([]);
-  const [filter, setFilter]   = useState<"all" | "Incoming" | "Outgoing">("all");
-
-  useEffect(() => {
-    if (!phone) return;
-    setLoading(true); setError(""); setCalls([]);
-    fetch(`${API_BASE}/call-logs/${encodeURIComponent(phone)}`)
-      .then(r => r.ok ? r.json() : r.json().then((e: any) => { throw new Error(e.error || "Failed"); }))
-      .then(data => setCalls(data.calls || []))
-      .catch((e: any) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [phone]);
-
-  const filtered = filter === "all" ? calls : calls.filter(c => c.call_type === filter);
-  const incoming  = calls.filter(c => c.call_type === "Incoming").length;
-  const outgoing  = calls.filter(c => c.call_type === "Outgoing").length;
-
-  return (
-    <div className="flex flex-col h-full bg-white border-l border-gray-200">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-violet-50/60 to-white shrink-0">
-        <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-sm shrink-0">
-          <Phone className="w-4 h-4" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-[9px] font-bold text-violet-400 uppercase tracking-widest">IP Call Logs</p>
-          <p className="text-sm font-bold text-gray-900 font-mono">{phone}</p>
-        </div>
-        <button onClick={onClose} className="w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 shrink-0">
-          <XCircle className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* Stats */}
-      <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-100 bg-gray-50/50 shrink-0">
-        <div className="flex items-center gap-1.5 text-xs">
-          <span className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-bold text-[10px]">{calls.length}</span>
-          <span className="text-gray-500">Total</span>
-        </div>
-        <div className="flex items-center gap-1.5 text-xs">
-          <span className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold text-[10px]">{incoming}</span>
-          <span className="text-gray-500">In</span>
-        </div>
-        <div className="flex items-center gap-1.5 text-xs">
-          <span className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-[10px]">{outgoing}</span>
-          <span className="text-gray-500">Out</span>
-        </div>
-        <div className="ml-auto flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-0.5">
-          {(["all", "Incoming", "Outgoing"] as const).map(f => (
-            <button key={f} onClick={() => setFilter(f)}
-              className={cn("px-2 py-0.5 text-[10px] font-semibold rounded-md transition-colors",
-                filter === f ? "bg-violet-600 text-white" : "text-gray-500 hover:bg-gray-100")}>
-              {f === "all" ? "All" : f}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Calls list */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-        {loading && (
-          <div className="flex justify-center py-12">
-            <Loader2 className="w-6 h-6 animate-spin text-violet-400" />
-          </div>
-        )}
-        {error && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 flex items-center gap-2">
-            <XCircle className="w-4 h-4 shrink-0" /> {error}
-          </div>
-        )}
-        {!loading && !error && filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-12 gap-2 text-center">
-            <PhoneMissed className="w-8 h-8 text-gray-200" />
-            <p className="text-xs text-gray-400">No calls found</p>
-          </div>
-        )}
-        {filtered.map((call, i) => (
-          <CallCard key={call.name || i} call={call} idx={i} />
-        ))}
-      </div>
-    </div>
-  );
+function firstLine(transcript?: string) {
+  if (!transcript) return "";
+  const lines = transcript.split("\n").filter(l => l.trim());
+  return lines[0]?.slice(0, 80) || "";
 }
 
-// ─── Contact List Item ─────────────────────────────────────────────────────────
-function ContactItem({ contact, selected, onClick, calls }: {
-  contact: Contact; selected: boolean; onClick: () => void; calls?: CallRow[];
-}) {
-  const last = calls?.[0];
-  const tc = last ? typeColor(last.call_type) : typeColor();
-  const count = calls?.length || 0;
-  const owners = [...new Set(calls?.map(c => c.extension_owner).filter(Boolean))];
+// ─── Call List Row ─────────────────────────────────────────────────────────────
+function CallRow({ call, selected, onClick }: { call: FlatCall; selected: boolean; onClick: () => void }) {
+  const ts = typeStyle(call.call_type);
+  const hasTranscript = !!(call.call_transcript?.trim());
+  const hasRecording  = !!(call.recording?.trim());
 
   return (
     <button
       onClick={onClick}
       className={cn(
-        "w-full text-left px-4 py-3 border-b border-gray-50 flex items-center gap-3 hover:bg-gray-50 transition-colors",
-        selected && "bg-violet-50 border-l-2 border-l-violet-500"
+        "w-full text-left px-4 py-3 border-b border-gray-50 flex gap-3 hover:bg-gray-50/80 transition-all group",
+        selected && "bg-indigo-50/60 border-l-2 border-l-indigo-500 !border-b-gray-100"
       )}
     >
-      <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-violet-100 to-indigo-100 flex items-center justify-center shrink-0">
-        <Phone className="w-4 h-4 text-violet-500" />
+      {/* Type indicator */}
+      <div className={cn("mt-0.5 w-7 h-7 rounded-xl flex items-center justify-center shrink-0 border", ts.bg, ts.border)}>
+        <ts.Icon className={cn("w-3.5 h-3.5", ts.text)} />
       </div>
+
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-bold text-gray-900 font-mono">{contact.phone_number || contact.name}</p>
-        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-          {owners.slice(0, 2).map(o => (
-            <span key={o} className={cn("text-[9px] font-semibold px-1.5 py-0.5 rounded-full", ownerColor(o))}>{o}</span>
-          ))}
-          {last?.call_time && (
-            <span className="text-[9px] text-gray-400">{timeAgo(last.call_time)}</span>
+        {/* Row 1: phone + time */}
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-bold text-gray-900 font-mono">{call.phone_number}</span>
+          <span className="text-[10px] text-gray-400 shrink-0">{fmtDateShort(call.call_time)} {fmtTimeOnly(call.call_time)}</span>
+        </div>
+        {/* Row 2: owner + extension + badges */}
+        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+          {call.extension_owner && (
+            <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full border", ownerColor(call.extension_owner))}>
+              {call.extension_owner}
+            </span>
+          )}
+          {call.extension && (
+            <span className="text-[9px] text-gray-400 flex items-center gap-0.5">
+              <Hash className="w-2 h-2" />Ext {call.extension}
+            </span>
+          )}
+          <span className={cn("text-[9px] font-semibold px-1.5 py-0.5 rounded-full border", ts.bg, ts.text, ts.border)}>
+            {call.call_type}
+          </span>
+          {hasTranscript && (
+            <span className="text-[9px] text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+              <Mic className="w-2 h-2" />Transcript
+            </span>
+          )}
+          {hasRecording && (
+            <span className="text-[9px] text-violet-600 bg-violet-50 border border-violet-100 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+              <Play className="w-2 h-2" />Rec
+            </span>
           )}
         </div>
-      </div>
-      <div className="shrink-0 text-right">
-        <span className="w-5 h-5 rounded-full bg-violet-100 text-violet-700 text-[10px] font-bold flex items-center justify-center">
-          {count}
-        </span>
+        {/* Row 3: preview of transcript */}
+        {hasTranscript && (
+          <p className="text-[10px] text-gray-400 mt-0.5 truncate leading-tight">{firstLine(call.call_transcript)}</p>
+        )}
       </div>
     </button>
+  );
+}
+
+// ─── Detail Panel ──────────────────────────────────────────────────────────────
+function DetailPanel({ call, allCalls, onClose }: { call: FlatCall; allCalls: FlatCall[]; onClose: () => void }) {
+  const [transcriptOpen, setTranscriptOpen] = useState(true);
+  const [summaryOpen,    setSummaryOpen]    = useState(true);
+
+  const ts = typeStyle(call.call_type);
+  const hasTranscript = !!(call.call_transcript?.trim());
+  const hasSummary    = !!(call.summary?.trim());
+
+  const related = allCalls.filter(
+    c => c.phone_number === call.phone_number && c !== call && (c.call_time || "") !== (call.call_time || "")
+  ).slice(0, 5);
+
+  const summaryHtml = call.summary
+    ? call.summary
+        .split("\n")
+        .filter(l => l.trim())
+        .map(l => `<p class="mb-1.5 leading-relaxed">${l.replace(/^[•\-]\s*/, "• ").replace(/<b>/g, "<strong>").replace(/<\/b>/g, "</strong>")}</p>`)
+        .join("")
+    : "";
+
+  return (
+    <div className="flex flex-col h-full bg-white">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-indigo-50/50 to-white shrink-0">
+        <div className={cn("w-10 h-10 rounded-2xl flex items-center justify-center border shadow-sm shrink-0", ts.bg, ts.border)}>
+          <ts.Icon className={cn("w-5 h-5", ts.text)} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest">Call Detail</p>
+          <p className="text-base font-bold text-gray-900 font-mono">{call.phone_number}</p>
+        </div>
+        <button onClick={onClose} className="w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 shrink-0">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {/* Meta cards */}
+        <div className="px-5 py-4 border-b border-gray-50 grid grid-cols-2 gap-2">
+          <div className="bg-gray-50 rounded-xl px-3 py-2.5">
+            <p className="text-[9px] text-gray-400 font-semibold uppercase tracking-wide">Call Type</p>
+            <p className={cn("text-xs font-bold mt-0.5", ts.text)}>{call.call_type || "Unknown"}</p>
+          </div>
+          <div className="bg-gray-50 rounded-xl px-3 py-2.5">
+            <p className="text-[9px] text-gray-400 font-semibold uppercase tracking-wide">Date & Time</p>
+            <p className="text-xs font-bold text-gray-800 mt-0.5">{fmtDateTime(call.call_time)}</p>
+          </div>
+          <div className="bg-gray-50 rounded-xl px-3 py-2.5">
+            <p className="text-[9px] text-gray-400 font-semibold uppercase tracking-wide">Handled By</p>
+            <p className="text-xs font-bold text-gray-800 mt-0.5">{call.extension_owner || "—"}</p>
+          </div>
+          <div className="bg-gray-50 rounded-xl px-3 py-2.5">
+            <p className="text-[9px] text-gray-400 font-semibold uppercase tracking-wide">Extension</p>
+            <p className="text-xs font-bold text-gray-800 mt-0.5">{call.extension ? `Ext ${call.extension}` : "—"}</p>
+          </div>
+        </div>
+
+        {/* Recording */}
+        {call.recording && (
+          <div className="px-5 py-3 border-b border-gray-50">
+            <div className="flex items-center gap-2 bg-violet-50 border border-violet-200 rounded-2xl px-4 py-3">
+              <div className="w-8 h-8 rounded-xl bg-violet-100 flex items-center justify-center shrink-0">
+                <Play className="w-4 h-4 text-violet-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-violet-800">Recording Available</p>
+                <p className="text-[10px] text-violet-500 truncate">{call.recording}</p>
+              </div>
+              <a href={call.recording} target="_blank" rel="noreferrer"
+                className="shrink-0 w-8 h-8 rounded-xl bg-violet-100 flex items-center justify-center text-violet-600 hover:bg-violet-200 transition-colors">
+                <Download className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          </div>
+        )}
+
+        {/* Transcript */}
+        <div className="px-5 py-3 border-b border-gray-50">
+          <button
+            onClick={() => setTranscriptOpen(p => !p)}
+            className="w-full flex items-center justify-between gap-2 mb-2"
+          >
+            <div className="flex items-center gap-1.5">
+              <Mic className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="text-[9px] font-bold text-indigo-500 uppercase tracking-widest">Transcript</span>
+              {!hasTranscript && <span className="text-[9px] text-gray-400 font-normal">(not available)</span>}
+            </div>
+            {hasTranscript && (transcriptOpen ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />)}
+          </button>
+          {hasTranscript && transcriptOpen && (
+            <div className="bg-gray-50 border border-gray-100 rounded-2xl p-4 max-h-72 overflow-y-auto">
+              {call.call_transcript!.split("\n").map((line, i) => {
+                const isSpeaker = /^Speaker\s*\d+\s*:/i.test(line.trim());
+                return line.trim() ? (
+                  <p key={i} className={cn("text-[11px] leading-relaxed mb-1", isSpeaker ? "font-bold text-indigo-600 mt-2" : "text-gray-700 pl-3")}>
+                    {line}
+                  </p>
+                ) : <div key={i} className="h-1" />;
+              })}
+            </div>
+          )}
+          {!hasTranscript && (
+            <div className="text-[10px] text-gray-400 italic bg-gray-50 rounded-xl px-3 py-2">
+              No transcript recorded for this call.
+            </div>
+          )}
+        </div>
+
+        {/* AI Summary */}
+        <div className="px-5 py-3 border-b border-gray-50">
+          <button
+            onClick={() => setSummaryOpen(p => !p)}
+            className="w-full flex items-center justify-between gap-2 mb-2"
+          >
+            <div className="flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-[9px] font-bold text-amber-600 uppercase tracking-widest">AI Analysis</span>
+              {!hasSummary && <span className="text-[9px] text-gray-400 font-normal">(not available)</span>}
+            </div>
+            {hasSummary && (summaryOpen ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />)}
+          </button>
+          {hasSummary && summaryOpen && (
+            <div className="bg-amber-50/60 border border-amber-100 rounded-2xl p-4">
+              <div
+                className="text-[11px] text-gray-700 leading-relaxed [&_strong]:font-bold [&_strong]:text-amber-900"
+                dangerouslySetInnerHTML={{ __html: summaryHtml }}
+              />
+            </div>
+          )}
+          {!hasSummary && (
+            <div className="text-[10px] text-gray-400 italic bg-gray-50 rounded-xl px-3 py-2">
+              No AI analysis available for this call.
+            </div>
+          )}
+        </div>
+
+        {/* Related calls from same number */}
+        {related.length > 0 && (
+          <div className="px-5 py-3">
+            <div className="flex items-center gap-1.5 mb-2">
+              <Phone className="w-3.5 h-3.5 text-gray-400" />
+              <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">
+                Other calls from this number ({related.length})
+              </span>
+            </div>
+            <div className="space-y-1.5">
+              {related.map((c, i) => {
+                const rt = typeStyle(c.call_type);
+                return (
+                  <div key={i} className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 border border-gray-100">
+                    <rt.Icon className={cn("w-3 h-3 shrink-0", rt.text)} />
+                    <span className="text-[10px] text-gray-500 font-mono flex-1">{fmtDateTime(c.call_time)}</span>
+                    {c.extension_owner && (
+                      <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full border", ownerColor(c.extension_owner))}>
+                        {c.extension_owner}
+                      </span>
+                    )}
+                    {c.call_transcript?.trim() && <Mic className="w-2.5 h-2.5 text-indigo-400" />}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -311,17 +360,24 @@ export default function IPCallLogs() {
   const { user, isLoading: authLoading } = useAuth();
   const [, navigate] = useLocation();
 
-  const [contacts,  setContacts]  = useState<Contact[]>([]);
-  const [callCache, setCallCache] = useState<Record<string, CallRow[]>>({});
-  const [selected,  setSelected]  = useState<string | null>(null);
-  const [search,    setSearch]    = useState("");
-  const [loading,   setLoading]   = useState(false);
-  const [error,     setError]     = useState("");
-  const [hasAccess, setHasAccess] = useState<boolean | null>(null);
+  const [allCalls,   setAllCalls]   = useState<FlatCall[]>([]);
+  const [stats,      setStats]      = useState<Stats | null>(null);
+  const [loading,    setLoading]    = useState(false);
+  const [error,      setError]      = useState("");
+  const [hasAccess,  setHasAccess]  = useState<boolean | null>(null);
+  const [selected,   setSelected]   = useState<FlatCall | null>(null);
+
+  // Filters
+  const [preset,      setPreset]     = useState<DatePreset>("all");
+  const [fromDate,    setFromDate]   = useState("");
+  const [toDate,      setToDate]     = useState("");
+  const [ownerFilter, setOwnerFilter]= useState("");
+  const [typeFilter,  setTypeFilter] = useState("");
+  const [search,      setSearch]     = useState("");
 
   const isAdmin = ADMIN_EMAILS.includes(user?.email || "");
 
-  // ── Auth / permission check ────────────────────────────────────────────────
+  // ── Auth check ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (authLoading) return;
     if (!user) { navigate("/login"); return; }
@@ -336,36 +392,51 @@ export default function IPCallLogs() {
       .catch(() => setHasAccess(false));
   }, [user, authLoading, isAdmin, navigate]);
 
-  // ── Load contact list ──────────────────────────────────────────────────────
-  const loadContacts = useCallback(() => {
+  // ── Load calls ────────────────────────────────────────────────────────────
+  const load = useCallback((forceRefresh = false) => {
     setLoading(true); setError("");
-    fetch(`${API_BASE}/call-logs`)
+    const params = new URLSearchParams({ limit: "500" });
+    if (forceRefresh) params.set("refresh", "1");
+    if (fromDate) params.set("from_date", fromDate);
+    if (toDate)   params.set("to_date", toDate);
+    if (ownerFilter) params.set("owner", ownerFilter);
+    if (typeFilter)  params.set("call_type", typeFilter);
+
+    fetch(`${API_BASE}/call-logs?${params}`)
       .then(r => r.ok ? r.json() : r.json().then((e: any) => { throw new Error(e.error || "Failed"); }))
-      .then(data => setContacts(data.contacts || []))
+      .then(data => {
+        setAllCalls(data.calls || []);
+        setStats(data.stats || null);
+      })
       .catch((e: any) => setError(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [fromDate, toDate, ownerFilter, typeFilter]);
 
-  useEffect(() => { if (hasAccess) loadContacts(); }, [hasAccess, loadContacts]);
+  useEffect(() => { if (hasAccess) load(); }, [hasAccess, load]);
 
-  // ── Load calls for a contact ───────────────────────────────────────────────
-  const selectContact = useCallback((phone: string) => {
-    setSelected(phone);
-    if (callCache[phone]) return;
-    fetch(`${API_BASE}/call-logs/${encodeURIComponent(phone)}`)
-      .then(r => r.ok ? r.json() : r.json().then((e: any) => { throw new Error(e.error || "Failed"); }))
-      .then(data => setCallCache(prev => ({ ...prev, [phone]: data.calls || [] })))
-      .catch(() => {});
-  }, [callCache]);
+  // ── Apply preset ──────────────────────────────────────────────────────────
+  const applyPreset = (p: DatePreset) => {
+    setPreset(p);
+    const [f, t] = presetRange(p);
+    setFromDate(f); setToDate(t);
+  };
 
-  const filtered = contacts.filter(c =>
-    (c.phone_number || c.name).toLowerCase().includes(search.toLowerCase())
-  );
+  // ── Client-side search filter ─────────────────────────────────────────────
+  const filtered = useMemo(() => {
+    if (!search.trim()) return allCalls;
+    const q = search.toLowerCase();
+    return allCalls.filter(c =>
+      (c.phone_number || "").includes(q) ||
+      (c.extension_owner || "").toLowerCase().includes(q) ||
+      (c.call_transcript || "").toLowerCase().includes(q) ||
+      (c.summary || "").toLowerCase().includes(q)
+    );
+  }, [allCalls, search]);
 
-  // ── Access denied ──────────────────────────────────────────────────────────
+  // ── Guards ────────────────────────────────────────────────────────────────
   if (!authLoading && hasAccess === false) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 p-8 text-center">
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-center p-8">
         <div className="w-14 h-14 rounded-2xl bg-red-50 flex items-center justify-center">
           <Phone className="w-6 h-6 text-red-400" />
         </div>
@@ -374,94 +445,201 @@ export default function IPCallLogs() {
       </div>
     );
   }
-
   if (authLoading || hasAccess === null) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-6 h-6 animate-spin text-violet-400" />
-      </div>
-    );
+    return <div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 animate-spin text-indigo-400" /></div>;
   }
 
+  const PRESETS: { key: DatePreset; label: string }[] = [
+    { key: "today",     label: "Today"     },
+    { key: "yesterday", label: "Yesterday" },
+    { key: "week",      label: "This Week" },
+    { key: "month",     label: "This Month"},
+    { key: "all",       label: "All Time"  },
+  ];
+
   return (
-    <div className="flex h-full overflow-hidden">
-      {/* ── Left Panel: Contact List ── */}
-      <div className={cn(
-        "flex flex-col bg-white border-r border-gray-200 overflow-hidden transition-all duration-300",
-        selected ? "w-72 shrink-0" : "flex-1"
-      )}>
-        {/* Header */}
-        <div className="px-5 py-4 border-b border-gray-100 shrink-0">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-sm">
-                <Phone className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <h1 className="text-sm font-bold text-gray-900">IP Call Logs</h1>
-                <p className="text-[10px] text-gray-400">{contacts.length} contacts</p>
-              </div>
-            </div>
-            <button onClick={loadContacts} title="Refresh"
-              className="w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors">
-              <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
-            </button>
+    <div className="flex flex-col h-full overflow-hidden bg-gray-50/30">
+
+      {/* ── Top header + stats ── */}
+      <div className="shrink-0 bg-white border-b border-gray-100 px-5 py-3">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-sm">
+            <Phone className="w-4 h-4 text-white" />
           </div>
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-            <input
-              value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search phone number..."
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-8 pr-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent"
-            />
+          <div>
+            <h1 className="text-base font-bold text-gray-900">IP Call Logs</h1>
+            <p className="text-[10px] text-gray-400">HR Extensions · Transcripts · AI Analysis</p>
+          </div>
+          <button
+            onClick={() => load(true)} disabled={loading} title="Refresh data"
+            className="ml-auto w-8 h-8 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors disabled:opacity-40"
+          >
+            <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
+          </button>
+        </div>
+
+        {/* Stats strip */}
+        {stats && (
+          <div className="grid grid-cols-5 gap-2">
+            {[
+              { label: "Total",       value: stats.total,       color: "text-gray-700",  bg: "bg-gray-100"    },
+              { label: "Incoming",    value: stats.incoming,    color: "text-green-700", bg: "bg-green-50"    },
+              { label: "Outgoing",    value: stats.outgoing,    color: "text-blue-700",  bg: "bg-blue-50"     },
+              { label: "Transcribed", value: stats.transcribed, color: "text-indigo-700",bg: "bg-indigo-50"   },
+              { label: "Recorded",    value: stats.recorded,    color: "text-violet-700",bg: "bg-violet-50"   },
+            ].map(s => (
+              <div key={s.label} className={cn("rounded-xl px-3 py-2 text-center border border-gray-100", s.bg)}>
+                <p className={cn("text-lg font-black", s.color)}>{s.value}</p>
+                <p className="text-[9px] text-gray-500 font-semibold uppercase tracking-wide">{s.label}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Filter bar ── */}
+      <div className="shrink-0 bg-white border-b border-gray-100 px-5 py-2.5 flex items-center gap-3 flex-wrap">
+        {/* Date preset chips */}
+        <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-0.5">
+          {PRESETS.map(p => (
+            <button key={p.key} onClick={() => applyPreset(p.key)}
+              className={cn("px-2.5 py-1 text-[10px] font-bold rounded-lg transition-colors",
+                preset === p.key ? "bg-white text-indigo-700 shadow-sm" : "text-gray-500 hover:text-gray-700")}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Custom date range */}
+        {preset === "all" && (
+          <>
+            <input type="date" value={fromDate} onChange={e => { setFromDate(e.target.value); setPreset("all"); }}
+              className="text-[10px] border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-700" />
+            <span className="text-[10px] text-gray-400">to</span>
+            <input type="date" value={toDate}   onChange={e => { setToDate(e.target.value); setPreset("all"); }}
+              className="text-[10px] border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-700" />
+          </>
+        )}
+
+        <div className="w-px h-5 bg-gray-200 mx-1" />
+
+        {/* Owner filter */}
+        <div className="flex items-center gap-1">
+          <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wide">By:</span>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setOwnerFilter("")}
+              className={cn("px-2 py-0.5 text-[10px] font-semibold rounded-full border transition-colors",
+                ownerFilter === "" ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-gray-500 border-gray-200 hover:border-gray-300")}>
+              All
+            </button>
+            {OWNERS.map(o => (
+              <button key={o} onClick={() => setOwnerFilter(ownerFilter === o ? "" : o)}
+                className={cn("px-2 py-0.5 text-[10px] font-semibold rounded-full border transition-colors",
+                  ownerFilter === o ? "bg-indigo-600 text-white border-indigo-600" : cn("bg-white border", ownerColor(o).replace(/bg-\S+ /, "").replace(/text-\S+ /, "")))}>
+                {o}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Contact list */}
-        <div className="flex-1 overflow-y-auto">
-          {loading && (
-            <div className="flex justify-center py-12">
-              <Loader2 className="w-5 h-5 animate-spin text-violet-400" />
-            </div>
-          )}
-          {error && (
-            <div className="m-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 flex items-center gap-2">
-              <XCircle className="w-4 h-4 shrink-0" /> {error}
-            </div>
-          )}
-          {!loading && !error && filtered.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 gap-2 text-center">
-              <Phone className="w-8 h-8 text-gray-200" />
-              <p className="text-xs text-gray-400">{search ? "No matching contacts" : "No call logs found"}</p>
-            </div>
-          )}
-          {filtered.map(contact => (
-            <ContactItem
-              key={contact.name}
-              contact={contact}
-              selected={selected === (contact.phone_number || contact.name)}
-              onClick={() => selectContact(contact.phone_number || contact.name)}
-              calls={callCache[contact.phone_number || contact.name]}
-            />
+        <div className="w-px h-5 bg-gray-200 mx-1" />
+
+        {/* Type filter */}
+        <div className="flex items-center gap-1">
+          {[["", "All"], ["Incoming", "↓ In"], ["Outgoing", "↑ Out"]].map(([val, label]) => (
+            <button key={val} onClick={() => setTypeFilter(val)}
+              className={cn("px-2 py-0.5 text-[10px] font-semibold rounded-full border transition-colors",
+                typeFilter === val ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-gray-500 border-gray-200 hover:border-gray-300")}>
+              {label}
+            </button>
           ))}
+        </div>
+
+        {/* Search */}
+        <div className="relative ml-auto">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
+          <input
+            value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search phone / owner / transcript..."
+            className="pl-7 pr-3 py-1.5 text-[10px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent w-64"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <X className="w-3 h-3" />
+            </button>
+          )}
         </div>
       </div>
 
-      {/* ── Right Panel: Call Detail ── */}
-      {selected ? (
-        <div className="flex-1 overflow-hidden">
-          <DetailPanel phone={selected} onClose={() => setSelected(null)} />
-        </div>
-      ) : (
-        <div className="flex-1 hidden md:flex flex-col items-center justify-center gap-3 bg-gray-50/50 text-center p-8">
-          <div className="w-16 h-16 rounded-3xl bg-violet-50 flex items-center justify-center">
-            <Phone className="w-7 h-7 text-violet-300" />
+      {/* ── Main body: list + detail ── */}
+      <div className="flex flex-1 overflow-hidden">
+
+        {/* Call list */}
+        <div className={cn(
+          "flex flex-col overflow-hidden border-r border-gray-100 bg-white transition-all duration-300",
+          selected ? "w-80 shrink-0" : "flex-1"
+        )}>
+          {/* List header */}
+          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-50 bg-gray-50/50 shrink-0">
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">
+              {filtered.length} call{filtered.length !== 1 ? "s" : ""}
+            </span>
+            {(ownerFilter || typeFilter || search || fromDate || toDate) && (
+              <button onClick={() => { setOwnerFilter(""); setTypeFilter(""); setSearch(""); setFromDate(""); setToDate(""); setPreset("all"); }}
+                className="text-[10px] text-indigo-600 font-semibold hover:underline flex items-center gap-0.5">
+                <X className="w-2.5 h-2.5" />Clear filters
+              </button>
+            )}
           </div>
-          <p className="text-sm font-bold text-gray-600">Select a contact</p>
-          <p className="text-xs text-gray-400 max-w-xs">Click any contact on the left to view their full call history, transcripts, and AI analysis.</p>
+
+          <div className="flex-1 overflow-y-auto">
+            {loading && (
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
+                <p className="text-xs text-gray-400">Loading calls from ERPNext…</p>
+                <p className="text-[10px] text-gray-300">This may take a moment on first load</p>
+              </div>
+            )}
+            {error && (
+              <div className="m-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 flex items-center gap-2">
+                <XCircle className="w-4 h-4 shrink-0" /> {error}
+              </div>
+            )}
+            {!loading && !error && filtered.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-16 gap-2 text-center">
+                <Phone className="w-10 h-10 text-gray-100" />
+                <p className="text-sm font-bold text-gray-400">No calls found</p>
+                <p className="text-xs text-gray-300">{search ? "Try different search terms" : "Try adjusting filters"}</p>
+              </div>
+            )}
+            {!loading && filtered.map((call, i) => (
+              <CallRow
+                key={`${call.phone_number}-${call.call_time}-${i}`}
+                call={call}
+                selected={selected === call}
+                onClick={() => setSelected(selected === call ? null : call)}
+              />
+            ))}
+          </div>
         </div>
-      )}
+
+        {/* Detail panel */}
+        {selected ? (
+          <div className="flex-1 overflow-hidden border-l border-gray-100">
+            <DetailPanel call={selected} allCalls={allCalls} onClose={() => setSelected(null)} />
+          </div>
+        ) : (
+          <div className="hidden md:flex flex-1 flex-col items-center justify-center gap-4 bg-gray-50/30 text-center p-12">
+            <div className="w-20 h-20 rounded-3xl bg-white border border-gray-100 shadow-sm flex items-center justify-center">
+              <Phone className="w-8 h-8 text-gray-200" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-gray-500">Select a call to view details</p>
+              <p className="text-xs text-gray-300 mt-1">Transcript · AI analysis · Related calls</p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
