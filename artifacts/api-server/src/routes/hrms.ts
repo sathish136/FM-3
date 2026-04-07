@@ -1092,4 +1092,23 @@ router.get("/hrms/task-summary/idle-employees", async (req, res) => {
   }
 });
 
+// ── Employee Personal Dashboard (calls ERP custom_dashboard method) ───────────
+const DASHBOARD_METHOD = "wtt_module.customization.custom.custom_dashboard.get_attendance_summary";
+
+router.get("/employee-dashboard", async (req, res) => {
+  try {
+    if (!ERPNEXT_URL) return res.status(503).json({ error: "ERPNext not configured" });
+    const url = `${ERPNEXT_URL}/api/method/${DASHBOARD_METHOD}`;
+    const r = await fetch(url, { headers: { Authorization: erpAuthHeader() } });
+    if (!r.ok) {
+      const body = await r.text().catch(() => "");
+      return res.status(r.status).json({ error: `ERP error ${r.status}: ${body.slice(0, 200)}` });
+    }
+    const json = await r.json();
+    return res.json(json.message ?? json);
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;

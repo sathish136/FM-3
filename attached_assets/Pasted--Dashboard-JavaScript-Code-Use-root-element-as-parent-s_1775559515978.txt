@@ -1,0 +1,865 @@
+// Dashboard JavaScript Code
+// Use root_element as parent selector for Custom HTML Block
+
+(function() {
+    // Function to get current time greeting
+    function getTimeGreeting() {
+        const hour = new Date().getHours();
+        if (hour < 12) return "Good Morning";
+        else if (hour < 17) return "Good Afternoon";
+        else return "Good Evening";
+    }
+
+    // Function to format time (HH:MM:SS to HH:MM AM/PM)
+    function formatTime(timeString) {
+        if (!timeString) return '--';
+        const [hours, minutes] = timeString.split(':');
+        const hour = parseInt(hours);
+        const ampm = hour >= 12 ? 'PM' : 'AM';
+        const hour12 = hour % 12 || 12;
+        return `${hour12}:${minutes} ${ampm}`;
+    }
+
+    // Function to calculate total incidents
+    function calculateTotalIncidents(positive, negative) {
+        return (positive || 0) + (negative || 0);
+    }
+
+    // Function to calculate total reminders and categorize them
+    function processReminders(reminders) {
+        if (!reminders || !Array.isArray(reminders)) {
+            return { total: 0, today: 0, upcoming: 0, overdue: 0 };
+        }
+
+        const today = new Date().toISOString().split('T')[0];
+        let todayCount = 0;
+        let upcomingCount = 0;
+        let overdueCount = 0;
+
+        reminders.forEach(reminder => {
+            const reminderDate = reminder.reminder_date;
+            if (reminderDate === today) {
+                todayCount++;
+            } else if (reminderDate > today) {
+                upcomingCount++;
+            } else {
+                overdueCount++;
+            }
+        });
+
+        return {
+            total: reminders.length,
+            today: todayCount,
+            upcoming: upcomingCount,
+            overdue: overdueCount
+        };
+    }
+
+    // Function to populate task table
+function populateTaskTable(workUpdates) {
+    const tableBody = root_element.querySelector('#task_table_body');
+    if (!tableBody || !workUpdates || !Array.isArray(workUpdates)) return;
+
+    // Clear existing rows
+    tableBody.innerHTML = '';
+
+    // Show all work updates (remove limit)
+    // const recentTasks = workUpdates.slice(0, 5);  // ❌ Remove this line
+
+    workUpdates.forEach(task => {  // ✅ Loop through all
+        const row = document.createElement('tr');
+
+        // Format dates
+        const fromDate = new Date(task.from_time).toLocaleDateString();
+        const toDate = new Date(task.to_time).toLocaleDateString();
+        const fromTime = new Date(task.from_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        const toTime = new Date(task.to_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+        // Determine status class
+        // let statusClass = 'status-pending';
+        // if (task.status.toLowerCase() === 'completed') {
+        //     statusClass = 'status-completed';
+        // } else if (task.status.toLowerCase() === 'in progress') {
+        //     statusClass = 'status-progress';
+        // }
+
+        row.innerHTML = `
+            <td>${task.employee || '--'}</td>
+            <td>
+                <i class="octicon octicon-checklist icon-task"></i>
+                ${task.type_of_work || '--'}
+            </td>
+            <td>${task.type_of_work || '--'}</td>
+            <td>${fromDate} ${fromTime}</td>
+            <td>${toDate} ${toTime}</td>
+            <td>${task.status || 'Pending'}</span></td>
+        `;
+
+        tableBody.appendChild(row);
+    });
+}
+
+
+    // Function to update dashboard with API data
+    function updateDashboard(data) {
+        try {
+            const message = data.message;
+
+            // Update greeting and user info
+            const greetingElement = root_element.querySelector('#timeGreeting');
+            if (greetingElement) {
+                greetingElement.textContent = getTimeGreeting();
+            }
+
+            // Update username (extract from email)
+            const usernameElement = root_element.querySelector('#username');
+            if (usernameElement && message.user) {
+                const username = message.user.split('@')[0];
+                usernameElement.textContent = username;
+            }
+
+            // Update total days
+            const totalDaysElement = root_element.querySelector('#totalDays');
+            if (totalDaysElement) {
+                totalDaysElement.textContent = message.total_present_days || 0;
+            }
+
+            // Update today's check-in time
+            const todayCheckinElement = root_element.querySelector('#today_checkin');
+            if (todayCheckinElement) {
+                const checkinTime = formatTime(message.today_first_checkin);
+                todayCheckinElement.innerHTML = `Today's Checkin Time - <span class="hod">${checkinTime}</span>`;
+            }
+
+            // Update task points (using pending work updates count)
+            const taskPointElement = root_element.querySelector('#task_point');
+            if (taskPointElement) {
+                taskPointElement.textContent = message.pending_work_updates || '--';
+            }
+
+            // Update attendance section
+            // const attendanceElement = root_element.querySelector('#Attandence');
+            // if (attendanceElement) {
+            //     attendanceElement.textContent = message.present_days_this_month || '--';
+            // }
+
+            const presentCountElement = root_element.querySelector('#present_count');
+            if (presentCountElement) {
+                presentCountElement.textContent = message.present_days_this_month || '--';
+            }
+
+            // const absentCountElement = root_element.querySelector('#absent_count');
+            // if (absentCountElement) {
+            //     absentCountElement.textContent = message.absent_days_this_month || '--';
+            // }
+
+            const lateCountElement = root_element.querySelector('#late_count');
+            if (lateCountElement) {
+                lateCountElement.textContent = message.checkin || '--';
+            }
+
+            // Update task pending
+            const taskElement = root_element.querySelector('#task');
+            if (taskElement) {
+                taskElement.textContent = message.pending_work_updates || '--';
+            }
+
+            // Update incidents
+            // const totalIncidents = calculateTotalIncidents(message.positive_incidents, message.negative_incidents);
+            // const totalIncidentsElement = root_element.querySelector('#total_incidents');
+            // if (totalIncidentsElement) {
+            //     totalIncidentsElement.textContent = totalIncidents;
+            // }
+
+            // const positiveIncidentElement = root_element.querySelector('#positive_incident');
+            // if (positiveIncidentElement) {
+            //     positiveIncidentElement.textContent = message.positive_incidents || 0;
+            // }
+
+            // const negativeIncidentElement = root_element.querySelector('#negative_incident');
+            // if (negativeIncidentElement) {
+            //     negativeIncidentElement.textContent = message.negative_incidents || 0;
+            // }
+
+            // Update reminders
+            // Populate reminders table
+            const remindersTableBody = root_element.querySelector('#reminders_table_body');
+            if (remindersTableBody) {
+                remindersTableBody.innerHTML = ''; // Clear existing rows
+            
+                if (message.reminders.length > 0) {
+                    message.reminders.forEach(reminder => {
+                        const row = document.createElement('tr');
+            
+                        const reminderCell = document.createElement('td');
+                        reminderCell.textContent = reminder.reminder;
+                        row.appendChild(reminderCell);
+            
+                        const dateCell = document.createElement('td');
+                        dateCell.textContent = reminder.reminder_date;
+                        row.appendChild(dateCell);
+            
+                        const statusCell = document.createElement('td');
+                        statusCell.textContent = reminder.status;
+                        row.appendChild(statusCell);
+            
+                        remindersTableBody.appendChild(row);
+                    });
+                } else {
+                    const emptyRow = document.createElement('tr');
+                    const emptyCell = document.createElement('td');
+                    emptyCell.colSpan = 3;
+                    emptyCell.style.textAlign = 'center';
+                    emptyCell.style.padding = '20px';
+                    emptyCell.style.color = '#888';
+                    emptyCell.textContent = 'No reminders available.';
+                    emptyRow.appendChild(emptyCell);
+                    remindersTableBody.appendChild(emptyRow);
+                }
+            }
+
+
+            // Update pending approvals
+            const pendingApprovalTotal = (message.ot_request_count || 0) + 
+                                      (message.ot_prior_info_count || 0) + 
+                                      (message.on_duty_request_count || 0) + 
+                                      (message.technical_criteria_count || 0) + 
+                                      (message.behavioural_criteria_count || 0);
+
+            const pendingApprovalElement = root_element.querySelector('#pending_approval');
+            if (pendingApprovalElement) {
+                pendingApprovalElement.textContent = pendingApprovalTotal;
+            }
+
+            const onDutyCountElement = root_element.querySelector('#on_duty_count');
+            if (onDutyCountElement) {
+                onDutyCountElement.textContent = message.on_duty_request_count || 0;
+            }
+
+            const techBehaviorCountElement = root_element.querySelector('#techn_count');
+            if (techBehaviorCountElement) {
+                techBehaviorCountElement.textContent = message.technical_criteria_count || 0;
+            }
+            
+            
+            const BehaviorCountElement = root_element.querySelector('#behavior_count');
+            if (BehaviorCountElement) {
+                BehaviorCountElement.textContent =  message.behavioural_criteria_count || 0;
+            }
+            
+            
+            
+            const otRequestCountElement = root_element.querySelector('#ot_request_count');
+            if (otRequestCountElement) {
+                otRequestCountElement.textContent = message.ot_request_count || 0;
+            }
+
+            const otPreparerCountElement = root_element.querySelector('#ot_preparer_count');
+            if (otPreparerCountElement) {
+                otPreparerCountElement.textContent = message.ot_prior_info_count || 0;
+            }
+
+            // Populate task table
+            populateTaskTable(message.work_updates);
+
+        } catch (error) {
+            console.error('Error updating dashboard:', error);
+        }
+    }
+
+    // Function to fetch data from API
+    function fetchDashboardData() {
+        frappe.call({
+            method: "wtt_module.customization.custom.custom_dashboard.get_attendance_summary",
+            callback: function(response) {
+                if (response.message) {
+                    updateDashboard(response);
+                } else {
+                    console.error('No data received from API');
+                }
+            },
+            error: function(error) {
+                console.error('API call failed:', error);
+                // You can show a user-friendly error message here
+            }
+        });
+    }
+
+    // Initialize dashboard
+    function initDashboard() {
+        // Set initial greeting
+        const greetingElement = root_element.querySelector('#timeGreeting');
+        if (greetingElement) {
+            greetingElement.textContent = getTimeGreeting();
+        }
+
+        // Fetch and populate data
+        fetchDashboardData();
+
+        // Optional: Set up auto-refresh every 5 minutes
+        setInterval(fetchDashboardData, 5 * 60 * 1000);
+    }
+
+    // Wait for DOM to be ready and then initialize
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initDashboard);
+    } else {
+        initDashboard();
+    }
+
+
+
+
+
+
+
+
+
+// function setDefaultDateFiltersAndLoad() {
+//     const startDateInput = root_element.querySelector('#start-date');
+//     const endDateInput = root_element.querySelector('#end-date');
+
+//     const today = new Date();
+//     const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+//     const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+//     const formatDate = (date) => date.toISOString().split('T')[0];
+
+//     const fromDate = formatDate(firstDay);
+//     const toDate = formatDate(lastDay);
+
+//     // Set the input values
+//     startDateInput.value = fromDate;
+//     endDateInput.value = toDate;
+
+//     // Automatically trigger the data fetch
+//     fetchhalfData(fromDate, toDate);
+//     fetchlateData(fromDate, toDate);
+//     fetchattendData(fromDate, toDate);
+//     fetchperformanceData(fromDate, toDate);
+//     fetchincidentData(fromDate, toDate);
+
+//     fetchpresentData(fromDate, toDate);
+    
+// }
+
+
+
+// Global variable to store employee value
+let emp_value = null;
+
+// Function to get employee data and initialize everything
+function initializePerformanceDashboard() {
+    frappe.call({
+        method: 'wtt_module.customization.custom.custom_dashboard.get_employee_by_user',
+        args: {
+            user_id: frappe.session.user
+        },
+        callback: function(response) {
+            if (response.message) {
+                emp_value = response.message; // Store employee value globally
+                console.log('Employee found:', emp_value);
+                
+                // Now that we have employee data, set up the dashboard
+                setDefaultDateFiltersAndLoad();
+                addAutoFilterListeners();
+            } else {
+                console.error('No employee found for the current user');
+                frappe.msgprint('No employee record found for your user account.');
+            }
+        },
+        error: function(error) {
+            console.error('Error fetching employee data:', error);
+            frappe.msgprint('Error loading employee data. Please try again.');
+        }
+    });
+}
+
+function fetchperformanceData(fromDate, toDate) {
+    // Check if emp_value is available
+    if (!emp_value) {
+        console.error('emp_value is not available');
+        // frappe.msgprint('Employee data not loaded. Please refresh the page.');
+        return;
+    }
+
+    console.log('Fetching data for employee:', emp_value, 'from:', fromDate, 'to:', toDate);
+    
+    frappe.call({
+        method: 'wtt_module.customization.custom.custom_dashboard.get_performance_data',
+        args: {
+            employee: emp_value,
+            from_date: fromDate,
+            to_date: toDate
+        },
+        callback: function (response) {
+            console.log('Performance data response:', response);
+            
+            if (response.message && response.message.length > 0) {
+                const item = response.message[0];
+                console.log('Performance data item:', item);
+                
+                const safePercent = (val) =>
+                    (val !== null && val !== undefined) ? parseFloat(val).toFixed(2) + "%" : "0.00%";
+                
+                // Update UI elements
+                const tasksPointEl = root_element.querySelector('#tasks_point');
+                const taskCountEl = root_element.querySelector('#task_count');
+                const incidentCountEl = root_element.querySelector('#incident_count');
+                const techCountEl = root_element.querySelector('#tech_count');
+                const behavCountEl = root_element.querySelector('#behav_count');
+                const repCountEl = root_element.querySelector('#rep_count');
+                
+                if (tasksPointEl) tasksPointEl.textContent = safePercent(item.total_avg);
+                if (taskCountEl) taskCountEl.textContent = safePercent(item.task_allocation);
+                if (incidentCountEl) incidentCountEl.textContent = safePercent(item.incident_score);
+                if (techCountEl) techCountEl.textContent = safePercent(item.technical_criteria_percentage);
+                if (behavCountEl) behavCountEl.textContent = safePercent(item.behavioral_criteria_percentage);
+                 if (repCountEl) repCountEl.textContent = safePercent(item.report_percentage);
+                
+                // Log debug info if available
+                if (item.debug_info) {
+                    console.log('Debug info:', item.debug_info);
+                }
+            } else {
+                console.log('No performance data found');
+                frappe.msgprint("No performance data found for the selected date range.");
+                
+                // Reset UI to show 0.00%
+                const elements = ['#tasks_point', '#task_count', '#incident_count', '#tech_count', '#behav_count'];
+                elements.forEach(selector => {
+                    const el = root_element.querySelector(selector);
+                    if (el) el.textContent = "0.00%";
+                });
+            }
+        },
+        error: function(error) {
+            console.error('Error fetching performance data:', error);
+            frappe.msgprint('Error loading performance data. Please try again.');
+        }
+    });
+}
+
+
+
+
+function fetchincidentData(fromDate, toDate) {
+    if (!emp_value) {
+        console.error('emp_value is not available');
+        return;
+    }
+
+    console.log('Fetching data for employee:', emp_value, 'from:', fromDate, 'to:', toDate);
+
+    frappe.call({
+        method: 'wtt_module.customization.custom.custom_dashboard.get_incidents',
+        args: {
+            employee: emp_value,
+            from_date: fromDate,
+            to_date: toDate
+        },
+        callback: function (response) {
+            console.log('Incident data response:', response);
+
+            if (response.message) {
+                const positive = response.message.positive_incident || 0;
+                const negative = response.message.negative_incident || 0;
+                const total = positive + negative;
+
+                // // Show in alert
+                // alert(
+                //     `Incident Summary:\n\n` +
+                //     `Positive Incidents: ${positive}\n` +
+                //     `Negative Incidents: ${negative}\n` +
+                //     `Total Incidents: ${total}`
+                // );
+
+                // Set values in HTML
+                let totalEl = root_element.querySelector('#total_incidents');
+                let positiveEl = root_element.querySelector('#positive_incident');
+                let negativeEl = root_element.querySelector('#negative_incident');
+
+                if (totalEl) totalEl.textContent = total;
+                if (positiveEl) positiveEl.textContent = positive;
+                if (negativeEl) negativeEl.textContent = negative;
+            } else {
+                alert("No incident data returned.");
+            }
+        },
+        error: function (error) {
+            console.error('Error fetching incident data:', error);
+            frappe.msgprint('Error loading incident data. Please try again.');
+        }
+    });
+}
+
+
+
+function fetchattendData(fromDate, toDate) {
+    if (!emp_value) {
+        console.error('emp_value is not available');
+        return;
+    }
+
+    console.log('Fetching attendance data for employee:', emp_value, 'from:', fromDate, 'to:', toDate);
+
+    frappe.call({
+        method: 'wtt_module.customization.custom.custom_dashboard.get_leave_counts',
+        args: {
+            employee: emp_value,
+            from_date: fromDate,
+            to_date: toDate
+        },
+        callback: function (response) {
+            console.log('Leave count response:', response);
+
+            if (response.message !== undefined) {
+                const absent = response.message || 0;
+
+                // For demonstration: assume 30-day month minus leaves
+                // const present = 30 - absent;
+                // const total = present + absent;
+
+                // Set HTML elements
+                // let presentEl = root_element.querySelector('#present_count');
+                let absentEl = root_element.querySelector('#absent_count');
+                // let totalEl = root_element.querySelector('#Attandence');
+
+                // if (presentEl) presentEl.textContent = present;
+                if (absentEl) absentEl.textContent = absent;
+                // if (totalEl) totalEl.textContent = total;
+            } else {
+                alert("No attendance data returned.");
+            }
+        },
+        error: function (error) {
+            console.error('Error fetching attendance data:', error);
+            frappe.msgprint('Error loading attendance data. Please try again.');
+        }
+    });
+}
+
+
+function fetchlateData(fromDate, toDate) {
+    if (!emp_value) {
+        console.error('emp_value is not available');
+        return;
+    }
+
+    console.log('Fetching late entry data for employee:', emp_value, 'from:', fromDate, 'to:', toDate);
+
+    frappe.call({
+        method: 'wtt_module.customization.custom.custom_dashboard.get_late_entries_counts',
+        args: {
+            employee: emp_value,
+            from_date: fromDate,
+            to_date: toDate
+        },
+        callback: function (response) {
+            console.log('Late entry count response:', response);
+
+            if (response.message !== undefined) {
+                const late = response.message || 0;
+
+                let lateEl = root_element.querySelector('#late_count');
+                if (lateEl) lateEl.textContent = late;
+
+                // Optional: also update the total (same as late)
+                // let totalEl = root_element.querySelector('#Attandence');
+                // if (totalEl) totalEl.textContent = late;
+            } else {
+                alert("No late entry data returned.");
+            }
+        },
+        error: function (error) {
+            console.error('Error fetching late entry data:', error);
+            frappe.msgprint('Error loading late entry data. Please try again.');
+        }
+    });
+}
+
+
+
+function fetchpresentData(fromDate, toDate) {
+    if (!emp_value) {
+        console.error('emp_value is not available');
+        return;
+    }
+
+    console.log('Fetching late entry data for employee:', emp_value, 'from:', fromDate, 'to:', toDate);
+
+    frappe.call({
+        method: 'wtt_module.customization.custom.custom_dashboard.get_present_counts',
+        args: {
+            employee: emp_value,
+            from_date: fromDate,
+            to_date: toDate
+        },
+        callback: function (response) {
+            console.log('Late entry count response:', response);
+
+            if (response.message !== undefined) {
+                const late = response.message || 0;
+
+                // let lateEl = root_element.querySelector('#late_count');
+                // if (lateEl) lateEl.textContent = late;
+
+                // Optional: also update the total (same as late)
+                let totalEl = root_element.querySelector('#Attandence');
+                if (totalEl) totalEl.textContent = late;
+            } else {
+                alert("No late entry data returned.");
+            }
+        },
+        error: function (error) {
+            console.error('Error fetching late entry data:', error);
+            frappe.msgprint('Error loading late entry data. Please try again.');
+        }
+    });
+}
+
+
+
+function fetchhalfData(fromDate, toDate) {
+    if (!emp_value) {
+        console.error('emp_value is not available');
+        return;
+    }
+
+    console.log('Fetching half-day data for employee:', emp_value, 'from:', fromDate, 'to:', toDate);
+
+    frappe.call({
+        method: 'wtt_module.customization.custom.custom_dashboard.get_half_counts',
+        args: {
+            employee: emp_value,
+            from_date: fromDate,
+            to_date: toDate
+        },
+        callback: function (response) {
+            console.log('Half-day count response:', response);
+
+            if (response.message !== undefined) {
+                const halfCount = response.message || 0;
+
+                // Update HTML element
+                let halfEl = root_element.querySelector('#half_count');
+                if (halfEl) halfEl.textContent = halfCount;
+            } else {
+                alert("No half-day data returned.");
+            }
+        },
+        error: function (error) {
+            console.error('Error fetching half-day data:', error);
+            frappe.msgprint('Error loading half-day data. Please try again.');
+        }
+    });
+}
+
+function setDefaultDateFiltersAndLoad() {
+    const startDateInput = root_element.querySelector('#start-date');
+    const endDateInput = root_element.querySelector('#end-date');
+    
+    if (!startDateInput || !endDateInput) {
+        console.error('Date input elements not found');
+        return;
+    }
+    
+    // Get current date
+    const today = new Date();
+    
+    // Calculate first day of current month
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    
+    // Calculate last day of current month
+    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    
+    // Format dates to YYYY-MM-DD format
+    const formatDate = (date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+    
+    const fromDate = formatDate(firstDay);
+    const toDate = formatDate(lastDay);
+    
+    // Set the input values
+    startDateInput.value = fromDate;
+    endDateInput.value = toDate;
+    
+    console.log(`Default dates set: ${fromDate} to ${toDate}`);
+    console.log(`Current month: ${today.toLocaleString('default', { month: 'long', year: 'numeric' })}`);
+    
+    // Trigger data fetch functions
+    try {
+        
+        fetchhalfData(fromDate, toDate);
+        fetchperformanceData(fromDate, toDate);
+        fetchincidentData(fromDate, toDate);
+        fetchlateData(fromDate, toDate);
+        fetchattendData(fromDate, toDate);
+        fetchpresentData(fromDate, toDate);    
+       
+       
+    } catch (error) {
+        console.error('Error fetching data:', error);
+    }
+}
+
+// Alternative version with more flexibility
+function setDateFiltersAndLoad(monthOffset = 0) {
+    const startDateInput = root_element.querySelector('#start-date');
+    const endDateInput = root_element.querySelector('#end-date');
+    
+    if (!startDateInput || !endDateInput) {
+        console.error('Date input elements not found');
+        return;
+    }
+    
+    const today = new Date();
+    const targetDate = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
+    
+    const firstDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
+    const lastDay = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
+    
+    const formatDate = (date) => {
+        return date.toISOString().split('T')[0];
+    };
+    
+    const fromDate = formatDate(firstDay);
+    const toDate = formatDate(lastDay);
+    
+    startDateInput.value = fromDate;
+    endDateInput.value = toDate;
+    
+    const monthName = targetDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+    console.log(`Dates set for ${monthName}: ${fromDate} to ${toDate}`);
+    
+    // Batch fetch all data
+    const fetchFunctions = [
+        
+        () => fetchhalfData(fromDate, toDate),
+        () => fetchperformanceData(fromDate, toDate),
+        () => fetchincidentData(fromDate, toDate),
+        () => fetchlateData(fromDate, toDate),
+        () => fetchattendData(fromDate, toDate),
+        () => fetchpresentData(fromDate, toDate),
+      
+        
+    ];
+    
+    fetchFunctions.forEach((fetchFn, index) => {
+        try {
+            fetchFn();
+        } catch (error) {
+            console.error(`Error in fetch function ${index + 1}:`, error);
+        }
+    });
+}
+
+// Usage examples:
+// setDateFiltersAndLoad();     // Current month
+// setDateFiltersAndLoad(-1);   // Previous month
+// setDateFiltersAndLoad(1);    // Next month
+
+function addAutoFilterListeners() {
+    const startDateInput = root_element.querySelector('#start-date');
+    const endDateInput = root_element.querySelector('#end-date');
+    
+    if (!startDateInput || !endDateInput) {
+        console.error('Date input elements not found for listeners');
+        return;
+    }
+    
+    const updateDataOnChange = () => {
+        const fromDate = startDateInput.value;
+        const toDate = endDateInput.value;
+        
+        console.log('Date changed - from:', fromDate, 'to:', toDate);
+        
+        if (fromDate && toDate) {
+           
+            fetchhalfData(fromDate, toDate);
+            fetchperformanceData(fromDate, toDate);
+            fetchincidentData(fromDate, toDate);
+            fetchlateData(fromDate, toDate);
+            fetchattendData(fromDate, toDate);
+            fetchpresentData(fromDate, toDate);
+           
+            
+        } else {
+            console.warn('One or both dates are missing');
+        }
+    };
+    
+    startDateInput.addEventListener('change', updateDataOnChange);
+    endDateInput.addEventListener('change', updateDataOnChange);
+    
+    console.log('Date change listeners added');
+}
+
+// Initialize everything when the page loads
+initializePerformanceDashboard();
+// function fetchPerformanceData(fromDate, toDate) {
+//     frappe.call({
+//         method: 'wtt_module.customization.custom.custom_dashboard.get_performance_data',
+//         args: {
+//             employee: "WTT1486",
+//             from_date: fromDate,
+//             to_date: toDate
+//         },
+//         callback: function (response) {
+//             if (response.message && response.message.length > 0) {
+//                 const item = response.message[0];
+
+//                 const safePercent = (val) =>
+//                     (val !== null && val !== undefined) ? parseFloat(val).toFixed(2) + "%" : "0.00%";
+
+//                 root_element.querySelector('#tasks_point').textContent = safePercent(item.total_avg);
+//                 root_element.querySelector('#task_count').textContent = safePercent(item.task_allocation);
+//                 root_element.querySelector('#incident_count').textContent = safePercent(item.incident_score);
+//                 root_element.querySelector('#tech_count').textContent = safePercent(item.technical_criteria_percentage);
+//                 root_element.querySelector('#behav_count').textContent = safePercent(item.behavioral_criteria_percentage);
+//             } else {
+//                 frappe.msgprint("No performance data found for the selected date range.");
+//             }
+//         }
+//     });
+// }
+
+function addAutoFilterListeners() {
+    const startDateInput = root_element.querySelector('#start-date');
+    const endDateInput = root_element.querySelector('#end-date');
+
+    const updateDataOnChange = () => {
+        const fromDate = startDateInput.value;
+        const toDate = endDateInput.value;
+
+        if (fromDate && toDate) {
+           
+            fetchhalfData(fromDate, toDate);
+            fetchperformanceData(fromDate, toDate);
+            fetchincidentData(fromDate, toDate);
+            fetchlateData(fromDate, toDate);
+            fetchattendData(fromDate, toDate);
+             fetchpresentData(fromDate, toDate);
+           
+        }
+    };
+
+    startDateInput.addEventListener('change', updateDataOnChange);
+    endDateInput.addEventListener('change', updateDataOnChange);
+}
+
+// Init everything on load
+setDefaultDateFiltersAndLoad();
+addAutoFilterListeners();
+
+})();
+
+
+
+
+
+
