@@ -1092,24 +1092,77 @@ router.get("/hrms/task-summary/idle-employees", async (req, res) => {
   }
 });
 
-// ── Employee Personal Dashboard (calls ERP custom_dashboard method) ───────────
-const DASHBOARD_METHOD   = "wtt_module.customization.custom.custom_dashboard.get_attendance_summary";
-const PERFORMANCE_METHOD = "wtt_module.customization.custom.custom_dashboard.get_performance_summary";
+// ── Employee Personal Dashboard ────────────────────────────────────────────────
+// Builds all data per-employee using direct ERP DocType queries (bypasses the
+// custom `get_attendance_summary` method which always uses frappe.session.user
+// = admin and therefore returns the same data for every FlowMatriX user).
 
-async function tryErpMethodWithParams(method: string, params: Record<string, string>): Promise<any | null> {
-  if (!ERPNEXT_URL) return null;
+function monthRange(): { from: string; to: string } {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const from = `${y}-${m}-01`;
+  const lastDay = new Date(y, now.getMonth() + 1, 0).getDate();
+  const to = `${y}-${m}-${String(lastDay).padStart(2, "0")}`;
+  return { from, to };
+}
+
+function todayStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// Generic helper: count ERP DocType records filtered by employee field
+async function erpDocCount(
+  doctype: string,
+  employeeField: string,
+  employeeId: string,
+  extraFilters: [string, string, string, string][] = [],
+  status?: string
+): Promise<number> {
+  if (!ERPNEXT_URL || !employeeId) return 0;
   try {
-    const qs = new URLSearchParams(params).toString();
-    const url = `${ERPNEXT_URL}/api/method/${method}${qs ? `?${qs}` : ""}`;
-    const r = await fetch(url, { headers: { Authorization: erpAuthHeader() } });
-    if (!r.ok) return null;
+    const filters: any[] = [[doctype, employeeField, "=", employeeId], ...extraFilters];
+    if (status) filters.push([doctype, "status", "=", status]);
+    const params = new URLSearchParams({
+      fields: JSON.stringify(["name"]),
+      filters: JSON.stringify(filters),
+      limit_page_length: "500",
+    });
+    const r = await fetch(`${ERPNEXT_URL}/api/resource/${encodeURIComponent(doctype)}?${params}`, {
+      headers: { Authorization: erpAuthHeader() },
+    });
+    if (!r.ok) return 0;
     const json = await r.json();
-    const msg = json.message ?? json;
-    if (msg && typeof msg === "object" && !msg.error) return msg;
-    return null;
-  } catch {
-    return null;
-  }
+    return (json.data ?? []).length;
+  } catch { return 0; }
+}
+
+// Generic helper: fetch ERP DocType records filtered by employee field
+async function erpDocList(
+  doctype: string,
+  fields: string[],
+  employeeField: string,
+  employeeId: string,
+  extraFilters: any[][] = [],
+  limit = 20
+): Promise<any[]> {
+  if (!ERPNEXT_URL || !employeeId) return [];
+  try {
+    const filters: any[] = [[doctype, employeeField, "=", employeeId], ...extraFilters];
+    const params = new URLSearchParams({
+      fields: JSON.stringify(fields),
+      filters: JSON.stringify(filters),
+      limit_page_length: String(limit),
+      order_by: "modified desc",
+    });
+    const r = await fetch(`${ERPNEXT_URL}/api/resource/${encodeURIComponent(doctype)}?${params}`, {
+      headers: { Authorization: erpAuthHeader() },
+    });
+    if (!r.ok) return [];
+    const json = await r.json();
+    return json.data ?? [];
+  } catch { return []; }
 }
 
 // Resolve ERP employee name from a FlowMatriX user email
@@ -1127,41 +1180,155 @@ router.get("/employee-dashboard", async (req, res) => {
   try {
     if (!ERPNEXT_URL) return res.status(503).json({ error: "ERPNext not configured" });
 
-    // Identify the requesting employee
-    const email = (req.query.email as string) || "";
-    let employeeId: string | null = null;
-    if (email) {
-      employeeId = await resolveEmployeeFromEmail(email);
-      console.log(`[employee-dashboard] email=${email} → employee=${employeeId ?? "(not found)"}`);
-    }
+    const email = ((req.query.email as string) || "").toLowerCase();
+    if (!email) return res.status(400).json({ error: "email required" });
 
-    // Build params to pass to ERP (allows the method to scope data per employee)
-    const params: Record<string, string> = {};
-    if (email) params.email = email;
-    if (employeeId) params.employee = employeeId;
+    // Resolve ERP employee ID from the user's email
+    const employeeId = await resolveEmployeeFromEmail(email);
+    console.log(`[employee-dashboard] email=${email} → employee=${employeeId ?? "(not found)"}`);
 
-    // Primary attendance + workflow data
-    const r = await fetch(
-      `${ERPNEXT_URL}/api/method/${DASHBOARD_METHOD}${Object.keys(params).length ? `?${new URLSearchParams(params)}` : ""}`,
-      { headers: { Authorization: erpAuthHeader() } }
+    const { from, to } = monthRange();
+    const today = todayStr();
+
+    // ── Attendance this month ─────────────────────────────────────────────────
+    const [attendanceRecords, checkins] = await Promise.all([
+      fetchErpNextAttendance({ employee: employeeId ?? undefined, from_date: from, to_date: to, limit: 500 }),
+      employeeId
+        ? fetchErpNextCheckins({ employee: employeeId, from_date: today, to_date: today })
+        : Promise.resolve([]),
+    ]);
+
+    const present  = attendanceRecords.filter(a => a.status === "Present").length;
+    const halfDay  = attendanceRecords.filter(a => a.status === "Half Day").length;
+    const absent   = attendanceRecords.filter(a => a.status === "Absent").length;
+
+    // Today's first IN checkin
+    const inCheckins = checkins
+      .filter((c: any) => c.log_type === "IN")
+      .sort((a: any, b: any) => (a.time || "").localeCompare(b.time || ""));
+    const today_first_checkin = (inCheckins[0] as any)?.time ?? null;
+
+    // ── Activity Sheet (work updates / recent tasks) ──────────────────────────
+    const activitySheets = await erpDocList(
+      "Activity Sheet",
+      ["name", "employee", "employee_name", "date"],
+      "employee",
+      employeeId ?? "",
+      [["Activity Sheet", "date", ">=", from]],
+      10
     );
-    if (!r.ok) {
-      const body = await r.text().catch(() => "");
-      return res.status(r.status).json({ error: `ERP error ${r.status}: ${body.slice(0, 200)}` });
+
+    // Fetch detail rows from Activity Sheets
+    const work_updates: any[] = [];
+    for (const sheet of activitySheets.slice(0, 6)) {
+      try {
+        const r = await fetch(
+          `${ERPNEXT_URL}/api/resource/Activity Sheet/${encodeURIComponent(sheet.name)}`,
+          { headers: { Authorization: erpAuthHeader() } }
+        );
+        if (!r.ok) continue;
+        const j = await r.json();
+        const rows: any[] = j.data?.activity || j.data?.activities || j.data?.activity_details || [];
+        for (const row of rows.slice(0, 3)) {
+          work_updates.push({
+            employee: sheet.employee_name || sheet.employee,
+            type_of_work: row.type_of_work || row.activity_type || row.description || "",
+            from_time: row.from_time || "",
+            to_time: row.to_time || "",
+            status: row.status || "Pending",
+          });
+        }
+      } catch { /* skip */ }
     }
-    const json = await r.json();
-    const base = json.message ?? json;
 
-    // Try performance points method (graceful if absent in ERP)
-    const perf = await tryErpMethodWithParams(PERFORMANCE_METHOD, params);
+    const pending_work_updates = work_updates.filter(w => w.status !== "Completed").length;
 
-    // Merge: performance fields extend base data
-    const merged = { ...base, ...(perf ?? {}), _employee: employeeId, _email: email };
+    // ── Workflow counts (per-employee, ERP DocTypes) ──────────────────────────
+    const [
+      ot_request_count,
+      ot_prior_info_count,
+      on_duty_request_count,
+      technical_criteria_count,
+      behavioural_criteria_count,
+    ] = await Promise.all([
+      erpDocCount("Overtime Application", "employee", employeeId ?? "", [], "Pending"),
+      erpDocCount("OT Prior Info", "employee", employeeId ?? "", [], "Pending"),
+      erpDocCount("Attendance Request", "employee", employeeId ?? "", [], "Pending"),
+      erpDocCount("Technical Criteria", "employee", employeeId ?? "", []),
+      erpDocCount("Behavioural Criteria", "employee", employeeId ?? "", []),
+    ]);
 
-    // Log returned field names to help map ERP response fields
-    console.log(`[employee-dashboard] ERP fields for ${email || "unknown"}:`, Object.keys(merged).join(", "));
+    // ── Incidents (from local FlowMatriX DB) ─────────────────────────────────
+    let positive_incidents = 0;
+    let negative_incidents = 0;
+    try {
+      const monthStart = `${from}T00:00:00Z`;
+      const incResult = await chatPool.query(
+        `SELECT
+          COUNT(*) FILTER (WHERE incident_type ILIKE '%positive%' OR incident_type ILIKE '%commend%') AS positive,
+          COUNT(*) FILTER (WHERE incident_type ILIKE '%negative%' OR incident_type ILIKE '%warning%' OR incident_type ILIKE '%violation%') AS negative
+        FROM hr_incidents
+        WHERE (involved_employee ILIKE $1 OR reporter_email ILIKE $1)
+          AND created_at >= $2`,
+        [`%${email}%`, monthStart]
+      );
+      const row = incResult.rows[0] ?? {};
+      positive_incidents = parseInt(row.positive ?? "0");
+      negative_incidents = parseInt(row.negative ?? "0");
+    } catch { /* local DB query failed, keep 0/0 */ }
 
-    return res.json(merged);
+    // ── Reminders (ERP ToDo linked to employee) ───────────────────────────────
+    const reminders: { reminder: string; reminder_date: string; status: string }[] = [];
+    try {
+      const params = new URLSearchParams({
+        fields: JSON.stringify(["name", "description", "date", "status"]),
+        filters: JSON.stringify([["ToDo", "assigned_by_email", "=", email]]),
+        limit_page_length: "20",
+        order_by: "date asc",
+      });
+      const r = await fetch(`${ERPNEXT_URL}/api/resource/ToDo?${params}`, {
+        headers: { Authorization: erpAuthHeader() },
+      });
+      if (r.ok) {
+        const j = await r.json();
+        for (const t of (j.data ?? []).slice(0, 10)) {
+          reminders.push({
+            reminder: t.description || t.name,
+            reminder_date: t.date || "",
+            status: t.status || "Open",
+          });
+        }
+      }
+    } catch { /* skip */ }
+
+    const dashboard = {
+      _employee: employeeId,
+      _email: email,
+      present_days_this_month: present,
+      half_day_count: halfDay,
+      absent_days_this_month: absent,
+      checkin: 0, // late count — could be enhanced
+      today_first_checkin,
+      pending_work_updates,
+      work_updates: work_updates.slice(0, 10),
+      ot_request_count,
+      ot_prior_info_count,
+      on_duty_request_count,
+      technical_criteria_count,
+      behavioural_criteria_count,
+      positive_incidents,
+      negative_incidents,
+      reminders,
+      // Performance points — will be "--" until ERP exposes them per employee
+      task_points: null,
+      incident_points: null,
+      technical_points: null,
+      behavioral_points: null,
+      reporting_points: null,
+    };
+
+    console.log(`[employee-dashboard] built for ${email}: present=${present} absent=${absent} halfDay=${halfDay} tasks=${work_updates.length}`);
+    return res.json(dashboard);
   } catch (e: any) {
     return res.status(500).json({ error: e.message });
   }
