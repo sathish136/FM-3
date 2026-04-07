@@ -291,6 +291,7 @@ function ModelViewer({
   } | null>(null);
   const [cameraQuat, setCameraQuat] = useState<THREE.Quaternion | null>(null);
   const [autoRotate, setAutoRotate] = useState(false);
+  const [selectedPart, setSelectedPart] = useState<{ index: number; name: string } | null>(null);
 
   const viewerRef = useRef<ViewerRef>(null);
 
@@ -573,6 +574,10 @@ function ModelViewer({
                 onCameraChange={setCameraQuat}
                 autoRotate={autoRotate}
                 autoRotateSpeed={1.8}
+                onPartClick={(idx, name) => {
+                  if (idx !== null && name !== null) setSelectedPart({ index: idx, name });
+                  else setSelectedPart(null);
+                }}
               />
             </Suspense>
           )}
@@ -589,6 +594,16 @@ function ModelViewer({
             <div className={`absolute top-3 left-3 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 pointer-events-none ${isDark ? "bg-black/50 text-gray-300" : "bg-white/80 text-gray-600"}`}>
               <Box className="w-3.5 h-3.5" />
               {record.name}
+            </div>
+          )}
+
+          {/* Selected part indicator */}
+          {status === "loaded" && selectedPart && (
+            <div className="absolute top-12 left-3 flex items-center gap-2 pointer-events-none">
+              <div className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 bg-cyan-500/20 border border-cyan-400/40 text-cyan-300 backdrop-blur-sm">
+                <span className="w-2 h-2 rounded-full bg-cyan-400 flex-shrink-0 animate-pulse" />
+                {selectedPart.name || `Part ${selectedPart.index + 1}`}
+              </div>
             </div>
           )}
 
