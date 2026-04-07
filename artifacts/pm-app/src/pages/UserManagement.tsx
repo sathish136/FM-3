@@ -355,6 +355,7 @@ export function UserManagementContent() {
   const [draftTheme, setDraftTheme]               = useState<ThemeOption>("system");
   const [draftNavbarStyle, setDraftNavbarStyle]   = useState<NavbarStyleOption>("full");
   const [projSearch, setProjSearch]               = useState("");
+  const [hodSearch, setHodSearch]                 = useState("");
   const [copyFromOpen, setCopyFromOpen]       = useState(false);
   const [copyFromSearch, setCopyFromSearch]   = useState("");
   const [togglingEnabled, setTogglingEnabled] = useState(false);
@@ -417,6 +418,7 @@ export function UserManagementContent() {
     setDraftTheme(p ? (p.theme ?? "system") : "system");
     setDraftNavbarStyle(p ? (p.navbarStyle ?? "full") : "full");
     setProjSearch("");
+    setHodSearch("");
     setCopyFromOpen(false);
   }
 
@@ -1221,33 +1223,43 @@ export function UserManagementContent() {
                     </div>
 
                     {/* Team HOD */}
-                    <div className={`mb-6 rounded-2xl border-2 p-5 transition-all ${draftHodDept ? "border-emerald-200 bg-emerald-50/40" : "border-border bg-card"}`}>
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${draftHodDept ? "bg-emerald-100" : "bg-muted"}`}>
-                          <Users className={`w-4.5 h-4.5 ${draftHodDept ? "text-emerald-600" : "text-muted-foreground"}`} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-bold ${draftHodDept ? "text-emerald-800" : "text-foreground"}`}>Team HOD (Head of Department)</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">Assign this user as HOD for a team — grants department-level visibility in HRMS.</p>
-                        </div>
+                    <div className="mb-6">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Users className={`w-4 h-4 ${draftHodDept ? "text-emerald-600" : "text-muted-foreground"}`} />
+                        <p className="text-sm font-bold text-foreground">Team HOD (Head of Department)</p>
+                        {draftHodDept && (
+                          <span className="ml-auto text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+                            {draftHodDept}
+                          </span>
+                        )}
                         {draftHodDept && (
                           <button onClick={() => setDraftHodDept(null)}
-                            className="text-xs text-emerald-600 hover:text-emerald-800 font-medium px-2 py-1 rounded-lg hover:bg-emerald-100 transition-colors shrink-0">
+                            className="text-[10px] text-muted-foreground hover:text-red-500 font-medium transition-colors">
                             Clear
                           </button>
                         )}
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        {departments.map(dept => {
+                      <p className="text-[11px] text-muted-foreground mb-3">Assign this user as HOD — grants department-level visibility in HRMS. Select one department.</p>
+                      <div className="relative mb-2">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+                        <input value={hodSearch} onChange={e => setHodSearch(e.target.value)}
+                          placeholder="Search departments…"
+                          className="w-full pl-7 pr-3 py-2 text-[11px] rounded-lg border border-border bg-muted text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary" />
+                      </div>
+                      <div className="space-y-1 max-h-52 overflow-y-auto pr-1">
+                        {departments.filter(d => d.toLowerCase().includes(hodSearch.toLowerCase())).length === 0 ? (
+                          <p className="text-[11px] text-muted-foreground text-center py-4">No departments found</p>
+                        ) : departments.filter(d => d.toLowerCase().includes(hodSearch.toLowerCase())).map(dept => {
                           const active = draftHodDept === dept;
                           return (
                             <button key={dept} onClick={() => setDraftHodDept(active ? null : dept)}
-                              className={`px-4 py-2 rounded-xl border-2 text-sm font-semibold transition-all ${
-                                active
-                                  ? "bg-emerald-500 border-emerald-500 text-white shadow-sm"
-                                  : "bg-card border-border text-muted-foreground hover:border-emerald-300 hover:text-emerald-700"
+                              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-all ${
+                                active ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-card border-border text-muted-foreground hover:border-border/60"
                               }`}>
-                              {dept}
+                              <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${active ? "bg-emerald-500 border-emerald-500" : "border-border"}`}>
+                                {active && <span className="w-1.5 h-1.5 bg-white rounded-full" />}
+                              </div>
+                              <span className="text-xs font-medium truncate flex-1">{dept}</span>
                             </button>
                           );
                         })}
@@ -1307,7 +1319,7 @@ export function UserManagementContent() {
                         </div>
                         <p className="text-[11px] text-muted-foreground mb-3">If none are selected, user cannot view any drawings.</p>
                         <div className="space-y-2">
-                          {departments.map(dept => {
+                          {["Mechanical","Electrical","Civil","Instrumentation","Process","Project","Quality","HSE"].map(dept => {
                             const on = draftDrawingDepts.includes(dept);
                             return (
                               <button key={dept} onClick={() => toggleDrawingDept(dept)}
