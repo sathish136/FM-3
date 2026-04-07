@@ -1853,10 +1853,38 @@ function ListActivityRow({ row, st, displayName, photoUrl2, erpCheckin, onSelect
   );
 }
 
+const ADMIN_EMAILS = ["edp@wttindia.com", "venkat@wttindia.com"];
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export default function TaskManagement() {
   const { user } = useAuth();
   const [tab, setTab] = useState<"tasks" | "monitor">("tasks");
+
+  // Current user's HOD dept + module permissions
+  const [myHodDept, setMyHodDept] = useState<string | null>(null);
+  const [myModuleRoles, setMyModuleRoles] = useState<Record<string, string> | null>(null);
+  const isAdmin = ADMIN_EMAILS.includes((user?.email ?? "").toLowerCase());
+
+  useEffect(() => {
+    if (!user?.email || isAdmin) return;
+    fetch(`${BASE}/api/user-permissions/${encodeURIComponent(user.email)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return;
+        setMyHodDept(data.hodDept ?? null);
+        try {
+          const parsed = data.moduleRoles ? JSON.parse(data.moduleRoles) : {};
+          setMyModuleRoles(parsed);
+        } catch {
+          setMyModuleRoles({});
+        }
+      })
+      .catch(() => {});
+  }, [user?.email, isAdmin]);
+
+  const canSeeTeamPulse = isAdmin
+    || (myHodDept != null && myHodDept !== "")
+    || (myModuleRoles != null && (myModuleRoles["team-pulse"] === "read" || myModuleRoles["team-pulse"] === "write"));
 
   // Employee profile
   const [empProfile, setEmpProfile] = useState<EmployeeProfile | null>(null);
@@ -2016,14 +2044,19 @@ export default function TaskManagement() {
     done: tasks.filter(t => t.status === "done").length,
   };
 
-  // Activity stats
-  const activeCount = activity.filter(a => activityStatus(a) === "active").length;
-  const idleCount = activity.filter(a => activityStatus(a) === "idle").length;
-  const offlineCount = activity.filter(a => activityStatus(a) === "offline").length;
-
   // Monitor filters
-  const monitorDepts = [...new Set(activity.map(a => a.department).filter(Boolean))].sort();
-  const filteredActivity = activity
+  // If the current user is an HOD (not admin), restrict to their department only
+  const hodFilteredActivity = (!isAdmin && myHodDept)
+    ? activity.filter(a => (a.department || "").toLowerCase() === myHodDept.toLowerCase())
+    : activity;
+
+  // Activity stats — scoped to HOD's department for non-admins
+  const activeCount = hodFilteredActivity.filter(a => activityStatus(a) === "active").length;
+  const idleCount = hodFilteredActivity.filter(a => activityStatus(a) === "idle").length;
+  const offlineCount = hodFilteredActivity.filter(a => activityStatus(a) === "offline").length;
+
+  const monitorDepts = [...new Set(hodFilteredActivity.map(a => a.department).filter(Boolean))].sort();
+  const filteredActivity = hodFilteredActivity
     .filter(a => {
       const name = (a.fullName || a.deviceUsername || a.email).toLowerCase();
       if (monitorSearch && !name.includes(monitorSearch.toLowerCase()) && !(a.department || "").toLowerCase().includes(monitorSearch.toLowerCase())) return false;
@@ -2087,11 +2120,13 @@ export default function TaskManagement() {
                 className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${tab === "tasks" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
                 <CheckSquare className="w-3.5 h-3.5" /> Tasks
               </button>
-              <button onClick={() => setTab("monitor")}
-                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${tab === "monitor" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
-                <Activity className="w-3.5 h-3.5" /> Team Pulse
-                {activeCount > 0 && <span className="w-4 h-4 rounded-full bg-green-500 text-white text-[9px] flex items-center justify-center font-bold">{activeCount}</span>}
-              </button>
+              {canSeeTeamPulse && (
+                <button onClick={() => setTab("monitor")}
+                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${tab === "monitor" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
+                  <Activity className="w-3.5 h-3.5" /> Team Pulse
+                  {activeCount > 0 && <span className="w-4 h-4 rounded-full bg-green-500 text-white text-[9px] flex items-center justify-center font-bold">{activeCount}</span>}
+                </button>
+              )}
             </div>
 
             {tab === "tasks" && (
@@ -2422,8 +2457,16 @@ export default function TaskManagement() {
                       className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-48" />
                   </div>
 
-                  {/* Department filter */}
-                  {monitorDepts.length > 0 && (
+                  {/* HOD dept badge - only visible to HOD users (not admin) */}
+                  {!isAdmin && myHodDept && (
+                    <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                      <Building2 className="w-3.5 h-3.5" />
+                      {myHodDept} · My Department
+                    </span>
+                  )}
+
+                  {/* Department filter — only show for admins since HODs are pre-filtered */}
+                  {isAdmin && monitorDepts.length > 0 && (
                     <select value={monitorDept} onChange={e => setMonitorDept(e.target.value)}
                       className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                       <option value="all">All Departments</option>
