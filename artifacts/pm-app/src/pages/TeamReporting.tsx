@@ -27,7 +27,6 @@ type ReportSummary = {
 };
 
 type ReportDetail = ReportSummary & {
-  daily_reporting_detail?: ActivityRow[];
   [key: string]: any;
 };
 
@@ -35,7 +34,9 @@ type ActivityRow = {
   activity?: string;
   project?: string;
   no_of_hours?: number;
+  hours?: number;
   remarks?: string;
+  description?: string;
   [key: string]: any;
 };
 
@@ -93,14 +94,24 @@ function DetailPanel({ name, onClose }: { name: string; onClose: () => void }) {
 
   const SKIP = new Set(["doctype","idx","docstatus","__islocal","__unsaved","owner","__last_sync_on",
     "name","employee","employee_name","department","date","status","modified","modified_by",
-    "creation","amended_from","daily_reporting_detail"]);
+    "creation","amended_from"]);
 
   const scalarFields = report
     ? Object.entries(report).filter(([k, v]) => !SKIP.has(k) && !Array.isArray(v) && v !== null && v !== "" && v !== 0 && v !== false)
     : [];
 
-  const activities: ActivityRow[] = report?.daily_reporting_detail ?? [];
-  const totalHours = activities.reduce((s, a) => s + (Number(a.no_of_hours) || 0), 0);
+  // Dynamically find all child table arrays in the report
+  const childTables: [string, ActivityRow[]][] = report
+    ? (Object.entries(report).filter(([, v]) => Array.isArray(v)) as [string, ActivityRow[]][])
+    : [];
+
+  // Best activity table: prefer one that has activity/project/hours fields
+  const activityTable = childTables.find(([, rows]) =>
+    rows.length > 0 && rows.some(r => r.activity !== undefined || r.no_of_hours !== undefined || r.project !== undefined)
+  ) ?? childTables[0];
+
+  const activities: ActivityRow[] = activityTable ? activityTable[1] : [];
+  const totalHours = activities.reduce((s, a) => s + (Number(a.no_of_hours) || Number(a.hours) || 0), 0);
   const st = report ? getStatus(report.status) : null;
 
   return (
@@ -210,8 +221,20 @@ function DetailPanel({ name, onClose }: { name: string; onClose: () => void }) {
               ) : (
                 <div className="space-y-2">
                   {activities.map((row, i) => {
-                    const hrs = Number(row.no_of_hours) || 0;
-                    const hasProject = row.project && row.project !== "";
+                    const SKIP_ROW = new Set(["name","doctype","idx","docstatus","parent","parentfield","parenttype","owner","modified","modified_by","creation"]);
+                    const hrs = Number(row.no_of_hours) || Number(row.hours) || 0;
+                    const actText = row.activity || row.description || row.activity_type || "";
+                    const projText = row.project || row.project_name || "";
+                    const remarkText = row.remarks || row.remark || row.notes || "";
+                    // All other fields not already shown
+                    const extraFields = Object.entries(row).filter(([k, v]) =>
+                      !SKIP_ROW.has(k) &&
+                      k !== "activity" && k !== "description" && k !== "activity_type" &&
+                      k !== "project" && k !== "project_name" &&
+                      k !== "no_of_hours" && k !== "hours" &&
+                      k !== "remarks" && k !== "remark" && k !== "notes" &&
+                      v !== null && v !== "" && v !== 0 && v !== false
+                    );
                     return (
                       <div key={i} className="bg-gray-50 rounded-2xl border border-gray-100 p-4">
                         <div className="flex items-start justify-between gap-2 mb-2">
@@ -220,7 +243,7 @@ function DetailPanel({ name, onClose }: { name: string; onClose: () => void }) {
                               {i + 1}
                             </span>
                             <p className="text-xs font-bold text-gray-900 leading-tight">
-                              {row.activity || <span className="text-gray-400 italic">No activity description</span>}
+                              {actText || <span className="text-gray-400 italic font-normal">No activity description</span>}
                             </p>
                           </div>
                           {hrs > 0 && (
@@ -230,15 +253,25 @@ function DetailPanel({ name, onClose }: { name: string; onClose: () => void }) {
                           )}
                         </div>
                         <div className="flex items-center gap-2 flex-wrap">
-                          {hasProject && (
+                          {projText && (
                             <span className="flex items-center gap-1 text-[10px] text-violet-600 bg-violet-50 border border-violet-100 px-2 py-0.5 rounded-full font-semibold">
-                              <Hash className="w-2.5 h-2.5" /> {row.project}
+                              <Hash className="w-2.5 h-2.5" /> {projText}
                             </span>
                           )}
-                          {row.remarks && (
-                            <span className="text-[10px] text-gray-500 italic">"{row.remarks}"</span>
+                          {remarkText && (
+                            <span className="text-[10px] text-gray-500 italic">"{remarkText}"</span>
                           )}
                         </div>
+                        {extraFields.length > 0 && (
+                          <div className="mt-2 grid grid-cols-2 gap-1.5">
+                            {extraFields.map(([k, v]) => (
+                              <div key={k} className="text-[10px] text-gray-500">
+                                <span className="font-semibold text-gray-400">{k.replace(/_/g, " ")}: </span>
+                                {String(v)}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
