@@ -126,8 +126,11 @@ function formatDuration(seconds: number): string {
 
 function formatTime(iso: string | null | undefined): string {
   if (!iso) return "—";
+  // If already a pre-formatted HH:mm string (from server), return as-is
+  if (/^\d{2}:\d{2}(:\d{2})?$/.test(iso)) return iso.slice(0, 5);
   try {
     const d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
   } catch {
     return "—";
@@ -1486,9 +1489,7 @@ function DeptTreeView({
                             <td className="px-4 py-3 text-[11px] text-gray-500">{emp.designation || "—"}</td>
                             <td className="px-4 py-3 text-[11px] text-gray-700 truncate max-w-[160px]">{emp.activeApp || "—"}</td>
                             <td className="px-4 py-3 text-[11px] text-gray-500">
-                              {checkin?.checkIn
-                                ? new Date(checkin.checkIn).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
-                                : "—"}
+                              {formatTime(checkin?.checkIn)}
                             </td>
                             <td className="px-4 py-3">
                               <button

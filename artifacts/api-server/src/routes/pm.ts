@@ -1873,11 +1873,24 @@ router.get("/activity/live", async (req, res) => {
        GROUP BY device_username`,
       [date]
     );
-    const timesMap: Record<string, { login: string; logout: string }> = {};
+    // activity_log.logged_at is TIMESTAMP WITHOUT TIME ZONE storing IST values.
+    // The pg driver reads these as UTC Date objects, so getUTC* methods return the actual IST time.
+    function pgLocalTsToHHmm(d: Date | string | null): string | null {
+      if (d == null) return null;
+      if (typeof d === "string") {
+        // e.g. "2024-04-07 10:31:00" or "10:31:00"
+        const parts = d.includes(" ") ? d.split(" ")[1] : d;
+        return parts?.slice(0, 5) ?? null;
+      }
+      const hh = String(d.getUTCHours()).padStart(2, "0");
+      const mm = String(d.getUTCMinutes()).padStart(2, "0");
+      return `${hh}:${mm}`;
+    }
+    const timesMap: Record<string, { login: string | null; logout: string | null }> = {};
     for (const r of timesResult.rows) {
       timesMap[r.device_username] = {
-        login:  r.system_login  instanceof Date ? r.system_login.toISOString()  : r.system_login,
-        logout: r.system_logout instanceof Date ? r.system_logout.toISOString() : r.system_logout,
+        login:  pgLocalTsToHHmm(r.system_login),
+        logout: pgLocalTsToHHmm(r.system_logout),
       };
     }
 
@@ -1898,20 +1911,37 @@ router.get("/activity/checkins-today", async (req, res) => {
     const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
     const checkins = await fetchErpNextCheckins({ from_date: date, to_date: date });
     console.log(`[checkins-today] date=${date} records=${checkins.length} sample=`, JSON.stringify(checkins.slice(0, 3)));
-    const map: Record<string, { checkIn?: string; checkOut?: string }> = {};
+    // Extract HH:mm from ERPNext time strings (stored as IST, e.g. "2024-04-07 10:31:00")
+    function erpTimeToHHmm(t: string | null | undefined): string | null {
+      if (!t) return null;
+      const timePart = t.includes(" ") ? t.split(" ")[1] : t;
+      return timePart?.slice(0, 5) ?? null;
+    }
+    const map: Record<string, { checkIn?: string; checkOut?: string; _rawIn?: string; _rawOut?: string }> = {};
     for (const c of checkins) {
       const emp = c.employee || "";
       if (!map[emp]) map[emp] = {};
       const logType = (c.log_type || "").toUpperCase();
       // "IN" or no log_type (treat as IN if earliest) → checkIn
       if (logType === "IN" || !logType) {
-        if (!map[emp].checkIn || c.time < map[emp].checkIn!) map[emp].checkIn = c.time;
+        if (!map[emp]._rawIn || c.time < map[emp]._rawIn!) {
+          map[emp]._rawIn = c.time;
+          map[emp].checkIn = erpTimeToHHmm(c.time) ?? undefined;
+        }
       }
       if (logType === "OUT") {
-        if (!map[emp].checkOut || c.time > map[emp].checkOut!) map[emp].checkOut = c.time;
+        if (!map[emp]._rawOut || c.time > map[emp]._rawOut!) {
+          map[emp]._rawOut = c.time;
+          map[emp].checkOut = erpTimeToHHmm(c.time) ?? undefined;
+        }
       }
     }
-    res.json(map);
+    // Strip internal raw fields before sending
+    const cleanMap: Record<string, { checkIn?: string; checkOut?: string }> = {};
+    for (const [k, v] of Object.entries(map)) {
+      cleanMap[k] = { checkIn: v.checkIn, checkOut: v.checkOut };
+    }
+    res.json(cleanMap);
   } catch (e) {
     console.log("[checkins-today] error:", e);
     res.json({});
