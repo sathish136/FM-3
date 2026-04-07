@@ -971,11 +971,12 @@ export default function TeamPulse() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [permLoading, canAccess, loadActivity, loadCheckins, loadTasks]);
 
-  // HOD dept filter
+  // HOD dept filter — if user has hodDept assigned, always restrict to that dept only
   const deptFiltered = activity.filter(a => {
-    if (isAdmin || hasModuleAccess) return true;
-    if (!hodDept) return false;
-    return (a.department || "").toLowerCase() === hodDept.toLowerCase();
+    if (isAdmin) return true;
+    if (hodDept && hodDept !== "") return (a.department || "").toLowerCase() === hodDept.toLowerCase();
+    if (hasModuleAccess) return true;
+    return false;
   });
 
   const filtered = deptFiltered.filter(a => {

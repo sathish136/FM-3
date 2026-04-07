@@ -207,6 +207,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     items: [
       { path: "/", label: "Dashboard", icon: LayoutDashboard, color: "text-sky-400", bgColor: "bg-sky-500/15" },
       { path: "/team-pulse", label: "Team Pulse", icon: Activity, color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
+      { path: "/user-management", label: "User Management", icon: Users, color: "text-red-400", bgColor: "bg-red-500/15" },
     ],
   },
   {
