@@ -1862,6 +1862,7 @@ export default function TaskManagement() {
 
   // Current user's HOD dept + module permissions
   const [myHodDept, setMyHodDept] = useState<string | null>(null);
+  const [hasTeamPulseModule, setHasTeamPulseModule] = useState(false);
   const [permissionsLoaded, setPermissionsLoaded] = useState(false);
   const isAdmin = ADMIN_EMAILS.includes((user?.email ?? "").toLowerCase());
 
@@ -1871,14 +1872,21 @@ export default function TaskManagement() {
     fetch(`${BASE}/api/user-permissions/${encodeURIComponent(user.email)}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        if (data) setMyHodDept(data.hodDept ?? null);
+        if (!data) return;
+        setMyHodDept(data.hodDept ?? null);
+        try {
+          const roles: Record<string, string> = data.moduleRoles ? JSON.parse(data.moduleRoles) : {};
+          setHasTeamPulseModule(roles["team-pulse"] === "read" || roles["team-pulse"] === "write");
+        } catch { /* ignore */ }
       })
       .catch(() => {})
       .finally(() => setPermissionsLoaded(true));
   }, [user?.email, isAdmin]);
 
-  // Show Team Pulse tab for admins and assigned HODs
-  const canSeeTeamPulse = isAdmin || (permissionsLoaded && myHodDept != null && myHodDept !== "");
+  // Show Team Pulse tab for admins, assigned HODs, and users with team-pulse module access
+  const canSeeTeamPulse = isAdmin
+    || (permissionsLoaded && (myHodDept != null && myHodDept !== ""))
+    || (permissionsLoaded && hasTeamPulseModule);
 
   // Employee profile
   const [empProfile, setEmpProfile] = useState<EmployeeProfile | null>(null);
