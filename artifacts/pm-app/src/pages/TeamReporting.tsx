@@ -94,24 +94,27 @@ function DetailPanel({ name, onClose }: { name: string; onClose: () => void }) {
 
   const SKIP = new Set(["doctype","idx","docstatus","__islocal","__unsaved","owner","__last_sync_on",
     "name","employee","employee_name","department","date","status","modified","modified_by",
-    "creation","amended_from"]);
+    "creation","amended_from","creation_date","month","year"]);
 
   const scalarFields = report
     ? Object.entries(report).filter(([k, v]) => !SKIP.has(k) && !Array.isArray(v) && v !== null && v !== "" && v !== 0 && v !== false)
     : [];
 
-  // Dynamically find all child table arrays in the report
+  // Dynamically find all child table arrays in the report — only non-empty arrays
   const childTables: [string, ActivityRow[]][] = report
-    ? (Object.entries(report).filter(([, v]) => Array.isArray(v)) as [string, ActivityRow[]][])
+    ? (Object.entries(report).filter(([, v]) => Array.isArray(v) && (v as any[]).length > 0) as [string, ActivityRow[]][])
     : [];
 
-  // Best activity table: prefer one that has activity/project/hours fields
+  // Best activity table: prefer one that has activity/project/hours fields, then fall back to first non-empty
   const activityTable = childTables.find(([, rows]) =>
-    rows.length > 0 && rows.some(r => r.activity !== undefined || r.no_of_hours !== undefined || r.project !== undefined)
-  ) ?? childTables[0];
+    rows.some(r => r.activity !== undefined || r.no_of_hours !== undefined || r.project !== undefined)
+  ) ?? childTables[0] ?? null;
 
   const activities: ActivityRow[] = activityTable ? activityTable[1] : [];
   const totalHours = activities.reduce((s, a) => s + (Number(a.no_of_hours) || Number(a.hours) || 0), 0);
+
+  // Resolve report date — ERPNext may store it in `date`, or derive from name/creation_date
+  const reportDate = report?.date || report?.creation_date || null;
   const st = report ? getStatus(report.status) : null;
 
   return (
@@ -172,7 +175,7 @@ function DetailPanel({ name, onClose }: { name: string; onClose: () => void }) {
                   <Calendar className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
                   <div>
                     <p className="text-[9px] text-gray-400 font-semibold uppercase tracking-wide">Report Date</p>
-                    <p className="text-xs font-bold text-gray-800">{fmtDate(report.date)}</p>
+                    <p className="text-xs font-bold text-gray-800">{fmtDate(reportDate)}</p>
                   </div>
                 </div>
                 <div className="bg-gray-50 rounded-xl px-3 py-2.5 flex items-center gap-2">
