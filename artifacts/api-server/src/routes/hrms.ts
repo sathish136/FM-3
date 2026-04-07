@@ -1096,12 +1096,12 @@ router.get("/hrms/task-summary/idle-employees", async (req, res) => {
 const DASHBOARD_METHOD   = "wtt_module.customization.custom.custom_dashboard.get_attendance_summary";
 const PERFORMANCE_METHOD = "wtt_module.customization.custom.custom_dashboard.get_performance_summary";
 
-async function tryErpMethod(method: string): Promise<any | null> {
+async function tryErpMethodWithParams(method: string, params: Record<string, string>): Promise<any | null> {
   if (!ERPNEXT_URL) return null;
   try {
-    const r = await fetch(`${ERPNEXT_URL}/api/method/${method}`, {
-      headers: { Authorization: erpAuthHeader() },
-    });
+    const qs = new URLSearchParams(params).toString();
+    const url = `${ERPNEXT_URL}/api/method/${method}${qs ? `?${qs}` : ""}`;
+    const r = await fetch(url, { headers: { Authorization: erpAuthHeader() } });
     if (!r.ok) return null;
     const json = await r.json();
     const msg = json.message ?? json;
@@ -1112,14 +1112,39 @@ async function tryErpMethod(method: string): Promise<any | null> {
   }
 }
 
+// Resolve ERP employee name from a FlowMatriX user email
+async function resolveEmployeeFromEmail(email: string): Promise<string | null> {
+  try {
+    const emps = await fetchErpNextEmployees();
+    const match = emps.find(e => e.user_id?.toLowerCase() === email.toLowerCase());
+    return match?.name ?? null;
+  } catch {
+    return null;
+  }
+}
+
 router.get("/employee-dashboard", async (req, res) => {
   try {
     if (!ERPNEXT_URL) return res.status(503).json({ error: "ERPNext not configured" });
 
+    // Identify the requesting employee
+    const email = (req.query.email as string) || "";
+    let employeeId: string | null = null;
+    if (email) {
+      employeeId = await resolveEmployeeFromEmail(email);
+      console.log(`[employee-dashboard] email=${email} → employee=${employeeId ?? "(not found)"}`);
+    }
+
+    // Build params to pass to ERP (allows the method to scope data per employee)
+    const params: Record<string, string> = {};
+    if (email) params.email = email;
+    if (employeeId) params.employee = employeeId;
+
     // Primary attendance + workflow data
-    const r = await fetch(`${ERPNEXT_URL}/api/method/${DASHBOARD_METHOD}`, {
-      headers: { Authorization: erpAuthHeader() },
-    });
+    const r = await fetch(
+      `${ERPNEXT_URL}/api/method/${DASHBOARD_METHOD}${Object.keys(params).length ? `?${new URLSearchParams(params)}` : ""}`,
+      { headers: { Authorization: erpAuthHeader() } }
+    );
     if (!r.ok) {
       const body = await r.text().catch(() => "");
       return res.status(r.status).json({ error: `ERP error ${r.status}: ${body.slice(0, 200)}` });
@@ -1127,14 +1152,14 @@ router.get("/employee-dashboard", async (req, res) => {
     const json = await r.json();
     const base = json.message ?? json;
 
-    // Try to fetch performance points from a dedicated method (graceful if absent)
-    const perf = await tryErpMethod(PERFORMANCE_METHOD);
+    // Try performance points method (graceful if absent in ERP)
+    const perf = await tryErpMethodWithParams(PERFORMANCE_METHOD, params);
 
-    // Merge: performance fields override base if available
-    const merged = { ...base, ...(perf ?? {}) };
+    // Merge: performance fields extend base data
+    const merged = { ...base, ...(perf ?? {}), _employee: employeeId, _email: email };
 
-    // Log raw keys in dev so we can see what ERP returns
-    console.log("[employee-dashboard] ERP fields:", Object.keys(merged).join(", "));
+    // Log returned field names to help map ERP response fields
+    console.log(`[employee-dashboard] ERP fields for ${email || "unknown"}:`, Object.keys(merged).join(", "));
 
     return res.json(merged);
   } catch (e: any) {

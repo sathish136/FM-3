@@ -175,9 +175,11 @@ export default function Dashboard() {
   }, [user?.email]);
 
   const fetchEmpData = useCallback(() => {
+    if (!user?.email) return;
     setEmpLoading(true);
     setEmpError(null);
-    fetch(`${BASE_URL}/api/employee-dashboard`)
+    const qs = new URLSearchParams({ email: user.email }).toString();
+    fetch(`${BASE_URL}/api/employee-dashboard?${qs}`)
       .then(r => r.json())
       .then(data => {
         if (data.error) { setEmpError(data.error); setEmpLoading(false); return; }
@@ -185,7 +187,7 @@ export default function Dashboard() {
         setEmpLoading(false);
       })
       .catch(e => { setEmpError(e.message); setEmpLoading(false); });
-  }, []);
+  }, [user?.email]);
 
   useEffect(() => { fetchProjects(); fetchEmpData(); }, [fetchProjects, fetchEmpData]);
 
