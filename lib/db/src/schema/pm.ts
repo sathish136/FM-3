@@ -275,3 +275,15 @@ export const resumeAnalysisCacheTable = pgTable("resume_analysis_cache", {
   result: jsonb("result").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+export const design3dRecordsTable = pgTable("design_3d_records", {
+  name: text("name").primaryKey(),
+  project: text("project").notNull().default(""),
+  projectName: text("project_name").notNull().default(""),
+  department: text("department").notNull().default(""),
+  tag: text("tag").notNull().default(""),
+  systemName: text("system_name").notNull().default(""),
+  attach: text("attach"),
+  modified: text("modified").notNull().default(""),
+  syncedAt: timestamp("synced_at").notNull().defaultNow(),
+});

@@ -15,6 +15,7 @@ import {
   projectDrawingsTable,
   systemActivityTable,
   inAppNotificationsTable,
+  design3dRecordsTable,
 } from "@workspace/db/schema";
 import { eq, sql, desc, gt } from "drizzle-orm";
 import { sendNotification } from "./notifications";
