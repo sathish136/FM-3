@@ -1516,6 +1516,18 @@ export default function Design2DPage() {
     }
   }, []);
 
+  const closeViewer = useCallback(() => {
+    setViewer(null);
+    setTimeout(() => {
+      document.body.style.overflow = "";
+      document.body.style.pointerEvents = "";
+      document.documentElement.style.overflow = "";
+      document.querySelectorAll<HTMLElement>("body > canvas").forEach(el => el.remove());
+      const collapsed = localStorage.getItem("fm_sidebar_collapsed") === "true";
+      window.dispatchEvent(new CustomEvent("fm_sidebar_change", { detail: { collapsed } }));
+    }, 50);
+  }, []);
+
   const isPdf   = viewer?.attach ? fileExt(viewer.attach) === "pdf" : false;
   const isImage = viewer?.attach ? ["png","jpg","jpeg","gif","svg"].includes(fileExt(viewer.attach)) : false;
   const isDxf   = viewer?.attach ? fileExt(viewer.attach) === "dxf" : false;
@@ -1530,18 +1542,18 @@ export default function Design2DPage() {
   return (
     <>
       {viewer && isPdf && (
-        <PdfViewer src={proxyUrl(viewer.attach!)} record={viewer} onClose={() => setViewer(null)} />
+        <PdfViewer src={proxyUrl(viewer.attach!)} record={viewer} onClose={closeViewer} />
       )}
       {viewer && isDxf && (
-        <DxfFileViewer src={proxyUrl(viewer.attach!)} record={viewer} onClose={() => setViewer(null)} />
+        <DxfFileViewer src={proxyUrl(viewer.attach!)} record={viewer} onClose={closeViewer} />
       )}
       {viewer && isDwg && (
-        <DwgFileViewer src={proxyUrl(viewer.attach!)} record={viewer} onClose={() => setViewer(null)} />
+        <DwgFileViewer src={proxyUrl(viewer.attach!)} record={viewer} onClose={closeViewer} />
       )}
       {viewer && isImage && (
         <div className="fixed inset-0 z-50 flex flex-col bg-gray-950">
           <div className="flex items-center gap-3 px-4 py-3 bg-[#16162a] border-b border-white/10 flex-shrink-0">
-            <button onClick={() => { setViewer(null); resetImageState(); }}
+            <button onClick={() => { closeViewer(); resetImageState(); }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors">
               <X className="w-4 h-4" /> Close
             </button>
@@ -1642,13 +1654,13 @@ export default function Design2DPage() {
               label="Project"
               value={selectedProject}
               options={projects}
-              onChange={v => { setSelectedProject(v); setViewer(null); }}
+              onChange={v => { setSelectedProject(v); closeViewer(); }}
             />
             <FilterDropdown
               label="Department"
               value={selectedDept}
               options={departments}
-              onChange={v => { setSelectedDept(v); setViewer(null); }}
+              onChange={v => { setSelectedDept(v); closeViewer(); }}
             />
             {hasFilters && (
               <button
