@@ -400,19 +400,72 @@ const DEPT_LINKS = [
   },
 ];
 
+type DeptCall = {
+  contact_name: string;
+  phone_number: string;
+  call_date?: string;
+  call_time?: string;
+  call_type?: string;
+  extension?: string;
+  extension_owner?: string;
+  recording?: string;
+  call_transcript?: string;
+  summary?: string;
+  status?: string;
+  followup_date?: string;
+  remarks?: string;
+  row_name?: string;
+};
+
 function DepartmentPanel() {
   const [activeDept, setActiveDept] = useState(DEPT_LINKS[0].key);
+  const [calls, setCalls] = useState<DeptCall[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [selectedCall, setSelectedCall] = useState<DeptCall | null>(null);
+
+  const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
+
+  const loadCalls = useCallback((dept: string, forceRefresh = false) => {
+    setLoading(true);
+    setError("");
+    setCalls([]);
+    setSelectedCall(null);
+    const params = new URLSearchParams({ dept, limit: "500" });
+    if (forceRefresh) params.set("refresh", "1");
+    fetch(`${API_BASE}/dept-call-logs?${params}`)
+      .then(r => r.ok ? r.json() : r.json().then((e: any) => { throw new Error(e.error || "Failed"); }))
+      .then(data => setCalls(data.calls || []))
+      .catch((e: any) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [API_BASE]);
+
+  useEffect(() => { loadCalls(activeDept); }, [activeDept, loadCalls]);
+
   const active = DEPT_LINKS.find(d => d.key === activeDept) ?? DEPT_LINKS[0];
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return calls;
+    const q = search.toLowerCase();
+    return calls.filter(c =>
+      (c.phone_number || "").includes(q) ||
+      (c.contact_name || "").toLowerCase().includes(q) ||
+      (c.extension_owner || "").toLowerCase().includes(q) ||
+      (c.remarks || "").toLowerCase().includes(q) ||
+      (c.call_transcript || "").toLowerCase().includes(q)
+    );
+  }, [calls, search]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Sub-tab bar */}
-      <div className="shrink-0 bg-white border-b border-gray-100 px-5 py-3 flex items-center gap-2 flex-wrap">
+      <div className="shrink-0 bg-white border-b border-gray-100 px-5 py-2.5 flex items-center gap-2 flex-wrap">
         <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mr-1">Department:</span>
         {DEPT_LINKS.map(d => (
           <button
             key={d.key}
-            onClick={() => setActiveDept(d.key)}
+            onClick={() => { setActiveDept(d.key); setSearch(""); }}
             className={cn(
               "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all",
               activeDept === d.key
@@ -424,74 +477,132 @@ function DepartmentPanel() {
             {d.label}
           </button>
         ))}
-        <a
-          href={active.url}
-          target="_blank"
-          rel="noreferrer"
-          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-500 bg-gray-100 border border-gray-200 hover:bg-gray-200 transition-colors"
-        >
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-          Open in ERP
-        </a>
+        <div className="ml-auto flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
+            <input
+              value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search records..."
+              className="pl-7 pr-3 py-1.5 text-[10px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent w-48"
+            />
+            {search && (
+              <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+          <button
+            onClick={() => loadCalls(activeDept, true)} disabled={loading}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors disabled:opacity-40"
+          >
+            <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
+          </button>
+        </div>
       </div>
 
-      {/* Content area */}
-      <div className="flex-1 overflow-y-auto bg-gray-50/40 px-6 py-8">
-        {DEPT_LINKS.map(d => {
-          if (d.key !== activeDept) return null;
-          return (
-            <div key={d.key} className="max-w-2xl mx-auto">
-              <div className={cn("rounded-2xl border p-6 mb-6 flex items-start gap-5", d.bg, d.border)}>
-                <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 bg-white shadow-sm border", d.border)}>
-                  <Phone className={cn("w-5 h-5", d.color)} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className={cn("text-xs font-bold uppercase tracking-widest mb-1 opacity-60", d.color)}>Department · Call Followups</p>
-                  <h2 className={cn("text-xl font-black mb-1", d.color)}>{d.label}</h2>
-                  <p className="text-sm text-gray-500 mb-4">Track and manage call follow-ups for the {d.label.replace(" Followups", "").replace(" Recruitment", " Recruitment")} department via ERP.</p>
-                  <a
-                    href={d.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={cn(
-                      "inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white shadow-sm transition-all hover:opacity-90 active:scale-95",
-                      d.activeBg
-                    )}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
-                    Open {d.label} in ERP
-                  </a>
-                </div>
-              </div>
+      {/* Records table */}
+      <div className="flex flex-1 overflow-hidden">
+        <div className={cn(
+          "flex flex-col overflow-hidden bg-white transition-all duration-300",
+          selectedCall ? "w-[380px] shrink-0 border-r border-gray-100" : "flex-1"
+        )}>
+          <div className="shrink-0 grid grid-cols-12 gap-2 px-4 py-2 bg-gray-50 border-b border-gray-100 text-[9px] font-bold text-gray-400 uppercase tracking-wider">
+            <div className="col-span-1">Type</div>
+            <div className="col-span-2">Phone</div>
+            <div className="col-span-2">Contact</div>
+            <div className="col-span-2">Date & Time</div>
+            <div className="col-span-2">Handled By</div>
+            <div className="col-span-2">Status / Remarks</div>
+            <div className="col-span-1">Rec</div>
+          </div>
 
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Other Departments</p>
-              <div className="grid grid-cols-1 gap-3">
-                {DEPT_LINKS.filter(x => x.key !== d.key).map(other => (
-                  <a
-                    key={other.key}
-                    href={other.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-4 bg-white border border-gray-100 rounded-2xl px-4 py-3.5 hover:shadow-sm hover:border-gray-200 transition-all group"
-                  >
-                    <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border", other.bg, other.border)}>
-                      <Phone className={cn("w-4 h-4", other.color)} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-800">{other.label}</p>
-                      <p className="text-[10px] text-gray-400 truncate">{other.url}</p>
-                    </div>
-                    <svg className="w-4 h-4 text-gray-300 group-hover:text-gray-500 shrink-0 transition-colors" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
-                  </a>
-                ))}
+          <div className="flex-1 overflow-y-auto">
+            {loading && (
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
+                <p className="text-xs text-gray-400">Loading {active.label} records…</p>
               </div>
+            )}
+            {error && (
+              <div className="m-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 flex items-center gap-2">
+                <XCircle className="w-4 h-4 shrink-0" /> {error}
+              </div>
+            )}
+            {!loading && !error && filtered.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-16 gap-2 text-center">
+                <Phone className="w-10 h-10 text-gray-100" />
+                <p className="text-sm font-bold text-gray-400">No records found</p>
+                <p className="text-xs text-gray-300">{search ? "Try different search terms" : "No data available"}</p>
+              </div>
+            )}
+            {!loading && filtered.map((call, i) => {
+              const ts = typeStyle(call.call_type);
+              const isSelected = selectedCall === call;
+              return (
+                <button
+                  key={`${call.phone_number}-${call.call_time}-${i}`}
+                  onClick={() => setSelectedCall(isSelected ? null : call)}
+                  className={cn(
+                    "w-full text-left grid grid-cols-12 gap-2 px-4 py-2.5 border-b border-gray-50 hover:bg-gray-50/80 transition-all items-center text-xs",
+                    isSelected && "bg-indigo-50/60 border-l-2 border-l-indigo-500"
+                  )}
+                >
+                  <div className="col-span-1">
+                    <div className={cn("w-6 h-6 rounded-lg flex items-center justify-center border", ts.bg, ts.border)}>
+                      <ts.Icon className={cn("w-3 h-3", ts.text)} />
+                    </div>
+                  </div>
+                  <div className="col-span-2 font-mono font-bold text-gray-900 text-[10px] truncate">{call.phone_number}</div>
+                  <div className="col-span-2 text-gray-600 text-[10px] truncate">{call.contact_name || "—"}</div>
+                  <div className="col-span-2 text-gray-500 text-[10px]">
+                    <div>{fmtDateShort(call.call_time || call.call_date)}</div>
+                    <div className="text-gray-300">{fmtTimeOnly(call.call_time)}</div>
+                  </div>
+                  <div className="col-span-2">
+                    {call.extension_owner && (
+                      <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full border", ownerColor(call.extension_owner))}>
+                        {call.extension_owner}
+                      </span>
+                    )}
+                  </div>
+                  <div className="col-span-2 text-[10px] text-gray-500 truncate">
+                    {call.status && <span className="font-semibold text-indigo-600">{call.status} </span>}
+                    {call.remarks || "—"}
+                  </div>
+                  <div className="col-span-1 flex items-center gap-1">
+                    {call.recording?.trim() && <Play className="w-3 h-3 text-violet-400" />}
+                    {call.call_transcript?.trim() && <Mic className="w-3 h-3 text-indigo-400" />}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {!loading && filtered.length > 0 && (
+            <div className="shrink-0 px-4 py-2 border-t border-gray-50 bg-gray-50/30 flex items-center gap-2">
+              <span className={cn("w-1.5 h-1.5 rounded-full", active.dot)} />
+              <span className="text-[10px] font-bold text-gray-400">{active.label}</span>
+              <span className="text-[10px] text-gray-400">·</span>
+              <span className="text-[10px] text-gray-500">{filtered.length} record{filtered.length !== 1 ? "s" : ""}</span>
             </div>
-          );
-        })}
+          )}
+        </div>
+
+        {selectedCall ? (
+          <div className="flex-1 overflow-hidden border-l border-gray-100">
+            <DetailPanel call={selectedCall as FlatCall} allCalls={calls as FlatCall[]} onClose={() => setSelectedCall(null)} />
+          </div>
+        ) : (
+          <div className="hidden md:flex flex-1 flex-col items-center justify-center gap-4 bg-gray-50/30 text-center p-12">
+            <div className="w-20 h-20 rounded-3xl bg-white border border-gray-100 shadow-sm flex items-center justify-center">
+              <Phone className="w-8 h-8 text-gray-200" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-gray-500">Select a record to view details</p>
+              <p className="text-xs text-gray-300 mt-1">Transcript · AI analysis · Related calls</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

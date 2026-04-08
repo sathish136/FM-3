@@ -33,6 +33,7 @@ import financeDashboardRouter from "./finance-dashboard";
 import civilDrawingRouter from "./civil-drawing";
 import stockReportsRouter from "./stock-reports";
 import callLogsRouter from "./call-logs";
+import deptCallLogsRouter from "./dept-call-logs";
 
 const router: IRouter = Router();
 
@@ -70,5 +71,6 @@ router.use(financeDashboardRouter);
 router.use(civilDrawingRouter);
 router.use(stockReportsRouter);
 router.use(callLogsRouter);
+router.use(deptCallLogsRouter);
 
 export default router;
