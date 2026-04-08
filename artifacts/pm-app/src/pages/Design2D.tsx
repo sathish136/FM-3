@@ -1610,7 +1610,7 @@ export default function Design2DPage() {
         </div>
       )}
 
-      <Layout hideChrome={!!viewer}>
+      {!viewer && <Layout>
         <div className="p-6 space-y-5">
 
           {/* Header */}
@@ -1759,7 +1759,7 @@ export default function Design2DPage() {
           </div>
 
         </div>
-      </Layout>
+      </Layout>}
     </>
   );
 }
