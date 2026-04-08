@@ -363,6 +363,11 @@ export function UserManagementContent() {
   const [copyFromSearch, setCopyFromSearch]   = useState("");
   const [togglingEnabled, setTogglingEnabled] = useState(false);
 
+  // Add user manually state
+  const [addUserOpen, setAddUserOpen]     = useState(false);
+  const [addUserEmail, setAddUserEmail]   = useState("");
+  const [addUserLoading, setAddUserLoading] = useState(false);
+
   // Role template editor state
   const [tmplEditing, setTmplEditing]         = useState<RoleTemplate | null>(null);
   const [tmplCreating, setTmplCreating]       = useState(false);
@@ -423,6 +428,36 @@ export function UserManagementContent() {
     setProjSearch("");
     setHodSearch("");
     setCopyFromOpen(false);
+  }
+
+  async function handleAddUser() {
+    const email = addUserEmail.trim().toLowerCase();
+    if (!email) return;
+    if (users.find(u => u.email.toLowerCase() === email)) {
+      toast({ title: "User already in list", description: email });
+      setAddUserOpen(false);
+      setAddUserEmail("");
+      return;
+    }
+    setAddUserLoading(true);
+    try {
+      const res = await fetch(`${BASE}/api/erpnext-users/lookup/${encodeURIComponent(email)}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "User not found" }));
+        toast({ title: "Could not find user", description: err.error ?? "User not found in ERPNext", variant: "destructive" });
+        return;
+      }
+      const u: ErpUser = await res.json();
+      setUsers(prev => [...prev, u]);
+      setAddUserOpen(false);
+      setAddUserEmail("");
+      toast({ title: "User added", description: u.full_name || u.email });
+      selectUser(u);
+    } catch (e) {
+      toast({ title: "Error", description: String(e), variant: "destructive" });
+    } finally {
+      setAddUserLoading(false);
+    }
   }
 
   async function save() {
@@ -839,13 +874,22 @@ export function UserManagementContent() {
           {/* User list */}
           <div className="w-72 shrink-0 bg-card border-r border-border flex flex-col overflow-hidden">
             <div className="p-3 border-b border-border space-y-2">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                <input
-                  value={search} onChange={e => setSearch(e.target.value)}
-                  placeholder="Search users…"
-                  className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-border bg-muted text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                />
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                  <input
+                    value={search} onChange={e => setSearch(e.target.value)}
+                    placeholder="Search users…"
+                    className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-border bg-muted text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  />
+                </div>
+                <button
+                  onClick={() => { setAddUserOpen(true); setAddUserEmail(""); }}
+                  title="Add user by email"
+                  className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
               </div>
               <button
                 onClick={() => setHideDisabled(p => !p)}
@@ -855,6 +899,48 @@ export function UserManagementContent() {
                 <span className="opacity-50">· {hideDisabled ? "show disabled" : "hide disabled"}</span>
               </button>
             </div>
+
+            {/* Add user modal */}
+            {addUserOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+                <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-sm mx-4 p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-foreground">Add User by Email</h3>
+                    <button onClick={() => setAddUserOpen(false)} className="text-muted-foreground hover:text-foreground">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Enter the ERPNext email of the user you want to manage. This allows adding users who are filtered from the default list.
+                  </p>
+                  <input
+                    autoFocus
+                    type="email"
+                    value={addUserEmail}
+                    onChange={e => setAddUserEmail(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") handleAddUser(); }}
+                    placeholder="e.g. andreapelissero@wttindia.com"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-muted text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      onClick={() => setAddUserOpen(false)}
+                      className="px-3 py-1.5 text-xs rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleAddUser}
+                      disabled={addUserLoading || !addUserEmail.trim()}
+                      className="px-4 py-1.5 text-xs rounded-lg bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                    >
+                      {addUserLoading && <Loader2 className="w-3 h-3 animate-spin" />}
+                      Add User
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="flex-1 overflow-y-auto">
               {loading ? (
                 <div className="flex items-center justify-center h-32">

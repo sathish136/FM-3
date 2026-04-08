@@ -1043,6 +1043,28 @@ router.get("/erpnext-users", async (_req, res) => {
   }
 });
 
+// Lookup a single ERPNext user by email (bypasses department filter)
+router.get("/erpnext-users/lookup/:email", async (req, res) => {
+  try {
+    const { email } = req.params;
+    const r = await fetch(`${ERP_URL}/api/resource/User/${encodeURIComponent(email)}?fields=["name","full_name","user_image","enabled","user_type"]`, {
+      headers: { Authorization: ERP_AUTH() },
+    });
+    if (!r.ok) return res.status(404).json({ error: "User not found in ERPNext" });
+    const data = await r.json();
+    const u = data.data;
+    if (!u || u.user_type === "Website User") return res.status(404).json({ error: "Not a system user" });
+    res.json({
+      email: u.name,
+      full_name: u.full_name || u.name,
+      user_image: u.user_image || null,
+      enabled: u.enabled ?? 1,
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 router.put("/erpnext-users/:email/enabled", async (req, res) => {
   try {
     const { email } = req.params;
