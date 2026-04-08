@@ -213,15 +213,10 @@ const navGroups: { label: string; items: NavItem[] }[] = [
   {
     label: "IP Call Logs",
     items: [
-      {
-        path: "/ip-call-logs", label: "IP Call Logs", icon: Phone, color: "text-violet-400", bgColor: "bg-violet-500/15",
-        children: [
-          { path: "/ip-call-logs/hr",       label: "HR Recruitment"    },
-          { path: "/ip-call-logs/project",  label: "Project Followups" },
-          { path: "/ip-call-logs/purchase", label: "Purchase Followups"},
-          { path: "/ip-call-logs/marketing",label: "Marketing Followups"},
-        ],
-      },
+      { path: "/ip-call-logs/hr",        label: "HR Recruitment",     icon: UserPlus,     color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
+      { path: "/ip-call-logs/project",   label: "Project Followups",  icon: Briefcase,    color: "text-blue-400",    bgColor: "bg-blue-500/15"    },
+      { path: "/ip-call-logs/purchase",  label: "Purchase Followups", icon: ShoppingCart, color: "text-amber-400",   bgColor: "bg-amber-500/15"   },
+      { path: "/ip-call-logs/marketing", label: "Marketing Followups",icon: Megaphone,    color: "text-violet-400",  bgColor: "bg-violet-500/15"  },
     ],
   },
   {

@@ -417,7 +417,7 @@ type DeptCall = {
   row_name?: string;
 };
 
-function DepartmentPanel({ initialDept }: { initialDept?: string }) {
+function DepartmentPanel({ initialDept, hideTabs }: { initialDept?: string; hideTabs?: boolean }) {
   const [activeDept, setActiveDept] = useState(initialDept || DEPT_LINKS[0].key);
   const [calls, setCalls] = useState<DeptCall[]>([]);
   const [loading, setLoading] = useState(false);
@@ -459,25 +459,29 @@ function DepartmentPanel({ initialDept }: { initialDept?: string }) {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Sub-tab bar */}
+      {/* Sub-tab bar — hidden when navigated directly from sidebar */}
       <div className="shrink-0 bg-white border-b border-gray-100 px-5 py-2.5 flex items-center gap-2 flex-wrap">
-        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mr-1">Department:</span>
-        {DEPT_LINKS.map(d => (
-          <button
-            key={d.key}
-            onClick={() => { setActiveDept(d.key); setSearch(""); }}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all",
-              activeDept === d.key
-                ? `${d.activeBg} text-white border-transparent shadow-sm`
-                : `${d.bg} ${d.color} ${d.border} hover:opacity-80`
-            )}
-          >
-            <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", activeDept === d.key ? "bg-white/70" : d.dot)} />
-            {d.label}
-          </button>
-        ))}
-        <div className="ml-auto flex items-center gap-2">
+        {!hideTabs && (
+          <>
+            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mr-1">Department:</span>
+            {DEPT_LINKS.map(d => (
+              <button
+                key={d.key}
+                onClick={() => { setActiveDept(d.key); setSearch(""); }}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all",
+                  activeDept === d.key
+                    ? `${d.activeBg} text-white border-transparent shadow-sm`
+                    : `${d.bg} ${d.color} ${d.border} hover:opacity-80`
+                )}
+              >
+                <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", activeDept === d.key ? "bg-white/70" : d.dot)} />
+                {d.label}
+              </button>
+            ))}
+          </>
+        )}
+        <div className={cn("flex items-center gap-2", hideTabs ? "" : "ml-auto")}>
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
             <input
@@ -617,7 +621,7 @@ const DEPT_KEY_MAP: Record<string, string> = {
 };
 
 export default function IPCallLogs() {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [loc, navigate] = useLocation();
 
   // Detect department from URL path e.g. /ip-call-logs/hr → "hr"
@@ -738,6 +742,10 @@ export default function IPCallLogs() {
     <Layout>
     <div className="flex flex-col h-full overflow-hidden bg-gray-50/30">
 
+      {showDept ? (
+        <DepartmentPanel initialDept={urlDept ?? undefined} hideTabs />
+      ) : (
+      <>
       {/* ── Top header + stats ── */}
       <div className="shrink-0 bg-white border-b border-gray-100 px-5 py-3">
         <div className="flex items-center gap-3 mb-3">
@@ -748,18 +756,16 @@ export default function IPCallLogs() {
             <h1 className="text-base font-bold text-gray-900">IP Call Logs</h1>
             <p className="text-[10px] text-gray-400">HR Extensions · Transcripts · AI Analysis</p>
           </div>
-          {!showDept && (
-            <button
-              onClick={() => load(true)} disabled={loading} title="Refresh data"
-              className="ml-auto w-8 h-8 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors disabled:opacity-40"
-            >
-              <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
-            </button>
-          )}
+          <button
+            onClick={() => load(true)} disabled={loading} title="Refresh data"
+            className="ml-auto w-8 h-8 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors disabled:opacity-40"
+          >
+            <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
+          </button>
         </div>
 
-        {/* Stats strip — only in main call-logs view */}
-        {!showDept && stats && (
+        {/* Stats strip */}
+        {stats && (
           <div className="grid grid-cols-5 gap-2">
             {[
               { label: "Total",       value: stats.total,       color: "text-gray-700",  bg: "bg-gray-100"    },
@@ -777,10 +783,6 @@ export default function IPCallLogs() {
         )}
       </div>
 
-      {showDept ? (
-        <DepartmentPanel initialDept={urlDept ?? undefined} />
-      ) : (
-        <>
           {/* ── Filter bar ── */}
           <div className="shrink-0 bg-white border-b border-gray-100 px-5 py-2.5 flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-0.5">
