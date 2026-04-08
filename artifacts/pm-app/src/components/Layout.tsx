@@ -4,7 +4,7 @@ import {
   Briefcase, FileText,
   LogOut, ChevronDown, ChevronRight as ChevronRightIcon, Menu, MoreHorizontal,
   MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp, ListChecks, ClipboardList, Truck, Building2, Package,
-  Play, Square, Phone,
+  Play, Square, Phone, ShieldOff, Loader2,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -787,11 +787,14 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   const { theme, themeIndex, setTheme, darkMode, toggleDarkMode } = useTheme();
   const [showThemePicker, setShowThemePicker] = useState(false);
   const [moduleRoles, setModuleRoles] = useState<Record<string, string> | null>(null);
+  const [permLoading, setPermLoading] = useState(true);
   const isAdmin = user ? ADMIN_EMAILS.includes(user.email.toLowerCase()) : false;
   const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   useEffect(() => {
-    if (!user || isAdmin) { setModuleRoles(null); return; }
+    if (!user) { setPermLoading(false); return; }
+    if (isAdmin) { setModuleRoles(null); setPermLoading(false); return; }
+    setPermLoading(true);
     fetch(`${BASE_URL}/api/user-permissions/${encodeURIComponent(user.email)}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
@@ -822,14 +825,16 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
         // No permissions record or empty — deny all (admin must configure)
         setModuleRoles({});
       })
-      .catch(() => setModuleRoles(null));
+      .catch(() => setModuleRoles(null))
+      .finally(() => setPermLoading(false));
   }, [user?.email, isAdmin]);
 
   function isPathAllowed(path: string): boolean {
     if (isAdmin) return true;
-    if (moduleRoles === null) return true; // still loading — show all to avoid flicker
+    if (permLoading) return false; // Still loading — block to prevent flicker
+    if (moduleRoles === null) return true; // Fetch failed gracefully — allow
     const key = PATH_TO_MODULE[path];
-    if (!key) return true; // unmapped internal routes always allowed
+    if (!key) return true; // Unmapped internal routes always allowed
     const role = moduleRoles[key];
     // Undefined means the module is not in saved roles — deny by default (whitelist approach)
     if (role === undefined) return false;
@@ -1019,7 +1024,23 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar">
-          <div className="pb-16 md:pb-0">{children}</div>
+          {!isAdmin && permLoading ? (
+            <div className="flex items-center justify-center h-64">
+              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            </div>
+          ) : !isAdmin && !permLoading && !isPathAllowed(location) ? (
+            <div className="flex flex-col items-center justify-center h-[70vh] gap-4 text-center px-6">
+              <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center">
+                <ShieldOff className="w-8 h-8 text-red-400" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-800">Access Denied</h2>
+                <p className="text-sm text-gray-500 mt-1">You don't have permission to view this page.<br />Contact your administrator to request access.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="pb-16 md:pb-0">{children}</div>
+          )}
         </main>
 
         {/* Mobile bottom nav */}
