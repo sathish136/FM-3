@@ -50,9 +50,42 @@ function toTable(rows: Row[], fields: string[]): string {
   return `${header}\n${sep}\n${body}${note}`;
 }
 
+// ─── Permission helpers ────────────────────────────────────────────────────────
+
+type ModuleRoles = Record<string, string>;
+
+function canAccess(moduleRoles: ModuleRoles | null, ...keys: string[]): boolean {
+  if (!moduleRoles) return true; // admin or fetch-failed: allow all
+  return keys.some(k => moduleRoles[k] === "read" || moduleRoles[k] === "write");
+}
+
+// Map intent categories to module permission keys
+const INTENT_MODULES: Record<string, string[]> = {
+  projects:    ["projects", "project-board", "project-timeline", "dashboard"],
+  hr:          ["hrms", "hrms-analytics", "hrms-team-performance", "hrms-task-summary", "hrms-performance", "mis-report"],
+  leave:       ["hrms", "hrms-leave-request"],
+  attendance:  ["hrms", "hrms-checkin", "hrms-analytics"],
+  tasks:       ["tasks", "task-management", "hrms-task-summary", "hrms-team-performance"],
+  purchase:    ["material-request", "purchase-order", "purchase-dashboard", "stores-dashboard"],
+  finance:     ["finance-dashboard", "payment-tracker", "mis-report"],
+};
+
+function allowedModuleNames(moduleRoles: ModuleRoles | null): string {
+  if (!moduleRoles) return "all modules";
+  const allowed = Object.entries(moduleRoles)
+    .filter(([, role]) => role === "read" || role === "write")
+    .map(([key]) => key);
+  return allowed.length ? allowed.join(", ") : "no modules";
+}
+
 // ─── Live data fetcher ────────────────────────────────────────────────────────
 
-async function fetchLiveData(query: string, module?: string): Promise<string> {
+async function fetchLiveData(
+  query: string,
+  module?: string,
+  moduleRoles?: ModuleRoles | null,
+  hodDept?: string | null,
+): Promise<string> {
   if (!isErpNextConfigured()) return "";
 
   const q = query.toLowerCase();
@@ -61,6 +94,15 @@ async function fetchLiveData(query: string, module?: string): Promise<string> {
 
   const today = new Date().toISOString().split("T")[0];
   const lastWeek = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
+
+  // ── Permission-aware access check ──
+  // null moduleRoles = admin (no restriction), otherwise check per-intent
+  const allowProjects   = canAccess(moduleRoles, ...INTENT_MODULES.projects);
+  const allowHR         = canAccess(moduleRoles, ...INTENT_MODULES.hr) || !!hodDept;
+  const allowLeave      = canAccess(moduleRoles, ...INTENT_MODULES.leave) || !!hodDept;
+  const allowAttendance = canAccess(moduleRoles, ...INTENT_MODULES.attendance) || !!hodDept;
+  const allowTasks      = canAccess(moduleRoles, ...INTENT_MODULES.tasks) || !!hodDept;
+  const allowPurchase   = canAccess(moduleRoles, ...INTENT_MODULES.purchase);
 
   // ── Precise keyword intent detection ──
   const wantProjects   = matches(q, "project", "active project", "ongoing project", "march", "april", "may", "created");
@@ -80,7 +122,7 @@ async function fetchLiveData(query: string, module?: string): Promise<string> {
   // ── Build list of fetches to run in parallel ──
   const fetches: Promise<void>[] = [];
 
-  if (wantProjects || onProjects) {
+  if (allowProjects && (wantProjects || onProjects)) {
     fetches.push(
       fetchErpNextProjects().then(projects => {
         const rows = (projects as Row[]).slice(0, MAX_ROWS).map((p: any) => ({
@@ -95,7 +137,7 @@ async function fetchLiveData(query: string, module?: string): Promise<string> {
     );
   }
 
-  if (wantEmployees || (onHR && matches(q, "employee", "staff", "how many", "member", "personnel", "headcount"))) {
+  if (allowHR && (wantEmployees || (onHR && matches(q, "employee", "staff", "how many", "member", "personnel", "headcount")))) {
     fetches.push(
       fetchErpNextEmployees({ status: "Active" }).then(employees => {
         // Group by dept for summary
@@ -123,7 +165,7 @@ async function fetchLiveData(query: string, module?: string): Promise<string> {
     );
   }
 
-  if (wantDepts || (onHR && matches(q, "department", "dept"))) {
+  if (allowHR && (wantDepts || (onHR && matches(q, "department", "dept")))) {
     fetches.push(
       fetchErpNextDepartments().then(depts => {
         const rows = depts.map((d: any) => ({
@@ -136,7 +178,7 @@ async function fetchLiveData(query: string, module?: string): Promise<string> {
     );
   }
 
-  if (wantLeave) {
+  if (allowLeave && wantLeave) {
     fetches.push(
       fetchErpNextLeaveApplications().then(leaves => {
         const rows = (leaves as Row[]).slice(0, MAX_ROWS).map((l: any) => ({
@@ -152,7 +194,7 @@ async function fetchLiveData(query: string, module?: string): Promise<string> {
     );
   }
 
-  if (wantAttendance) {
+  if (allowAttendance && wantAttendance) {
     fetches.push(
       fetchErpNextAttendance({ from_date: lastWeek, to_date: today, limit: 200 }).then(att => {
         const present = (att as any[]).filter((a: any) => a.status === "Present").length;
@@ -166,7 +208,7 @@ async function fetchLiveData(query: string, module?: string): Promise<string> {
     );
   }
 
-  if (wantTasks || (onHR && matches(q, "task", "idle", "allocation", "assign"))) {
+  if (allowTasks && (wantTasks || (onHR && matches(q, "task", "idle", "allocation", "assign")))) {
     fetches.push(
       fetchErpNextTaskAllocations({ from_date: lastWeek, to_date: today }).then(allocs => {
         if (allocs.length > 0) {
@@ -183,7 +225,7 @@ async function fetchLiveData(query: string, module?: string): Promise<string> {
     );
   }
 
-  if (wantMR || onPurchase) {
+  if (allowPurchase && (wantMR || onPurchase)) {
     fetches.push(
       fetchErpNextMaterialRequests().then(mrs => {
         const rows = (mrs as Row[]).slice(0, MAX_ROWS).map((m: any) => ({
@@ -195,7 +237,7 @@ async function fetchLiveData(query: string, module?: string): Promise<string> {
     );
   }
 
-  if (wantPO || onPurchase) {
+  if (allowPurchase && (wantPO || onPurchase)) {
     fetches.push(
       fetchErpNextPurchaseOrders().then(pos => {
         const rows = (pos as Row[]).slice(0, MAX_ROWS).map((p: any) => ({
@@ -264,10 +306,18 @@ FLOWMATRIX MODULES & CAPABILITIES:
 - Finance Dashboard: Financial analytics and reporting
 `;
 
-function buildSystemPrompt(module?: string, liveData?: string): string {
+function buildSystemPrompt(
+  module?: string,
+  liveData?: string,
+  moduleRoles?: ModuleRoles | null,
+  userEmail?: string,
+  hodDept?: string | null,
+): string {
   const today = new Date().toLocaleDateString("en-IN", {
     weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "Asia/Kolkata",
   });
+
+  const isAdmin = !moduleRoles; // null = admin bypass
 
   let prompt = `You are FlowMatriX AI — the intelligent assistant for WTT (Water Treatment Technologies) company's FlowMatriX enterprise platform. Today is ${today} (IST).
 
@@ -291,6 +341,55 @@ ANSWER RULES:
 8. For HR queries (attendance, leave, employees) — always reference ERPNext as the data source
 9. Never invent or assume data — only use what is in the LIVE DATA section below`;
 
+  // ── Permission constraints ──
+  if (isAdmin) {
+    prompt += `\n\nUSER CONTEXT: This user is an admin — they have full access to all FlowMatriX modules and data.`;
+  } else {
+    const allowed = Object.entries(moduleRoles!)
+      .filter(([, role]) => role === "read" || role === "write")
+      .map(([key]) => key);
+
+    if (hodDept) {
+      prompt += `\n\nUSER CONTEXT: User${userEmail ? ` (${userEmail})` : ""} is the Head of Department for "${hodDept}". They can view data for their department team members (employees, attendance, leave, tasks in "${hodDept}").`;
+    } else if (userEmail) {
+      prompt += `\n\nUSER CONTEXT: User (${userEmail}) has limited module access.`;
+    }
+
+    if (allowed.length === 0) {
+      prompt += `\n\nPERMISSION RULES:
+- This user has NO module access configured yet.
+- Do NOT reveal any company data (employees, projects, procurement, attendance, HR records, financials).
+- If asked for data, politely respond: "You don't have permission to view this information. Please contact your administrator to get access."
+- You may still answer general questions about FlowMatriX platform features.`;
+    } else {
+      const canSeeProjects   = allowed.some(k => INTENT_MODULES.projects.includes(k));
+      const canSeeHR         = allowed.some(k => INTENT_MODULES.hr.includes(k)) || !!hodDept;
+      const canSeeLeave      = allowed.some(k => INTENT_MODULES.leave.includes(k)) || !!hodDept;
+      const canSeeAttendance = allowed.some(k => INTENT_MODULES.attendance.includes(k)) || !!hodDept;
+      const canSeeTasks      = allowed.some(k => INTENT_MODULES.tasks.includes(k)) || !!hodDept;
+      const canSeePurchase   = allowed.some(k => INTENT_MODULES.purchase.includes(k));
+      const canSeeFinance    = allowed.some(k => INTENT_MODULES.finance.includes(k));
+
+      const restrictions: string[] = [];
+      if (!canSeeProjects)   restrictions.push("projects and project timelines");
+      if (!canSeeHR)         restrictions.push("employee directories and HR records");
+      if (!canSeeLeave)      restrictions.push("leave applications");
+      if (!canSeeAttendance) restrictions.push("attendance records");
+      if (!canSeeTasks)      restrictions.push("task allocations");
+      if (!canSeePurchase)   restrictions.push("material requests and purchase orders");
+      if (!canSeeFinance)    restrictions.push("financial reports and payment data");
+
+      prompt += `\n\nPERMISSION RULES:
+- This user has access to these modules: ${allowed.join(", ")}`;
+      if (hodDept) prompt += `\n- As Head of "${hodDept}" department, they can also query HR/attendance/leave data for their team.`;
+      if (restrictions.length) {
+        prompt += `\n- This user CANNOT view: ${restrictions.join("; ")}.
+- If asked about restricted data, respond: "You don't have permission to view [topic]. Please contact your administrator."
+- Never show restricted data even if LIVE DATA section is empty (do not explain what the data would contain).`;
+      }
+    }
+  }
+
   if (module) {
     const key = module.split("–")[0]?.trim().split(" – ")[0]?.trim();
     prompt += `\n\nCURRENT MODULE THE USER IS VIEWING: ${module}`;
@@ -308,20 +407,29 @@ ANSWER RULES:
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
+const ADMIN_EMAILS = ["edp@wttindia.com", "venkat@wttindia.com"];
+
 router.post("/ai-search", async (req, res) => {
-  const { query, history = [], module } = req.body as {
+  const { query, history = [], module, userEmail, moduleRoles: rawModuleRoles, hodDept } = req.body as {
     query: string;
     history?: { role: "user" | "assistant"; content: string }[];
     module?: string;
+    userEmail?: string;
+    moduleRoles?: ModuleRoles;
+    hodDept?: string | null;
   };
 
   if (!query?.trim()) {
     return res.status(400).json({ error: "Query is required" });
   }
 
+  // Admins (by email) get null moduleRoles = full access; others get their actual roles
+  const isAdmin = !userEmail || ADMIN_EMAILS.includes(userEmail.toLowerCase());
+  const moduleRoles: ModuleRoles | null = isAdmin ? null : (rawModuleRoles ?? {});
+
   const stream = req.query.stream === "true" || req.body.stream === true;
-  const liveData = await fetchLiveData(query, module);
-  const systemPrompt = buildSystemPrompt(module, liveData);
+  const liveData = await fetchLiveData(query, module, moduleRoles, hodDept);
+  const systemPrompt = buildSystemPrompt(module, liveData, moduleRoles, userEmail, hodDept);
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: "system", content: systemPrompt },

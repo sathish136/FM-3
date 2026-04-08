@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { jsPDF } from "jspdf";
+import { useAuth } from "@/hooks/useAuth";
 
 const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "").replace("/pm-app", "") + "/api";
 
@@ -264,6 +265,7 @@ function exportToPDF(content: string, title?: string) {
 }
 
 export function AISearch({ currentPath, forceOpen, hideTriggerOnMobile }: { currentPath?: string; forceOpen?: number; hideTriggerOnMobile?: boolean }) {
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -271,10 +273,27 @@ export function AISearch({ currentPath, forceOpen, hideTriggerOnMobile }: { curr
   const [listening, setListening] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [userModuleRoles, setUserModuleRoles] = useState<Record<string, string> | null>(null);
+  const [userHodDept, setUserHodDept] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!user?.email) return;
+    fetch(`${API_BASE}/user-permissions/${encodeURIComponent(user.email)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.moduleRoles) {
+          try { setUserModuleRoles(JSON.parse(data.moduleRoles)); } catch { setUserModuleRoles({}); }
+        } else {
+          setUserModuleRoles({});
+        }
+        setUserHodDept(data?.hodDept ?? null);
+      })
+      .catch(() => { setUserModuleRoles({}); });
+  }, [user?.email]);
 
   const moduleHint = currentPath ? (MODULE_HINTS[currentPath] ?? "") : "";
   const moduleLabel = moduleHint.split("–")[0]?.trim() ?? "";
@@ -337,6 +356,9 @@ export function AISearch({ currentPath, forceOpen, hideTriggerOnMobile }: { curr
           history: historyForRequest.map((m) => ({ role: m.role, content: m.content })),
           module: moduleHint,
           stream: true,
+          userEmail: user?.email ?? undefined,
+          moduleRoles: userModuleRoles ?? undefined,
+          hodDept: userHodDept,
         }),
         signal: abort.signal,
       });
