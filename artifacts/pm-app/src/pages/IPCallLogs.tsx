@@ -356,10 +356,107 @@ function DetailPanel({ call, allCalls, onClose }: { call: FlatCall; allCalls: Fl
   );
 }
 
+// ─── Department Followups ───────────────────────────────────────────────────────
+const DEPT_LINKS = [
+  {
+    key: "hr",
+    label: "HR Recruitment",
+    url: "https://erp.wttint.com/app/hr-call-logs",
+    color: "text-emerald-700",
+    bg: "bg-emerald-50",
+    border: "border-emerald-200",
+    activeBg: "bg-emerald-600",
+    dot: "bg-emerald-500",
+  },
+  {
+    key: "project",
+    label: "Project Followups",
+    url: "https://erp.wttint.com/app/project-call-logs",
+    color: "text-blue-700",
+    bg: "bg-blue-50",
+    border: "border-blue-200",
+    activeBg: "bg-blue-600",
+    dot: "bg-blue-500",
+  },
+  {
+    key: "purchase",
+    label: "Purchase Followups",
+    url: "https://erp.wttint.com/app/purchase-call-logs",
+    color: "text-amber-700",
+    bg: "bg-amber-50",
+    border: "border-amber-200",
+    activeBg: "bg-amber-600",
+    dot: "bg-amber-500",
+  },
+  {
+    key: "marketing",
+    label: "Marketing Followups",
+    url: "https://erp.wttint.com/app/marketing-call-logs",
+    color: "text-violet-700",
+    bg: "bg-violet-50",
+    border: "border-violet-200",
+    activeBg: "bg-violet-600",
+    dot: "bg-violet-500",
+  },
+];
+
+function DepartmentPanel() {
+  const [activeDept, setActiveDept] = useState(DEPT_LINKS[0].key);
+  const active = DEPT_LINKS.find(d => d.key === activeDept) ?? DEPT_LINKS[0];
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Sub-tab bar */}
+      <div className="shrink-0 bg-white border-b border-gray-100 px-5 py-3 flex items-center gap-2 flex-wrap">
+        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mr-1">Department:</span>
+        {DEPT_LINKS.map(d => (
+          <button
+            key={d.key}
+            onClick={() => setActiveDept(d.key)}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all",
+              activeDept === d.key
+                ? `${d.activeBg} text-white border-transparent shadow-sm`
+                : `${d.bg} ${d.color} ${d.border} hover:opacity-80`
+            )}
+          >
+            <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", activeDept === d.key ? "bg-white/70" : d.dot)} />
+            {d.label}
+          </button>
+        ))}
+        <a
+          href={active.url}
+          target="_blank"
+          rel="noreferrer"
+          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-500 bg-gray-100 border border-gray-200 hover:bg-gray-200 transition-colors"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+          Open in ERP
+        </a>
+      </div>
+
+      {/* Iframe */}
+      <div className="flex-1 overflow-hidden bg-gray-50 relative">
+        {DEPT_LINKS.map(d => (
+          <iframe
+            key={d.key}
+            src={d.url}
+            title={d.label}
+            className={cn("w-full h-full border-0 transition-opacity duration-200", activeDept === d.key ? "block" : "hidden")}
+            allow="fullscreen"
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 export default function IPCallLogs() {
   const { user, isLoading: authLoading } = useAuth();
   const [, navigate] = useLocation();
+
+  const [activeTab, setActiveTab] = useState<"logs" | "department">("logs");
 
   const [allCalls,   setAllCalls]   = useState<FlatCall[]>([]);
   const [stats,      setStats]      = useState<Stats | null>(null);
@@ -474,16 +571,46 @@ export default function IPCallLogs() {
             <h1 className="text-base font-bold text-gray-900">IP Call Logs</h1>
             <p className="text-[10px] text-gray-400">HR Extensions · Transcripts · AI Analysis</p>
           </div>
+          {activeTab === "logs" && (
+            <button
+              onClick={() => load(true)} disabled={loading} title="Refresh data"
+              className="ml-auto w-8 h-8 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors disabled:opacity-40"
+            >
+              <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
+            </button>
+          )}
+        </div>
+
+        {/* Main tab switcher */}
+        <div className="flex items-center gap-1 mb-3">
           <button
-            onClick={() => load(true)} disabled={loading} title="Refresh data"
-            className="ml-auto w-8 h-8 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors disabled:opacity-40"
+            onClick={() => setActiveTab("logs")}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all",
+              activeTab === "logs"
+                ? "bg-indigo-600 text-white border-transparent shadow-sm"
+                : "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100"
+            )}
           >
-            <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
+            <Phone className="w-3 h-3" />
+            Call Logs
+          </button>
+          <button
+            onClick={() => setActiveTab("department")}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all",
+              activeTab === "department"
+                ? "bg-indigo-600 text-white border-transparent shadow-sm"
+                : "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100"
+            )}
+          >
+            <BarChart3 className="w-3 h-3" />
+            Department
           </button>
         </div>
 
         {/* Stats strip */}
-        {stats && (
+        {activeTab === "logs" && stats && (
           <div className="grid grid-cols-5 gap-2">
             {[
               { label: "Total",       value: stats.total,       color: "text-gray-700",  bg: "bg-gray-100"    },
@@ -501,149 +628,146 @@ export default function IPCallLogs() {
         )}
       </div>
 
-      {/* ── Filter bar ── */}
-      <div className="shrink-0 bg-white border-b border-gray-100 px-5 py-2.5 flex items-center gap-3 flex-wrap">
-        {/* Date preset chips */}
-        <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-0.5">
-          {PRESETS.map(p => (
-            <button key={p.key} onClick={() => applyPreset(p.key)}
-              className={cn("px-2.5 py-1 text-[10px] font-bold rounded-lg transition-colors",
-                preset === p.key ? "bg-white text-indigo-700 shadow-sm" : "text-gray-500 hover:text-gray-700")}>
-              {p.label}
-            </button>
-          ))}
-        </div>
+      {activeTab === "department" ? (
+        <DepartmentPanel />
+      ) : (
+        <>
+          {/* ── Filter bar ── */}
+          <div className="shrink-0 bg-white border-b border-gray-100 px-5 py-2.5 flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-0.5">
+              {PRESETS.map(p => (
+                <button key={p.key} onClick={() => applyPreset(p.key)}
+                  className={cn("px-2.5 py-1 text-[10px] font-bold rounded-lg transition-colors",
+                    preset === p.key ? "bg-white text-indigo-700 shadow-sm" : "text-gray-500 hover:text-gray-700")}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
 
-        {/* Custom date range */}
-        {preset === "all" && (
-          <>
-            <input type="date" value={fromDate} onChange={e => { setFromDate(e.target.value); setPreset("all"); }}
-              className="text-[10px] border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-700" />
-            <span className="text-[10px] text-gray-400">to</span>
-            <input type="date" value={toDate}   onChange={e => { setToDate(e.target.value); setPreset("all"); }}
-              className="text-[10px] border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-700" />
-          </>
-        )}
-
-        <div className="w-px h-5 bg-gray-200 mx-1" />
-
-        {/* Owner filter */}
-        <div className="flex items-center gap-1">
-          <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wide">By:</span>
-          <div className="flex items-center gap-1">
-            <button onClick={() => setOwnerFilter("")}
-              className={cn("px-2 py-0.5 text-[10px] font-semibold rounded-full border transition-colors",
-                ownerFilter === "" ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-gray-500 border-gray-200 hover:border-gray-300")}>
-              All
-            </button>
-            {OWNERS.map(o => (
-              <button key={o} onClick={() => setOwnerFilter(ownerFilter === o ? "" : o)}
-                className={cn("px-2 py-0.5 text-[10px] font-semibold rounded-full border transition-colors",
-                  ownerFilter === o ? "bg-indigo-600 text-white border-indigo-600" : cn("bg-white border", ownerColor(o).replace(/bg-\S+ /, "").replace(/text-\S+ /, "")))}>
-                {o}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="w-px h-5 bg-gray-200 mx-1" />
-
-        {/* Type filter */}
-        <div className="flex items-center gap-1">
-          {[["", "All"], ["Incoming", "↓ In"], ["Outgoing", "↑ Out"]].map(([val, label]) => (
-            <button key={val} onClick={() => setTypeFilter(val)}
-              className={cn("px-2 py-0.5 text-[10px] font-semibold rounded-full border transition-colors",
-                typeFilter === val ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-gray-500 border-gray-200 hover:border-gray-300")}>
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {/* Search */}
-        <div className="relative ml-auto">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
-          <input
-            value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search phone / owner / transcript..."
-            className="pl-7 pr-3 py-1.5 text-[10px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent w-64"
-          />
-          {search && (
-            <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-              <X className="w-3 h-3" />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* ── Main body: list + detail ── */}
-      <div className="flex flex-1 overflow-hidden">
-
-        {/* Call list */}
-        <div className={cn(
-          "flex flex-col overflow-hidden border-r border-gray-100 bg-white transition-all duration-300",
-          selected ? "w-80 shrink-0" : "flex-1"
-        )}>
-          {/* List header */}
-          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-50 bg-gray-50/50 shrink-0">
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">
-              {filtered.length} call{filtered.length !== 1 ? "s" : ""}
-            </span>
-            {(ownerFilter || typeFilter || search || fromDate || toDate) && (
-              <button onClick={() => { setOwnerFilter(""); setTypeFilter(""); setSearch(""); setFromDate(""); setToDate(""); setPreset("all"); }}
-                className="text-[10px] text-indigo-600 font-semibold hover:underline flex items-center gap-0.5">
-                <X className="w-2.5 h-2.5" />Clear filters
-              </button>
+            {preset === "all" && (
+              <>
+                <input type="date" value={fromDate} onChange={e => { setFromDate(e.target.value); setPreset("all"); }}
+                  className="text-[10px] border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-700" />
+                <span className="text-[10px] text-gray-400">to</span>
+                <input type="date" value={toDate} onChange={e => { setToDate(e.target.value); setPreset("all"); }}
+                  className="text-[10px] border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-700" />
+              </>
             )}
-          </div>
 
-          <div className="flex-1 overflow-y-auto">
-            {loading && (
-              <div className="flex flex-col items-center justify-center py-16 gap-3">
-                <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
-                <p className="text-xs text-gray-400">Loading calls from ERPNext…</p>
-                <p className="text-[10px] text-gray-300">This may take a moment on first load</p>
+            <div className="w-px h-5 bg-gray-200 mx-1" />
+
+            <div className="flex items-center gap-1">
+              <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wide">By:</span>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setOwnerFilter("")}
+                  className={cn("px-2 py-0.5 text-[10px] font-semibold rounded-full border transition-colors",
+                    ownerFilter === "" ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-gray-500 border-gray-200 hover:border-gray-300")}>
+                  All
+                </button>
+                {OWNERS.map(o => (
+                  <button key={o} onClick={() => setOwnerFilter(ownerFilter === o ? "" : o)}
+                    className={cn("px-2 py-0.5 text-[10px] font-semibold rounded-full border transition-colors",
+                      ownerFilter === o ? "bg-indigo-600 text-white border-indigo-600" : cn("bg-white border", ownerColor(o).replace(/bg-\S+ /, "").replace(/text-\S+ /, "")))}>
+                    {o}
+                  </button>
+                ))}
               </div>
-            )}
-            {error && (
-              <div className="m-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 flex items-center gap-2">
-                <XCircle className="w-4 h-4 shrink-0" /> {error}
-              </div>
-            )}
-            {!loading && !error && filtered.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-16 gap-2 text-center">
-                <Phone className="w-10 h-10 text-gray-100" />
-                <p className="text-sm font-bold text-gray-400">No calls found</p>
-                <p className="text-xs text-gray-300">{search ? "Try different search terms" : "Try adjusting filters"}</p>
-              </div>
-            )}
-            {!loading && filtered.map((call, i) => (
-              <CallRow
-                key={`${call.phone_number}-${call.call_time}-${i}`}
-                call={call}
-                selected={selected === call}
-                onClick={() => setSelected(selected === call ? null : call)}
+            </div>
+
+            <div className="w-px h-5 bg-gray-200 mx-1" />
+
+            <div className="flex items-center gap-1">
+              {[["", "All"], ["Incoming", "↓ In"], ["Outgoing", "↑ Out"]].map(([val, label]) => (
+                <button key={val} onClick={() => setTypeFilter(val)}
+                  className={cn("px-2 py-0.5 text-[10px] font-semibold rounded-full border transition-colors",
+                    typeFilter === val ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-gray-500 border-gray-200 hover:border-gray-300")}>
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div className="relative ml-auto">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
+              <input
+                value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Search phone / owner / transcript..."
+                className="pl-7 pr-3 py-1.5 text-[10px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent w-64"
               />
-            ))}
+              {search && (
+                <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* Detail panel */}
-        {selected ? (
-          <div className="flex-1 overflow-hidden border-l border-gray-100">
-            <DetailPanel call={selected} allCalls={allCalls} onClose={() => setSelected(null)} />
-          </div>
-        ) : (
-          <div className="hidden md:flex flex-1 flex-col items-center justify-center gap-4 bg-gray-50/30 text-center p-12">
-            <div className="w-20 h-20 rounded-3xl bg-white border border-gray-100 shadow-sm flex items-center justify-center">
-              <Phone className="w-8 h-8 text-gray-200" />
+          {/* ── Main body: list + detail ── */}
+          <div className="flex flex-1 overflow-hidden">
+            <div className={cn(
+              "flex flex-col overflow-hidden border-r border-gray-100 bg-white transition-all duration-300",
+              selected ? "w-80 shrink-0" : "flex-1"
+            )}>
+              <div className="flex items-center justify-between px-4 py-2 border-b border-gray-50 bg-gray-50/50 shrink-0">
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">
+                  {filtered.length} call{filtered.length !== 1 ? "s" : ""}
+                </span>
+                {(ownerFilter || typeFilter || search || fromDate || toDate) && (
+                  <button onClick={() => { setOwnerFilter(""); setTypeFilter(""); setSearch(""); setFromDate(""); setToDate(""); setPreset("all"); }}
+                    className="text-[10px] text-indigo-600 font-semibold hover:underline flex items-center gap-0.5">
+                    <X className="w-2.5 h-2.5" />Clear filters
+                  </button>
+                )}
+              </div>
+
+              <div className="flex-1 overflow-y-auto">
+                {loading && (
+                  <div className="flex flex-col items-center justify-center py-16 gap-3">
+                    <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
+                    <p className="text-xs text-gray-400">Loading calls from ERPNext…</p>
+                    <p className="text-[10px] text-gray-300">This may take a moment on first load</p>
+                  </div>
+                )}
+                {error && (
+                  <div className="m-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 flex items-center gap-2">
+                    <XCircle className="w-4 h-4 shrink-0" /> {error}
+                  </div>
+                )}
+                {!loading && !error && filtered.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-16 gap-2 text-center">
+                    <Phone className="w-10 h-10 text-gray-100" />
+                    <p className="text-sm font-bold text-gray-400">No calls found</p>
+                    <p className="text-xs text-gray-300">{search ? "Try different search terms" : "Try adjusting filters"}</p>
+                  </div>
+                )}
+                {!loading && filtered.map((call, i) => (
+                  <CallRow
+                    key={`${call.phone_number}-${call.call_time}-${i}`}
+                    call={call}
+                    selected={selected === call}
+                    onClick={() => setSelected(selected === call ? null : call)}
+                  />
+                ))}
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-bold text-gray-500">Select a call to view details</p>
-              <p className="text-xs text-gray-300 mt-1">Transcript · AI analysis · Related calls</p>
-            </div>
+
+            {selected ? (
+              <div className="flex-1 overflow-hidden border-l border-gray-100">
+                <DetailPanel call={selected} allCalls={allCalls} onClose={() => setSelected(null)} />
+              </div>
+            ) : (
+              <div className="hidden md:flex flex-1 flex-col items-center justify-center gap-4 bg-gray-50/30 text-center p-12">
+                <div className="w-20 h-20 rounded-3xl bg-white border border-gray-100 shadow-sm flex items-center justify-center">
+                  <Phone className="w-8 h-8 text-gray-200" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-gray-500">Select a call to view details</p>
+                  <p className="text-xs text-gray-300 mt-1">Transcript · AI analysis · Related calls</p>
+                </div>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
     </div>
     </Layout>
   );
