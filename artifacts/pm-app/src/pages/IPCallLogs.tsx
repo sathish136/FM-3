@@ -435,17 +435,63 @@ function DepartmentPanel() {
         </a>
       </div>
 
-      {/* Iframe */}
-      <div className="flex-1 overflow-hidden bg-gray-50 relative">
-        {DEPT_LINKS.map(d => (
-          <iframe
-            key={d.key}
-            src={d.url}
-            title={d.label}
-            className={cn("w-full h-full border-0 transition-opacity duration-200", activeDept === d.key ? "block" : "hidden")}
-            allow="fullscreen"
-          />
-        ))}
+      {/* Content area */}
+      <div className="flex-1 overflow-y-auto bg-gray-50/40 px-6 py-8">
+        {DEPT_LINKS.map(d => {
+          if (d.key !== activeDept) return null;
+          return (
+            <div key={d.key} className="max-w-2xl mx-auto">
+              <div className={cn("rounded-2xl border p-6 mb-6 flex items-start gap-5", d.bg, d.border)}>
+                <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 bg-white shadow-sm border", d.border)}>
+                  <Phone className={cn("w-5 h-5", d.color)} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={cn("text-xs font-bold uppercase tracking-widest mb-1 opacity-60", d.color)}>Department · Call Followups</p>
+                  <h2 className={cn("text-xl font-black mb-1", d.color)}>{d.label}</h2>
+                  <p className="text-sm text-gray-500 mb-4">Track and manage call follow-ups for the {d.label.replace(" Followups", "").replace(" Recruitment", " Recruitment")} department via ERP.</p>
+                  <a
+                    href={d.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={cn(
+                      "inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white shadow-sm transition-all hover:opacity-90 active:scale-95",
+                      d.activeBg
+                    )}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                    Open {d.label} in ERP
+                  </a>
+                </div>
+              </div>
+
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Other Departments</p>
+              <div className="grid grid-cols-1 gap-3">
+                {DEPT_LINKS.filter(x => x.key !== d.key).map(other => (
+                  <a
+                    key={other.key}
+                    href={other.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-4 bg-white border border-gray-100 rounded-2xl px-4 py-3.5 hover:shadow-sm hover:border-gray-200 transition-all group"
+                  >
+                    <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border", other.bg, other.border)}>
+                      <Phone className={cn("w-4 h-4", other.color)} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-800">{other.label}</p>
+                      <p className="text-[10px] text-gray-400 truncate">{other.url}</p>
+                    </div>
+                    <svg className="w-4 h-4 text-gray-300 group-hover:text-gray-500 shrink-0 transition-colors" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
