@@ -219,6 +219,10 @@ function ProtectedRoutes() {
       <Route path="/team-pulse" component={TeamPulse} />
       <Route path="/team-reporting" component={TeamReporting} />
       <Route path="/ip-call-logs" component={IPCallLogs} />
+      <Route path="/ip-call-logs/hr" component={IPCallLogs} />
+      <Route path="/ip-call-logs/project" component={IPCallLogs} />
+      <Route path="/ip-call-logs/purchase" component={IPCallLogs} />
+      <Route path="/ip-call-logs/marketing" component={IPCallLogs} />
       <Route component={NotFound} />
     </Switch>
   );

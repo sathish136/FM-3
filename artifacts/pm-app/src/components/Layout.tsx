@@ -208,7 +208,20 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { path: "/", label: "Dashboard", icon: LayoutDashboard, color: "text-sky-400", bgColor: "bg-sky-500/15" },
       { path: "/team-pulse", label: "Team Pulse", icon: Activity, color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
       { path: "/team-reporting", label: "Team Reporting", icon: ClipboardList, color: "text-indigo-400", bgColor: "bg-indigo-500/15" },
-      { path: "/ip-call-logs",   label: "IP Call Logs",   icon: Phone,         color: "text-violet-400", bgColor: "bg-violet-500/15" },
+    ],
+  },
+  {
+    label: "IP Call Logs",
+    items: [
+      {
+        path: "/ip-call-logs", label: "IP Call Logs", icon: Phone, color: "text-violet-400", bgColor: "bg-violet-500/15",
+        children: [
+          { path: "/ip-call-logs/hr",       label: "HR Recruitment"    },
+          { path: "/ip-call-logs/project",  label: "Project Followups" },
+          { path: "/ip-call-logs/purchase", label: "Purchase Followups"},
+          { path: "/ip-call-logs/marketing",label: "Marketing Followups"},
+        ],
+      },
     ],
   },
   {

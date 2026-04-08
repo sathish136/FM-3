@@ -3,7 +3,7 @@ import {
   Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed,
   Search, Loader2, XCircle, Mic, Sparkles, RefreshCw,
   Calendar, Clock, Hash, ChevronDown, ChevronUp,
-  Play, Download, User, X, Filter, BarChart3, TrendingUp,
+  Play, Download, User, X, Filter, TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -417,8 +417,8 @@ type DeptCall = {
   row_name?: string;
 };
 
-function DepartmentPanel() {
-  const [activeDept, setActiveDept] = useState(DEPT_LINKS[0].key);
+function DepartmentPanel({ initialDept }: { initialDept?: string }) {
+  const [activeDept, setActiveDept] = useState(initialDept || DEPT_LINKS[0].key);
   const [calls, setCalls] = useState<DeptCall[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -609,11 +609,23 @@ function DepartmentPanel() {
 }
 
 // ─── Main Page ─────────────────────────────────────────────────────────────────
+const DEPT_KEY_MAP: Record<string, string> = {
+  hr:       "ip-call-logs-hr",
+  project:  "ip-call-logs-project",
+  purchase: "ip-call-logs-purchase",
+  marketing:"ip-call-logs-marketing",
+};
+
 export default function IPCallLogs() {
   const { user, isLoading: authLoading } = useAuth();
-  const [, navigate] = useLocation();
+  const [loc, navigate] = useLocation();
 
-  const [activeTab, setActiveTab] = useState<"logs" | "department">("logs");
+  // Detect department from URL path e.g. /ip-call-logs/hr → "hr"
+  const urlDept = (() => {
+    const m = loc.match(/\/ip-call-logs\/([^/]+)/);
+    return m ? m[1] : null;
+  })();
+  const showDept = !!urlDept;
 
   const [allCalls,   setAllCalls]   = useState<FlatCall[]>([]);
   const [stats,      setStats]      = useState<Stats | null>(null);
@@ -642,10 +654,18 @@ export default function IPCallLogs() {
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         const roles = data?.modules || {};
-        setHasAccess(roles["ip-call-logs"] === "read" || roles["ip-call-logs"] === "write");
+        // Check the specific dept key or the parent ip-call-logs key
+        const parentOk = roles["ip-call-logs"] === "read" || roles["ip-call-logs"] === "write";
+        if (showDept && urlDept) {
+          const deptKey = DEPT_KEY_MAP[urlDept];
+          const deptOk = deptKey ? (roles[deptKey] === "read" || roles[deptKey] === "write") : false;
+          setHasAccess(parentOk || deptOk);
+        } else {
+          setHasAccess(parentOk);
+        }
       })
       .catch(() => setHasAccess(false));
-  }, [user, authLoading, isAdmin, navigate]);
+  }, [user, authLoading, isAdmin, navigate, showDept, urlDept]);
 
   // ── Load calls ────────────────────────────────────────────────────────────
   const load = useCallback((forceRefresh = false) => {
@@ -728,7 +748,7 @@ export default function IPCallLogs() {
             <h1 className="text-base font-bold text-gray-900">IP Call Logs</h1>
             <p className="text-[10px] text-gray-400">HR Extensions · Transcripts · AI Analysis</p>
           </div>
-          {activeTab === "logs" && (
+          {!showDept && (
             <button
               onClick={() => load(true)} disabled={loading} title="Refresh data"
               className="ml-auto w-8 h-8 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors disabled:opacity-40"
@@ -738,36 +758,8 @@ export default function IPCallLogs() {
           )}
         </div>
 
-        {/* Main tab switcher */}
-        <div className="flex items-center gap-1 mb-3">
-          <button
-            onClick={() => setActiveTab("logs")}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all",
-              activeTab === "logs"
-                ? "bg-indigo-600 text-white border-transparent shadow-sm"
-                : "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100"
-            )}
-          >
-            <Phone className="w-3 h-3" />
-            Call Logs
-          </button>
-          <button
-            onClick={() => setActiveTab("department")}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all",
-              activeTab === "department"
-                ? "bg-indigo-600 text-white border-transparent shadow-sm"
-                : "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100"
-            )}
-          >
-            <BarChart3 className="w-3 h-3" />
-            Department
-          </button>
-        </div>
-
-        {/* Stats strip */}
-        {activeTab === "logs" && stats && (
+        {/* Stats strip — only in main call-logs view */}
+        {!showDept && stats && (
           <div className="grid grid-cols-5 gap-2">
             {[
               { label: "Total",       value: stats.total,       color: "text-gray-700",  bg: "bg-gray-100"    },
@@ -785,8 +777,8 @@ export default function IPCallLogs() {
         )}
       </div>
 
-      {activeTab === "department" ? (
-        <DepartmentPanel />
+      {showDept ? (
+        <DepartmentPanel initialDept={urlDept ?? undefined} />
       ) : (
         <>
           {/* ── Filter bar ── */}
