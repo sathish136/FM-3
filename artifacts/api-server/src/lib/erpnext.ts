@@ -630,6 +630,10 @@ const ALWAYS_BLOCKED_EMPLOYEES = new Set([
   "WTT001", "WTT002", "WTT003", "WTT004", "WTT005",
   "WTT1392", "WTT1615", "WTT915", "WTT917", "WTT756", "WTT1482",
 ]);
+// Users whose ERPNext account must always appear regardless of employee department
+const USER_EMAIL_ALLOWLIST = new Set([
+  "andreapelissero@wttindia.com",
+]);
 
 export function applyEmployeeFilter<T extends { name: string; department?: string | null }>(employees: T[]): T[] {
   return employees.filter(e => {
@@ -1377,7 +1381,7 @@ export async function fetchErpNextUsers(): Promise<ErpUser[]> {
   if (!res.ok) throw new Error(`ERPNext users: ${res.status}`);
   const data = await res.json();
   return (data.data ?? [])
-    .filter((u: any) => !blockedUserIds.has(u.name))
+    .filter((u: any) => USER_EMAIL_ALLOWLIST.has(u.name) || !blockedUserIds.has(u.name))
     .map((u: any) => ({
       email: u.name,
       full_name: u.full_name || u.name,
