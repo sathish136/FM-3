@@ -37,6 +37,11 @@ function getWorker(): Worker {
   return worker;
 }
 
+/** Call this as early as possible to start the OCCT WASM init in the background. */
+export function prewarmWorker(): void {
+  getWorker();
+}
+
 export async function loadStepFile(
   fileBuffer: ArrayBuffer,
   onProgress: (msg: string) => void

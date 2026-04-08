@@ -5,7 +5,7 @@ import {
   Eye, EyeOff, ChevronDown, FilterX,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
-import { loadStepFile, type MeshData, type TreeNode } from "@/lib/stepLoader";
+import { loadStepFile, prewarmWorker, type MeshData, type TreeNode } from "@/lib/stepLoader";
 import { getCached, setCached } from "@/lib/stepCache";
 import type { ViewMode, BgColor, ViewerRef } from "@/components/StepViewer3D";
 import MeshesPanel from "@/components/MeshesPanel";
@@ -807,7 +807,11 @@ export default function Design3D() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    // Pre-warm the OCCT worker in the background so it's ready when user opens a model
+    prewarmWorker();
+  }, []);
 
   const projects = Array.from(
     new Set(records.map(r => r.project_name || r.project).filter(Boolean))

@@ -936,10 +936,23 @@ router.get("/design-2d", async (req, res) => {
 
 // ─── Design 3D ───────────────────────────────────────────────────────────────
 
+// In-memory cache for design-3d list (avoids hitting ERPNext on every page open)
+const design3dCache = new Map<string, { data: any[]; expiresAt: number }>();
+const DESIGN3D_TTL_MS = 2 * 60 * 1000; // 2 minutes
+
 router.get("/design-3d", async (req, res) => {
   try {
     const { department } = req.query as { department?: string };
+    const cacheKey = department || "__all__";
+    const now = Date.now();
+    const cached = design3dCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      res.setHeader("X-Cache", "HIT");
+      return res.json(cached.data);
+    }
     const records = await fetchErpNextDesign3D(department);
+    design3dCache.set(cacheKey, { data: records, expiresAt: now + DESIGN3D_TTL_MS });
+    res.setHeader("X-Cache", "MISS");
     res.json(records);
   } catch (e) {
     console.error("Design 3D fetch error:", e);
