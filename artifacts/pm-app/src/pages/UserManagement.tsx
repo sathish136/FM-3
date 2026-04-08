@@ -413,7 +413,7 @@ export function UserManagementContent() {
     setWizardStep(1);
     const p = perms[u.email];
     setDraftAccess(p ? p.hasAccess : true);
-    setDraftRoles(p ? rolesFromPermission(p) : buildDefaultRoles("write"));
+    setDraftRoles(p ? rolesFromPermission(p) : buildDefaultRoles("none"));
     setDraftRoleType(p ? (p.roleType ?? null) : null);
     setDraftProjects(p ? JSON.parse(p.allowedProjects || "[]") : []);
     setDraftDrawingDepts(p ? (() => { try { return JSON.parse(p.allowedDrawingDepts || "[]"); } catch { return []; } })() : []);
