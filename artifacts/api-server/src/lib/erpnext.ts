@@ -1189,7 +1189,7 @@ export async function fetchErpNextCheckins(filters?: {
   if (filters?.employee)  fArr.push(["Employee Checkin", "employee", "=", filters.employee]);
   if (filters?.from_date) fArr.push(["Employee Checkin", "time", ">=", filters.from_date]);
   if (filters?.to_date)   fArr.push(["Employee Checkin", "time", "<=", filters.to_date + " 23:59:59"]);
-  const params = new URLSearchParams({ fields, limit_page_length: "500", order_by: "time desc" });
+  const params = new URLSearchParams({ fields, limit_page_length: "500", order_by: "time asc" });
   if (fArr.length) params.set("filters", JSON.stringify(fArr));
   const url = `${ERPNEXT_URL}/api/resource/Employee Checkin?${params}`;
   const res = await fetch(url, { headers: { Authorization: authHeader() } });

@@ -1932,31 +1932,22 @@ router.get("/activity/checkins-today", async (req, res) => {
       const timePart = t.includes(" ") ? t.split(" ")[1] : t;
       return timePart?.slice(0, 5) ?? null;
     }
-    const map: Record<string, { checkIn?: string; checkOut?: string; _rawIn?: string; _rawOut?: string }> = {};
+    // Records arrive oldest-first (time asc) — first IN = morning check-in, last OUT = last checkout
+    const map: Record<string, { checkIn?: string; checkOut?: string }> = {};
     for (const c of checkins) {
       const emp = c.employee || "";
       if (!map[emp]) map[emp] = {};
       const logType = (c.log_type || "").toUpperCase();
-      // "IN" or no log_type (treat as IN if earliest) → checkIn
-      if (logType === "IN" || !logType) {
-        if (!map[emp]._rawIn || c.time < map[emp]._rawIn!) {
-          map[emp]._rawIn = c.time;
-          map[emp].checkIn = erpTimeToHHmm(c.time) ?? undefined;
-        }
+      // Keep only the FIRST IN per employee (morning check-in)
+      if ((logType === "IN" || !logType) && !map[emp].checkIn) {
+        map[emp].checkIn = erpTimeToHHmm(c.time) ?? undefined;
       }
+      // Keep the LAST OUT per employee (always overwrite so latest wins)
       if (logType === "OUT") {
-        if (!map[emp]._rawOut || c.time > map[emp]._rawOut!) {
-          map[emp]._rawOut = c.time;
-          map[emp].checkOut = erpTimeToHHmm(c.time) ?? undefined;
-        }
+        map[emp].checkOut = erpTimeToHHmm(c.time) ?? undefined;
       }
     }
-    // Strip internal raw fields before sending
-    const cleanMap: Record<string, { checkIn?: string; checkOut?: string }> = {};
-    for (const [k, v] of Object.entries(map)) {
-      cleanMap[k] = { checkIn: v.checkIn, checkOut: v.checkOut };
-    }
-    res.json(cleanMap);
+    res.json(map);
   } catch (e) {
     console.log("[checkins-today] error:", e);
     res.json({});
