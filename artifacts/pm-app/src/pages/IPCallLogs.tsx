@@ -8,6 +8,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useLocation } from "wouter";
+import { Layout } from "@/components/Layout";
 
 const API_BASE    = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 const ADMIN_EMAILS = ["edp@wttindia.com", "venkat@wttindia.com"];
@@ -436,17 +437,19 @@ export default function IPCallLogs() {
   // ── Guards ────────────────────────────────────────────────────────────────
   if (!authLoading && hasAccess === false) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 text-center p-8">
-        <div className="w-14 h-14 rounded-2xl bg-red-50 flex items-center justify-center">
-          <Phone className="w-6 h-6 text-red-400" />
+      <Layout>
+        <div className="flex flex-col items-center justify-center h-full gap-3 text-center p-8">
+          <div className="w-14 h-14 rounded-2xl bg-red-50 flex items-center justify-center">
+            <Phone className="w-6 h-6 text-red-400" />
+          </div>
+          <p className="text-sm font-bold text-gray-700">Access Denied</p>
+          <p className="text-xs text-gray-400">You don't have permission to view IP Call Logs.</p>
         </div>
-        <p className="text-sm font-bold text-gray-700">Access Denied</p>
-        <p className="text-xs text-gray-400">You don't have permission to view IP Call Logs.</p>
-      </div>
+      </Layout>
     );
   }
   if (authLoading || hasAccess === null) {
-    return <div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 animate-spin text-indigo-400" /></div>;
+    return <Layout><div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 animate-spin text-indigo-400" /></div></Layout>;
   }
 
   const PRESETS: { key: DatePreset; label: string }[] = [
@@ -458,6 +461,7 @@ export default function IPCallLogs() {
   ];
 
   return (
+    <Layout>
     <div className="flex flex-col h-full overflow-hidden bg-gray-50/30">
 
       {/* ── Top header + stats ── */}
@@ -641,5 +645,6 @@ export default function IPCallLogs() {
         )}
       </div>
     </div>
+    </Layout>
   );
 }
