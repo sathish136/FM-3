@@ -366,6 +366,7 @@ export function UserManagementContent() {
   // Add user manually state
   const [addUserOpen, setAddUserOpen]     = useState(false);
   const [addUserEmail, setAddUserEmail]   = useState("");
+  const [addUserName, setAddUserName]     = useState("");
   const [addUserLoading, setAddUserLoading] = useState(false);
 
   // Role template editor state
@@ -432,25 +433,28 @@ export function UserManagementContent() {
 
   async function handleAddUser() {
     const email = addUserEmail.trim().toLowerCase();
+    const fullName = addUserName.trim();
     if (!email) return;
     if (users.find(u => u.email.toLowerCase() === email)) {
       toast({ title: "User already in list", description: email });
       setAddUserOpen(false);
       setAddUserEmail("");
+      setAddUserName("");
       return;
     }
     setAddUserLoading(true);
     try {
-      const res = await fetch(`${BASE}/api/erpnext-users/lookup/${encodeURIComponent(email)}`);
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "User not found" }));
-        toast({ title: "Could not find user", description: err.error ?? "User not found in ERPNext", variant: "destructive" });
-        return;
-      }
-      const u: ErpUser = await res.json();
+      const u: ErpUser = { email, full_name: fullName || email, user_image: null, enabled: 1 };
+      // Pre-create the permissions record locally
+      await fetch(`${BASE}/api/user-permissions/${encodeURIComponent(email)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fullName: u.full_name, hasAccess: true, moduleRoles: {}, allowedProjects: [], allowedDrawingDepts: [] }),
+      });
       setUsers(prev => [...prev, u]);
       setAddUserOpen(false);
       setAddUserEmail("");
+      setAddUserName("");
       toast({ title: "User added", description: u.full_name || u.email });
       selectUser(u);
     } catch (e) {
@@ -905,23 +909,33 @@ export function UserManagementContent() {
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
                 <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-sm mx-4 p-5 space-y-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-foreground">Add User by Email</h3>
+                    <h3 className="text-sm font-semibold text-foreground">Add User Manually</h3>
                     <button onClick={() => setAddUserOpen(false)} className="text-muted-foreground hover:text-foreground">
                       <X className="w-4 h-4" />
                     </button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Enter the ERPNext email of the user you want to manage. This allows adding users who are filtered from the default list.
+                    Add a user directly to the permission system without syncing from ERPNext.
                   </p>
-                  <input
-                    autoFocus
-                    type="email"
-                    value={addUserEmail}
-                    onChange={e => setAddUserEmail(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter") handleAddUser(); }}
-                    placeholder="e.g. andreapelissero@wttindia.com"
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-muted text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                  />
+                  <div className="space-y-2">
+                    <input
+                      autoFocus
+                      type="email"
+                      value={addUserEmail}
+                      onChange={e => setAddUserEmail(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") handleAddUser(); }}
+                      placeholder="Email address *"
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-muted text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                    />
+                    <input
+                      type="text"
+                      value={addUserName}
+                      onChange={e => setAddUserName(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") handleAddUser(); }}
+                      placeholder="Full name (optional)"
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-muted text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                    />
+                  </div>
                   <div className="flex gap-2 justify-end">
                     <button
                       onClick={() => setAddUserOpen(false)}
