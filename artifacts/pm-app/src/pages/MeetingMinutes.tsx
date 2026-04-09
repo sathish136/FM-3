@@ -774,7 +774,7 @@ function formatDate(d: string) {
 }
 
 // ─── Meeting Report Component ────────────────────────────────────────────────
-function MeetingReport({ meeting, onClose, preparedBy }: { meeting: Meeting; onClose: () => void; preparedBy: string }) {
+function MeetingReport({ meeting, onClose, preparedBy, preparedByDesignation }: { meeting: Meeting; onClose: () => void; preparedBy: string; preparedByDesignation?: string | null }) {
   const sections = parseSections(meeting.aiSummary);
   const actionRows = parseActionRows(meeting.actionItems);
   const attendeesList = (meeting.attendees || "").split(",").map(s => s.trim()).filter(Boolean);
@@ -794,7 +794,7 @@ function MeetingReport({ meeting, onClose, preparedBy }: { meeting: Meeting; onC
       `📅 Date: ${formatDate(meeting.date)}`,
       meeting.venue ? `📍 Venue: ${meeting.venue}` : "",
       attendeesList.length > 0 ? `👥 Attendees: ${attendeesList.join(", ")}` : "",
-      `📝 Prepared by: ${preparedBy}`,
+      `📝 Prepared by: ${preparedBy}${preparedByDesignation ? ` (${preparedByDesignation})` : ""}`,
       "",
     ];
     orderedKeys.forEach(key => {
@@ -877,7 +877,12 @@ function MeetingReport({ meeting, onClose, preparedBy }: { meeting: Meeting; onC
               </div>
               <div className="flex gap-2">
                 <span className="font-semibold text-gray-600 w-24 flex-shrink-0">Prepared by</span>
-                <span className="text-gray-800 font-medium">{preparedBy}</span>
+                <span className="flex flex-col">
+                  <span className="text-gray-800 font-medium">{preparedBy}</span>
+                  {preparedByDesignation && (
+                    <span className="text-xs text-blue-600 font-semibold">{preparedByDesignation}</span>
+                  )}
+                </span>
               </div>
             </div>
 
@@ -1015,6 +1020,7 @@ function ProjectField({ form, setForm, projects }: {
 export default function MeetingMinutes() {
   const { user } = useAuth();
   const preparedBy = user?.full_name || user?.email?.split("@")[0] || "FlowMatriX";
+  const preparedByDesignation = user?.designation || null;
   const [meetings, setMeetings] = useState<Meeting[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Meeting | null>(null);
@@ -1289,7 +1295,7 @@ export default function MeetingMinutes() {
 
           {/* REPORT MODAL */}
           {showReport && selected && (
-            <MeetingReport meeting={selected} onClose={() => setShowReport(false)} preparedBy={preparedBy} />
+            <MeetingReport meeting={selected} onClose={() => setShowReport(false)} preparedBy={preparedBy} preparedByDesignation={preparedByDesignation} />
           )}
 
           {/* EMPTY STATE */}

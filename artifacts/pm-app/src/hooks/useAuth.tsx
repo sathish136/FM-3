@@ -5,6 +5,7 @@ export interface AuthUser {
   full_name: string;
   photo: string | null;
   username: string | null;
+  designation: string | null;
 }
 
 interface AuthContextType {
@@ -83,11 +84,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               const proxyPhoto = rawPhoto
                 ? `${BASE}/api/auth/photo?url=${encodeURIComponent(rawPhoto)}`
                 : null;
+              let designation: string | null = parsed.designation ?? null;
+              try {
+                const profRes = await fetch(`${BASE}/api/auth/profile?email=${encodeURIComponent(data.email || parsed.email)}`);
+                if (profRes.ok) {
+                  const prof = await profRes.json();
+                  designation = prof.designation || null;
+                }
+              } catch { }
               const refreshed: AuthUser = {
                 email: data.email || parsed.email,
                 full_name: data.full_name || parsed.full_name,
                 photo: proxyPhoto,
                 username: (data.username as string | null) ?? parsed.username ?? null,
+                designation,
               };
               localStorage.setItem(STORAGE_KEY, JSON.stringify(refreshed));
               setUser(refreshed);
@@ -132,11 +142,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const proxyPhoto = rawPhoto
         ? `${BASE}/api/auth/photo?url=${encodeURIComponent(rawPhoto)}`
         : null;
+      let designation: string | null = null;
+      try {
+        const profRes = await fetch(`${BASE}/api/auth/profile?email=${encodeURIComponent(data.email as string)}`);
+        if (profRes.ok) {
+          const prof = await profRes.json();
+          designation = prof.designation || null;
+        }
+      } catch { }
       const authUser: AuthUser = {
         email: (data.email as string),
         full_name: (data.full_name as string) || (data.email as string),
         photo: proxyPhoto,
         username: (data.username as string | null) ?? null,
+        designation,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(authUser));
       setUser(authUser);
@@ -177,11 +196,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ? `${BASE}/api/auth/photo?url=${encodeURIComponent(rawPhoto)}`
       : null;
 
+    let otpDesignation: string | null = null;
+    try {
+      const profRes = await fetch(`${BASE}/api/auth/profile?email=${encodeURIComponent((data.email as string) || email)}`);
+      if (profRes.ok) {
+        const prof = await profRes.json();
+        otpDesignation = prof.designation || null;
+      }
+    } catch { }
     const authUser: AuthUser = {
       email: (data.email as string) || email,
       full_name: (data.full_name as string) || email,
       photo: proxyPhoto,
       username: (data.username as string | null) ?? null,
+      designation: otpDesignation,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(authUser));
     setUser(authUser);
