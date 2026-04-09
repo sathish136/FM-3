@@ -3,7 +3,7 @@ import {
   Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed,
   Search, Loader2, XCircle, Mic, Sparkles, RefreshCw,
   Calendar, Clock, Hash, ChevronDown, ChevronUp,
-  Play, Download, User, X, Filter, TrendingUp,
+  Play, Download, User, X, Filter, TrendingUp, ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -497,10 +497,20 @@ function DepartmentPanel({ initialDept, hideTabs }: { initialDept?: string; hide
           </div>
           <button
             onClick={() => loadCalls(activeDept, true)} disabled={loading}
+            title="Refresh"
             className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors disabled:opacity-40"
           >
             <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
           </button>
+          <a
+            href={active.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open in ERP"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-indigo-600 transition-colors"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
         </div>
       </div>
 
@@ -537,6 +547,16 @@ function DepartmentPanel({ initialDept, hideTabs }: { initialDept?: string; hide
                 <Phone className="w-10 h-10 text-gray-100" />
                 <p className="text-sm font-bold text-gray-400">No records found</p>
                 <p className="text-xs text-gray-300">{search ? "Try different search terms" : "No data available"}</p>
+                {!search && (
+                  <a
+                    href={active.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 inline-flex items-center gap-1 text-[10px] text-indigo-500 hover:text-indigo-700 underline"
+                  >
+                    <ExternalLink className="w-3 h-3" /> View in ERP
+                  </a>
+                )}
               </div>
             )}
             {!loading && filtered.map((call, i) => {
@@ -588,6 +608,14 @@ function DepartmentPanel({ initialDept, hideTabs }: { initialDept?: string; hide
               <span className="text-[10px] font-bold text-gray-400">{active.label}</span>
               <span className="text-[10px] text-gray-400">·</span>
               <span className="text-[10px] text-gray-500">{filtered.length} record{filtered.length !== 1 ? "s" : ""}</span>
+              <a
+                href={active.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ml-auto inline-flex items-center gap-1 text-[10px] text-indigo-400 hover:text-indigo-600 transition-colors"
+              >
+                <ExternalLink className="w-3 h-3" /> Open in ERP
+              </a>
             </div>
           )}
         </div>
