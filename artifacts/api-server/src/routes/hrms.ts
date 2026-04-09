@@ -528,12 +528,12 @@ router.get("/hrms/leave-types", async (req, res) => {
 
 router.post("/hrms/leave-requests", async (req, res) => {
   try {
-    const { employee, leave_type, from_date, to_date, half_day, half_day_date, description } = req.body;
-    if (!employee || !leave_type || !from_date || !to_date) {
-      res.status(400).json({ error: "employee, leave_type, from_date, to_date required" });
+    const { employee, month, year, leave_table } = req.body;
+    if (!employee || !month || !year || !leave_table || !Array.isArray(leave_table) || leave_table.length === 0) {
+      res.status(400).json({ error: "employee, month, year, leave_table[] required" });
       return;
     }
-    const data = await createErpNextLeaveApplication({ employee, leave_type, from_date, to_date, half_day, half_day_date, description });
+    const data = await createErpNextLeaveApplication({ employee, month, year, leave_table });
     res.json(data);
   } catch (e) {
     res.status(500).json({ error: String(e) });
