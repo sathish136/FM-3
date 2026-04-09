@@ -280,6 +280,14 @@ function ModelViewer({
   const [status, setStatus] = useState<LoadStatus>("idle");
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
+  const [dlProgress, setDlProgress] = useState<{
+    pct: number;
+    receivedMB: number;
+    totalMB: number | null;
+    speedMBs: number;
+    remainingSecs: number | null;
+    stage: string;
+  } | null>(null);
 
   const [viewMode, setViewMode] = useState<ViewMode>("shaded");
   const [bgColor, setBgColor] = useState<BgColor>("dark");
@@ -297,9 +305,47 @@ function ModelViewer({
 
   const [fromDiskCache, setFromDiskCache] = useState<boolean | null>(null);
 
+  // Streams a fetch response and reports download progress in real-time
+  const streamWithProgress = useCallback(async (
+    res: Response,
+    stage: string,
+  ): Promise<ArrayBuffer> => {
+    const contentLength = res.headers.get("Content-Length");
+    const total = contentLength ? parseInt(contentLength, 10) : null;
+    const reader = res.body!.getReader();
+    const chunks: Uint8Array[] = [];
+    let received = 0;
+    const startTime = Date.now();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+
+      const elapsed = Math.max((Date.now() - startTime) / 1000, 0.1);
+      const speedMBs = received / elapsed / (1024 * 1024);
+      const receivedMB = received / (1024 * 1024);
+      const totalMB = total ? total / (1024 * 1024) : null;
+      const pct = total ? Math.round((received / total) * 100) : -1;
+      const remainingSecs = total && speedMBs > 0
+        ? (total - received) / (speedMBs * 1024 * 1024)
+        : null;
+
+      setDlProgress({ pct, receivedMB, totalMB, speedMBs, remainingSecs, stage });
+    }
+
+    // Reassemble into a single ArrayBuffer
+    const full = new Uint8Array(received);
+    let offset = 0;
+    for (const chunk of chunks) { full.set(chunk, offset); offset += chunk.length; }
+    return full.buffer;
+  }, []);
+
   const loadFromUrl = useCallback(async (attachUrl: string, modified: string) => {
     setStatus("loading");
     setProgress("Checking local cache…");
+    setDlProgress(null);
     setMeshes([]);
     setTreeRoot(null);
     setHiddenMeshes(new Set());
@@ -323,43 +369,44 @@ function ModelViewer({
       }
 
       // 2. Try server-side pre-parsed mesh (works for any file size — server does the heavy OCCT work)
-      setProgress("Requesting server conversion… (first open may take a while for large files)");
+      setProgress("Requesting server conversion…");
       const meshUrl = `${BASE}/api/step-mesh?url=${encodeURIComponent(attachUrl)}&modified=${encodeURIComponent(modified)}`;
       const meshRes = await fetch(meshUrl);
 
       if (meshRes.ok) {
         setProgress("Downloading pre-parsed geometry…");
-        const json = await meshRes.json() as { meshes: MeshData[]; root: TreeNode };
+        const jsonBuf = await streamWithProgress(meshRes, "Downloading geometry…");
+        const json = JSON.parse(new TextDecoder().decode(jsonBuf)) as { meshes: MeshData[]; root: TreeNode };
         if (json.meshes && json.root) {
           setFromDiskCache(meshRes.headers.get("X-Mesh-Cache") === "HIT");
+          setDlProgress(null);
           setMeshes(json.meshes);
           setTreeRoot(json.root);
           setStatus("loaded");
-          // Persist to IndexedDB for instant next open
           setCached(idbKey, json.meshes, json.root);
           return;
         }
       }
 
       // 3. Fall back to browser-side OCCT parsing (for smaller files / server errors)
-      setProgress("Fetching file from server…");
+      setProgress("Fetching STEP file…");
       const res = await fetch(stepFileUrl(attachUrl, modified));
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
       const diskHit = res.headers.get("X-Step-Cache") === "HIT";
       setFromDiskCache(diskHit);
-      setProgress("Reading file…");
-      const buffer = await res.arrayBuffer();
+      const buffer = await streamWithProgress(res, "Downloading STEP file…");
+      setDlProgress(null);
+      setProgress("Parsing geometry…");
       const result = await loadStepFile(buffer, msg => setProgress(msg));
       setMeshes(result.meshes);
       setTreeRoot(result.root);
       setStatus("loaded");
-      // Store parsed geometry in IndexedDB so next open is instant
       setCached(idbKey, result.meshes, result.root);
     } catch (e: any) {
       setError(e.message || "Failed to load model");
       setStatus("error");
     }
-  }, []);
+  }, [streamWithProgress]);
 
   useEffect(() => {
     if (record.attach) {
@@ -555,13 +602,53 @@ function ModelViewer({
             </div>
           )}
           {status === "loading" && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400 gap-3 bg-gray-900">
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400 gap-4 bg-gray-900 px-6">
               <Cpu className="w-10 h-10 animate-pulse text-blue-500" />
-              <p className="text-sm font-medium text-white">Loading 3D Model</p>
-              <p className="text-xs text-gray-500 max-w-xs text-center">{progress}</p>
-              <div className="w-48 h-1 bg-gray-700 rounded-full overflow-hidden mt-1">
-                <div className="h-full bg-blue-500 animate-pulse rounded-full w-2/3" />
-              </div>
+              <p className="text-sm font-semibold text-white">Loading 3D Model</p>
+
+              {dlProgress ? (
+                <div className="flex flex-col items-center gap-2 w-64">
+                  <p className="text-xs text-blue-300 font-medium">{dlProgress.stage}</p>
+
+                  {/* Progress bar */}
+                  <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
+                    {dlProgress.pct >= 0 ? (
+                      <div
+                        className="h-full bg-blue-500 rounded-full transition-all duration-150"
+                        style={{ width: `${dlProgress.pct}%` }}
+                      />
+                    ) : (
+                      <div className="h-full bg-blue-500 rounded-full animate-pulse w-1/2" />
+                    )}
+                  </div>
+
+                  {/* Stats row */}
+                  <div className="flex justify-between w-full text-[11px] text-gray-400">
+                    <span>
+                      {dlProgress.receivedMB.toFixed(1)} MB
+                      {dlProgress.totalMB ? ` / ${dlProgress.totalMB.toFixed(1)} MB` : ""}
+                    </span>
+                    <span>{dlProgress.pct >= 0 ? `${dlProgress.pct}%` : ""}</span>
+                    <span>{dlProgress.speedMBs.toFixed(1)} MB/s</span>
+                  </div>
+
+                  {/* ETA */}
+                  {dlProgress.remainingSecs !== null && dlProgress.remainingSecs > 1 && (
+                    <p className="text-[11px] text-gray-500">
+                      ~{dlProgress.remainingSecs < 60
+                        ? `${Math.ceil(dlProgress.remainingSecs)}s remaining`
+                        : `${Math.ceil(dlProgress.remainingSecs / 60)}m remaining`}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2 w-64">
+                  <p className="text-xs text-gray-500 text-center">{progress}</p>
+                  <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-500 animate-pulse rounded-full w-1/2" />
+                  </div>
+                </div>
+              )}
             </div>
           )}
           {status === "error" && (

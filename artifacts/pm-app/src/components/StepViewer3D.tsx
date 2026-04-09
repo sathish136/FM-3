@@ -406,8 +406,9 @@ const StepViewer3D = forwardRef<ViewerRef, StepViewer3DProps>(function StepViewe
       if (md.indices.length) geo.setIndex(md.indices);
 
       // Resolve mesh-level fallback colour
+      // Use the STEP file color if it is explicitly set (including black), otherwise use the default grey
       let fallbackCol: THREE.Color;
-      if (md.color && (md.color[0] !== 0 || md.color[1] !== 0 || md.color[2] !== 0)) {
+      if (md.color !== null && md.color !== undefined) {
         fallbackCol = new THREE.Color(md.color[0], md.color[1], md.color[2]);
       } else {
         fallbackCol = DEFAULT_PART_COLOR.clone();
@@ -444,7 +445,7 @@ const StepViewer3D = forwardRef<ViewerRef, StepViewer3DProps>(function StepViewe
         const defaultMat = makeMat(fallbackCol);
         materials = [defaultMat];
         for (const face of md.brepFaces) {
-          const fc = face.color && (face.color[0] !== 0 || face.color[1] !== 0 || face.color[2] !== 0)
+          const fc = face.color !== null && face.color !== undefined
             ? new THREE.Color(face.color[0], face.color[1], face.color[2])
             : fallbackCol.clone();
           materials.push(makeMat(fc));
