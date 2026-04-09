@@ -6,7 +6,8 @@ import {
   Wifi, WifiOff, Clock, Loader2, Shield,
   ArrowLeft, ChevronRight, Coffee, BarChart2,
   History, ClipboardList, Briefcase, Calendar,
-  Building2, Download,
+  Building2, Download, PieChart, TrendingUp, UserCheck,
+  AlertCircle, CheckCircle2, Timer, Layers,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -54,6 +55,83 @@ interface FmTask {
   createdBy: string;
   dueDate?: string | null;
   tags?: string | null;
+}
+
+// ── Department Stats ───────────────────────────────────────────────────────────
+interface DeptStats {
+  name: string;
+  employees: SystemActivity[];
+  active: number;
+  idle: number;
+  offline: number;
+  avgProductivity: number;
+  totalTasks: number;
+  todoTasks: FmTask[];
+  inProgressTasks: FmTask[];
+  reviewTasks: FmTask[];
+  doneTasks: FmTask[];
+  topApps: { app: string; count: number; cls: "productive" | "unproductive" | "neutral" }[];
+}
+
+function buildDeptStats(activity: SystemActivity[], tasks: FmTask[]): DeptStats[] {
+  const map = new Map<string, SystemActivity[]>();
+  for (const emp of activity) {
+    const dept = emp.department?.trim() || "Unassigned";
+    if (!map.has(dept)) map.set(dept, []);
+    map.get(dept)!.push(emp);
+  }
+
+  return Array.from(map.entries())
+    .sort((a, b) => b[1].length - a[1].length)
+    .map(([name, emps]) => {
+      const active = emps.filter(e => activityStatus(e) === "active").length;
+      const idle = emps.filter(e => activityStatus(e) === "idle").length;
+      const offline = emps.filter(e => activityStatus(e) === "offline").length;
+
+      const prodScores = emps.map(e => {
+        const s = activityStatus(e);
+        return s === "active" ? 70 : s === "idle" ? 25 : 0;
+      });
+      const avgProductivity = emps.length > 0
+        ? Math.round(prodScores.reduce((a, b) => a + b, 0) / emps.length)
+        : 0;
+
+      const empEmails = new Set(emps.map(e => e.email?.toLowerCase()));
+      const empNames = emps.map(e => (e.fullName || "").toLowerCase().split(" ")[0]).filter(Boolean);
+
+      const deptTasks = tasks.filter(t => {
+        if (t.assigneeEmail && empEmails.has(t.assigneeEmail.toLowerCase())) return true;
+        if (t.assigneeName) {
+          const firstName = t.assigneeName.toLowerCase().split(" ")[0];
+          return empNames.some(n => n === firstName);
+        }
+        return false;
+      });
+
+      const appMap = new Map<string, number>();
+      for (const emp of emps) {
+        if (emp.activeApp && activityStatus(emp) !== "offline") {
+          appMap.set(emp.activeApp, (appMap.get(emp.activeApp) || 0) + 1);
+        }
+      }
+      const topApps = Array.from(appMap.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([app, count]) => ({ app, count, cls: classifyApp(app) }));
+
+      return {
+        name,
+        employees: emps,
+        active, idle, offline,
+        avgProductivity,
+        totalTasks: deptTasks.length,
+        todoTasks: deptTasks.filter(t => t.status === "todo"),
+        inProgressTasks: deptTasks.filter(t => t.status === "in_progress"),
+        reviewTasks: deptTasks.filter(t => t.status === "review"),
+        doneTasks: deptTasks.filter(t => t.status === "done"),
+        topApps,
+      };
+    });
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -805,6 +883,455 @@ function EmployeeDetailPanel({ row, tasks, onClose, erpCheckin, date }: {
   );
 }
 
+// ── Department Card ────────────────────────────────────────────────────────────
+function DepartmentCard({ dept, onClick }: { dept: DeptStats; onClick: () => void }) {
+  const completionPct = dept.totalTasks > 0
+    ? Math.round((dept.doneTasks.length / dept.totalTasks) * 100)
+    : 0;
+  const scoreColor = dept.avgProductivity >= 60 ? "text-green-600" : dept.avgProductivity >= 35 ? "text-amber-600" : "text-red-500";
+  const scoreBg = dept.avgProductivity >= 60 ? "from-green-400 to-emerald-500" : dept.avgProductivity >= 35 ? "from-amber-400 to-orange-500" : "from-red-400 to-rose-500";
+  const hasActive = dept.active > 0;
+  const overdueTasks = [...dept.inProgressTasks, ...dept.reviewTasks, ...dept.todoTasks].filter(t => t.dueDate && new Date(t.dueDate) < new Date());
+
+  return (
+    <div
+      onClick={onClick}
+      className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-lg transition-all cursor-pointer hover:scale-[1.01] hover:border-violet-200 group"
+    >
+      {/* Header */}
+      <div className="px-5 pt-5 pb-3 border-b border-gray-50">
+        <div className="flex items-start gap-3">
+          <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${scoreBg} flex items-center justify-center flex-shrink-0 shadow-sm`}>
+            <Building2 className="w-5 h-5 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-bold text-gray-900 text-sm truncate group-hover:text-violet-700 transition-colors">{dept.name}</h3>
+            <p className="text-[11px] text-gray-400 mt-0.5">{dept.employees.length} member{dept.employees.length !== 1 ? "s" : ""}</p>
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            <span className={`text-xl font-black ${scoreColor}`}>{dept.avgProductivity}</span>
+            <span className="text-[9px] text-gray-400 font-semibold uppercase tracking-wide">Score</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Status row */}
+      <div className="grid grid-cols-3 divide-x divide-gray-50 border-b border-gray-50">
+        {[
+          { label: "Active", count: dept.active, color: "text-green-600 bg-green-50", dot: "bg-green-500" },
+          { label: "Idle", count: dept.idle, color: "text-amber-600 bg-amber-50", dot: "bg-amber-400" },
+          { label: "Offline", count: dept.offline, color: "text-gray-500 bg-gray-50", dot: "bg-gray-300" },
+        ].map(s => (
+          <div key={s.label} className={`flex flex-col items-center py-3 ${s.color}`}>
+            <span className="text-lg font-black leading-none">{s.count}</span>
+            <span className="text-[9px] font-semibold mt-0.5 opacity-70">{s.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Current activity summary */}
+      {hasActive && dept.topApps.length > 0 && (
+        <div className="px-5 py-3 border-b border-gray-50">
+          <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2">Currently Using</div>
+          <div className="flex flex-wrap gap-1">
+            {dept.topApps.slice(0, 3).map(a => (
+              <span key={a.app} className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${
+                a.cls === "productive" ? "bg-green-50 text-green-700 border-green-200" :
+                a.cls === "unproductive" ? "bg-red-50 text-red-600 border-red-200" :
+                "bg-gray-100 text-gray-500 border-gray-200"
+              }`}>
+                {a.app} {a.count > 1 ? `×${a.count}` : ""}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tasks */}
+      <div className="px-5 py-3">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Tasks</div>
+          {overdueTasks.length > 0 && (
+            <span className="flex items-center gap-1 text-[10px] font-semibold text-red-500">
+              <AlertCircle className="w-3 h-3" /> {overdueTasks.length} overdue
+            </span>
+          )}
+        </div>
+        {dept.totalTasks === 0 ? (
+          <div className="text-[11px] text-gray-400 italic">No tasks assigned</div>
+        ) : (
+          <>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              {[
+                { count: dept.inProgressTasks.length, color: "bg-blue-500", label: "In Progress" },
+                { count: dept.reviewTasks.length, color: "bg-amber-400", label: "Review" },
+                { count: dept.todoTasks.length, color: "bg-gray-300", label: "To Do" },
+                { count: dept.doneTasks.length, color: "bg-green-500", label: "Done" },
+              ].filter(s => s.count > 0).map(s => (
+                <span key={s.label} title={s.label} className={`flex items-center gap-1 text-[10px] font-semibold text-white px-2 py-0.5 rounded-full ${s.color}`}>
+                  {s.count}
+                </span>
+              ))}
+              <span className="text-[10px] text-gray-400 ml-auto">{dept.totalTasks} total</span>
+            </div>
+            <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden flex">
+              <div className="h-full bg-green-500 transition-all" style={{ width: `${(dept.doneTasks.length / dept.totalTasks) * 100}%` }} />
+              <div className="h-full bg-blue-400 transition-all" style={{ width: `${(dept.inProgressTasks.length / dept.totalTasks) * 100}%` }} />
+              <div className="h-full bg-amber-400 transition-all" style={{ width: `${(dept.reviewTasks.length / dept.totalTasks) * 100}%` }} />
+            </div>
+            <div className="text-[10px] text-gray-400 mt-1">{completionPct}% complete</div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Department Detail Panel ────────────────────────────────────────────────────
+function DepartmentDetailPanel({
+  dept, tasks, onClose, onSelectEmployee, erpCheckinMap, date,
+}: {
+  dept: DeptStats;
+  tasks: FmTask[];
+  onClose: () => void;
+  onSelectEmployee: (emp: SystemActivity) => void;
+  erpCheckinMap: Record<string, { checkIn?: string; checkOut?: string }>;
+  date: string;
+}) {
+  const activeEmps = dept.employees.filter(e => activityStatus(e) === "active");
+  const idleEmps = dept.employees.filter(e => activityStatus(e) === "idle");
+  const offlineEmps = dept.employees.filter(e => activityStatus(e) === "offline");
+
+  const scoreColor = dept.avgProductivity >= 60 ? "#10b981" : dept.avgProductivity >= 35 ? "#f59e0b" : "#ef4444";
+  const scoreBg = dept.avgProductivity >= 60 ? "from-green-400 to-emerald-500" : dept.avgProductivity >= 35 ? "from-amber-400 to-orange-500" : "from-red-400 to-rose-500";
+
+  const overdueTasks = [...dept.inProgressTasks, ...dept.reviewTasks, ...dept.todoTasks].filter(
+    t => t.dueDate && new Date(t.dueDate) < new Date()
+  );
+
+  const allDeptTasks = [...dept.todoTasks, ...dept.inProgressTasks, ...dept.reviewTasks, ...dept.doneTasks];
+  const completionPct = allDeptTasks.length > 0
+    ? Math.round((dept.doneTasks.length / allDeptTasks.length) * 100)
+    : 0;
+
+  const [empSearch, setEmpSearch] = useState("");
+  const filteredEmps = dept.employees.filter(e =>
+    !empSearch || (e.fullName || e.email || "").toLowerCase().includes(empSearch.toLowerCase())
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 bg-gray-100 flex flex-col overflow-hidden">
+      {/* Top nav */}
+      <div className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-4 shadow-sm">
+        <button onClick={onClose} className="flex items-center gap-2 text-gray-500 hover:text-gray-900 text-sm font-medium transition-colors">
+          <ArrowLeft className="w-4 h-4" /> Dept. Report
+        </button>
+        <ChevronRight className="w-3.5 h-3.5 text-gray-300" />
+        <div className="flex items-center gap-2">
+          <div className={`w-6 h-6 rounded-lg bg-gradient-to-br ${scoreBg} flex items-center justify-center`}>
+            <Building2 className="w-3.5 h-3.5 text-white" />
+          </div>
+          <span className="text-sm font-bold text-gray-900">{dept.name}</span>
+        </div>
+        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-violet-100 text-violet-700">{dept.employees.length} members</span>
+        <div className="ml-auto flex items-center gap-2 text-xs text-gray-400">
+          <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-lg font-semibold border border-blue-100">{date}</span>
+        </div>
+      </div>
+
+      <div className="flex-1 flex overflow-hidden">
+
+        {/* LEFT: Dept summary */}
+        <div className="w-64 flex-shrink-0 bg-white border-r border-gray-200 overflow-y-auto">
+
+          {/* Score ring */}
+          <div className="px-5 py-5 border-b border-gray-100 text-center">
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Dept. Productivity</div>
+            <div className="relative inline-flex items-center justify-center">
+              <svg width="90" height="90" className="-rotate-90">
+                <circle cx="45" cy="45" r="35" fill="none" stroke="#f3f4f6" strokeWidth="9" />
+                <circle cx="45" cy="45" r="35" fill="none" stroke={scoreColor} strokeWidth="9"
+                  strokeDasharray={`${2 * Math.PI * 35}`}
+                  strokeDashoffset={`${2 * Math.PI * 35 * (1 - dept.avgProductivity / 100)}`}
+                  strokeLinecap="round" style={{ transition: "stroke-dashoffset 0.6s ease" }} />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-2xl font-black" style={{ color: scoreColor }}>{dept.avgProductivity}</span>
+                <span className="text-[9px] font-bold text-gray-400 uppercase">/ 100</span>
+              </div>
+            </div>
+            <div className={`mt-1.5 text-sm font-bold ${dept.avgProductivity >= 60 ? "text-green-600" : dept.avgProductivity >= 35 ? "text-amber-600" : "text-red-500"}`}>
+              {dept.avgProductivity >= 60 ? "Good" : dept.avgProductivity >= 35 ? "Moderate" : "Needs Attention"}
+            </div>
+          </div>
+
+          {/* Status breakdown */}
+          <div className="px-5 py-4 border-b border-gray-100">
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Team Status</div>
+            <div className="space-y-2">
+              {[
+                { label: "Active Now", count: dept.active, color: "bg-green-50 border-green-100 text-green-700", bar: "bg-green-500" },
+                { label: "Idle", count: dept.idle, color: "bg-amber-50 border-amber-100 text-amber-700", bar: "bg-amber-400" },
+                { label: "Offline", count: dept.offline, color: "bg-gray-50 border-gray-200 text-gray-500", bar: "bg-gray-300" },
+              ].map(s => (
+                <div key={s.label} className={`flex items-center justify-between rounded-xl border px-3 py-2 ${s.color}`}>
+                  <span className="text-[11px] font-semibold">{s.label}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-16 h-1.5 bg-white/60 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${s.bar}`} style={{ width: `${(s.count / dept.employees.length) * 100}%` }} />
+                    </div>
+                    <span className="text-sm font-black w-4 text-right">{s.count}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Task summary */}
+          <div className="px-5 py-4 border-b border-gray-100">
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Task Summary</div>
+            {allDeptTasks.length === 0 ? (
+              <div className="text-[11px] text-gray-400 italic text-center py-2">No tasks assigned</div>
+            ) : (
+              <div className="space-y-2">
+                {[
+                  { label: "In Progress", count: dept.inProgressTasks.length, color: "bg-blue-50 border-blue-100 text-blue-700" },
+                  { label: "To Do", count: dept.todoTasks.length, color: "bg-gray-50 border-gray-200 text-gray-600" },
+                  { label: "Review", count: dept.reviewTasks.length, color: "bg-amber-50 border-amber-100 text-amber-700" },
+                  { label: "Done", count: dept.doneTasks.length, color: "bg-green-50 border-green-100 text-green-700" },
+                ].map(s => (
+                  <div key={s.label} className={`flex items-center justify-between rounded-xl border px-3 py-1.5 ${s.color}`}>
+                    <span className="text-[11px] font-semibold">{s.label}</span>
+                    <span className="text-sm font-black">{s.count}</span>
+                  </div>
+                ))}
+                <div className="pt-1">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] text-gray-400">Completion</span>
+                    <span className="text-[10px] font-bold text-green-600">{completionPct}%</span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden flex">
+                    <div className="h-full bg-green-500" style={{ width: `${(dept.doneTasks.length / allDeptTasks.length) * 100}%` }} />
+                    <div className="h-full bg-blue-400" style={{ width: `${(dept.inProgressTasks.length / allDeptTasks.length) * 100}%` }} />
+                    <div className="h-full bg-amber-400" style={{ width: `${(dept.reviewTasks.length / allDeptTasks.length) * 100}%` }} />
+                  </div>
+                </div>
+                {overdueTasks.length > 0 && (
+                  <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2 mt-1">
+                    <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                    <span className="text-[11px] font-semibold text-red-600">{overdueTasks.length} overdue task{overdueTasks.length !== 1 ? "s" : ""}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Top apps */}
+          {dept.topApps.length > 0 && (
+            <div className="px-5 py-4">
+              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Apps In Use</div>
+              <div className="space-y-2">
+                {dept.topApps.map(a => (
+                  <div key={a.app} className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${a.cls === "productive" ? "bg-green-500" : a.cls === "unproductive" ? "bg-red-400" : "bg-gray-300"}`} />
+                    <span className="text-xs text-gray-700 flex-1 truncate">{a.app}</span>
+                    <span className="text-[10px] text-gray-400 font-semibold">{a.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* CENTER: Employee roster */}
+        <div className="flex-1 overflow-y-auto bg-gray-50">
+          <div className="p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <h2 className="text-sm font-bold text-gray-800">Team Members</h2>
+              <div className="relative flex-1 max-w-xs">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                <input
+                  value={empSearch} onChange={e => setEmpSearch(e.target.value)}
+                  placeholder="Search member…"
+                  className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 w-full bg-white"
+                />
+              </div>
+              <span className="text-xs text-gray-400 ml-auto">{filteredEmps.length} member{filteredEmps.length !== 1 ? "s" : ""}</span>
+            </div>
+
+            {/* Active employees */}
+            {activeEmps.length > 0 && (
+              <div className="mb-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="w-2 h-2 rounded-full bg-green-500" />
+                  <span className="text-[11px] font-bold text-green-700 uppercase tracking-widest">Active ({activeEmps.length})</span>
+                </div>
+                <div className="space-y-2">
+                  {filteredEmps.filter(e => activityStatus(e) === "active").map(emp => (
+                    <DeptEmployeeRow key={emp.deviceUsername || emp.email} emp={emp}
+                      erpCheckin={emp.erpEmployeeId ? erpCheckinMap[emp.erpEmployeeId] : undefined}
+                      onClick={() => onSelectEmployee(emp)} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Idle employees */}
+            {idleEmps.length > 0 && (
+              <div className="mb-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-400" />
+                  <span className="text-[11px] font-bold text-amber-700 uppercase tracking-widest">Idle ({idleEmps.length})</span>
+                </div>
+                <div className="space-y-2">
+                  {filteredEmps.filter(e => activityStatus(e) === "idle").map(emp => (
+                    <DeptEmployeeRow key={emp.deviceUsername || emp.email} emp={emp}
+                      erpCheckin={emp.erpEmployeeId ? erpCheckinMap[emp.erpEmployeeId] : undefined}
+                      onClick={() => onSelectEmployee(emp)} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Offline employees */}
+            {offlineEmps.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="w-2 h-2 rounded-full bg-gray-300" />
+                  <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Offline ({offlineEmps.length})</span>
+                </div>
+                <div className="space-y-2">
+                  {filteredEmps.filter(e => activityStatus(e) === "offline").map(emp => (
+                    <DeptEmployeeRow key={emp.deviceUsername || emp.email} emp={emp}
+                      erpCheckin={emp.erpEmployeeId ? erpCheckinMap[emp.erpEmployeeId] : undefined}
+                      onClick={() => onSelectEmployee(emp)} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {filteredEmps.length === 0 && (
+              <div className="text-center py-10 text-sm text-gray-400 italic">No members match search</div>
+            )}
+          </div>
+        </div>
+
+        {/* RIGHT: Task board */}
+        <div className="w-80 flex-shrink-0 bg-white border-l border-gray-200 overflow-y-auto flex flex-col">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2 flex-shrink-0">
+            <ClipboardList className="w-4 h-4 text-gray-400" />
+            <span className="text-sm font-bold text-gray-800">Department Tasks</span>
+            <span className="ml-auto px-2 py-0.5 bg-gray-100 rounded-full text-xs font-semibold text-gray-500">{allDeptTasks.length}</span>
+          </div>
+
+          {allDeptTasks.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center text-sm text-gray-400 italic px-5 text-center">
+              No tasks assigned to this department
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+              {(["in_progress", "review", "todo", "done"] as const).map(s => {
+                const statusTasks = s === "in_progress" ? dept.inProgressTasks : s === "review" ? dept.reviewTasks : s === "todo" ? dept.todoTasks : dept.doneTasks;
+                if (statusTasks.length === 0) return null;
+                const label = s === "in_progress" ? "In Progress" : s === "review" ? "Review" : s === "todo" ? "To Do" : "Done";
+                const headerColor = s === "in_progress" ? "text-blue-600" : s === "review" ? "text-amber-600" : s === "done" ? "text-green-600" : "text-gray-500";
+                const dot = s === "in_progress" ? "bg-blue-500" : s === "review" ? "bg-amber-500" : s === "done" ? "bg-green-500" : "bg-gray-400";
+                const cardBg = s === "in_progress" ? "border-blue-100 bg-blue-50/40" : s === "review" ? "border-amber-100 bg-amber-50/40" : s === "done" ? "border-green-100 bg-green-50/40" : "border-gray-100 bg-gray-50";
+                return (
+                  <div key={s}>
+                    <div className={`text-[10px] font-bold mb-2 flex items-center gap-1.5 ${headerColor}`}>
+                      <span className={`w-2 h-2 rounded-full ${dot}`} />
+                      {label.toUpperCase()} ({statusTasks.length})
+                    </div>
+                    {statusTasks.map(t => {
+                      const overdue = t.dueDate && new Date(t.dueDate) < new Date() && t.status !== "done";
+                      const assignee = t.assigneeName || t.assigneeEmail?.split("@")[0] || "—";
+                      return (
+                        <div key={t.id} className={`rounded-xl border px-3 py-2.5 mb-1.5 ${cardBg}`}>
+                          <div className="text-xs font-semibold text-gray-800 line-clamp-2 mb-1.5">{t.title}</div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[10px] text-gray-500 bg-white border border-gray-100 rounded-full px-1.5 py-0.5 font-medium truncate max-w-[100px]">{assignee}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold border ${priorityColor(t.priority)}`}>{t.priority}</span>
+                            {t.dueDate && (
+                              <span className={`text-[10px] flex items-center gap-0.5 font-medium ml-auto ${overdue ? "text-red-500" : "text-gray-400"}`}>
+                                <Calendar className="w-2.5 h-2.5" /> {t.dueDate}{overdue ? " ⚠" : ""}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Dept Employee Row ──────────────────────────────────────────────────────────
+function DeptEmployeeRow({
+  emp, erpCheckin, onClick,
+}: {
+  emp: SystemActivity;
+  erpCheckin?: { checkIn?: string; checkOut?: string };
+  onClick: () => void;
+}) {
+  const status = activityStatus(emp);
+  const photo = emp.erpImage ? `${BASE}/api/auth/photo?url=${encodeURIComponent(emp.erpImage)}` : null;
+  const displayName = emp.fullName || emp.deviceUsername || emp.email.split("@")[0];
+  const statusConf = {
+    active: { dot: "bg-green-500", badge: "bg-green-100 text-green-700 border-green-200" },
+    idle: { dot: "bg-amber-400", badge: "bg-amber-100 text-amber-700 border-amber-200" },
+    offline: { dot: "bg-gray-300", badge: "bg-gray-100 text-gray-400 border-gray-200" },
+  }[status];
+
+  return (
+    <div
+      onClick={onClick}
+      className="bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-3 flex items-center gap-3 hover:shadow-md hover:border-violet-200 cursor-pointer transition-all group"
+    >
+      <div className="relative flex-shrink-0">
+        {photo ? (
+          <img src={photo} alt={displayName} className="w-9 h-9 rounded-full object-cover border-2 border-white shadow-sm" />
+        ) : (
+          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white text-xs font-bold shadow-sm">
+            {initials(displayName)}
+          </div>
+        )}
+        <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${statusConf.dot}`} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-gray-800 truncate group-hover:text-violet-700 transition-colors">{displayName}</span>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-semibold flex-shrink-0 ${statusConf.badge}`}>
+            {status === "active" ? "Active" : status === "idle" ? `Idle ${emp.idleSeconds > 0 ? formatDuration(emp.idleSeconds) : ""}` : "Offline"}
+          </span>
+        </div>
+        {emp.designation && <div className="text-[11px] text-blue-600 truncate">{emp.designation}</div>}
+        {status !== "offline" && emp.activeApp && (
+          <div className="flex items-center gap-1 mt-0.5">
+            <Monitor className="w-2.5 h-2.5 text-gray-400 flex-shrink-0" />
+            <span className="text-[10px] text-gray-500 truncate">{emp.activeApp}</span>
+          </div>
+        )}
+      </div>
+      <div className="flex flex-col items-end gap-1 flex-shrink-0 text-right">
+        {erpCheckin?.checkIn && (
+          <span className="text-[10px] text-green-600 font-semibold">In {formatTime(erpCheckin.checkIn)}</span>
+        )}
+        {status === "offline" && (
+          <span className="text-[10px] text-gray-400">{timeSince(emp.lastSeen)}</span>
+        )}
+        <ChevronRight className="w-3.5 h-3.5 text-gray-300 group-hover:text-violet-400 transition-colors mt-1" />
+      </div>
+    </div>
+  );
+}
+
 // ── Employee Card ──────────────────────────────────────────────────────────────
 function EmployeeCard({
   row, erpCheckin, onClick,
@@ -910,6 +1437,8 @@ export default function TeamPulse() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "idle" | "offline">("all");
   const [selectedEmployee, setSelectedEmployee] = useState<SystemActivity | null>(null);
+  const [pulseView, setPulseView] = useState<"grid" | "dept">("grid");
+  const [selectedDept, setSelectedDept] = useState<string | null>(null);
   const [monitorDate, setMonitorDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1000,14 +1529,34 @@ export default function TeamPulse() {
     a.click();
   };
 
+  // ── Dept stats (computed) ─────────────────────────────────────────────────
+  const deptStatsList = buildDeptStats(deptFiltered, tasks);
+  const selectedDeptStats = selectedDept ? deptStatsList.find(d => d.name === selectedDept) : null;
+
   // ── Employee detail overlay ────────────────────────────────────────────────
   if (selectedEmployee) {
     return (
       <EmployeeDetailPanel
         row={selectedEmployee}
         tasks={tasks}
-        onClose={() => setSelectedEmployee(null)}
+        onClose={() => {
+          setSelectedEmployee(null);
+        }}
         erpCheckin={selectedEmployee.erpEmployeeId ? erpCheckinMap[selectedEmployee.erpEmployeeId] : undefined}
+        date={monitorDate}
+      />
+    );
+  }
+
+  // ── Dept detail overlay ────────────────────────────────────────────────────
+  if (pulseView === "dept" && selectedDept && selectedDeptStats) {
+    return (
+      <DepartmentDetailPanel
+        dept={selectedDeptStats}
+        tasks={tasks}
+        onClose={() => setSelectedDept(null)}
+        onSelectEmployee={(emp) => setSelectedEmployee(emp)}
+        erpCheckinMap={erpCheckinMap}
         date={monitorDate}
       />
     );
@@ -1066,6 +1615,21 @@ export default function TeamPulse() {
                 onChange={e => setMonitorDate(e.target.value)}
                 className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 text-gray-700"
               />
+              {/* View toggle */}
+              <div className="flex items-center bg-gray-100 rounded-xl p-0.5">
+                <button
+                  onClick={() => setPulseView("grid")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${pulseView === "grid" ? "bg-white text-violet-700 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
+                >
+                  <Users className="w-3.5 h-3.5" /> Members
+                </button>
+                <button
+                  onClick={() => setPulseView("dept")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${pulseView === "dept" ? "bg-white text-violet-700 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
+                >
+                  <Layers className="w-3.5 h-3.5" /> Dept. Report
+                </button>
+              </div>
               <button onClick={downloadAgent}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
                 <Download className="w-3.5 h-3.5" /> Agent
