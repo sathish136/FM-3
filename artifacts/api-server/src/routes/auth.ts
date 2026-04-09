@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join, extname } from "node:path";
 import { createHash } from "node:crypto";
 import { gzip } from "node:zlib";
+import { createRequire } from "node:module";
 import nodemailer from "nodemailer";
 import { db } from "@workspace/db";
 import { userPermissionsTable } from "@workspace/db/schema";
@@ -656,13 +657,15 @@ async function hasMeshCache(key: string): Promise<boolean> {
   catch { return false; }
 }
 
+// Use createRequire to load the CJS occt-import-js module from ESM context
+const _require = createRequire(import.meta.url);
+
 // Singleton OCCT instance (loaded once, reused for all conversions)
 let occtPromise: Promise<any> | null = null;
 function getServerOcct(): Promise<any> {
   if (!occtPromise) {
     occtPromise = (async () => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const occtimportjs = require("occt-import-js");
+      const occtimportjs = _require("occt-import-js");
       const occtDir = join(process.cwd(), "node_modules", "occt-import-js", "dist");
       return await occtimportjs({
         locateFile: (p: string) =>
