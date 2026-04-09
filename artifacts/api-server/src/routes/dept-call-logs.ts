@@ -9,8 +9,8 @@ function isConfigured() { return !!(ERP_URL && process.env.ERPNEXT_API_KEY && pr
 const DEPT_CONFIG: Record<string, { doctype: string; childField: string }> = {
   hr:        { doctype: "HR Call Logs",        childField: "hr_call_logs_table" },
   project:   { doctype: "Project Call Logs",   childField: "project_call_logs_table" },
-  purchase:  { doctype: "Purchase Call Logs",  childField: "purchase_call_logs_table" },
-  marketing: { doctype: "Marketing Call Logs", childField: "marketing_call_logs_table" },
+  purchase:  { doctype: "Purchase Call Logs",  childField: "o_and_m_call_logs" },
+  marketing: { doctype: "Marketing Call Logs", childField: "o_and_m_call_logs" },
 };
 
 type DeptCall = {
@@ -139,5 +139,18 @@ router.get("/dept-call-logs", async (req, res) => {
     res.status(500).json({ error: String(e) });
   }
 });
+
+export async function warmupDeptCallLogs() {
+  if (!isConfigured()) return;
+  for (const dept of Object.keys(DEPT_CONFIG)) {
+    try {
+      const data = await fetchDeptCalls(dept);
+      deptCache[dept] = { data, ts: Date.now() };
+      console.log(`Dept call logs warmed up: ${dept} (${data.length} records)`);
+    } catch (e) {
+      console.warn(`Dept call logs warm-up failed for ${dept}:`, e);
+    }
+  }
+}
 
 export default router;

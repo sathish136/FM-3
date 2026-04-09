@@ -3,6 +3,7 @@ import { createServer } from "http";
 import app from "./app";
 import { setupTranscribeWS } from "./transcribe-ws";
 import { setupChatWS } from "./chat-ws";
+import { warmupDeptCallLogs } from "./routes/dept-call-logs";
 
 // Prevent unhandled errors (e.g., IMAP socket timeouts) from crashing the server
 process.on("uncaughtException", (err) => {
@@ -30,4 +31,5 @@ setupChatWS(httpServer);
 
 httpServer.listen(port, () => {
   console.log(`Server listening on port ${port}`);
+  warmupDeptCallLogs().catch(() => {});
 });
