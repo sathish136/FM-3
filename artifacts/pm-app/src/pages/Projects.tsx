@@ -10,12 +10,118 @@ import { formatDate } from "@/lib/utils";
 import {
   RefreshCw, Search, Circle, CheckCircle2, Clock,
   AlertCircle, Calendar, TrendingUp, List, LayoutGrid,
-  ChevronDown, ChevronUp
+  ChevronDown, ChevronUp, Plus, X, FolderPlus, Loader2,
 } from "lucide-react";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 type FilterTab = "ongoing" | "completed" | "all";
 type SortKey = "name" | "progress" | "dueDate" | "priority";
 type SortDir = "asc" | "desc";
+
+function NewProjectModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [form, setForm] = useState({ name: "", description: "", status: "planning", priority: "medium", dueDate: "", progress: 0 });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async () => {
+    if (!form.name.trim()) { setError("Project name is required"); return; }
+    setSaving(true);
+    setError("");
+    try {
+      const body: Record<string, any> = { name: form.name.trim(), status: form.status, priority: form.priority, progress: 0 };
+      if (form.description.trim()) body.description = form.description.trim();
+      if (form.dueDate) body.dueDate = form.dueDate;
+      const r = await fetch(`${BASE}/api/projects`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      onCreated();
+      onClose();
+    } catch (e) {
+      setError(String(e));
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-500 px-5 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
+              <FolderPlus className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <p className="text-white/70 text-[10px] font-semibold uppercase tracking-widest">Projects</p>
+              <h2 className="text-white text-sm font-bold leading-tight">New Project</h2>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center text-white/80 transition-all">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Name */}
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Project Name <span className="text-red-400 normal-case">*</span></label>
+            <input autoFocus value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              onKeyDown={e => e.key === "Enter" && handleSubmit()}
+              placeholder="e.g. Office Renovation, Product Launch…"
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-300" />
+          </div>
+          {/* Description */}
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Description</label>
+            <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              placeholder="Brief description of the project…"
+              rows={2}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none" />
+          </div>
+          {/* Status + Priority */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Status</label>
+              <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white">
+                <option value="planning">Planning</option>
+                <option value="active">Active</option>
+                <option value="completed">Completed</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Priority</label>
+              <select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white">
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+          </div>
+          {/* Due Date */}
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Due Date</label>
+            <input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-300" />
+          </div>
+          {error && <p className="text-xs text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+        </div>
+
+        <div className="px-5 pb-5 flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-all">Cancel</button>
+          <button onClick={handleSubmit} disabled={saving || !form.name.trim()}
+            className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold disabled:opacity-40 transition-all">
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FolderPlus className="w-3.5 h-3.5" />}
+            Create Project
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
@@ -44,6 +150,7 @@ export default function Projects() {
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [showNewProject, setShowNewProject] = useState(false);
 
   const ongoing   = allProjects.filter(p => p.status === "active" || p.status === "planning");
   const completed = allProjects.filter(p => p.status === "completed");
@@ -86,15 +193,29 @@ export default function Projects() {
               {isLoading ? "Loading projects..." : `${ongoing.length} ongoing projects from ERPNext`}
             </p>
           </div>
-          <button
-            onClick={() => queryClient.invalidateQueries({ queryKey: getListProjectsQueryKey() })}
-            title="Sync from ERPNext"
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:text-blue-600 hover:border-blue-300 transition-all shadow-sm ${isFetching ? "text-blue-500" : ""}`}
-          >
-            <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowNewProject(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-sm transition-all"
+            >
+              <Plus className="w-4 h-4" /> New Project
+            </button>
+            <button
+              onClick={() => queryClient.invalidateQueries({ queryKey: getListProjectsQueryKey() })}
+              title="Sync from ERPNext"
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:text-blue-600 hover:border-blue-300 transition-all shadow-sm ${isFetching ? "text-blue-500" : ""}`}
+            >
+              <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+          </div>
         </div>
+        {showNewProject && (
+          <NewProjectModal
+            onClose={() => setShowNewProject(false)}
+            onCreated={() => queryClient.invalidateQueries({ queryKey: getListProjectsQueryKey() })}
+          />
+        )}
 
         {/* ── Stats + Tabs bar ── */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 flex items-center justify-between gap-4 flex-wrap">

@@ -876,17 +876,17 @@ export default function MeetingMinutes() {
             )}
             {meetings?.map(m => (
               <div key={m.id} onClick={() => { setSelected(m); setShowNew(false); setShowReport(false); }}
-                className={`w-full text-left px-3 py-2.5 rounded-xl mb-1 transition-all group cursor-pointer ${selected?.id === m.id ? "bg-blue-50 ring-1 ring-blue-200" : "hover:bg-gray-50"}`}>
-                <div className="flex items-start justify-between gap-2">
+                className={`w-full text-left px-2.5 py-1.5 rounded-lg mb-0.5 transition-all group cursor-pointer ${selected?.id === m.id ? "bg-blue-50 ring-1 ring-blue-200" : "hover:bg-gray-50"}`}>
+                <div className="flex items-center justify-between gap-1.5">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1 mb-0.5">
                       <ModeBadge mode={modeOf(m)} />
                       <StatusBadge status={m.status} />
                     </div>
-                    <p className="text-sm font-semibold text-gray-800 truncate mt-0.5">{m.title}</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1"><Calendar className="w-2.5 h-2.5" />{m.date}</p>
+                    <p className="text-xs font-semibold text-gray-800 truncate leading-tight">{m.title}</p>
+                    <p className="text-[10px] text-gray-400 flex items-center gap-0.5 leading-tight"><Calendar className="w-2.5 h-2.5 shrink-0" />{m.date}</p>
                   </div>
-                  <button onClick={e => handleDelete(m.id, e)} className="opacity-0 group-hover:opacity-100 p-1 rounded text-gray-300 hover:text-red-500 transition-all flex-shrink-0 mt-0.5">
+                  <button onClick={e => handleDelete(m.id, e)} className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-300 hover:text-red-500 transition-all flex-shrink-0">
                     <Trash2 className="w-3 h-3" />
                   </button>
                 </div>
