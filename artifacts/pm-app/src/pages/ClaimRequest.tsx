@@ -1,6 +1,6 @@
 import { Layout } from "@/components/Layout";
 import {
-  Receipt, RefreshCw, Loader2, Search, ChevronDown, ExternalLink, Plus, X, Trash2,
+  Receipt, RefreshCw, Loader2, Search, ChevronDown, ExternalLink, Plus,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -70,22 +70,11 @@ export default function ClaimRequest() {
 
   const [claims, setClaims] = useState<ExpenseClaim[]>([]);
   const [loading, setLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
 
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [claimTypes, setClaimTypes] = useState<string[]>([]);
   const [userScope, setUserScope] = useState<UserScope>({ scope: "all", employee: null, departments: [], roles: [] });
   const [scopeLoading, setScopeLoading] = useState(true);
-
-  const [formEmployee, setFormEmployee] = useState("");
-  const [postingDate, setPostingDate] = useState(todayStr());
-  const [remark, setRemark] = useState("");
-  const [expenseItems, setExpenseItems] = useState<ExpenseItem[]>([
-    { expense_date: todayStr(), expense_type: "", description: "", amount: 0 },
-  ]);
 
   useEffect(() => {
     if (!user?.email) return;
@@ -93,30 +82,11 @@ export default function ClaimRequest() {
     fetch(`${BASE}/api/hrms/user-scope?email=${encodeURIComponent(user.email)}`)
       .then(r => r.ok ? r.json() : null)
       .then((sc: UserScope | null) => {
-        const resolved = sc ?? { scope: "all" as const, employee: null, departments: [], roles: [] };
-        setUserScope(resolved);
-        if (resolved.scope === "self" && resolved.employee) {
-          setFormEmployee(resolved.employee.name);
-        }
+        setUserScope(sc ?? { scope: "all" as const, employee: null, departments: [], roles: [] });
         setScopeLoading(false);
       })
       .catch(() => setScopeLoading(false));
-
-    fetch(`${BASE}/api/hrms/claim-types`)
-      .then(r => r.ok ? r.json() : [])
-      .then(setClaimTypes)
-      .catch(() => {});
   }, [user?.email]);
-
-  useEffect(() => {
-    if (scopeLoading) return;
-    if (userScope.scope !== "self") {
-      fetch(`${BASE}/api/hrms/employees`)
-        .then(r => r.ok ? r.json() : [])
-        .then((data: Employee[]) => setEmployees(data.filter((e: any) => e.status === "Active")))
-        .catch(() => {});
-    }
-  }, [scopeLoading, userScope.scope]);
 
   const loadClaims = useCallback(async () => {
     setLoading(true);
@@ -137,61 +107,6 @@ export default function ClaimRequest() {
   useEffect(() => {
     if (!scopeLoading) loadClaims();
   }, [scopeLoading]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const addItem = () => {
-    setExpenseItems(items => [...items, { expense_date: todayStr(), expense_type: "", description: "", amount: 0 }]);
-  };
-
-  const removeItem = (idx: number) => {
-    setExpenseItems(items => items.filter((_, i) => i !== idx));
-  };
-
-  const updateItem = (idx: number, key: keyof ExpenseItem, val: string | number) => {
-    setExpenseItems(items => items.map((it, i) => i === idx ? { ...it, [key]: val } : it));
-  };
-
-  const totalAmount = expenseItems.reduce((s, it) => s + (Number(it.amount) || 0), 0);
-
-  const handleSubmit = async () => {
-    const empId = userScope.scope === "self" && userScope.employee
-      ? userScope.employee.name
-      : formEmployee;
-    if (!empId) {
-      toast({ title: "Select an employee", variant: "destructive" });
-      return;
-    }
-    if (expenseItems.some(it => !it.expense_type || !it.amount)) {
-      toast({ title: "Fill all expense items with type and amount", variant: "destructive" });
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const r = await fetch(`${BASE}/api/hrms/claims`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          employee: empId,
-          posting_date: postingDate,
-          remark: remark || undefined,
-          expenses: expenseItems.map(it => ({
-            expense_date: it.expense_date,
-            expense_type: it.expense_type,
-            description: it.description || undefined,
-            amount: Number(it.amount),
-          })),
-        }),
-      });
-      if (!r.ok) throw new Error(await r.text());
-      toast({ title: "Claim submitted successfully" });
-      setShowForm(false);
-      setRemark("");
-      setPostingDate(todayStr());
-      setExpenseItems([{ expense_date: todayStr(), expense_type: "", description: "", amount: 0 }]);
-      loadClaims();
-    } catch (e) {
-      toast({ title: "Failed to submit claim", description: String(e), variant: "destructive" });
-    } finally { setSubmitting(false); }
-  };
 
   const filtered = claims.filter(c =>
     (!search       || c.employee_name.toLowerCase().includes(search.toLowerCase())) &&
@@ -216,10 +131,10 @@ export default function ClaimRequest() {
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-colors">
             <ExternalLink className="w-3.5 h-3.5" /> ERPNext
           </a>
-          <button onClick={() => setShowForm(true)}
+          <a href={`${ERP_URL}/app/claim-request`} target="_blank" rel="noopener noreferrer"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-500 text-white hover:bg-violet-600 transition-colors shadow-sm">
             <Plus className="w-3.5 h-3.5" /> New Claim
-          </button>
+          </a>
           <button onClick={loadClaims} disabled={loading}
             className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors">
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
@@ -320,130 +235,6 @@ export default function ClaimRequest() {
           )}
         </div>
 
-        {/* New Claim Modal */}
-        {showForm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-                <div className="flex items-center gap-2">
-                  <Receipt className="w-4 h-4 text-violet-500" />
-                  <span className="text-sm font-bold text-gray-800">New Claim Request</span>
-                </div>
-                <button onClick={() => setShowForm(false)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-
-                {/* Employee */}
-                {userScope.scope !== "self" ? (
-                  <div>
-                    <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest mb-1 block">Employee *</label>
-                    <div className="relative">
-                      <select value={formEmployee} onChange={e => setFormEmployee(e.target.value)}
-                        className="w-full appearance-none pl-3 pr-7 py-2 text-xs rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-300">
-                        <option value="">Select Employee</option>
-                        {employees.map(e => <option key={e.name} value={e.name}>{e.employee_name as string}</option>)}
-                      </select>
-                      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="px-3 py-2 bg-violet-50 border border-violet-100 rounded-xl">
-                    <p className="text-[10px] text-violet-600 font-semibold uppercase tracking-widest">Employee</p>
-                    <p className="text-xs font-bold text-gray-800 mt-0.5">{userScope.employee?.employee_name as string}</p>
-                  </div>
-                )}
-
-                {/* Posting Date */}
-                <div>
-                  <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest mb-1 block">Posting Date *</label>
-                  <input type="date" value={postingDate} onChange={e => setPostingDate(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-300" />
-                </div>
-
-                {/* Remark */}
-                <div>
-                  <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest mb-1 block">Remark</label>
-                  <input value={remark} onChange={e => setRemark(e.target.value)} placeholder="Optional remark…"
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-300" />
-                </div>
-
-                {/* Expense Items */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">Expense Items *</label>
-                    <button onClick={addItem}
-                      className="flex items-center gap-1 text-[10px] font-semibold text-violet-600 hover:text-violet-700">
-                      <Plus className="w-3 h-3" /> Add Row
-                    </button>
-                  </div>
-                  <div className="space-y-2">
-                    {expenseItems.map((item, idx) => (
-                      <div key={idx} className="bg-gray-50 rounded-xl border border-gray-200 p-3 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-gray-400">Item {idx + 1}</span>
-                          {expenseItems.length > 1 && (
-                            <button onClick={() => removeItem(idx)} className="text-red-400 hover:text-red-600">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="text-[10px] text-gray-400 mb-0.5 block">Date</label>
-                            <input type="date" value={item.expense_date} onChange={e => updateItem(idx, "expense_date", e.target.value)}
-                              className="w-full px-2 py-1.5 text-xs rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-violet-300" />
-                          </div>
-                          <div>
-                            <label className="text-[10px] text-gray-400 mb-0.5 block">Type *</label>
-                            <div className="relative">
-                              <select value={item.expense_type} onChange={e => updateItem(idx, "expense_type", e.target.value)}
-                                className="w-full appearance-none pl-2 pr-6 py-1.5 text-xs rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-violet-300">
-                                <option value="">Select</option>
-                                {claimTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                              </select>
-                              <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-gray-400 pointer-events-none" />
-                            </div>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="text-[10px] text-gray-400 mb-0.5 block">Description</label>
-                            <input value={item.description} onChange={e => updateItem(idx, "description", e.target.value)}
-                              placeholder="Optional"
-                              className="w-full px-2 py-1.5 text-xs rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-violet-300" />
-                          </div>
-                          <div>
-                            <label className="text-[10px] text-gray-400 mb-0.5 block">Amount (₹) *</label>
-                            <input type="number" min="0" value={item.amount || ""}
-                              onChange={e => updateItem(idx, "amount", parseFloat(e.target.value) || 0)}
-                              placeholder="0"
-                              className="w-full px-2 py-1.5 text-xs rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-violet-300" />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-2 flex justify-end">
-                    <span className="text-xs font-bold text-violet-600">Total: {fmtCurrency(totalAmount)}</span>
-                  </div>
-                </div>
-              </div>
-              <div className="px-5 py-4 border-t border-gray-100 flex gap-2 justify-end">
-                <button onClick={() => setShowForm(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-500 bg-gray-100 hover:bg-gray-200 transition-colors">
-                  Cancel
-                </button>
-                <button onClick={handleSubmit} disabled={submitting}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-violet-500 text-white hover:bg-violet-600 transition-colors shadow-sm disabled:opacity-50 flex items-center gap-1.5">
-                  {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  Submit Claim
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </Layout>
   );

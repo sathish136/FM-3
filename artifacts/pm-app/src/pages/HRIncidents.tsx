@@ -721,14 +721,14 @@ export default function HRIncidents() {
             <button onClick={fetchData} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", border: "1.5px solid #E5E0FF", borderRadius: 9, background: "#fff", cursor: "pointer", fontSize: 13, color: "#7C5CFC", fontWeight: 600 }}>
               <RefreshCw size={13} style={{ animation: loading ? "spin 1s linear infinite" : "none" }}/> Refresh
             </button>
-            <button onClick={() => setShowCreate(true)} style={{
+            <a href="https://erp.wttint.com/app/incident" target="_blank" rel="noopener noreferrer" style={{
               display: "flex", alignItems: "center", gap: 7, padding: "9px 18px",
               background: "linear-gradient(135deg,#7C5CFC,#9D7FFF)", border: "none",
               borderRadius: 9, color: "#fff", fontSize: 13.5, fontWeight: 700, cursor: "pointer",
-              boxShadow: "0 4px 14px rgba(124,92,252,0.4)",
+              boxShadow: "0 4px 14px rgba(124,92,252,0.4)", textDecoration: "none",
             }}>
               <Plus size={15}/> Report Incident
-            </button>
+            </a>
           </div>
         </div>
 
@@ -804,9 +804,9 @@ export default function HRIncidents() {
               {hasFilters ? "Try adjusting your filters" : "Report the first workplace incident to get started"}
             </div>
             {!hasFilters && (
-              <button onClick={() => setShowCreate(true)} style={{ display: "flex", alignItems: "center", gap: 7, padding: "10px 20px", background: "linear-gradient(135deg,#7C5CFC,#9D7FFF)", border: "none", borderRadius: 9, color: "#fff", fontSize: 13.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 14px rgba(124,92,252,0.4)" }}>
+              <a href="https://erp.wttint.com/app/incident" target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 7, padding: "10px 20px", background: "linear-gradient(135deg,#7C5CFC,#9D7FFF)", border: "none", borderRadius: 9, color: "#fff", fontSize: 13.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 14px rgba(124,92,252,0.4)", textDecoration: "none" }}>
                 <Plus size={15}/> Report First Incident
-              </button>
+              </a>
             )}
           </div>
         ) : (
