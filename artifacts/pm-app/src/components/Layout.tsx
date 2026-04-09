@@ -279,6 +279,15 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     ],
   },
   {
+    label: "Options",
+    items: [
+      { path: "/hrms/leave-request", label: "Leave Request",  icon: Calendar,      color: "text-amber-400",   bgColor: "bg-amber-500/15" },
+      { path: "/hrms/claims",        label: "Claims",         icon: Receipt,       color: "text-violet-400",  bgColor: "bg-violet-500/15" },
+      { path: "/hrms/incidents",     label: "HR Incident",    icon: AlertTriangle, color: "text-rose-400",    bgColor: "bg-rose-500/15" },
+      { path: "/hrms/checkin",       label: "Attendance",     icon: Clock,         color: "text-teal-400",    bgColor: "bg-teal-500/15" },
+    ],
+  },
+  {
     label: "HR",
     items: [
       { path: "/hrms",               label: "HRMS",           icon: UserCircle,    color: "text-emerald-400", bgColor: "bg-emerald-500/15" },

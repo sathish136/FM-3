@@ -1,6 +1,6 @@
 import { Layout } from "@/components/Layout";
 import {
-  Calendar, RefreshCw, Loader2, Search, ChevronDown, ExternalLink, Plus, X,
+  Calendar, RefreshCw, Loader2, Search, ChevronDown, ExternalLink, Plus,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -60,24 +60,11 @@ export default function LeaveRequest() {
 
   const [leaves, setLeaves] = useState<LeaveApp[]>([]);
   const [loading, setLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
 
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [leaveTypes, setLeaveTypes] = useState<string[]>([]);
   const [userScope, setUserScope] = useState<UserScope>({ scope: "all", employee: null, departments: [], roles: [] });
   const [scopeLoading, setScopeLoading] = useState(true);
-
-  const [form, setForm] = useState({
-    employee: "",
-    leave_type: "",
-    from_date: todayStr(),
-    to_date: todayStr(),
-    half_day: false,
-    description: "",
-  });
 
   useEffect(() => {
     if (!user?.email) return;
@@ -87,28 +74,10 @@ export default function LeaveRequest() {
       .then((sc: UserScope | null) => {
         const resolved = sc ?? { scope: "all" as const, employee: null, departments: [], roles: [] };
         setUserScope(resolved);
-        if (resolved.scope === "self" && resolved.employee) {
-          setForm(f => ({ ...f, employee: resolved.employee!.name }));
-        }
         setScopeLoading(false);
       })
       .catch(() => setScopeLoading(false));
-
-    fetch(`${BASE}/api/hrms/leave-types`)
-      .then(r => r.ok ? r.json() : [])
-      .then(setLeaveTypes)
-      .catch(() => {});
   }, [user?.email]);
-
-  useEffect(() => {
-    if (scopeLoading) return;
-    if (userScope.scope !== "self") {
-      fetch(`${BASE}/api/hrms/employees`)
-        .then(r => r.ok ? r.json() : [])
-        .then((data: Employee[]) => setEmployees(data.filter(e => e.status === "Active")))
-        .catch(() => {});
-    }
-  }, [scopeLoading, userScope.scope]);
 
   const loadLeaves = useCallback(async () => {
     setLoading(true);
@@ -129,38 +98,6 @@ export default function LeaveRequest() {
   useEffect(() => {
     if (!scopeLoading) loadLeaves();
   }, [scopeLoading]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleSubmit = async () => {
-    const empId = userScope.scope === "self" && userScope.employee
-      ? userScope.employee.name
-      : form.employee;
-    if (!empId || !form.leave_type || !form.from_date || !form.to_date) {
-      toast({ title: "Please fill all required fields", variant: "destructive" });
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const r = await fetch(`${BASE}/api/hrms/leave-requests`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          employee: empId,
-          leave_type: form.leave_type,
-          from_date: form.from_date,
-          to_date: form.to_date,
-          half_day: form.half_day ? 1 : 0,
-          description: form.description || undefined,
-        }),
-      });
-      if (!r.ok) throw new Error(await r.text());
-      toast({ title: "Leave request submitted successfully" });
-      setShowForm(false);
-      setForm(f => ({ ...f, leave_type: "", description: "", half_day: false, from_date: todayStr(), to_date: todayStr() }));
-      loadLeaves();
-    } catch (e) {
-      toast({ title: "Failed to submit leave request", description: String(e), variant: "destructive" });
-    } finally { setSubmitting(false); }
-  };
 
   const filtered = leaves.filter(l =>
     (!search       || l.employee_name.toLowerCase().includes(search.toLowerCase()) || l.leave_type.toLowerCase().includes(search.toLowerCase())) &&
