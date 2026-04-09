@@ -32,6 +32,7 @@ interface UserScope {
   scope: "all" | "department" | "self";
   employee: Employee | null;
   departments: string[];
+  employee_ids: string[];
   roles: string[];
 }
 
@@ -59,7 +60,7 @@ export default function AttendanceCheckin() {
   const [fromDate, setFromDate] = useState(todayStr());
   const [toDate, setToDate] = useState(todayStr());
 
-  const [userScope, setUserScope] = useState<UserScope>({ scope: "all", employee: null, departments: [], roles: [] });
+  const [userScope, setUserScope] = useState<UserScope>({ scope: "all", employee: null, departments: [], employee_ids: [], roles: [] });
   const [scopeLoading, setScopeLoading] = useState(true);
 
   useEffect(() => {
@@ -68,7 +69,7 @@ export default function AttendanceCheckin() {
     fetch(`${BASE}/api/hrms/user-scope?email=${encodeURIComponent(user.email)}`)
       .then(r => r.ok ? r.json() : null)
       .then((sc: UserScope | null) => {
-        const resolved = sc ?? { scope: "all" as const, employee: null, departments: [], roles: [] };
+        const resolved = sc ?? { scope: "all" as const, employee: null, departments: [], employee_ids: [], roles: [] };
         setUserScope(resolved);
         setScopeLoading(false);
       })
@@ -96,13 +97,19 @@ export default function AttendanceCheckin() {
     if (!scopeLoading) loadCheckins();
   }, [scopeLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const filtered = checkins.filter(c =>
+  const scopedCheckins = userScope.scope === "all"
+    ? checkins
+    : userScope.scope === "department" && userScope.employee_ids.length > 0
+    ? checkins.filter(c => userScope.employee_ids.includes(c.employee))
+    : checkins; // "self" already filtered at API level
+
+  const filtered = scopedCheckins.filter(c =>
     (!search     || c.employee_name.toLowerCase().includes(search.toLowerCase()) || c.employee.toLowerCase().includes(search.toLowerCase())) &&
     (!typeFilter || c.log_type === typeFilter)
   );
 
-  const inCount  = checkins.filter(c => c.log_type === "IN").length;
-  const outCount = checkins.filter(c => c.log_type === "OUT").length;
+  const inCount  = scopedCheckins.filter(c => c.log_type === "IN").length;
+  const outCount = scopedCheckins.filter(c => c.log_type === "OUT").length;
 
   const scopeBadge = userScope.scope === "all"
     ? { label: "All Employees", color: "bg-blue-50 border-blue-100 text-blue-700" }

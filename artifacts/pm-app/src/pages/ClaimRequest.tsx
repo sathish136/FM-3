@@ -33,6 +33,7 @@ interface UserScope {
   scope: "all" | "department" | "self";
   employee: Employee | null;
   departments: string[];
+  employee_ids: string[];
   roles: string[];
 }
 
@@ -73,7 +74,7 @@ export default function ClaimRequest() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
 
-  const [userScope, setUserScope] = useState<UserScope>({ scope: "all", employee: null, departments: [], roles: [] });
+  const [userScope, setUserScope] = useState<UserScope>({ scope: "all", employee: null, departments: [], employee_ids: [], roles: [] });
   const [scopeLoading, setScopeLoading] = useState(true);
 
   useEffect(() => {
@@ -82,7 +83,7 @@ export default function ClaimRequest() {
     fetch(`${BASE}/api/hrms/user-scope?email=${encodeURIComponent(user.email)}`)
       .then(r => r.ok ? r.json() : null)
       .then((sc: UserScope | null) => {
-        setUserScope(sc ?? { scope: "all" as const, employee: null, departments: [], roles: [] });
+        setUserScope(sc ?? { scope: "all" as const, employee: null, departments: [], employee_ids: [], roles: [] });
         setScopeLoading(false);
       })
       .catch(() => setScopeLoading(false));
@@ -108,13 +109,19 @@ export default function ClaimRequest() {
     if (!scopeLoading) loadClaims();
   }, [scopeLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const filtered = claims.filter(c =>
+  const scopedClaims = userScope.scope === "all"
+    ? claims
+    : userScope.scope === "department" && userScope.employee_ids.length > 0
+    ? claims.filter(c => userScope.employee_ids.includes(c.employee))
+    : claims; // "self" already filtered at API level
+
+  const filtered = scopedClaims.filter(c =>
     (!search       || c.employee_name.toLowerCase().includes(search.toLowerCase())) &&
     (!statusFilter || c.approval_status.toLowerCase() === statusFilter.toLowerCase())
   );
 
-  const totalClaimed    = claims.reduce((s, c) => s + (c.total_claimed_amount || 0), 0);
-  const totalSanctioned = claims.reduce((s, c) => s + (c.total_sanctioned_amount || 0), 0);
+  const totalClaimed    = scopedClaims.reduce((s, c) => s + (c.total_claimed_amount || 0), 0);
+  const totalSanctioned = scopedClaims.reduce((s, c) => s + (c.total_sanctioned_amount || 0), 0);
 
   return (
     <Layout>
@@ -144,7 +151,7 @@ export default function ClaimRequest() {
         {/* Stats */}
         <div className="px-6 pt-3 pb-0 flex gap-2 shrink-0 flex-wrap">
           {[
-            { label: "Total Claims",     value: claims.length,          color: "bg-blue-500",   fmt: false },
+            { label: "Total Claims",     value: scopedClaims.length,    color: "bg-blue-500",   fmt: false },
             { label: "Total Claimed",    value: totalClaimed,           color: "bg-violet-500", fmt: true  },
             { label: "Total Sanctioned", value: totalSanctioned,        color: "bg-emerald-500",fmt: true  },
           ].map(s => (

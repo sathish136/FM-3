@@ -34,6 +34,7 @@ interface UserScope {
   scope: "all" | "department" | "self";
   employee: Employee | null;
   departments: string[];
+  employee_ids: string[];
   roles: string[];
 }
 
@@ -63,7 +64,7 @@ export default function LeaveRequest() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
 
-  const [userScope, setUserScope] = useState<UserScope>({ scope: "all", employee: null, departments: [], roles: [] });
+  const [userScope, setUserScope] = useState<UserScope>({ scope: "all", employee: null, departments: [], employee_ids: [], roles: [] });
   const [scopeLoading, setScopeLoading] = useState(true);
 
   useEffect(() => {
@@ -72,7 +73,7 @@ export default function LeaveRequest() {
     fetch(`${BASE}/api/hrms/user-scope?email=${encodeURIComponent(user.email)}`)
       .then(r => r.ok ? r.json() : null)
       .then((sc: UserScope | null) => {
-        const resolved = sc ?? { scope: "all" as const, employee: null, departments: [], roles: [] };
+        const resolved = sc ?? { scope: "all" as const, employee: null, departments: [], employee_ids: [], roles: [] };
         setUserScope(resolved);
         setScopeLoading(false);
       })
@@ -99,13 +100,19 @@ export default function LeaveRequest() {
     if (!scopeLoading) loadLeaves();
   }, [scopeLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const filtered = leaves.filter(l =>
+  const scopedLeaves = userScope.scope === "all"
+    ? leaves
+    : userScope.scope === "department" && userScope.employee_ids.length > 0
+    ? leaves.filter(l => userScope.employee_ids.includes(l.employee))
+    : leaves; // "self" already filtered at API level
+
+  const filtered = scopedLeaves.filter(l =>
     (!search       || l.employee_name.toLowerCase().includes(search.toLowerCase()) || l.leave_type.toLowerCase().includes(search.toLowerCase())) &&
     (!statusFilter || l.status.toLowerCase() === statusFilter.toLowerCase())
   );
 
-  const approvedCount = leaves.filter(l => l.status === "Approved").length;
-  const openCount     = leaves.filter(l => l.status === "Open").length;
+  const approvedCount = scopedLeaves.filter(l => l.status === "Approved").length;
+  const openCount     = scopedLeaves.filter(l => l.status === "Open").length;
 
   return (
     <Layout>
@@ -135,9 +142,9 @@ export default function LeaveRequest() {
         {/* Stats */}
         <div className="px-6 pt-3 pb-0 flex gap-2 shrink-0 flex-wrap">
           {[
-            { label: "Total",    value: leaves.length,  color: "bg-blue-500" },
-            { label: "Open",     value: openCount,      color: "bg-amber-400" },
-            { label: "Approved", value: approvedCount,  color: "bg-emerald-500" },
+            { label: "Total",    value: scopedLeaves.length,  color: "bg-blue-500" },
+            { label: "Open",     value: openCount,            color: "bg-amber-400" },
+            { label: "Approved", value: approvedCount,        color: "bg-emerald-500" },
           ].map(s => (
             <div key={s.label} className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
               <span className={`w-2 h-2 rounded-full ${s.color} shrink-0`} />

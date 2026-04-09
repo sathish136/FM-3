@@ -111,6 +111,7 @@ interface UserScope {
   scope: "all" | "department" | "self";
   employee: Employee | null;
   departments: string[];
+  employee_ids: string[];
   roles: string[];
 }
 
@@ -129,7 +130,7 @@ export default function HRMS() {
   const [deptFilter, setDeptFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("Active");
   const [viewEmp, setViewEmp]       = useState<Employee | null>(null);
-  const [userScope, setUserScope]   = useState<UserScope>({ scope: "all", employee: null, departments: [], roles: [] });
+  const [userScope, setUserScope]   = useState<UserScope>({ scope: "all", employee: null, departments: [], employee_ids: [], roles: [] });
 
   // On mount: resolve user scope from the API, then load initial data
   useEffect(() => {
@@ -138,7 +139,7 @@ export default function HRMS() {
     fetch(`${BASE}/api/hrms/user-scope?email=${encodeURIComponent(user.email)}`)
       .then(r => r.ok ? r.json() : null)
       .then((sc: UserScope | null) => {
-        const resolved = sc ?? { scope: "all" as const, employee: null, departments: [], roles: [] };
+        const resolved = sc ?? { scope: "all" as const, employee: null, departments: [], employee_ids: [], roles: [] };
         setUserScope(resolved);
         setScopeLoading(false);
       })

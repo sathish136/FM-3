@@ -355,12 +355,12 @@ router.get("/hrms/user-scope", async (req, res) => {
     const isAdmin = roles.some(r => ADMIN_ROLES.includes(r));
 
     if (isAdmin) {
-      res.json({ scope: "all", employee, departments: [], roles });
+      res.json({ scope: "all", employee, departments: [], employee_ids: [], roles });
       return;
     }
 
     if (!employee) {
-      res.json({ scope: "self", employee: null, departments: [], roles });
+      res.json({ scope: "self", employee: null, departments: [], employee_ids: [], roles });
       return;
     }
 
@@ -369,14 +369,18 @@ router.get("/hrms/user-scope", async (req, res) => {
     if (isHOD && employee.department) {
       const permDepts = await fetchErpNextUserDepartmentPermissions(email);
       const depts = permDepts.length > 0 ? permDepts : [employee.department];
-      res.json({ scope: "department", employee, departments: depts, roles });
+      const deptSet = new Set(depts);
+      const employee_ids = allEmps.filter(e => e.department && deptSet.has(e.department)).map(e => e.name);
+      res.json({ scope: "department", employee, departments: depts, employee_ids, roles });
       return;
     }
 
     // Check if this employee is listed as department_manager for any department
     const managedDepts = await fetchErpNextManagedDepartments(employee.name);
     if (managedDepts.length > 0) {
-      res.json({ scope: "department", employee, departments: managedDepts, roles });
+      const deptSet = new Set(managedDepts);
+      const employee_ids = allEmps.filter(e => e.department && deptSet.has(e.department)).map(e => e.name);
+      res.json({ scope: "department", employee, departments: managedDepts, employee_ids, roles });
       return;
     }
 
@@ -386,12 +390,15 @@ router.get("/hrms/user-scope", async (req, res) => {
       // Collect distinct departments of subordinates, defaulting to employee's own dept
       const subDepts = [...new Set(subordinates.map(s => s.department).filter(Boolean) as string[])];
       const depts = subDepts.length > 0 ? subDepts : [employee.department];
-      res.json({ scope: "department", employee, departments: depts, roles });
+      const deptSet = new Set(depts);
+      const employee_ids = allEmps.filter(e => e.department && deptSet.has(e.department)).map(e => e.name);
+      res.json({ scope: "department", employee, departments: depts, employee_ids, roles });
       return;
     }
 
     // Regular employee — self only
-    res.json({ scope: "self", employee, departments: employee.department ? [employee.department] : [], roles });
+    const selfEmpIds = employee ? [employee.name] : [];
+    res.json({ scope: "self", employee, departments: employee.department ? [employee.department] : [], employee_ids: selfEmpIds, roles });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

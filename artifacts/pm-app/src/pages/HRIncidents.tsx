@@ -638,6 +638,14 @@ function IncidentCard({ incident, onClick }: { incident: Incident; onClick: () =
   );
 }
 
+interface UserScope {
+  scope: "all" | "department" | "self";
+  employee: { name: string; department?: string | null } | null;
+  departments: string[];
+  employee_ids: string[];
+  roles: string[];
+}
+
 /* ─── Main Page ──────────────────────────────────────────────── */
 export default function HRIncidents() {
   const { user } = useAuth();
@@ -658,7 +666,23 @@ export default function HRIncidents() {
   const [editing, setEditing] = useState<Incident | null>(null);
   const [viewing, setViewing] = useState<Incident | null>(null);
 
+  const [userScope, setUserScope] = useState<UserScope>({ scope: "all", employee: null, departments: [], employee_ids: [], roles: [] });
+  const [scopeLoading, setScopeLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userEmail) return;
+    setScopeLoading(true);
+    fetch(`${API}/hrms/user-scope?email=${encodeURIComponent(userEmail)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((sc: UserScope | null) => {
+        setUserScope(sc ?? { scope: "all", employee: null, departments: [], employee_ids: [], roles: [] });
+        setScopeLoading(false);
+      })
+      .catch(() => setScopeLoading(false));
+  }, [userEmail]);
+
   const fetchData = useCallback(async () => {
+    if (scopeLoading) return;
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -666,17 +690,32 @@ export default function HRIncidents() {
       if (filterStatus) params.set("status", filterStatus);
       if (filterSeverity) params.set("severity", filterSeverity);
       if (filterType) params.set("type", filterType);
+      if (userScope.scope === "department" && userScope.departments.length > 0) {
+        params.set("department", userScope.departments[0]);
+      }
 
       const [incRes, statRes] = await Promise.all([
         fetch(`${API}/hr/incidents?${params}`).then(r => r.json()),
         fetch(`${API}/hr/incidents/stats`).then(r => r.json()),
       ]);
-      setIncidents(incRes.incidents || []);
-      setTotal(incRes.total || 0);
+      let allIncidents: Incident[] = incRes.incidents || [];
+
+      if (userScope.scope === "self" && userEmail) {
+        allIncidents = allIncidents.filter(inc =>
+          inc.reporter_email?.toLowerCase() === userEmail.toLowerCase() ||
+          inc.involved_employee?.toLowerCase() === userEmail.toLowerCase()
+        );
+      } else if (userScope.scope === "department" && userScope.departments.length > 1) {
+        const deptSet = new Set(userScope.departments.map(d => d.toLowerCase()));
+        allIncidents = allIncidents.filter(inc => inc.department && deptSet.has(inc.department.toLowerCase()));
+      }
+
+      setIncidents(allIncidents);
+      setTotal(allIncidents.length);
       setStats(statRes);
     } catch {}
     setLoading(false);
-  }, [search, filterStatus, filterSeverity, filterType]);
+  }, [search, filterStatus, filterSeverity, filterType, userScope, scopeLoading, userEmail]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
