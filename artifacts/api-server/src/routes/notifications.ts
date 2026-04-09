@@ -13,7 +13,7 @@ const ULTRAMSG_BASE = `https://api.ultramsg.com/${ULTRAMSG_INSTANCE}`;
 const GMAIL_USER = process.env.GMAIL_USER || "noreply@wttint.com";
 const GMAIL_PASS = process.env.GMAIL_APP_PASSWORD || "ejjjsfufipqmvpuh";
 
-async function sendWhatsApp(to: string, message: string): Promise<{ success: boolean; error?: string }> {
+export async function sendWhatsApp(to: string, message: string): Promise<{ success: boolean; error?: string }> {
   try {
     const params = new URLSearchParams({
       token: ULTRAMSG_TOKEN,
@@ -34,7 +34,7 @@ async function sendWhatsApp(to: string, message: string): Promise<{ success: boo
   }
 }
 
-async function sendEmailNotification(to: string, subject: string, html: string): Promise<{ success: boolean; error?: string }> {
+export async function sendEmailNotification(to: string, subject: string, html: string): Promise<{ success: boolean; error?: string }> {
   try {
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
@@ -94,7 +94,7 @@ export async function sendNotification(opts: {
   return results;
 }
 
-function buildEmailHtml(title: string, message: string): string {
+export function buildEmailHtml(title: string, message: string): string {
   return `
     <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#f8fafc;border-radius:16px;">
       <h2 style="color:#0a2463;margin:0 0 8px;">FlowMatri<span style="color:#0ea5e9">X</span></h2>
