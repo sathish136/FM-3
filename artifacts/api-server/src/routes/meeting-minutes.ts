@@ -202,7 +202,8 @@ List every follow-up task. Format each as:
 ## Next Steps
 Summarise what happens next — follow-up meetings, milestones, or deadlines mentioned.
 
-Be thorough and accurate. Do not invent information not present in the transcript. Use professional language throughout.`;
+Be thorough and accurate. Do not invent information not present in the transcript. Use professional language throughout.
+IMPORTANT: Do NOT add any "Prepared by", signature, footer, or closing line at the end. Stop after the Next Steps section.`;
 
     const stream = await getOpenAI().chat.completions.create({
       model: "gpt-4o",
@@ -220,9 +221,13 @@ Be thorough and accurate. Do not invent information not present in the transcrip
       }
     }
 
-    const actionIdx = fullResponse.indexOf("## Action Items");
-    const aiSummary = actionIdx > -1 ? fullResponse.slice(0, actionIdx).trim() : fullResponse.trim();
-    const actionItems = actionIdx > -1 ? fullResponse.slice(actionIdx + "## Action Items".length).trim() : "";
+    // Strip any AI-generated "Prepared by" footer from the response
+    const preparedByIdx = fullResponse.search(/\n[\*_]*\s*Prepared by[\s\S]*$/i);
+    const cleanedResponse = preparedByIdx > -1 ? fullResponse.slice(0, preparedByIdx).trim() : fullResponse.trim();
+
+    const actionIdx = cleanedResponse.indexOf("## Action Items");
+    const aiSummary = actionIdx > -1 ? cleanedResponse.slice(0, actionIdx).trim() : cleanedResponse.trim();
+    const actionItems = actionIdx > -1 ? cleanedResponse.slice(actionIdx + "## Action Items".length).trim() : "";
 
     await db.update(meetingMinutesTable).set({ aiSummary, actionItems, status: "completed" }).where(eq(meetingMinutesTable.id, Number(req.params.id)));
 
