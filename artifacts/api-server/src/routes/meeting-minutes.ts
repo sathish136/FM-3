@@ -126,12 +126,13 @@ router.post("/meeting-minutes/:id/transcribe", upload.single("audio"), async (re
   try {
     if (!req.file) return res.status(400).json({ error: "No audio file" });
 
-    const ext = req.file.mimetype.includes("webm") ? "webm"
-      : req.file.mimetype.includes("mp4") ? "mp4"
-      : req.file.mimetype.includes("ogg") ? "ogg"
+    const baseMime = req.file.mimetype.split(";")[0].trim();
+    const ext = baseMime.includes("webm") ? "webm"
+      : baseMime.includes("mp4") ? "mp4"
+      : baseMime.includes("ogg") ? "ogg"
       : "wav";
 
-    const audioFile = await toFile(req.file.buffer, `audio.${ext}`, { type: req.file.mimetype });
+    const audioFile = await toFile(req.file.buffer, `audio.${ext}`, { type: baseMime });
 
     const result = await getOpenAI().audio.transcriptions.create({
       model: "gpt-4o-mini-transcribe",

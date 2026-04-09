@@ -123,12 +123,19 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
       audioCtxRef.current = ctx;
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = BAR_COUNT * 2;
+      analyser.fftSize = 256; // must be power of 2; gives 128 time-domain samples
+      analyser.smoothingTimeConstant = 0.75;
       source.connect(analyser);
-      const data = new Uint8Array(analyser.frequencyBinCount);
+      const data = new Uint8Array(analyser.fftSize);
+      const step = Math.floor(analyser.fftSize / BAR_COUNT);
       const tick = () => {
-        analyser.getByteFrequencyData(data);
-        setWaveData(Array.from(data).map(v => v / 255));
+        analyser.getByteTimeDomainData(data);
+        const bars: number[] = [];
+        for (let i = 0; i < BAR_COUNT; i++) {
+          const v = data[i * step] ?? 128;
+          bars.push(Math.abs((v - 128) / 128)); // 0 = silence, 1 = max amplitude
+        }
+        setWaveData(bars);
         animFrameRef.current = requestAnimationFrame(tick);
       };
       animFrameRef.current = requestAnimationFrame(tick);
@@ -141,28 +148,44 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
     setWaveData(new Array(BAR_COUNT).fill(0));
   };
 
+  // Tracks per-language live text from three parallel recognition instances
+  const langTextsRef = useRef<Record<string, string>>({ "ta-IN": "", "hi-IN": "", "en-IN": "" });
+  const recognitionsRef = useRef<any[]>([]);
+
   const startSpeechRecognition = () => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) return;
-    try {
-      const r = new SR();
-      r.continuous = true;
-      r.interimResults = true;
-      r.lang = "en-IN";
-      r.onresult = (e: any) => {
-        let text = "";
-        for (let i = 0; i < e.results.length; i++) text += e.results[i][0].transcript + " ";
-        const t = text.trim();
-        liveTextRef.current = t;
-        setLiveText(t);
-      };
-      r.onerror = () => {};
-      r.start();
-      recognitionRef.current = r;
-    } catch {}
+    const langs = ["ta-IN", "hi-IN", "en-IN"];
+    recognitionsRef.current = [];
+    langs.forEach(lang => {
+      try {
+        const r = new SR();
+        r.continuous = true;
+        r.interimResults = true;
+        r.lang = lang;
+        r.onresult = (e: any) => {
+          let text = "";
+          for (let i = 0; i < e.results.length; i++) text += e.results[i][0].transcript + " ";
+          langTextsRef.current[lang] = text.trim();
+          const combined = langs.map(l => langTextsRef.current[l]).filter(Boolean).join(" ").trim();
+          liveTextRef.current = combined;
+          setLiveText(combined);
+        };
+        r.onerror = () => {};
+        r.onend = () => { try { r.start(); } catch {} }; // auto-restart if it stops
+        r.start();
+        recognitionsRef.current.push(r);
+      } catch {}
+    });
   };
 
   const stopSpeechRecognition = () => {
+    recognitionsRef.current.forEach(r => {
+      r.onend = null;
+      try { r.stop(); } catch {}
+    });
+    recognitionsRef.current = [];
+    langTextsRef.current = { "ta-IN": "", "hi-IN": "", "en-IN": "" };
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch {}
       recognitionRef.current = null;
@@ -303,28 +326,29 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
         {/* Live waveform + real-time transcript */}
         {phase === "recording" && (
           <div className="w-full flex flex-col items-center gap-3">
-            <div className="flex items-end gap-[3px] h-14 px-2">
+            {/* Waveform: bars grow from center up & down */}
+            <div className="flex items-center gap-[3px] h-16 px-2">
               {waveData.map((v, i) => {
-                const h = Math.max(3, Math.round(v * 52));
-                const mid = BAR_COUNT / 2;
-                const dist = Math.abs(i - mid) / mid;
-                const opacity = 1 - dist * 0.35;
+                const amp = Math.max(0.03, v);
+                const halfH = Math.round(amp * 28); // half-bar height in px (max 28 → 56px total)
+                const bright = 200 + Math.round(v * 55); // intensity: darker when louder
                 return (
-                  <div
-                    key={i}
-                    className="rounded-full transition-all duration-75"
-                    style={{
-                      width: 5,
-                      height: h,
-                      background: `rgba(239,68,68,${opacity})`,
-                      boxShadow: v > 0.5 ? `0 0 4px rgba(239,68,68,0.4)` : "none",
-                    }}
-                  />
+                  <div key={i} className="flex flex-col items-center justify-center" style={{ height: 64 }}>
+                    <div
+                      className="rounded-full transition-[height] duration-75"
+                      style={{
+                        width: 4,
+                        height: halfH * 2,
+                        background: `rgb(${bright},50,50)`,
+                        boxShadow: v > 0.4 ? `0 0 5px rgba(239,68,68,0.5)` : "none",
+                      }}
+                    />
+                  </div>
                 );
               })}
             </div>
             {liveText && (
-              <div className="w-full max-w-sm rounded-lg px-3 py-2 bg-white/70 border border-red-100 text-[11px] text-gray-600 leading-relaxed text-center italic line-clamp-3">
+              <div className="w-full max-w-md rounded-lg px-3 py-2 bg-white/80 border border-red-100 text-[11px] text-gray-600 leading-relaxed text-center italic line-clamp-3">
                 {liveText}
               </div>
             )}
