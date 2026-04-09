@@ -1,6 +1,6 @@
 import { Layout } from "@/components/Layout";
 import {
-  Calendar, RefreshCw, Loader2, Search, ChevronDown, ExternalLink, Plus,
+  Calendar, RefreshCw, Loader2, Search, ChevronDown, ExternalLink, Plus, X,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -38,6 +38,10 @@ interface UserScope {
   roles: string[];
 }
 
+interface LeaveType {
+  name: string;
+}
+
 function fmtDate(d: string | null) {
   if (!d) return "—";
   try { return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }); }
@@ -55,6 +59,156 @@ function StatusPill({ status }: { status: string }) {
   return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-200 text-gray-600">{status}</span>;
 }
 
+function LeaveModal({ employee, onClose, onSaved }: {
+  employee: Employee | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
+  const [form, setForm] = useState({
+    leave_type: "",
+    from_date: todayStr(),
+    to_date: todayStr(),
+    half_day: false,
+    half_day_date: todayStr(),
+    description: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetch(`${BASE}/api/hrms/leave-types`)
+      .then(r => r.json())
+      .then(data => { setLeaveTypes(Array.isArray(data) ? data : []); })
+      .catch(() => {});
+  }, []);
+
+  const set = (k: keyof typeof form, v: any) => setForm(f => ({ ...f, [k]: v }));
+
+  const handleSubmit = async () => {
+    if (!form.leave_type) { setError("Please select a leave type"); return; }
+    if (!form.from_date || !form.to_date) { setError("Please select dates"); return; }
+    if (!employee) { setError("No employee linked to your account"); return; }
+    setSaving(true); setError("");
+    try {
+      const body = {
+        employee: employee.name,
+        leave_type: form.leave_type,
+        from_date: form.from_date,
+        to_date: form.to_date,
+        half_day: form.half_day ? 1 : 0,
+        half_day_date: form.half_day ? form.half_day_date : undefined,
+        description: form.description || undefined,
+      };
+      const r = await fetch(`${BASE}/api/hrms/leave-requests`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ error: "Unknown error" }));
+        throw new Error(err.error || err.message || "Failed to submit");
+      }
+      toast({ title: "Leave request submitted successfully" });
+      onSaved();
+    } catch (e: any) {
+      setError(e.message);
+      setSaving(false);
+    }
+  };
+
+  const inp = "w-full px-3 py-2 text-sm rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-amber-300";
+  const label = "text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block";
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" style={{ animation: "modalIn 0.2s ease" }}>
+        <style>{`@keyframes modalIn{from{opacity:0;transform:translateY(12px) scale(0.97)}to{opacity:1;transform:none}}`}</style>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-amber-500" />
+            <h2 className="text-sm font-bold text-gray-900">New Leave Request</h2>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          {employee && (
+            <div>
+              <span className={label}>Employee</span>
+              <div className="px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 font-medium">
+                {employee.employee_name} <span className="text-gray-400 text-xs font-mono">({employee.name})</span>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <span className={label}>Leave Type *</span>
+            <div className="relative">
+              <select value={form.leave_type} onChange={e => set("leave_type", e.target.value)}
+                className={`${inp} appearance-none pr-8`}>
+                <option value="">Select leave type…</option>
+                {leaveTypes.map(lt => <option key={lt.name} value={lt.name}>{lt.name}</option>)}
+              </select>
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <span className={label}>From Date *</span>
+              <input type="date" value={form.from_date} onChange={e => set("from_date", e.target.value)} className={inp} />
+            </div>
+            <div>
+              <span className={label}>To Date *</span>
+              <input type="date" value={form.to_date} onChange={e => set("to_date", e.target.value)} className={inp} />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={form.half_day}
+                onChange={e => set("half_day", e.target.checked)}
+                className="w-4 h-4 rounded accent-amber-500" />
+              <span className="text-sm text-gray-700">Half Day</span>
+            </label>
+            {form.half_day && (
+              <input type="date" value={form.half_day_date}
+                onChange={e => set("half_day_date", e.target.value)}
+                className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-amber-300" />
+            )}
+          </div>
+
+          <div>
+            <span className={label}>Reason</span>
+            <textarea value={form.description} onChange={e => set("description", e.target.value)}
+              placeholder="Reason for leave…"
+              rows={3}
+              className={`${inp} resize-none`} />
+          </div>
+
+          {error && <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-600 text-xs">{error}</div>}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-gray-100">
+          <button onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+            Cancel
+          </button>
+          <button onClick={handleSubmit} disabled={saving}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50 transition-colors">
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+            Submit Request
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function LeaveRequest() {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -63,6 +217,7 @@ export default function LeaveRequest() {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [showModal, setShowModal] = useState(false);
 
   const [userScope, setUserScope] = useState<UserScope>({ scope: "all", employee: null, departments: [], employee_ids: [], roles: [] });
   const [scopeLoading, setScopeLoading] = useState(true);
@@ -104,7 +259,7 @@ export default function LeaveRequest() {
     ? leaves
     : userScope.scope === "department" && userScope.employee_ids.length > 0
     ? leaves.filter(l => userScope.employee_ids.includes(l.employee))
-    : leaves; // "self" already filtered at API level
+    : leaves;
 
   const filtered = scopedLeaves.filter(l =>
     (!search       || l.employee_name.toLowerCase().includes(search.toLowerCase()) || l.leave_type.toLowerCase().includes(search.toLowerCase())) &&
@@ -125,14 +280,14 @@ export default function LeaveRequest() {
             <h1 className="text-sm font-bold text-gray-900">Leave Requests</h1>
             <span className="text-xs text-gray-400 ml-1">Leave Application — ERPNext</span>
           </div>
-          <a href={`${ERP_URL}/app/leave-request`} target="_blank" rel="noopener noreferrer"
+          <a href={`${ERP_URL}/app/leave-application`} target="_blank" rel="noopener noreferrer"
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-colors">
             <ExternalLink className="w-3.5 h-3.5" /> ERPNext
           </a>
-          <a href={`${ERP_URL}/app/leave-request`} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-white hover:bg-amber-600 transition-colors shadow-sm">
+          <button onClick={() => setShowModal(true)} disabled={scopeLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors shadow-sm">
             <Plus className="w-3.5 h-3.5" /> New Request
-          </a>
+          </button>
           <button onClick={loadLeaves} disabled={loading}
             className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors">
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
@@ -234,6 +389,14 @@ export default function LeaveRequest() {
         </div>
 
       </div>
+
+      {showModal && (
+        <LeaveModal
+          employee={userScope.employee}
+          onClose={() => setShowModal(false)}
+          onSaved={() => { setShowModal(false); loadLeaves(); }}
+        />
+      )}
     </Layout>
   );
 }
