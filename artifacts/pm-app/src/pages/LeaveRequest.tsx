@@ -38,9 +38,6 @@ interface UserScope {
   roles: string[];
 }
 
-interface LeaveType {
-  name: string;
-}
 
 function fmtDate(d: string | null) {
   if (!d) return "—";
@@ -65,7 +62,7 @@ function LeaveModal({ employee, onClose, onSaved }: {
   onSaved: () => void;
 }) {
   const { toast } = useToast();
-  const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
+  const [leaveTypes, setLeaveTypes] = useState<string[]>([]);
   const [form, setForm] = useState({
     leave_type: "",
     from_date: todayStr(),
@@ -151,7 +148,7 @@ function LeaveModal({ employee, onClose, onSaved }: {
               <select value={form.leave_type} onChange={e => set("leave_type", e.target.value)}
                 className={`${inp} appearance-none pr-8`}>
                 <option value="">Select leave type…</option>
-                {leaveTypes.map(lt => <option key={lt.name} value={lt.name}>{lt.name}</option>)}
+                {leaveTypes.map(lt => <option key={lt} value={lt}>{lt}</option>)}
               </select>
               <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
             </div>
@@ -375,7 +372,7 @@ export default function LeaveRequest() {
                         <span className="text-[10px] text-gray-400 truncate max-w-[120px] block">{l.description || "—"}</span>
                       </td>
                       <td className="px-3 py-2.5">
-                        <a href={`${ERP_URL}/app/leave-application/${l.name}`} target="_blank" rel="noopener noreferrer"
+                        <a href={`${ERP_URL}/app/leave-request/${l.name}`} target="_blank" rel="noopener noreferrer"
                           className="text-gray-300 hover:text-indigo-500 transition-colors">
                           <ExternalLink className="w-3.5 h-3.5" />
                         </a>

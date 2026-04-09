@@ -673,11 +673,11 @@ export async function fetchErpNextLeaveApplications(filters?: { status?: string;
     "from_date", "to_date", "total_leave_days", "status", "description",
   ]);
   const fArr: any[] = [];
-  if (filters?.status)   fArr.push(["Leave Application", "status", "=", filters.status]);
-  if (filters?.employee) fArr.push(["Leave Application", "employee_name", "like", `%${filters.employee}%`]);
+  if (filters?.status)   fArr.push(["Leave Request", "status", "=", filters.status]);
+  if (filters?.employee) fArr.push(["Leave Request", "employee_name", "like", `%${filters.employee}%`]);
   const params = new URLSearchParams({ fields, limit_page_length: "200", order_by: "from_date desc" });
   if (fArr.length) params.set("filters", JSON.stringify(fArr));
-  const url = `${ERPNEXT_URL}/api/resource/Leave Application?${params}`;
+  const url = `${ERPNEXT_URL}/api/resource/Leave Request?${params}`;
   const res = await fetch(url, { headers: { Authorization: authHeader() } });
   if (!res.ok) throw new Error(`ERPNext leave: ${res.status}`);
   const data = await res.json();
@@ -1244,7 +1244,7 @@ export async function createErpNextLeaveApplication(payload: {
 }): Promise<{ name: string }> {
   if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
   const body = { ...payload, docstatus: 0 };
-  const res = await fetch(`${ERPNEXT_URL}/api/resource/Leave Application`, {
+  const res = await fetch(`${ERPNEXT_URL}/api/resource/Leave Request`, {
     method: "POST",
     headers: { Authorization: authHeader(), "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -1291,13 +1291,13 @@ export async function fetchErpNextExpenseClaims(filters?: {
     "approval_status", "total_claimed_amount", "total_sanctioned_amount", "remark", "modified",
   ]);
   const fArr: any[] = [];
-  if (filters?.employee)        fArr.push(["Expense Claim", "employee", "=", filters.employee]);
-  if (filters?.approval_status) fArr.push(["Expense Claim", "approval_status", "=", filters.approval_status]);
+  if (filters?.employee)        fArr.push(["Claim Request", "employee", "=", filters.employee]);
+  if (filters?.approval_status) fArr.push(["Claim Request", "approval_status", "=", filters.approval_status]);
   const params = new URLSearchParams({ fields, limit_page_length: "200", order_by: "modified desc" });
   if (fArr.length) params.set("filters", JSON.stringify(fArr));
-  const url = `${ERPNEXT_URL}/api/resource/Expense Claim?${params}`;
+  const url = `${ERPNEXT_URL}/api/resource/Claim Request?${params}`;
   const res = await fetch(url, { headers: { Authorization: authHeader() } });
-  if (!res.ok) throw new Error(`ERPNext expense claim: ${res.status}`);
+  if (!res.ok) throw new Error(`ERPNext claim request: ${res.status}`);
   const data = await res.json();
   return data.data ?? [];
 }
@@ -1327,14 +1327,14 @@ export async function createErpNextExpenseClaim(payload: {
 }): Promise<{ name: string }> {
   if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
   const body = { ...payload, docstatus: 0, approval_status: "Draft" };
-  const res = await fetch(`${ERPNEXT_URL}/api/resource/Expense Claim`, {
+  const res = await fetch(`${ERPNEXT_URL}/api/resource/Claim Request`, {
     method: "POST",
     headers: { Authorization: authHeader(), "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`ERPNext create expense claim: ${res.status} — ${err}`);
+    throw new Error(`ERPNext create claim request: ${res.status} — ${err}`);
   }
   const json = await res.json();
   return { name: json.data?.name || "" };

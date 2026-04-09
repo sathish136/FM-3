@@ -44,9 +44,6 @@ interface ExpenseItem {
   amount: number;
 }
 
-interface ClaimType {
-  name: string;
-}
 
 function fmtDate(d: string | null) {
   if (!d) return "—";
@@ -79,7 +76,7 @@ function ClaimModal({ employee, onClose, onSaved }: {
   onSaved: () => void;
 }) {
   const { toast } = useToast();
-  const [claimTypes, setClaimTypes] = useState<ClaimType[]>([]);
+  const [claimTypes, setClaimTypes] = useState<string[]>([]);
   const [posting_date, setPostingDate] = useState(todayStr());
   const [remark, setRemark] = useState("");
   const [items, setItems] = useState<ExpenseItem[]>([emptyItem()]);
@@ -215,7 +212,7 @@ function ClaimModal({ employee, onClose, onSaved }: {
                         <select value={it.expense_type} onChange={e => setItem(i, "expense_type", e.target.value)}
                           className="w-full appearance-none px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-violet-300 pr-6">
                           <option value="">Select type…</option>
-                          {claimTypes.map(ct => <option key={ct.name} value={ct.name}>{ct.name}</option>)}
+                          {claimTypes.map(ct => <option key={ct} value={ct}>{ct}</option>)}
                         </select>
                         <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
                       </div>
@@ -433,7 +430,7 @@ export default function ClaimRequest() {
                         <span className="text-[10px] text-gray-400 truncate max-w-[100px] block">{c.remark || "—"}</span>
                       </td>
                       <td className="px-3 py-2.5">
-                        <a href={`${ERP_URL}/app/expense-claim/${c.name}`} target="_blank" rel="noopener noreferrer"
+                        <a href={`${ERP_URL}/app/claim-request/${c.name}`} target="_blank" rel="noopener noreferrer"
                           className="text-gray-300 hover:text-indigo-500 transition-colors">
                           <ExternalLink className="w-3.5 h-3.5" />
                         </a>
