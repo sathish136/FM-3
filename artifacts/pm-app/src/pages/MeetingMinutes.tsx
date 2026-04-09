@@ -89,6 +89,7 @@ async function streamGenerate(
 
 // ─── Recording Mode ─────────────────────────────────────────────────────────
 type RecordPhase = "idle" | "recording" | "transcribing" | "generating" | "done" | "error";
+const BAR_COUNT = 30;
 
 function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: Meeting) => void }) {
   const [phase, setPhase] = useState<RecordPhase>(meeting.aiSummary ? "done" : "idle");
@@ -96,12 +97,18 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
   const [micError, setMicError] = useState("");
   const [streamText, setStreamText] = useState("");
   const [transcript, setTranscript] = useState(meeting.rawNotes || "");
+  const [waveData, setWaveData] = useState<number[]>(new Array(BAR_COUNT).fill(0));
+  const [liveText, setLiveText] = useState("");
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const allChunksRef = useRef<Blob[]>([]);
   const mimeRef = useRef("audio/webm");
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const animFrameRef = useRef<number | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const liveTextRef = useRef("");
 
   useEffect(() => {
     setTranscript(meeting.rawNotes || "");
@@ -110,8 +117,62 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
 
   const fmt = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
+  const startWaveform = (stream: MediaStream) => {
+    try {
+      const ctx = new AudioContext();
+      audioCtxRef.current = ctx;
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = BAR_COUNT * 2;
+      source.connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      const tick = () => {
+        analyser.getByteFrequencyData(data);
+        setWaveData(Array.from(data).map(v => v / 255));
+        animFrameRef.current = requestAnimationFrame(tick);
+      };
+      animFrameRef.current = requestAnimationFrame(tick);
+    } catch {}
+  };
+
+  const stopWaveform = () => {
+    if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null; }
+    if (audioCtxRef.current) { audioCtxRef.current.close().catch(() => {}); audioCtxRef.current = null; }
+    setWaveData(new Array(BAR_COUNT).fill(0));
+  };
+
+  const startSpeechRecognition = () => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) return;
+    try {
+      const r = new SR();
+      r.continuous = true;
+      r.interimResults = true;
+      r.lang = "en-IN";
+      r.onresult = (e: any) => {
+        let text = "";
+        for (let i = 0; i < e.results.length; i++) text += e.results[i][0].transcript + " ";
+        const t = text.trim();
+        liveTextRef.current = t;
+        setLiveText(t);
+      };
+      r.onerror = () => {};
+      r.start();
+      recognitionRef.current = r;
+    } catch {}
+  };
+
+  const stopSpeechRecognition = () => {
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch {}
+      recognitionRef.current = null;
+    }
+  };
+
   const startRecording = async () => {
     setMicError("");
+    setLiveText("");
+    liveTextRef.current = "";
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -135,6 +196,8 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
       setPhase("recording");
       setDuration(0);
       timerRef.current = setInterval(() => setDuration(d => d + 1), 1000);
+      startWaveform(stream);
+      startSpeechRecognition();
     } catch (err: any) {
       setMicError(err?.name === "NotAllowedError"
         ? "Microphone access denied. Please allow microphone access in your browser."
@@ -144,6 +207,8 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
 
   const stopAndProcess = async () => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    stopWaveform();
+    stopSpeechRecognition();
 
     // Stop recorder and collect final chunks
     await new Promise<void>(resolve => {
@@ -174,12 +239,13 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
       const tRes = await fetch(`${BASE}/meeting-minutes/${meeting.id}/transcribe`, { method: "POST", body: fd });
       if (!tRes.ok) throw new Error(await tRes.text());
       const tData = await tRes.json();
-      const text = tData.transcript?.trim() || "";
+      let text = tData.transcript?.trim() || "";
+      if (!text && liveTextRef.current) text = liveTextRef.current;
       setTranscript(text);
       if (tData.meeting) onUpdate(tData.meeting);
 
       if (!text) {
-        setMicError("No speech detected in the recording. Please try again.");
+        setMicError("No speech detected. Please speak clearly and try again.");
         setPhase("idle");
         return;
       }
@@ -234,14 +300,34 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
           {(phase === "error" || micError) && <><span className="text-orange-600 text-center max-w-xs">{micError}</span></>}
         </div>
 
-        {/* Mic animation */}
+        {/* Live waveform + real-time transcript */}
         {phase === "recording" && (
-          <div className="relative flex items-center justify-center w-20 h-20">
-            <span className="absolute w-20 h-20 rounded-full bg-red-200 animate-ping opacity-40" />
-            <span className="absolute w-14 h-14 rounded-full bg-red-300 animate-ping opacity-30 animation-delay-150" />
-            <div className="relative w-14 h-14 rounded-full bg-red-500 flex items-center justify-center shadow-lg">
-              <Mic className="w-6 h-6 text-white" />
+          <div className="w-full flex flex-col items-center gap-3">
+            <div className="flex items-end gap-[3px] h-14 px-2">
+              {waveData.map((v, i) => {
+                const h = Math.max(3, Math.round(v * 52));
+                const mid = BAR_COUNT / 2;
+                const dist = Math.abs(i - mid) / mid;
+                const opacity = 1 - dist * 0.35;
+                return (
+                  <div
+                    key={i}
+                    className="rounded-full transition-all duration-75"
+                    style={{
+                      width: 5,
+                      height: h,
+                      background: `rgba(239,68,68,${opacity})`,
+                      boxShadow: v > 0.5 ? `0 0 4px rgba(239,68,68,0.4)` : "none",
+                    }}
+                  />
+                );
+              })}
             </div>
+            {liveText && (
+              <div className="w-full max-w-sm rounded-lg px-3 py-2 bg-white/70 border border-red-100 text-[11px] text-gray-600 leading-relaxed text-center italic line-clamp-3">
+                {liveText}
+              </div>
+            )}
           </div>
         )}
 
