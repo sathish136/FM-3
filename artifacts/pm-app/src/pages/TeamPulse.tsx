@@ -987,6 +987,283 @@ function DepartmentCard({ dept, onClick }: { dept: DeptStats; onClick: () => voi
   );
 }
 
+// ── Department Analysis Report ─────────────────────────────────────────────────
+function DeptAnalysisReport({ dept, date }: { dept: DeptStats; date: string }) {
+  const today = new Date();
+  const allTasks = [...dept.todoTasks, ...dept.inProgressTasks, ...dept.reviewTasks, ...dept.doneTasks];
+  const overdueTasks = allTasks.filter(t => t.dueDate && new Date(t.dueDate) < today && t.status !== "done");
+  const completionPct = allTasks.length > 0 ? Math.round((dept.doneTasks.length / allTasks.length) * 100) : 0;
+  const attendancePct = dept.employees.length > 0 ? Math.round(((dept.active + dept.idle) / dept.employees.length) * 100) : 0;
+
+  // Health score: 40% productivity + 30% task completion + 30% attendance
+  const healthScore = Math.round(dept.avgProductivity * 0.4 + completionPct * 0.3 + attendancePct * 0.3);
+  const healthLabel = healthScore >= 70 ? "Excellent" : healthScore >= 50 ? "Good" : healthScore >= 30 ? "Moderate" : "Needs Attention";
+  const healthColor = healthScore >= 70 ? "text-green-600" : healthScore >= 50 ? "text-blue-600" : healthScore >= 30 ? "text-amber-600" : "text-red-500";
+  const healthBg = healthScore >= 70 ? "from-green-400 to-emerald-500" : healthScore >= 50 ? "from-blue-400 to-indigo-500" : healthScore >= 30 ? "from-amber-400 to-orange-500" : "from-red-400 to-rose-500";
+
+  // Member-wise task load
+  const memberLoad = dept.employees.map(emp => {
+    const email = emp.email?.toLowerCase();
+    const firstName = (emp.fullName || "").toLowerCase().split(" ")[0];
+    const assigned = allTasks.filter(t => {
+      if (t.assigneeEmail && t.assigneeEmail.toLowerCase() === email) return true;
+      if (t.assigneeName && t.assigneeName.toLowerCase().split(" ")[0] === firstName) return true;
+      return false;
+    });
+    const pending = assigned.filter(t => t.status !== "done");
+    const overdue = assigned.filter(t => t.dueDate && new Date(t.dueDate) < today && t.status !== "done");
+    const inReview = assigned.filter(t => t.status === "review");
+    return { emp, assigned, pending, overdue, inReview, status: activityStatus(emp) };
+  }).sort((a, b) => b.pending.length - a.pending.length);
+
+  // Follow-up items: overdue or in review tasks with assignee details
+  const followUpItems = allTasks
+    .filter(t => t.status !== "done" && (
+      (t.dueDate && new Date(t.dueDate) < today) ||
+      t.status === "review"
+    ))
+    .sort((a, b) => {
+      const aOverdue = a.dueDate && new Date(a.dueDate) < today ? 0 : 1;
+      const bOverdue = b.dueDate && new Date(b.dueDate) < today ? 0 : 1;
+      return aOverdue - bOverdue;
+    });
+
+  // Auto-generated insights
+  const insights: { type: "success" | "warning" | "danger" | "info"; text: string }[] = [];
+  if (dept.active === dept.employees.length) insights.push({ type: "success", text: "Full team is currently active and online." });
+  else if (dept.offline > dept.employees.length * 0.5) insights.push({ type: "warning", text: `${dept.offline} of ${dept.employees.length} members are offline today.` });
+  if (overdueTasks.length === 0 && allTasks.length > 0) insights.push({ type: "success", text: "No overdue tasks — department is on track." });
+  else if (overdueTasks.length > 0) insights.push({ type: "danger", text: `${overdueTasks.length} task${overdueTasks.length !== 1 ? "s are" : " is"} overdue and need immediate follow-up.` });
+  if (dept.reviewTasks.length > 0) insights.push({ type: "info", text: `${dept.reviewTasks.length} task${dept.reviewTasks.length !== 1 ? "s are" : " is"} pending review/approval.` });
+  if (completionPct >= 70) insights.push({ type: "success", text: `Strong task completion rate of ${completionPct}% for this period.` });
+  else if (completionPct < 30 && allTasks.length > 0) insights.push({ type: "warning", text: `Low task completion at ${completionPct}% — consider reviewing workload.` });
+  const highLoad = memberLoad.filter(m => m.pending.length >= 5);
+  if (highLoad.length > 0) insights.push({ type: "warning", text: `${highLoad.map(m => m.emp.fullName || m.emp.email.split("@")[0]).join(", ")} ${highLoad.length === 1 ? "has" : "have"} high pending task load (5+).` });
+  const unproductiveApps = dept.topApps.filter(a => a.cls === "unproductive");
+  if (unproductiveApps.length > 0) insights.push({ type: "warning", text: `Unproductive apps in use: ${unproductiveApps.map(a => a.app).join(", ")}.` });
+  if (insights.length === 0) insights.push({ type: "info", text: "No significant alerts for this department today." });
+
+  const insightStyle = {
+    success: "bg-green-50 border-green-200 text-green-800",
+    warning: "bg-amber-50 border-amber-200 text-amber-800",
+    danger: "bg-red-50 border-red-200 text-red-800",
+    info: "bg-blue-50 border-blue-200 text-blue-800",
+  };
+  const insightIcon = {
+    success: <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />,
+    warning: <AlertCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />,
+    danger: <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />,
+    info: <TrendingUp className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />,
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto bg-gray-50">
+      <div className="p-5 space-y-5 max-w-5xl mx-auto">
+
+        {/* Report header */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-4 flex items-center gap-4">
+          <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${healthBg} flex items-center justify-center shadow`}>
+            <PieChart className="w-6 h-6 text-white" />
+          </div>
+          <div className="flex-1">
+            <h2 className="text-base font-bold text-gray-900">{dept.name} — Department Analysis Report</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Auto-generated · {date} · {dept.employees.length} member{dept.employees.length !== 1 ? "s" : ""}</p>
+          </div>
+          <div className="text-right">
+            <div className={`text-2xl font-black ${healthColor}`}>{healthScore}</div>
+            <div className={`text-[11px] font-bold ${healthColor}`}>{healthLabel}</div>
+            <div className="text-[10px] text-gray-400">Health Score</div>
+          </div>
+        </div>
+
+        {/* KPI row */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { label: "Productivity", value: `${dept.avgProductivity}%`, sub: "Avg today", color: dept.avgProductivity >= 60 ? "text-green-600" : dept.avgProductivity >= 35 ? "text-amber-600" : "text-red-500", bg: "bg-green-50" },
+            { label: "Task Completion", value: `${completionPct}%`, sub: `${dept.doneTasks.length}/${allTasks.length} tasks`, color: completionPct >= 60 ? "text-blue-600" : "text-amber-600", bg: "bg-blue-50" },
+            { label: "Attendance", value: `${attendancePct}%`, sub: `${dept.active + dept.idle} present`, color: attendancePct >= 70 ? "text-emerald-600" : "text-amber-600", bg: "bg-emerald-50" },
+            { label: "Overdue Tasks", value: `${overdueTasks.length}`, sub: "Need follow-up", color: overdueTasks.length === 0 ? "text-green-600" : "text-red-600", bg: "bg-red-50" },
+          ].map(k => (
+            <div key={k.label} className="bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-3 flex flex-col gap-0.5">
+              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{k.label}</div>
+              <div className={`text-2xl font-black ${k.color}`}>{k.value}</div>
+              <div className="text-[10px] text-gray-400">{k.sub}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Auto-generated insights */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4">
+          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+            <TrendingUp className="w-3.5 h-3.5" /> Auto-Generated Insights
+          </div>
+          <div className="space-y-2">
+            {insights.map((ins, i) => (
+              <div key={i} className={`flex items-start gap-2.5 rounded-xl border px-3.5 py-2.5 text-xs font-medium ${insightStyle[ins.type]}`}>
+                {insightIcon[ins.type]}
+                {ins.text}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Follow-up tracker */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4">
+          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+            <AlertCircle className="w-3.5 h-3.5" /> Follow-Up Tracker
+          </div>
+          {followUpItems.length === 0 ? (
+            <div className="text-sm text-gray-400 italic text-center py-4">
+              <CheckCircle2 className="w-6 h-6 text-green-400 mx-auto mb-1" />
+              No follow-up needed — all tasks on track!
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {followUpItems.map(t => {
+                const isOverdue = t.dueDate && new Date(t.dueDate) < today;
+                const daysOverdue = isOverdue && t.dueDate
+                  ? Math.floor((today.getTime() - new Date(t.dueDate).getTime()) / 86400000)
+                  : 0;
+                const assignee = t.assigneeName || t.assigneeEmail?.split("@")[0] || "Unassigned";
+                return (
+                  <div key={t.id} className={`rounded-xl border px-4 py-3 flex items-start gap-3 ${isOverdue ? "bg-red-50 border-red-100" : "bg-amber-50 border-amber-100"}`}>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-semibold text-gray-800 line-clamp-2">{t.title}</div>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className="text-[10px] text-gray-500 bg-white border border-gray-200 rounded-full px-1.5 py-0.5 font-medium">{assignee}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold border ${priorityColor(t.priority)}`}>{t.priority}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold border ${t.status === "review" ? "bg-amber-100 text-amber-700 border-amber-200" : "bg-blue-100 text-blue-700 border-blue-200"}`}>
+                          {t.status === "review" ? "Awaiting Review" : t.status === "in_progress" ? "In Progress" : "To Do"}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex-shrink-0 text-right">
+                      {isOverdue ? (
+                        <div>
+                          <div className="text-[11px] font-bold text-red-600">{daysOverdue}d overdue</div>
+                          <div className="text-[10px] text-red-400">{t.dueDate}</div>
+                        </div>
+                      ) : (
+                        <div className="text-[11px] font-semibold text-amber-600">Review pending</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Member-wise task load */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4">
+          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+            <UserCheck className="w-3.5 h-3.5" /> Member-wise Task Distribution
+          </div>
+          {memberLoad.length === 0 ? (
+            <div className="text-sm text-gray-400 italic text-center py-4">No member data available</div>
+          ) : (
+            <div className="space-y-2">
+              {memberLoad.map(({ emp, assigned, pending, overdue, inReview, status }) => {
+                const displayName = emp.fullName || emp.deviceUsername || emp.email.split("@")[0];
+                const photo = emp.erpImage ? `${BASE}/api/auth/photo?url=${encodeURIComponent(emp.erpImage)}` : null;
+                const statusDot = status === "active" ? "bg-green-500" : status === "idle" ? "bg-amber-400" : "bg-gray-300";
+                const loadPct = dept.employees.length > 0 && assigned.length > 0
+                  ? Math.round((assigned.length / Math.max(...memberLoad.map(m => m.assigned.length), 1)) * 100)
+                  : 0;
+                return (
+                  <div key={emp.email} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+                    <div className="relative flex-shrink-0">
+                      {photo ? (
+                        <img src={photo} alt={displayName} className="w-8 h-8 rounded-full object-cover" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white text-[10px] font-bold">
+                          {initials(displayName)}
+                        </div>
+                      )}
+                      <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${statusDot}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-gray-800 truncate">{displayName}</span>
+                        {emp.designation && <span className="text-[10px] text-blue-500 truncate hidden sm:block">{emp.designation}</span>}
+                      </div>
+                      <div className="mt-1 w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full transition-all ${pending.length >= 5 ? "bg-red-400" : pending.length >= 3 ? "bg-amber-400" : "bg-blue-400"}`}
+                          style={{ width: `${loadPct}%` }} />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0 text-right">
+                      <div className="text-center">
+                        <div className="text-sm font-black text-gray-800">{assigned.length}</div>
+                        <div className="text-[9px] text-gray-400">Total</div>
+                      </div>
+                      <div className="text-center">
+                        <div className={`text-sm font-black ${pending.length > 0 ? "text-blue-600" : "text-gray-300"}`}>{pending.length}</div>
+                        <div className="text-[9px] text-gray-400">Pending</div>
+                      </div>
+                      {overdue.length > 0 && (
+                        <div className="text-center">
+                          <div className="text-sm font-black text-red-500">{overdue.length}</div>
+                          <div className="text-[9px] text-red-400">Overdue</div>
+                        </div>
+                      )}
+                      {inReview.length > 0 && (
+                        <div className="text-center">
+                          <div className="text-sm font-black text-amber-500">{inReview.length}</div>
+                          <div className="text-[9px] text-amber-400">Review</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Apps usage breakdown */}
+        {dept.topApps.length > 0 && (
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4">
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+              <Monitor className="w-3.5 h-3.5" /> Application Usage Breakdown
+            </div>
+            <div className="space-y-2">
+              {dept.topApps.map(a => {
+                const maxCount = Math.max(...dept.topApps.map(x => x.count), 1);
+                const barPct = Math.round((a.count / maxCount) * 100);
+                return (
+                  <div key={a.app} className="flex items-center gap-3">
+                    <div className={`w-2 h-2 rounded-full flex-shrink-0 mt-0.5 ${a.cls === "productive" ? "bg-green-500" : a.cls === "unproductive" ? "bg-red-400" : "bg-gray-300"}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium text-gray-700 truncate">{a.app}</span>
+                        <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                          <span className={`text-[10px] px-1.5 rounded-full font-semibold ${a.cls === "productive" ? "bg-green-100 text-green-700" : a.cls === "unproductive" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-500"}`}>
+                            {a.cls}
+                          </span>
+                          <span className="text-[10px] font-bold text-gray-500">{a.count} user{a.count !== 1 ? "s" : ""}</span>
+                        </div>
+                      </div>
+                      <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${a.cls === "productive" ? "bg-green-400" : a.cls === "unproductive" ? "bg-red-400" : "bg-gray-300"}`}
+                          style={{ width: `${barPct}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="text-center text-[10px] text-gray-300 pb-2">
+          Report auto-generated based on live Team Pulse data · {dept.name} · {date}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Department Detail Panel ────────────────────────────────────────────────────
 function DepartmentDetailPanel({
   dept, tasks, onClose, onSelectEmployee, erpCheckinMap, date,
@@ -1015,6 +1292,7 @@ function DepartmentDetailPanel({
     : 0;
 
   const [empSearch, setEmpSearch] = useState("");
+  const [deptTab, setDeptTab] = useState<"team" | "report">("team");
   const filteredEmps = dept.employees.filter(e =>
     !empSearch || (e.fullName || e.email || "").toLowerCase().includes(empSearch.toLowerCase())
   );
@@ -1024,7 +1302,7 @@ function DepartmentDetailPanel({
       {/* Top nav */}
       <div className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-4 shadow-sm">
         <button onClick={onClose} className="flex items-center gap-2 text-gray-500 hover:text-gray-900 text-sm font-medium transition-colors">
-          <ArrowLeft className="w-4 h-4" /> Dept. Report
+          <ArrowLeft className="w-4 h-4" /> Back
         </button>
         <ChevronRight className="w-3.5 h-3.5 text-gray-300" />
         <div className="flex items-center gap-2">
@@ -1034,11 +1312,31 @@ function DepartmentDetailPanel({
           <span className="text-sm font-bold text-gray-900">{dept.name}</span>
         </div>
         <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-violet-100 text-violet-700">{dept.employees.length} members</span>
+
+        {/* Tab toggle */}
+        <div className="flex items-center bg-gray-100 rounded-xl p-0.5 ml-2">
+          <button
+            onClick={() => setDeptTab("team")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${deptTab === "team" ? "bg-white text-violet-700 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
+          >
+            <Users className="w-3.5 h-3.5" /> Team View
+          </button>
+          <button
+            onClick={() => setDeptTab("report")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${deptTab === "report" ? "bg-white text-violet-700 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
+          >
+            <PieChart className="w-3.5 h-3.5" /> Analysis Report
+          </button>
+        </div>
+
         <div className="ml-auto flex items-center gap-2 text-xs text-gray-400">
           <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-lg font-semibold border border-blue-100">{date}</span>
         </div>
       </div>
 
+      {deptTab === "report" ? (
+        <DeptAnalysisReport dept={dept} date={date} />
+      ) : (
       <div className="flex-1 flex overflow-hidden">
 
         {/* LEFT: Dept summary */}
@@ -1268,6 +1566,7 @@ function DepartmentDetailPanel({
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }
