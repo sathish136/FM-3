@@ -1985,13 +1985,115 @@ export default function TeamPulse() {
           </div>
         </div>
 
-        {/* Grid */}
+        {/* Content */}
         <div className="flex-1 overflow-auto p-6">
           {actLoading && activity.length === 0 ? (
             <div className="flex items-center justify-center h-40">
               <Loader2 className="w-8 h-8 text-violet-500 animate-spin" />
             </div>
+          ) : pulseView === "dept" ? (
+            /* ── Department Cards View ── */
+            deptStatsList.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-40 gap-3 text-center">
+                <Building2 className="w-10 h-10 text-gray-300" />
+                <p className="text-sm font-semibold text-gray-500">No department data yet</p>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-xs text-gray-400">{deptStatsList.length} department{deptStatsList.length !== 1 ? "s" : ""} · click any card to view full analysis</span>
+                  <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                    <Wifi className="w-3.5 h-3.5 text-green-500" />
+                    Auto-refreshes every 30s · last {lastRefresh.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {deptStatsList.map(dept => {
+                    const allTasks = [...dept.todoTasks, ...dept.inProgressTasks, ...dept.reviewTasks, ...dept.doneTasks];
+                    const overdue = allTasks.filter(t => t.dueDate && new Date(t.dueDate) < new Date() && t.status !== "done").length;
+                    const completionPct = allTasks.length > 0 ? Math.round((dept.doneTasks.length / allTasks.length) * 100) : 0;
+                    const attendancePct = dept.employees.length > 0 ? Math.round(((dept.active + dept.idle) / dept.employees.length) * 100) : 0;
+                    const healthScore = Math.round(dept.avgProductivity * 0.4 + completionPct * 0.3 + attendancePct * 0.3);
+                    const scoreColor = dept.avgProductivity >= 60 ? "#10b981" : dept.avgProductivity >= 35 ? "#f59e0b" : "#ef4444";
+                    const scoreBg = dept.avgProductivity >= 60 ? "from-green-400 to-emerald-500" : dept.avgProductivity >= 35 ? "from-amber-400 to-orange-500" : "from-red-400 to-rose-500";
+                    const healthColor = healthScore >= 70 ? "text-green-600" : healthScore >= 50 ? "text-blue-600" : healthScore >= 30 ? "text-amber-600" : "text-red-500";
+                    const healthLabel = healthScore >= 70 ? "Excellent" : healthScore >= 50 ? "Good" : healthScore >= 30 ? "Moderate" : "Needs Attention";
+                    return (
+                      <div
+                        key={dept.name}
+                        onClick={() => setSelectedDept(dept.name)}
+                        className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-violet-200 cursor-pointer transition-all hover:scale-[1.01] overflow-hidden"
+                      >
+                        {/* Header */}
+                        <div className={`h-1.5 w-full bg-gradient-to-r ${scoreBg}`} />
+                        <div className="p-4">
+                          <div className="flex items-start gap-3 mb-3">
+                            <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${scoreBg} flex items-center justify-center flex-shrink-0 shadow-sm`}>
+                              <Building2 className="w-5 h-5 text-white" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-bold text-sm text-gray-900 truncate">{dept.name}</div>
+                              <div className="text-[11px] text-gray-400">{dept.employees.length} member{dept.employees.length !== 1 ? "s" : ""}</div>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <div className={`text-lg font-black ${healthColor}`}>{healthScore}</div>
+                              <div className={`text-[9px] font-bold uppercase ${healthColor}`}>{healthLabel}</div>
+                            </div>
+                          </div>
+
+                          {/* Status row */}
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="flex items-center gap-1 text-[11px] font-semibold text-green-700 bg-green-50 border border-green-100 rounded-full px-2 py-0.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />{dept.active} Active
+                            </span>
+                            <span className="flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-100 rounded-full px-2 py-0.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />{dept.idle} Idle
+                            </span>
+                            <span className="flex items-center gap-1 text-[11px] font-semibold text-gray-500 bg-gray-50 border border-gray-200 rounded-full px-2 py-0.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-gray-300" />{dept.offline} Offline
+                            </span>
+                          </div>
+
+                          {/* Productivity bar */}
+                          <div className="mb-2">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[10px] text-gray-400 font-medium">Productivity</span>
+                              <span className="text-[10px] font-bold" style={{ color: scoreColor }}>{dept.avgProductivity}%</span>
+                            </div>
+                            <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                              <div className="h-full rounded-full transition-all" style={{ width: `${dept.avgProductivity}%`, backgroundColor: scoreColor }} />
+                            </div>
+                          </div>
+
+                          {/* Task + overdue row */}
+                          <div className="flex items-center justify-between pt-2 border-t border-gray-50">
+                            <div className="flex items-center gap-3">
+                              <div className="text-center">
+                                <div className="text-sm font-black text-gray-700">{allTasks.length}</div>
+                                <div className="text-[9px] text-gray-400">Tasks</div>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-sm font-black text-blue-600">{completionPct}%</div>
+                                <div className="text-[9px] text-gray-400">Done</div>
+                              </div>
+                              {overdue > 0 && (
+                                <div className="text-center">
+                                  <div className="text-sm font-black text-red-500">{overdue}</div>
+                                  <div className="text-[9px] text-red-400">Overdue</div>
+                                </div>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-violet-500 font-semibold">View Report →</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )
           ) : filtered.length === 0 ? (
+            /* ── Empty members view ── */
             <div className="flex flex-col items-center justify-center h-40 gap-3 text-center">
               <Users className="w-10 h-10 text-gray-300" />
               <div>
@@ -2006,6 +2108,7 @@ export default function TeamPulse() {
               )}
             </div>
           ) : (
+            /* ── Employee Cards Grid ── */
             <>
               <div className="flex items-center justify-between mb-4">
                 <span className="text-xs text-gray-400">{filtered.length} employee{filtered.length !== 1 ? "s" : ""} · click any card for detailed view</span>
