@@ -156,8 +156,8 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
     if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
 
     const allChunks = allChunksRef.current;
-    if (allChunks.length === 0 || allChunks.reduce((sum, b) => sum + b.size, 0) < 3000) {
-      setMicError("Recording was too short. Please record for at least a few seconds.");
+    if (allChunks.length === 0) {
+      setMicError("No audio recorded. Please try again.");
       setPhase("idle");
       return;
     }
