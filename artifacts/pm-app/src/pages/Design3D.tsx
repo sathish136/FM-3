@@ -302,6 +302,7 @@ function ModelViewer({
   const [selectedPart, setSelectedPart] = useState<{ index: number; name: string } | null>(null);
 
   const viewerRef = useRef<ViewerRef>(null);
+  const parseTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [fromDiskCache, setFromDiskCache] = useState<boolean | null>(null);
 
@@ -396,17 +397,41 @@ function ModelViewer({
       setFromDiskCache(diskHit);
       const buffer = await streamWithProgress(res, "Downloading STEP file…");
       setDlProgress(null);
-      setProgress("Parsing geometry…");
-      let parseStart = Date.now();
+      setProgress("Parsing STEP file…");
+
+      // Estimate parse time: OCCT takes roughly 2.5 s/MB in the browser worker
+      const fileMB = buffer.byteLength / (1024 * 1024);
+      const estimatedSecs = Math.max(fileMB * 2.5, 5);
+      const parseStart = Date.now();
+
+      // Start a live countdown on the main thread — the worker is on its own thread
+      // so this interval ticks freely even while OCCT is parsing
+      if (parseTimerRef.current) clearInterval(parseTimerRef.current);
+      parseTimerRef.current = setInterval(() => {
+        const elapsed = (Date.now() - parseStart) / 1000;
+        const remaining = Math.max(estimatedSecs - elapsed, 0);
+        const pct = Math.min(Math.round((elapsed / estimatedSecs) * 90), 90); // cap at 90 until real data
+        setDlProgress({
+          pct,
+          receivedMB: 0,
+          totalMB: null,
+          speedMBs: 0,
+          remainingSecs: remaining,
+          stage: "Parsing STEP file…",
+        });
+      }, 500);
+
+      let extractStart = Date.now();
       const result = await loadStepFile(buffer, msg => {
         setProgress(msg);
-        // Parse "Processed X of Y parts…" → show real ETA for extraction phase
+        // Once extraction starts, clear the timer and switch to real part-count progress
         const m = msg.match(/Processed\s+(\d+)\s+of\s+(\d+)/);
         if (m) {
+          if (parseTimerRef.current) { clearInterval(parseTimerRef.current); parseTimerRef.current = null; }
           const done = parseInt(m[1], 10);
           const total = parseInt(m[2], 10);
           const pct = Math.round((done / total) * 100);
-          const elapsed = Math.max((Date.now() - parseStart) / 1000, 0.1);
+          const elapsed = Math.max((Date.now() - extractStart) / 1000, 0.1);
           const rate = done / elapsed;
           const remainingSecs = rate > 0 ? (total - done) / rate : null;
           setDlProgress({
@@ -417,16 +442,19 @@ function ModelViewer({
             remainingSecs,
             stage: `Extracting parts (${done} / ${total})`,
           });
-        } else if (msg.includes("Parsing STEP")) {
-          parseStart = Date.now();
-          setDlProgress({ pct: -1, receivedMB: 0, totalMB: null, speedMBs: 0, remainingSecs: null, stage: msg });
+        } else if (msg.includes("Extracting")) {
+          if (parseTimerRef.current) { clearInterval(parseTimerRef.current); parseTimerRef.current = null; }
+          extractStart = Date.now();
         }
       });
+
+      if (parseTimerRef.current) { clearInterval(parseTimerRef.current); parseTimerRef.current = null; }
       setMeshes(result.meshes);
       setTreeRoot(result.root);
       setStatus("loaded");
       setCached(idbKey, result.meshes, result.root);
     } catch (e: any) {
+      if (parseTimerRef.current) { clearInterval(parseTimerRef.current); parseTimerRef.current = null; }
       setError(e.message || "Failed to load model");
       setStatus("error");
     }
@@ -626,63 +654,66 @@ function ModelViewer({
             </div>
           )}
           {status === "loading" && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400 gap-4 bg-gray-900 px-6">
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 gap-3 px-8">
               <Cpu className="w-10 h-10 animate-pulse text-blue-500" />
               <p className="text-sm font-semibold text-white">Loading 3D Model</p>
 
-              {dlProgress ? (
-                <div className="flex flex-col items-center gap-2 w-64">
-                  <p className="text-xs text-blue-300 font-medium">{dlProgress.stage}</p>
+              <div className="flex flex-col items-center gap-2 w-72">
+                {/* Stage label */}
+                <p className="text-xs text-blue-300 font-medium tracking-wide">
+                  {dlProgress ? dlProgress.stage : progress}
+                </p>
 
-                  {/* Progress bar */}
-                  <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
-                    {dlProgress.pct >= 0 ? (
-                      <div
-                        className="h-full bg-blue-500 rounded-full transition-all duration-150"
-                        style={{ width: `${dlProgress.pct}%` }}
-                      />
-                    ) : (
-                      <div className="h-full bg-blue-500 rounded-full animate-pulse w-1/2" />
-                    )}
-                  </div>
-
-                  {/* Stats row */}
-                  <div className="flex justify-between w-full text-[11px] text-gray-400">
-                    {dlProgress.speedMBs > 0 ? (
-                      <>
-                        <span>
-                          {dlProgress.receivedMB.toFixed(1)} MB
-                          {dlProgress.totalMB ? ` / ${dlProgress.totalMB.toFixed(1)} MB` : ""}
-                        </span>
-                        <span>{dlProgress.pct >= 0 ? `${dlProgress.pct}%` : ""}</span>
-                        <span>{dlProgress.speedMBs.toFixed(1)} MB/s</span>
-                      </>
-                    ) : dlProgress.totalMB ? (
-                      <>
-                        <span>{dlProgress.receivedMB} / {dlProgress.totalMB} parts</span>
-                        <span>{dlProgress.pct >= 0 ? `${dlProgress.pct}%` : ""}</span>
-                        <span />
-                      </>
-                    ) : null}
-                  </div>
-
-                  {/* ETA */}
-                  {dlProgress.remainingSecs !== null && dlProgress.remainingSecs > 1 && (
-                    <p className="text-[11px] text-gray-500">
-                      ~{dlProgress.remainingSecs < 60
-                        ? `${Math.ceil(dlProgress.remainingSecs)}s remaining`
-                        : `${Math.ceil(dlProgress.remainingSecs / 60)}m remaining`}
-                    </p>
+                {/* Progress bar */}
+                <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
+                  {dlProgress && dlProgress.pct >= 0 ? (
+                    <div
+                      className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                      style={{ width: `${dlProgress.pct}%` }}
+                    />
+                  ) : (
+                    <div className="h-full bg-blue-500 animate-pulse rounded-full w-1/2" />
                   )}
                 </div>
-              ) : (
-                <div className="flex flex-col items-center gap-2 w-64">
-                  <p className="text-xs text-gray-500 text-center">{progress}</p>
-                  <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-500 animate-pulse rounded-full w-1/2" />
-                  </div>
+
+                {/* Percentage + detail row */}
+                <div className="flex justify-between w-full text-[11px] text-gray-400">
+                  {dlProgress?.speedMBs && dlProgress.speedMBs > 0 ? (
+                    <>
+                      <span>
+                        {dlProgress.receivedMB.toFixed(1)} MB
+                        {dlProgress.totalMB ? ` / ${dlProgress.totalMB.toFixed(1)} MB` : ""}
+                      </span>
+                      <span>{dlProgress.pct >= 0 ? `${dlProgress.pct}%` : ""}</span>
+                      <span>{dlProgress.speedMBs.toFixed(1)} MB/s</span>
+                    </>
+                  ) : dlProgress?.totalMB ? (
+                    <>
+                      <span>{dlProgress.receivedMB} / {dlProgress.totalMB} parts</span>
+                      <span>{dlProgress.pct >= 0 ? `${dlProgress.pct}%` : ""}</span>
+                      <span />
+                    </>
+                  ) : dlProgress?.pct >= 0 ? (
+                    <>
+                      <span />
+                      <span className="text-blue-400 font-semibold">{dlProgress.pct}%</span>
+                      <span />
+                    </>
+                  ) : null}
                 </div>
-              )}
+
+                {/* Remaining time — big and prominent */}
+                {dlProgress?.remainingSecs !== null && dlProgress?.remainingSecs !== undefined && dlProgress.remainingSecs > 0 && (
+                  <div className="mt-1 px-4 py-2 rounded-xl bg-blue-500/10 border border-blue-500/25 text-center">
+                    <p className="text-xs text-gray-400 mb-0.5">Estimated remaining</p>
+                    <p className="text-lg font-bold text-blue-300">
+                      {dlProgress.remainingSecs < 60
+                        ? `~${Math.ceil(dlProgress.remainingSecs)}s`
+                        : `~${Math.floor(dlProgress.remainingSecs / 60)}m ${Math.ceil(dlProgress.remainingSecs % 60)}s`}
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
           {status === "error" && (
