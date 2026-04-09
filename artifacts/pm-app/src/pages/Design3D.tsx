@@ -397,7 +397,31 @@ function ModelViewer({
       const buffer = await streamWithProgress(res, "Downloading STEP file…");
       setDlProgress(null);
       setProgress("Parsing geometry…");
-      const result = await loadStepFile(buffer, msg => setProgress(msg));
+      let parseStart = Date.now();
+      const result = await loadStepFile(buffer, msg => {
+        setProgress(msg);
+        // Parse "Processed X of Y parts…" → show real ETA for extraction phase
+        const m = msg.match(/Processed\s+(\d+)\s+of\s+(\d+)/);
+        if (m) {
+          const done = parseInt(m[1], 10);
+          const total = parseInt(m[2], 10);
+          const pct = Math.round((done / total) * 100);
+          const elapsed = Math.max((Date.now() - parseStart) / 1000, 0.1);
+          const rate = done / elapsed;
+          const remainingSecs = rate > 0 ? (total - done) / rate : null;
+          setDlProgress({
+            pct,
+            receivedMB: done,
+            totalMB: total,
+            speedMBs: 0,
+            remainingSecs,
+            stage: `Extracting parts (${done} / ${total})`,
+          });
+        } else if (msg.includes("Parsing STEP")) {
+          parseStart = Date.now();
+          setDlProgress({ pct: -1, receivedMB: 0, totalMB: null, speedMBs: 0, remainingSecs: null, stage: msg });
+        }
+      });
       setMeshes(result.meshes);
       setTreeRoot(result.root);
       setStatus("loaded");
@@ -624,12 +648,22 @@ function ModelViewer({
 
                   {/* Stats row */}
                   <div className="flex justify-between w-full text-[11px] text-gray-400">
-                    <span>
-                      {dlProgress.receivedMB.toFixed(1)} MB
-                      {dlProgress.totalMB ? ` / ${dlProgress.totalMB.toFixed(1)} MB` : ""}
-                    </span>
-                    <span>{dlProgress.pct >= 0 ? `${dlProgress.pct}%` : ""}</span>
-                    <span>{dlProgress.speedMBs.toFixed(1)} MB/s</span>
+                    {dlProgress.speedMBs > 0 ? (
+                      <>
+                        <span>
+                          {dlProgress.receivedMB.toFixed(1)} MB
+                          {dlProgress.totalMB ? ` / ${dlProgress.totalMB.toFixed(1)} MB` : ""}
+                        </span>
+                        <span>{dlProgress.pct >= 0 ? `${dlProgress.pct}%` : ""}</span>
+                        <span>{dlProgress.speedMBs.toFixed(1)} MB/s</span>
+                      </>
+                    ) : dlProgress.totalMB ? (
+                      <>
+                        <span>{dlProgress.receivedMB} / {dlProgress.totalMB} parts</span>
+                        <span>{dlProgress.pct >= 0 ? `${dlProgress.pct}%` : ""}</span>
+                        <span />
+                      </>
+                    ) : null}
                   </div>
 
                   {/* ETA */}

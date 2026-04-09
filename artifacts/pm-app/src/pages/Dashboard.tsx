@@ -443,40 +443,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* ── Important Reminders ── */}
-          <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
-              <div className="flex items-center gap-2">
-                <Bell className="w-4 h-4 text-amber-500" />
-                <h3 className="text-sm font-bold text-foreground">Important Reminders</h3>
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-muted/50 border-b border-border">
-                    <th className="text-left px-5 py-2.5 font-semibold text-muted-foreground uppercase tracking-wide">Reminder</th>
-                    <th className="text-left px-4 py-2.5 font-semibold text-muted-foreground uppercase tracking-wide">Date</th>
-                    <th className="text-left px-4 py-2.5 font-semibold text-muted-foreground uppercase tracking-wide">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/50">
-                  {empLoading ? (
-                    <tr><td colSpan={3} className="px-5 py-8 text-center text-muted-foreground">Loading reminders…</td></tr>
-                  ) : !empData?.reminders?.length ? (
-                    <tr><td colSpan={3} className="px-5 py-8 text-center text-muted-foreground">No reminders</td></tr>
-                  ) : empData.reminders.map((r, i) => (
-                    <tr key={i} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-5 py-3 text-foreground">{r.reminder}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{r.reminder_date}</td>
-                      <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
           {/* ── Recent Tasks + Projects Overview side by side ── */}
           <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
 
