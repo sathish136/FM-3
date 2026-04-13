@@ -17,6 +17,7 @@ import Team from "@/pages/Team";
 import ViewerOptions from "@/pages/ViewerOptions";
 import MechanicalViewer from "@/pages/MechanicalViewer";
 import MeetingMinutes from "@/pages/MeetingMinutes";
+import SpeechTranslator from "@/pages/SpeechTranslator";
 import SheetsHome from "@/pages/SheetsHome";
 import Sheets from "@/pages/Sheets";
 import Presentation from "@/pages/Presentation";
@@ -165,6 +166,7 @@ function ProtectedRoutes() {
       <Route path="/campaigns" component={Campaigns} />
       <Route path="/leads" component={Leads} />
       <Route path="/meeting-minutes" component={MeetingMinutes} />
+      <Route path="/speech-translator" component={SpeechTranslator} />
       <Route path="/sheets" component={SheetsHome} />
       <Route path="/sheets/:id" component={Sheets} />
       <Route path="/team" component={Team} />

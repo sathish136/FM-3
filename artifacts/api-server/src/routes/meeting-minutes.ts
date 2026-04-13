@@ -244,6 +244,33 @@ IMPORTANT: Do NOT add any "Prepared by", signature, footer, or closing line at t
   }
 });
 
+// ─── Translate any text to English ───────────────────────────────────────────
+router.post("/translate", async (req, res) => {
+  try {
+    const { text, sourceLang } = req.body;
+    if (!text) return res.status(400).json({ error: "text is required" });
+    const langNames: Record<string, string> = {
+      "ta-IN": "Tamil", "hi-IN": "Hindi", "en-IN": "English", "en-US": "English",
+    };
+    const fromLang = langNames[sourceLang] || "the source language";
+    const result = await getOpenAI().chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are a professional translator. Translate the given ${fromLang} text to English accurately. Return ONLY the translated text, no explanations, no quotes, no extra text.`,
+        },
+        { role: "user", content: text },
+      ],
+    });
+    const translation = result.choices[0]?.message?.content?.trim() || text;
+    res.json({ translation });
+  } catch (e) {
+    console.error("Translation error:", e);
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 // ─── Share meeting minutes via WhatsApp or Email ─────────────────────────────
 router.post("/meeting-minutes/:id/share", async (req, res) => {
   try {

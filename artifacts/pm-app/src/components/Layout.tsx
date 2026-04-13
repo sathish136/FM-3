@@ -4,7 +4,7 @@ import {
   Briefcase, FileText,
   LogOut, ChevronDown, ChevronRight as ChevronRightIcon, Menu, MoreHorizontal,
   MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp, ListChecks, ClipboardList, Truck, Building2, Package,
-  Play, Square, Phone, ShieldOff, Loader2,
+  Play, Square, Phone, ShieldOff, Loader2, Languages,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -227,6 +227,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { path: "/task-management",   label: "Task Management",   icon: Activity,         color: "text-purple-400", bgColor: "bg-purple-500/15" },
       { path: "/project-timeline",  label: "Timeline",          icon: GanttChartSquare, color: "text-cyan-400",   bgColor: "bg-cyan-500/15" },
       { path: "/meeting-minutes",   label: "Meeting Minutes",   icon: FileText,         color: "text-teal-400",   bgColor: "bg-teal-500/15" },
+      { path: "/speech-translator", label: "Speech Translator", icon: Languages,        color: "text-violet-400", bgColor: "bg-violet-500/15" },
       { path: "/project-drawings",  label: "Project Drawings",  icon: FolderOpen,       color: "text-sky-400",    bgColor: "bg-sky-500/15" },
       { path: "/presentation",      label: "Presentation",      icon: MonitorPlay,      color: "text-orange-400", bgColor: "bg-orange-500/15" },
     ],
@@ -337,6 +338,7 @@ const PATH_TO_MODULE: Record<string, string> = {
   "/ip-call-logs":          "ip-call-logs",
   "/project-timeline":      "project-timeline",
   "/meeting-minutes":       "meeting-minutes",
+  "/speech-translator":     "speech-translator",
   "/project-drawings":      "project-drawings",
   "/presentation":          "presentation",
   "/drawings":              "drawings",
