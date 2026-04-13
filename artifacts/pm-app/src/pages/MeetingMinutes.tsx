@@ -13,7 +13,7 @@ type Meeting = {
   id: number; title: string; projectId: number | null;
   attendees: string | null; venue: string | null; date: string; rawNotes: string | null;
   aiSummary: string | null; actionItems: string | null;
-  status: string; mode?: string; createdAt: string;
+  status: string; mode?: string; audioData?: string | null; createdAt: string;
 };
 
 const BASE = "/api";
@@ -92,7 +92,7 @@ async function streamGenerate(
 type RecordPhase = "idle" | "recording" | "transcribing" | "generating" | "done" | "error";
 const BAR_COUNT = 30;
 
-function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: Meeting) => void }) {
+function RecordingView({ meeting, onUpdate, autoStart }: { meeting: Meeting; onUpdate: (m: Meeting) => void; autoStart?: boolean }) {
   const [phase, setPhase] = useState<RecordPhase>(meeting.aiSummary ? "done" : "idle");
   const [duration, setDuration] = useState(0);
   const [micError, setMicError] = useState("");
@@ -100,6 +100,8 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
   const [transcript, setTranscript] = useState(meeting.rawNotes || "");
   const [waveData, setWaveData] = useState<number[]>(new Array(BAR_COUNT).fill(0));
   const [liveText, setLiveText] = useState("");
+  const [audioBlobUrl, setAudioBlobUrl] = useState<string | null>(null);
+  const phaseRef = useRef<RecordPhase>(meeting.aiSummary ? "done" : "idle");
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -113,8 +115,15 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
 
   useEffect(() => {
     setTranscript(meeting.rawNotes || "");
-    setPhase(meeting.aiSummary ? "done" : "idle");
+    const newPhase: RecordPhase = meeting.aiSummary ? "done" : "idle";
+    setPhase(newPhase);
+    phaseRef.current = newPhase;
   }, [meeting.id]);
+
+  // Cleanup blob URL on unmount
+  useEffect(() => {
+    return () => { if (audioBlobUrl) URL.revokeObjectURL(audioBlobUrl); };
+  }, [audioBlobUrl]);
 
   const fmt = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
@@ -217,7 +226,8 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
       };
 
       recorder.start(250);
-      setPhase("recording");
+      const p: RecordPhase = "recording";
+      setPhase(p); phaseRef.current = p;
       setDuration(0);
       timerRef.current = setInterval(() => setDuration(d => d + 1), 1000);
       startWaveform(stream);
@@ -228,6 +238,14 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
         : `Could not start microphone: ${err?.message}`);
     }
   };
+
+  // Auto-start recording when this component mounts with autoStart=true
+  useEffect(() => {
+    if (autoStart && phaseRef.current === "idle") {
+      const t = setTimeout(() => { startRecording(); }, 400);
+      return () => clearTimeout(t);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stopAndProcess = async () => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
@@ -247,16 +265,21 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
     const allChunks = allChunksRef.current;
     if (allChunks.length === 0) {
       setMicError("No audio recorded. Please try again.");
-      setPhase("idle");
+      setPhase("idle"); phaseRef.current = "idle";
       return;
     }
 
     // Step 1: Transcribe full audio
-    setPhase("transcribing");
+    setPhase("transcribing"); phaseRef.current = "transcribing";
     try {
       const baseMime = mimeRef.current.split(";")[0].trim();
       const ext = baseMime.includes("ogg") ? "ogg" : "webm";
       const blob = new Blob(allChunks, { type: mimeRef.current });
+
+      // Capture blob URL for in-session playback
+      const url = URL.createObjectURL(blob);
+      setAudioBlobUrl(prev => { if (prev) URL.revokeObjectURL(prev); return url; });
+
       const fd = new FormData();
       fd.append("audio", blob, `meeting.${ext}`);
 
@@ -275,24 +298,25 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
       }
 
       // Step 2: Auto-generate meeting minutes
-      setPhase("generating");
+      setPhase("generating"); phaseRef.current = "generating";
       setStreamText("");
       await streamGenerate(
         tData.meeting?.id ?? meeting.id,
         setStreamText,
-        m => { onUpdate(m); setPhase("done"); },
+        m => { onUpdate(m); setPhase("done"); phaseRef.current = "done"; },
       );
     } catch (e) {
       console.error(e);
       setMicError(`Processing failed: ${e instanceof Error ? e.message : String(e)}`);
-      setPhase("error");
+      setPhase("error"); phaseRef.current = "error";
     }
   };
 
   const handleReRecord = () => {
-    setPhase("idle");
+    setPhase("idle"); phaseRef.current = "idle";
     setMicError("");
     setStreamText("");
+    setAudioBlobUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
   };
 
   const handleRegenerate = async () => {
@@ -404,6 +428,24 @@ function RecordingView({ meeting, onUpdate }: { meeting: Meeting; onUpdate: (m: 
           ) : null}
         </div>
       </div>
+
+      {/* Audio playback — shown when audio is available */}
+      {(audioBlobUrl || meeting.audioData) && (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2">
+            <Mic className="w-3 h-3 text-red-500" />
+            <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Recorded Audio</span>
+          </div>
+          <div className="px-4 py-3">
+            <audio
+              controls
+              src={audioBlobUrl || meeting.audioData || undefined}
+              className="w-full h-9"
+              style={{ borderRadius: 8 }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Transcript box — shown after transcribing */}
       {transcript && (
@@ -1019,6 +1061,7 @@ export default function MeetingMinutes() {
   const [showNew, setShowNew] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [newMode, setNewMode] = useState<"record" | "manual">("record");
+  const autoStartMeetingIdRef = useRef<number | null>(null);
   const [form, setForm] = useState({ title: "", date: new Date().toISOString().slice(0, 10), venue: "", projectId: "", projectName: "", projectMode: "select" as "select" | "manual" });
   const [selectedAttendees, setSelectedAttendees] = useState<MentionUser[]>([]);
   const { data: projects = [] } = useListProjects();
@@ -1058,6 +1101,7 @@ export default function MeetingMinutes() {
       }),
     }).then(r => r.json());
     setMeetings(prev => [created, ...(prev || [])]);
+    if (newMode === "record") autoStartMeetingIdRef.current = created.id;
     setSelected({ ...created, mode: newMode });
     setShowNew(false);
     setForm({ title: "", date: new Date().toISOString().slice(0, 10), venue: "", projectId: "", projectName: "", projectMode: "select" });
@@ -1279,7 +1323,7 @@ export default function MeetingMinutes() {
                 </div>
 
                 {modeOf(selected) === "record"
-                  ? <RecordingView meeting={selected} onUpdate={handleUpdate} />
+                  ? <RecordingView key={selected.id} meeting={selected} onUpdate={handleUpdate} autoStart={autoStartMeetingIdRef.current === selected.id} />
                   : <ManualView meeting={selected} onUpdate={handleUpdate} />}
               </div>
             </div>

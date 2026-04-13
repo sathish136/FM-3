@@ -20,6 +20,7 @@ pool.query(`
     status TEXT NOT NULL DEFAULT 'draft', mode TEXT NOT NULL DEFAULT 'manual',
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
   );
+  ALTER TABLE meeting_minutes ADD COLUMN IF NOT EXISTS audio_data TEXT;
   CREATE TABLE IF NOT EXISTS spreadsheets (
     id SERIAL PRIMARY KEY, name TEXT NOT NULL,
     project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
@@ -141,13 +142,16 @@ router.post("/meeting-minutes/:id/transcribe", upload.single("audio"), async (re
       response_format: "json",
     });
 
+    // Encode audio as base64 data URL for playback
+    const audioBase64 = `data:${baseMime};base64,${req.file.buffer.toString("base64")}`;
+
     // Append transcript to rawNotes
     const [existing] = await db.select().from(meetingMinutesTable).where(eq(meetingMinutesTable.id, Number(req.params.id)));
     const newNotes = existing?.rawNotes
       ? `${existing.rawNotes}\n\n[Transcribed ${new Date().toLocaleTimeString()}]\n${result.text}`
       : `[Transcribed ${new Date().toLocaleTimeString()}]\n${result.text}`;
 
-    const [updated] = await db.update(meetingMinutesTable).set({ rawNotes: newNotes }).where(eq(meetingMinutesTable.id, Number(req.params.id))).returning();
+    const [updated] = await db.update(meetingMinutesTable).set({ rawNotes: newNotes, audioData: audioBase64 }).where(eq(meetingMinutesTable.id, Number(req.params.id))).returning();
     res.json({ transcript: result.text, meeting: updated });
   } catch (e) {
     console.error("Transcription error:", e);
