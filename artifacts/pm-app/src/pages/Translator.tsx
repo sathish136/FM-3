@@ -12,10 +12,55 @@ const BASE = "/api";
 type LangOption = { code: string; label: string; native: string; flag: string };
 
 const ALL_LANGS: LangOption[] = [
-  { code: "auto",    label: "Auto Detect", native: "Auto",   flag: "🔍" },
-  { code: "English", label: "English",     native: "English",flag: "🇬🇧" },
-  { code: "Tamil",   label: "Tamil",       native: "தமிழ்",  flag: "🇮🇳" },
-  { code: "Hindi",   label: "Hindi",       native: "हिन्दी", flag: "🇮🇳" },
+  { code: "auto",                label: "Auto Detect",        native: "Auto",          flag: "🔍" },
+  { code: "English",             label: "English",            native: "English",        flag: "🇬🇧" },
+  { code: "Spanish",             label: "Spanish",            native: "Español",        flag: "🇪🇸" },
+  { code: "French",              label: "French",             native: "Français",       flag: "🇫🇷" },
+  { code: "German",              label: "German",             native: "Deutsch",        flag: "🇩🇪" },
+  { code: "Portuguese",          label: "Portuguese",         native: "Português",      flag: "🇧🇷" },
+  { code: "Italian",             label: "Italian",            native: "Italiano",       flag: "🇮🇹" },
+  { code: "Russian",             label: "Russian",            native: "Русский",        flag: "🇷🇺" },
+  { code: "Chinese (Simplified)",label: "Chinese (Simplified)",native: "中文 (简体)",   flag: "🇨🇳" },
+  { code: "Chinese (Traditional)",label: "Chinese (Traditional)",native: "中文 (繁體)", flag: "🇹🇼" },
+  { code: "Japanese",            label: "Japanese",           native: "日本語",         flag: "🇯🇵" },
+  { code: "Korean",              label: "Korean",             native: "한국어",          flag: "🇰🇷" },
+  { code: "Arabic",              label: "Arabic",             native: "العربية",        flag: "🇸🇦" },
+  { code: "Hindi",               label: "Hindi",              native: "हिन्दी",          flag: "🇮🇳" },
+  { code: "Bengali",             label: "Bengali",            native: "বাংলা",          flag: "🇧🇩" },
+  { code: "Urdu",                label: "Urdu",               native: "اردو",           flag: "🇵🇰" },
+  { code: "Tamil",               label: "Tamil",              native: "தமிழ்",           flag: "🇮🇳" },
+  { code: "Telugu",              label: "Telugu",             native: "తెలుగు",          flag: "🇮🇳" },
+  { code: "Marathi",             label: "Marathi",            native: "मराठी",           flag: "🇮🇳" },
+  { code: "Gujarati",            label: "Gujarati",           native: "ગુજરાતી",         flag: "🇮🇳" },
+  { code: "Kannada",             label: "Kannada",            native: "ಕನ್ನಡ",           flag: "🇮🇳" },
+  { code: "Malayalam",           label: "Malayalam",          native: "മലയാളം",         flag: "🇮🇳" },
+  { code: "Punjabi",             label: "Punjabi",            native: "ਪੰਜਾਬੀ",          flag: "🇮🇳" },
+  { code: "Turkish",             label: "Turkish",            native: "Türkçe",         flag: "🇹🇷" },
+  { code: "Vietnamese",          label: "Vietnamese",         native: "Tiếng Việt",     flag: "🇻🇳" },
+  { code: "Thai",                label: "Thai",               native: "ภาษาไทย",        flag: "🇹🇭" },
+  { code: "Indonesian",          label: "Indonesian",         native: "Bahasa Indonesia",flag: "🇮🇩" },
+  { code: "Malay",               label: "Malay",              native: "Bahasa Melayu",  flag: "🇲🇾" },
+  { code: "Dutch",               label: "Dutch",              native: "Nederlands",     flag: "🇳🇱" },
+  { code: "Polish",              label: "Polish",             native: "Polski",         flag: "🇵🇱" },
+  { code: "Swedish",             label: "Swedish",            native: "Svenska",        flag: "🇸🇪" },
+  { code: "Norwegian",           label: "Norwegian",          native: "Norsk",          flag: "🇳🇴" },
+  { code: "Danish",              label: "Danish",             native: "Dansk",          flag: "🇩🇰" },
+  { code: "Finnish",             label: "Finnish",            native: "Suomi",          flag: "🇫🇮" },
+  { code: "Greek",               label: "Greek",              native: "Ελληνικά",       flag: "🇬🇷" },
+  { code: "Hebrew",              label: "Hebrew",             native: "עברית",          flag: "🇮🇱" },
+  { code: "Persian",             label: "Persian (Farsi)",    native: "فارسی",          flag: "🇮🇷" },
+  { code: "Swahili",             label: "Swahili",            native: "Kiswahili",      flag: "🇰🇪" },
+  { code: "Filipino",            label: "Filipino",           native: "Filipino",       flag: "🇵🇭" },
+  { code: "Romanian",            label: "Romanian",           native: "Română",         flag: "🇷🇴" },
+  { code: "Hungarian",           label: "Hungarian",          native: "Magyar",         flag: "🇭🇺" },
+  { code: "Czech",               label: "Czech",              native: "Čeština",        flag: "🇨🇿" },
+  { code: "Ukrainian",           label: "Ukrainian",          native: "Українська",     flag: "🇺🇦" },
+  { code: "Catalan",             label: "Catalan",            native: "Català",         flag: "🏴" },
+  { code: "Croatian",            label: "Croatian",           native: "Hrvatski",       flag: "🇭🇷" },
+  { code: "Slovak",              label: "Slovak",             native: "Slovenčina",     flag: "🇸🇰" },
+  { code: "Bulgarian",           label: "Bulgarian",          native: "Български",      flag: "🇧🇬" },
+  { code: "Serbian",             label: "Serbian",            native: "Српски",         flag: "🇷🇸" },
+  { code: "Afrikaans",           label: "Afrikaans",          native: "Afrikaans",      flag: "🇿🇦" },
 ];
 const TARGET_LANGS = ALL_LANGS.filter(l => l.code !== "auto");
 
@@ -43,36 +88,59 @@ async function apiTranslateDoc(file: File, sourceLang: string, targetLang: strin
 // ─── Language dropdown ────────────────────────────────────────────────────────
 function LangSelect({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: LangOption[] }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const sel = options.find(o => o.code === value) || options[0];
 
+  const filtered = query.trim()
+    ? options.filter(o =>
+        o.label.toLowerCase().includes(query.toLowerCase()) ||
+        o.native.toLowerCase().includes(query.toLowerCase())
+      )
+    : options;
+
   useEffect(() => {
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setQuery(""); } };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
+  const handleOpen = () => { setOpen(v => !v); setQuery(""); setTimeout(() => inputRef.current?.focus(), 50); };
+
   return (
     <div className="relative" ref={ref}>
-      <button onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 bg-white hover:border-blue-300 text-sm font-semibold text-gray-700 transition-colors min-w-[150px] shadow-sm">
+      <button onClick={handleOpen}
+        className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 bg-white hover:border-blue-300 text-sm font-semibold text-gray-700 transition-colors min-w-[160px] shadow-sm">
         <span className="text-base">{sel.flag}</span>
-        <span>{sel.label}</span>
-        <ChevronDown className={`w-3.5 h-3.5 text-gray-400 ml-auto transition-transform ${open ? "rotate-180" : ""}`} />
+        <span className="truncate">{sel.label}</span>
+        <ChevronDown className={`w-3.5 h-3.5 text-gray-400 ml-auto flex-shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 bg-white rounded-xl border border-gray-200 shadow-xl z-50 min-w-[170px] py-1 overflow-hidden">
-          {options.map(opt => (
-            <button key={opt.code} onClick={() => { onChange(opt.code); setOpen(false); }}
-              className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-left transition-colors
-                ${value === opt.code ? "bg-blue-50 text-blue-700 font-semibold" : "text-gray-700 hover:bg-gray-50"}`}>
-              <span className="text-base">{opt.flag}</span>
-              <div>
-                <p className="font-semibold leading-tight">{opt.label}</p>
-                {opt.native !== opt.label && <p className="text-[10px] text-gray-400">{opt.native}</p>}
-              </div>
-            </button>
-          ))}
+        <div className="absolute top-full left-0 mt-1 bg-white rounded-xl border border-gray-200 shadow-xl z-50 w-56 flex flex-col overflow-hidden">
+          <div className="px-2 pt-2 pb-1 border-b border-gray-100">
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search language…"
+              className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 outline-none focus:border-blue-300 placeholder:text-gray-300"
+            />
+          </div>
+          <div className="overflow-y-auto max-h-56 py-1">
+            {filtered.length === 0 && <p className="text-xs text-gray-400 text-center py-3">No match</p>}
+            {filtered.map(opt => (
+              <button key={opt.code} onClick={() => { onChange(opt.code); setOpen(false); setQuery(""); }}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors
+                  ${value === opt.code ? "bg-blue-50 text-blue-700 font-semibold" : "text-gray-700 hover:bg-gray-50"}`}>
+                <span className="text-base flex-shrink-0">{opt.flag}</span>
+                <div className="min-w-0">
+                  <p className="font-semibold leading-tight truncate">{opt.label}</p>
+                  {opt.native !== opt.label && <p className="text-[10px] text-gray-400 truncate">{opt.native}</p>}
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>
