@@ -1353,8 +1353,7 @@ export default function MeetingMinutes() {
   const [selected, setSelected] = useState<Meeting | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [showReport, setShowReport] = useState(false);
-  const [showLiveSpeech, setShowLiveSpeech] = useState(false);
-  const [newMode, setNewMode] = useState<"record" | "manual">("record");
+  const [newMode, setNewMode] = useState<"record" | "manual" | "live-speech">("record");
   const autoStartMeetingIdRef = useRef<number | null>(null);
   const [form, setForm] = useState({ title: "", date: new Date().toISOString().slice(0, 10), venue: "", projectId: "", projectName: "", projectMode: "select" as "select" | "manual" });
   const [selectedAttendees, setSelectedAttendees] = useState<MentionUser[]>([]);
@@ -1386,17 +1385,18 @@ export default function MeetingMinutes() {
       } catch {}
     }
 
+    const apiMode = newMode === "live-speech" ? "speech" : newMode;
     const created = await apiFetch("/meeting-minutes", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title: form.title, date: form.date,
         venue: form.venue || null, attendees: attendeesStr,
-        projectId: resolvedProjectId, status: "draft", mode: newMode,
+        projectId: resolvedProjectId, status: "draft", mode: apiMode,
       }),
     }).then(r => r.json());
     setMeetings(prev => [created, ...(prev || [])]);
     if (newMode === "record") autoStartMeetingIdRef.current = created.id;
-    setSelected({ ...created, mode: newMode });
+    setSelected({ ...created, mode: apiMode });
     setShowNew(false);
     setForm({ title: "", date: new Date().toISOString().slice(0, 10), venue: "", projectId: "", projectName: "", projectMode: "select" });
     setSelectedAttendees([]);
@@ -1423,29 +1423,16 @@ export default function MeetingMinutes() {
         {/* ── Left list panel ── */}
         <div className="w-72 flex-shrink-0 border-r border-gray-200 bg-white flex flex-col">
           <div className="px-3 py-2.5 border-b border-gray-100">
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <FileText className="w-4 h-4 text-blue-600" />
                 <span className="font-semibold text-gray-800 text-sm">Meeting Minutes</span>
               </div>
-              <button onClick={() => { setShowNew(true); setSelected(null); setShowLiveSpeech(false); }}
+              <button onClick={() => { setShowNew(true); setSelected(null); setNewMode("record"); }}
                 className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors">
                 <Plus className="w-3 h-3" /> New
               </button>
             </div>
-            {/* Live Speech tab toggle */}
-            <button
-              onClick={() => { setShowLiveSpeech(v => !v); setShowNew(false); setSelected(null); setShowReport(false); }}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all border
-                ${showLiveSpeech
-                  ? "bg-teal-50 text-teal-700 border-teal-200 shadow-sm"
-                  : "bg-gray-50 text-gray-500 border-gray-100 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200"
-                }`}
-            >
-              <Mic className="w-3.5 h-3.5" />
-              <span>Live Speech Minutes</span>
-              {showLiveSpeech && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse" />}
-            </button>
           </div>
 
           <div className="flex-1 overflow-y-auto py-2 px-2">
@@ -1480,20 +1467,8 @@ export default function MeetingMinutes() {
         {/* ── Right content panel ── */}
         <div className="flex-1 flex flex-col overflow-hidden bg-[#f8fafc]">
 
-          {/* LIVE SPEECH MINUTES */}
-          {showLiveSpeech && (
-            <LiveSpeechMinutesView
-              projects={projects as any[]}
-              onSaved={(meeting) => {
-                setMeetings(prev => [meeting, ...(prev || [])]);
-                setShowLiveSpeech(false);
-                setSelected({ ...meeting, mode: "speech" });
-              }}
-            />
-          )}
-
           {/* NEW MEETING FORM */}
-          {!showLiveSpeech && showNew && (
+          {showNew && (
             <div className="flex-1 flex flex-col overflow-hidden">
               {/* Gradient hero header — compact */}
               <div className={`relative px-4 pt-3 pb-2.5 flex-shrink-0 ${newMode === "record" ? "bg-gradient-to-br from-red-600 via-rose-500 to-orange-400" : "bg-gradient-to-br from-blue-700 via-blue-500 to-indigo-400"}`}>
@@ -1617,7 +1592,7 @@ export default function MeetingMinutes() {
           )}
 
           {/* MEETING DETAIL */}
-          {!showLiveSpeech && selected && !showNew && (
+          {selected && !showNew && (
             <div className="flex-1 overflow-y-auto">
               <div className="max-w-3xl mx-auto w-full p-6 space-y-4">
                 <div className="flex items-start gap-3">
@@ -1651,12 +1626,12 @@ export default function MeetingMinutes() {
           )}
 
           {/* REPORT MODAL */}
-          {!showLiveSpeech && showReport && selected && (
+          {showReport && selected && (
             <MeetingReport meeting={selected} onClose={() => setShowReport(false)} preparedBy={preparedBy} preparedByDesignation={preparedByDesignation} userEmail={user?.email || ""} />
           )}
 
           {/* EMPTY STATE */}
-          {!showLiveSpeech && !selected && !showNew && (
+          {!selected && !showNew && (
             <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
               <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center mb-4">
                 <FileText className="w-8 h-8 text-blue-400" />
