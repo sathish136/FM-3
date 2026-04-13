@@ -244,21 +244,27 @@ IMPORTANT: Do NOT add any "Prepared by", signature, footer, or closing line at t
   }
 });
 
-// ─── Translate any text to English ───────────────────────────────────────────
+// ─── Translate any text to a target language ─────────────────────────────────
+const LANG_NAMES: Record<string, string> = {
+  "ta-IN": "Tamil", "hi-IN": "Hindi", "en-IN": "English", "en-US": "English",
+  "Tamil": "Tamil", "Hindi": "Hindi", "English": "English",
+};
+
 router.post("/translate", async (req, res) => {
   try {
-    const { text, sourceLang } = req.body;
+    const { text, sourceLang, targetLang = "English" } = req.body;
     if (!text) return res.status(400).json({ error: "text is required" });
-    const langNames: Record<string, string> = {
-      "ta-IN": "Tamil", "hi-IN": "Hindi", "en-IN": "English", "en-US": "English",
-    };
-    const fromLang = langNames[sourceLang] || "the source language";
+    const fromLang = LANG_NAMES[sourceLang] || sourceLang || "the source language";
+    const toLang = LANG_NAMES[targetLang] || targetLang || "English";
+    const isSame = fromLang.toLowerCase() === toLang.toLowerCase();
+    if (isSame) return res.json({ translation: text });
+
     const result = await getOpenAI().chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
-          content: `You are a professional translator. Translate the given ${fromLang} text to English accurately. Return ONLY the translated text, no explanations, no quotes, no extra text.`,
+          content: `You are a professional translator. Translate the given ${fromLang} text to ${toLang} accurately and naturally. Return ONLY the translated text with no explanations, no quotes, no extra text.`,
         },
         { role: "user", content: text },
       ],
@@ -267,6 +273,59 @@ router.post("/translate", async (req, res) => {
     res.json({ translation });
   } catch (e) {
     console.error("Translation error:", e);
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── Translate document (PDF / DOCX / TXT) ───────────────────────────────────
+router.post("/translate/document", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const { targetLang = "English", sourceLang = "auto" } = req.body;
+
+    const mime = req.file.mimetype;
+    const name = req.file.originalname.toLowerCase();
+    let extractedText = "";
+
+    if (mime === "text/plain" || name.endsWith(".txt")) {
+      extractedText = req.file.buffer.toString("utf-8");
+    } else if (mime === "application/pdf" || name.endsWith(".pdf")) {
+      const pdfParse = (await import("pdf-parse")).default;
+      const data = await pdfParse(req.file.buffer);
+      extractedText = data.text;
+    } else if (
+      mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      name.endsWith(".docx")
+    ) {
+      const mammoth = await import("mammoth");
+      const result = await mammoth.extractRawText({ buffer: req.file.buffer });
+      extractedText = result.value;
+    } else {
+      return res.status(400).json({ error: "Unsupported file type. Use PDF, DOCX, or TXT." });
+    }
+
+    if (!extractedText.trim()) return res.status(400).json({ error: "No text found in document." });
+
+    // Truncate to 8000 chars to stay within token limits
+    const textToTranslate = extractedText.slice(0, 8000);
+    const fromLang = LANG_NAMES[sourceLang] || sourceLang || "the source language";
+    const toLang = LANG_NAMES[targetLang] || targetLang || "English";
+
+    const systemPrompt = sourceLang === "auto"
+      ? `You are a professional translator. Detect the language of the text and translate it to ${toLang}. Return ONLY the translated text.`
+      : `You are a professional translator. Translate the given ${fromLang} text to ${toLang} accurately. Return ONLY the translated text.`;
+
+    const result = await getOpenAI().chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: textToTranslate },
+      ],
+    });
+    const translation = result.choices[0]?.message?.content?.trim() || "";
+    res.json({ translation, originalText: textToTranslate, charCount: extractedText.length });
+  } catch (e) {
+    console.error("Document translation error:", e);
     res.status(500).json({ error: String(e) });
   }
 });
