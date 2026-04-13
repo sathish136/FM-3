@@ -4,7 +4,7 @@ import {
   Briefcase, FileText,
   LogOut, ChevronDown, ChevronRight as ChevronRightIcon, Menu, MoreHorizontal,
   MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp, ListChecks, ClipboardList, Truck, Building2, Package,
-  Play, Square, Phone, ShieldOff, Loader2, Languages,
+  Play, Square, Phone, ShieldOff, Loader2, Languages, Globe,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -228,6 +228,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { path: "/project-timeline",  label: "Timeline",          icon: GanttChartSquare, color: "text-cyan-400",   bgColor: "bg-cyan-500/15" },
       { path: "/meeting-minutes",   label: "Meeting Minutes",   icon: FileText,         color: "text-teal-400",   bgColor: "bg-teal-500/15" },
       { path: "/speech-translator", label: "Speech Translator", icon: Languages,        color: "text-violet-400", bgColor: "bg-violet-500/15" },
+      { path: "/translator",        label: "Translator",        icon: Globe,            color: "text-blue-400",   bgColor: "bg-blue-500/15" },
       { path: "/project-drawings",  label: "Project Drawings",  icon: FolderOpen,       color: "text-sky-400",    bgColor: "bg-sky-500/15" },
       { path: "/presentation",      label: "Presentation",      icon: MonitorPlay,      color: "text-orange-400", bgColor: "bg-orange-500/15" },
     ],
@@ -339,6 +340,7 @@ const PATH_TO_MODULE: Record<string, string> = {
   "/project-timeline":      "project-timeline",
   "/meeting-minutes":       "meeting-minutes",
   "/speech-translator":     "speech-translator",
+  "/translator":            "translator",
   "/project-drawings":      "project-drawings",
   "/presentation":          "presentation",
   "/drawings":              "drawings",
