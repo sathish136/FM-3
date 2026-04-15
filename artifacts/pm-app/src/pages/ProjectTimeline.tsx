@@ -2507,7 +2507,7 @@ export default function ProjectTimeline() {
       ]);
 
       const d = await r.json();
-      setData(d);
+      setData({ tasks: [], materialRequests: [], purchaseOrders: [], ...d });
       setTaskAllocations(d.taskAllocations || []);
 
       if (detailRes) {
