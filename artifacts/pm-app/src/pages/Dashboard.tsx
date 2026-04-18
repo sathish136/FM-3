@@ -13,25 +13,18 @@ import {
 
 const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-const STATUS_CONFIG: Record<string, { label: string; dot: string }> = {
-  active:    { label: "Active",    dot: "#334155" },
-  planning:  { label: "Planning",  dot: "#64748b" },
-  on_hold:   { label: "On Hold",   dot: "#94a3b8" },
-  completed: { label: "Completed", dot: "#1e293b" },
-};
-
-const QUICK_ACCESS: { label: string; icon: React.ElementType; path: string; module: string }[] = [
-  { label: "Activity Sheet",       icon: ClipboardList,  path: "/hrms",                module: "hrms" },
-  { label: "Say It Do It",         icon: CheckSquare,    path: "/tasks",               module: "tasks" },
-  { label: "Leave Request",        icon: CalendarDays,   path: "/hrms/leave-request",  module: "hrms-leave-request" },
-  { label: "On Duty Request",      icon: UserCheck,      path: "/hrms/checkin",        module: "hrms-checkin" },
-  { label: "Incident",             icon: Bell,           path: "/hrms/incidents",      module: "hrms-incidents" },
-  { label: "Grievance",            icon: MessageCircle,  path: "/hrms",                module: "hrms" },
-  { label: "IT Support",           icon: Headphones,     path: "/hrms",                module: "hrms" },
-  { label: "Vacancies",            icon: Building2,      path: "/hrms/recruitment",    module: "hrms-recruitment" },
-  { label: "Technical Criteria",   icon: Wrench,         path: "/hrms/performance",    module: "hrms-performance" },
-  { label: "Behavioural Criteria", icon: HeartHandshake, path: "/hrms/performance",    module: "hrms-performance" },
-  { label: "Task Allocation",      icon: GitPullRequest, path: "/task-management",     module: "task-management" },
+const QUICK_ACCESS: { label: string; icon: React.ElementType; path: string; module: string; color: string }[] = [
+  { label: "Activity Sheet",       icon: ClipboardList,  path: "/hrms",                module: "hrms",               color: "#3b82f6" },
+  { label: "Say It Do It",         icon: CheckSquare,    path: "/tasks",               module: "tasks",              color: "#10b981" },
+  { label: "Leave Request",        icon: CalendarDays,   path: "/hrms/leave-request",  module: "hrms-leave-request", color: "#f59e0b" },
+  { label: "On Duty Request",      icon: UserCheck,      path: "/hrms/checkin",        module: "hrms-checkin",       color: "#06b6d4" },
+  { label: "Incident",             icon: Bell,           path: "/hrms/incidents",      module: "hrms-incidents",     color: "#ef4444" },
+  { label: "Grievance",            icon: MessageCircle,  path: "/hrms",                module: "hrms",               color: "#8b5cf6" },
+  { label: "IT Support",           icon: Headphones,     path: "/hrms",                module: "hrms",               color: "#6366f1" },
+  { label: "Vacancies",            icon: Building2,      path: "/hrms/recruitment",    module: "hrms-recruitment",   color: "#64748b" },
+  { label: "Technical Criteria",   icon: Wrench,         path: "/hrms/performance",    module: "hrms-performance",   color: "#0ea5e9" },
+  { label: "Behavioural Criteria", icon: HeartHandshake, path: "/hrms/performance",    module: "hrms-performance",   color: "#ec4899" },
+  { label: "Task Allocation",      icon: GitPullRequest, path: "/task-management",     module: "task-management",    color: "#22c55e" },
 ];
 
 interface EmpDashData {
@@ -91,9 +84,9 @@ function Skeleton({ className }: { className?: string }) {
 function StatusBadge({ status }: { status?: string }) {
   const s = (status || "").toLowerCase();
   const cfg =
-    s === "completed"   ? { bg: "#f8fafc", color: "#1e293b", border: "#e2e8f0" } :
-    s === "in progress" ? { bg: "#f8fafc", color: "#334155", border: "#e2e8f0" } :
-                          { bg: "#f8fafc", color: "#64748b", border: "#e2e8f0" };
+    s === "completed"   ? { bg: "#f0fdf4", color: "#16a34a", border: "#bbf7d0" } :
+    s === "in progress" ? { bg: "#eff6ff", color: "#2563eb", border: "#bfdbfe" } :
+                          { bg: "#fffbeb", color: "#b45309", border: "#fde68a" };
   return (
     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border"
       style={{ backgroundColor: cfg.bg, color: cfg.color, borderColor: cfg.border }}>
@@ -209,39 +202,47 @@ export default function Dashboard() {
       <div className="h-full overflow-y-auto bg-slate-50">
         <div className="max-w-[1600px] mx-auto p-4 md:p-6 space-y-5">
 
-          {/* ── HEADER ── */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-6 py-5">
+          {/* ── BANNER ── */}
+          <div className="relative rounded-xl overflow-hidden" style={{ background: "#0f172a" }}>
+            {/* Subtle geometric accent */}
+            <div className="absolute inset-0 pointer-events-none overflow-hidden">
+              <div className="absolute -top-16 -right-16 w-64 h-64 rounded-full opacity-[0.06]"
+                style={{ background: "radial-gradient(circle, #3b82f6, transparent)" }} />
+              <div className="absolute bottom-0 left-1/3 w-48 h-48 rounded-full opacity-[0.04]"
+                style={{ background: "radial-gradient(circle, #60a5fa, transparent)" }} />
+            </div>
+
+            <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-6 px-6 py-6 md:px-8 md:py-7">
               <div>
-                <p className="text-xs text-slate-400 font-medium mb-1">{dateStr}</p>
-                <h1 className="text-xl md:text-2xl font-bold text-slate-800">{greeting}, {firstName}</h1>
+                <p className="text-slate-400 text-xs font-medium mb-1.5">{dateStr}</p>
+                <h1 className="text-2xl md:text-3xl font-bold text-white leading-tight">{greeting}, {firstName}</h1>
                 {empData?.today_first_checkin
-                  ? <p className="text-sm text-slate-500 mt-1">Checked in at {formatTime(empData.today_first_checkin)}</p>
-                  : <p className="text-sm text-slate-400 mt-1">WTT International India · FlowMatriX</p>}
+                  ? <p className="text-emerald-400 text-sm mt-1.5 font-medium">Checked in at {formatTime(empData.today_first_checkin)}</p>
+                  : <p className="text-slate-500 text-sm mt-1.5">WTT International India · FlowMatriX</p>}
               </div>
               <div className="flex items-center gap-4 sm:shrink-0">
                 <div className="text-right">
-                  <p className="text-3xl font-bold text-slate-800 tabular-nums">{timeStr}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">{now.toLocaleDateString("en-IN", { weekday: "long" })}</p>
+                  <p className="text-4xl font-bold text-white tabular-nums tracking-tight">{timeStr}</p>
+                  <p className="text-slate-400 text-[11px] uppercase tracking-widest mt-0.5">{now.toLocaleDateString("en-IN", { weekday: "long" })}</p>
                 </div>
                 <button onClick={refetchAll} disabled={isLoading}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 transition-all disabled:opacity-50 border border-slate-200">
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium bg-white/10 hover:bg-white/15 border border-white/10 text-slate-300 transition-all disabled:opacity-50">
                   <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} /> Refresh
                 </button>
               </div>
             </div>
 
             {/* KPI strip */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 border-t border-slate-100">
+            <div className="relative grid grid-cols-2 sm:grid-cols-3 border-t border-white/[0.07]">
               {[
-                { label: "Active Projects",  value: projectsLoading ? "…" : active,             sub: `of ${total} total` },
-                { label: "Average Progress", value: projectsLoading ? "…" : `${avgProgress}%`,  sub: "across all projects" },
-                { label: "Pending Tasks",    value: empLoading ? "…" : (empData?.pending_work_updates ?? "--"), sub: "require attention" },
+                { label: "Active Projects",  value: projectsLoading ? "…" : active,                              sub: `of ${total} total`,       accent: "#60a5fa" },
+                { label: "Average Progress", value: projectsLoading ? "…" : `${avgProgress}%`,                  sub: "across all projects",     accent: "#34d399" },
+                { label: "Pending Tasks",    value: empLoading ? "…" : (empData?.pending_work_updates ?? "--"), sub: "require attention",       accent: "#fbbf24" },
               ].map((kpi, i) => (
-                <div key={i} className={`px-6 py-4 ${i < 2 ? "border-r border-slate-100" : ""}`}>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{kpi.label}</p>
-                  <p className="text-2xl font-bold text-slate-800 tabular-nums mt-0.5">{kpi.value}</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">{kpi.sub}</p>
+                <div key={i} className={`px-6 py-4 ${i < 2 ? "border-r border-white/[0.07]" : ""}`}>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{kpi.label}</p>
+                  <p className="text-2xl font-bold tabular-nums mt-0.5" style={{ color: kpi.accent }}>{kpi.value}</p>
+                  <p className="text-[11px] text-slate-600 mt-0.5">{kpi.sub}</p>
                 </div>
               ))}
             </div>
@@ -266,8 +267,8 @@ export default function Dashboard() {
                   </Link>
                 </div>
                 <div className="flex items-end gap-3">
-                  <p className="text-6xl font-bold text-slate-800 tabular-nums leading-none">
-                    {empLoading ? <span className="text-3xl text-slate-300">…</span> : empData?.pending_work_updates ?? "0"}
+                  <p className="text-6xl font-bold tabular-nums leading-none" style={{ color: "#f59e0b" }}>
+                    {empLoading ? <span className="text-3xl text-slate-200">…</span> : empData?.pending_work_updates ?? "0"}
                   </p>
                   <div className="pb-1">
                     <p className="text-slate-600 text-sm font-medium">tasks pending</p>
@@ -279,8 +280,8 @@ export default function Dashboard() {
               {/* AI Assistant */}
               <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center border border-slate-200">
-                    <Sparkles className="w-4 h-4 text-slate-600" />
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center border" style={{ background: "#eff6ff", borderColor: "#bfdbfe" }}>
+                    <Sparkles className="w-4 h-4" style={{ color: "#3b82f6" }} />
                   </div>
                   <div>
                     <p className="text-sm font-bold text-slate-800">AI Assistant</p>
@@ -289,10 +290,11 @@ export default function Dashboard() {
                 </div>
                 <div className="flex flex-wrap gap-1.5 mb-4">
                   {["Project status?", "Pending tasks?", "Leave balance?", "Team today?"].map(q => (
-                    <span key={q} className="text-[10px] px-2.5 py-1 rounded-lg border border-slate-200 text-slate-500 bg-slate-50">{q}</span>
+                    <span key={q} className="text-[10px] px-2.5 py-1 rounded-lg border border-slate-200 text-slate-500 bg-slate-50 cursor-pointer hover:border-blue-200 hover:text-blue-600 transition-colors">{q}</span>
                   ))}
                 </div>
-                <button className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 transition-colors"
+                <button className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold border text-blue-600 transition-colors hover:bg-blue-50"
+                  style={{ borderColor: "#bfdbfe", background: "#eff6ff" }}
                   onClick={() => (document.querySelector("[data-ai-trigger]") as HTMLElement)?.click()}>
                   <Sparkles className="w-3.5 h-3.5" /> Ask AI
                 </button>
@@ -303,34 +305,35 @@ export default function Dashboard() {
             <div className="space-y-5">
               <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center border border-slate-200">
-                    <Bell className="w-4 h-4 text-slate-600" />
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center border" style={{ background: "#fffbeb", borderColor: "#fde68a" }}>
+                    <Bell className="w-4 h-4" style={{ color: "#f59e0b" }} />
                   </div>
                   <div className="flex-1">
                     <p className="text-sm font-bold text-slate-800">Pending Approvals</p>
                     <p className="text-[10px] text-slate-400">Workflow items awaiting your action</p>
                   </div>
-                  <div className="text-xl font-bold text-slate-800 tabular-nums">
+                  <div className="text-xl font-bold tabular-nums" style={{ color: "#f59e0b" }}>
                     {empLoading ? "…" : pendingApprovalTotal}
                   </div>
                 </div>
 
                 <div className="p-4 grid grid-cols-2 gap-3">
                   {[
-                    { label: "On Duty",         value: empData?.on_duty_request_count,      icon: UserCheck      },
-                    { label: "Technical",        value: empData?.technical_criteria_count,   icon: Cpu            },
-                    { label: "Behavioural",      value: empData?.behavioural_criteria_count, icon: HeartHandshake },
-                    { label: "OT Request",       value: empData?.ot_request_count,           icon: Timer          },
-                    { label: "OT Prior Info",    value: empData?.ot_prior_info_count,        icon: Activity       },
-                    { label: "All Pending",      value: pendingApprovalTotal,                icon: FileCheck2     },
-                  ].map(({ label, value, icon: Icon }) => (
-                    <div key={label} className="rounded-lg border border-slate-100 bg-slate-50 p-3.5 flex items-center gap-3 hover:border-slate-200 transition-colors">
-                      <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center shrink-0">
-                        <Icon className="w-4 h-4 text-slate-500" />
+                    { label: "On Duty",      value: empData?.on_duty_request_count,      icon: UserCheck,      color: "#10b981", bg: "#f0fdf4", border: "#bbf7d0" },
+                    { label: "Technical",    value: empData?.technical_criteria_count,   icon: Cpu,            color: "#f59e0b", bg: "#fffbeb", border: "#fde68a" },
+                    { label: "Behavioural",  value: empData?.behavioural_criteria_count, icon: HeartHandshake, color: "#8b5cf6", bg: "#faf5ff", border: "#ddd6fe" },
+                    { label: "OT Request",   value: empData?.ot_request_count,           icon: Timer,          color: "#f97316", bg: "#fff7ed", border: "#fed7aa" },
+                    { label: "OT Prior",     value: empData?.ot_prior_info_count,        icon: Activity,       color: "#06b6d4", bg: "#ecfeff", border: "#a5f3fc" },
+                    { label: "All Pending",  value: pendingApprovalTotal,                icon: FileCheck2,     color: "#6366f1", bg: "#eef2ff", border: "#c7d2fe" },
+                  ].map(({ label, value, icon: Icon, color, bg, border }) => (
+                    <div key={label} className="rounded-lg border p-3.5 flex items-center gap-3 hover:shadow-sm transition-all"
+                      style={{ backgroundColor: bg, borderColor: border }}>
+                      <div className="w-8 h-8 rounded-lg bg-white border flex items-center justify-center shrink-0" style={{ borderColor: border }}>
+                        <Icon className="w-4 h-4" style={{ color }} />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-[11px] font-medium text-slate-500 truncate">{label}</p>
-                        <p className="text-xl font-bold text-slate-800 tabular-nums leading-tight">
+                        <p className="text-xl font-bold tabular-nums leading-tight" style={{ color }}>
                           {empLoading ? "…" : value ?? "0"}
                         </p>
                       </div>
@@ -345,27 +348,28 @@ export default function Dashboard() {
               <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center border border-slate-200">
-                      <Briefcase className="w-4 h-4 text-slate-600" />
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center border" style={{ background: "#eff6ff", borderColor: "#bfdbfe" }}>
+                      <Briefcase className="w-4 h-4" style={{ color: "#3b82f6" }} />
                     </div>
                     <div>
                       <p className="text-sm font-bold text-slate-800">Projects</p>
                       <p className="text-[10px] text-slate-400">{total} total</p>
                     </div>
                   </div>
-                  <Link href="/projects" className="text-[11px] font-semibold text-slate-600 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 transition-colors border border-slate-200">
+                  <Link href="/projects" className="text-[11px] font-semibold flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition-colors hover:bg-blue-50 border"
+                    style={{ color: "#3b82f6", borderColor: "#bfdbfe", background: "#eff6ff" }}>
                     View all <ArrowRight className="w-3 h-3" />
                   </Link>
                 </div>
                 <div className="grid grid-cols-2 gap-0 border-b border-slate-100">
                   {[
-                    { label: "Active",    value: active    },
-                    { label: "Planning",  value: planning  },
-                    { label: "On Hold",   value: onHold    },
-                    { label: "Completed", value: completed },
+                    { label: "Active",    value: active,    color: "#3b82f6" },
+                    { label: "Planning",  value: planning,  color: "#f59e0b" },
+                    { label: "On Hold",   value: onHold,    color: "#f97316" },
+                    { label: "Completed", value: completed, color: "#22c55e" },
                   ].map((s, i) => (
                     <div key={s.label} className={`py-4 text-center ${i % 2 === 0 ? "border-r border-slate-100" : ""} ${i < 2 ? "border-b border-slate-100" : ""}`}>
-                      <p className="text-2xl font-bold text-slate-800 tabular-nums">{projectsLoading ? "…" : s.value}</p>
+                      <p className="text-2xl font-bold tabular-nums" style={{ color: s.color }}>{projectsLoading ? "…" : s.value}</p>
                       <p className="text-[10px] font-medium text-slate-400 mt-0.5 uppercase tracking-wide">{s.label}</p>
                     </div>
                   ))}
@@ -373,11 +377,10 @@ export default function Dashboard() {
                 <div className="px-5 py-3.5">
                   <div className="flex items-center justify-between text-[10px] font-medium text-slate-400 uppercase tracking-wide mb-1.5">
                     <span>Average Progress</span>
-                    <span className="text-slate-600 font-semibold">{avgProgress}%</span>
+                    <span className="font-semibold" style={{ color: "#3b82f6" }}>{avgProgress}%</span>
                   </div>
                   <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full transition-all duration-700 bg-slate-600"
-                      style={{ width: `${avgProgress}%` }} />
+                    <div className="h-full rounded-full transition-all duration-700" style={{ width: `${avgProgress}%`, background: "#3b82f6" }} />
                   </div>
                 </div>
               </div>
@@ -397,17 +400,17 @@ export default function Dashboard() {
                   )) : recentProjects.length === 0 ? (
                     <div className="py-10 text-center text-slate-400 text-sm">No projects found</div>
                   ) : recentProjects.map(project => {
-                    const cfg = STATUS_CONFIG[project.status] ?? STATUS_CONFIG.planning;
                     const pct = Math.min(100, Math.max(0, project.progress ?? 0));
+                    const color = project.status === "completed" ? "#22c55e" : project.status === "active" ? "#3b82f6" : project.status === "on_hold" ? "#f97316" : "#f59e0b";
                     return (
                       <div key={project.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50 transition-colors">
-                        <div className="w-2 h-2 rounded-full shrink-0 bg-slate-300" />
+                        <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
                         <p className="text-sm font-medium text-slate-700 flex-1 truncate">{project.name}</p>
                         <div className="flex items-center gap-2 shrink-0 w-28">
                           <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div className="h-full rounded-full bg-slate-500" style={{ width: `${pct}%` }} />
+                            <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
                           </div>
-                          <span className="text-[11px] font-semibold tabular-nums text-slate-500">{pct}%</span>
+                          <span className="text-[11px] font-semibold tabular-nums" style={{ color }}>{pct}%</span>
                         </div>
                       </div>
                     );
@@ -424,7 +427,8 @@ export default function Dashboard() {
                 <p className="text-base font-bold text-slate-800">Recent Work Updates</p>
                 <p className="text-[10px] text-slate-400 mt-0.5 uppercase tracking-wide">Latest activity from your team</p>
               </div>
-              <Link href="/tasks" className="flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 transition-colors">
+              <Link href="/tasks" className="flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-lg border transition-colors hover:bg-blue-50"
+                style={{ color: "#3b82f6", borderColor: "#bfdbfe", background: "#eff6ff" }}>
                 View All <ArrowRight className="w-3.5 h-3.5" />
               </Link>
             </div>
@@ -488,11 +492,12 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-11 gap-2">
-                {visibleQuickAccess.map(({ label, icon: Icon, path }) => (
+                {visibleQuickAccess.map(({ label, icon: Icon, path, color }) => (
                   <Link key={path + label} href={path}>
                     <div className="group flex flex-col items-center gap-2 py-3.5 px-2 rounded-lg hover:bg-slate-50 transition-all cursor-pointer text-center border border-transparent hover:border-slate-200">
-                      <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center group-hover:bg-slate-200 transition-colors">
-                        <Icon className="w-5 h-5 text-slate-600" />
+                      <div className="w-10 h-10 rounded-lg flex items-center justify-center group-hover:scale-105 transition-transform border border-slate-100"
+                        style={{ backgroundColor: color + "14" }}>
+                        <Icon className="w-5 h-5" style={{ color }} />
                       </div>
                       <p className="text-[10px] font-medium text-slate-500 group-hover:text-slate-700 leading-tight">{label}</p>
                     </div>
