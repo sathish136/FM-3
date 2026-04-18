@@ -51,7 +51,7 @@ timeoutMs = 20000
 [userenv.shared]
 ERPNEXT_URL = "https://erp.wttint.com"
 ERPNEXT_API_KEY = "bcbc298244f56a7"
-ERPNEXT_API_SECRET = "b15c3b49acdfef5"
+ERPNEXT_API_SECRET = "31031acb9f6655e"
 
 [nix]
 channel = "stable-25_05"
