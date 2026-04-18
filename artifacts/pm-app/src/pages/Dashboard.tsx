@@ -1,42 +1,23 @@
 import { Layout } from "@/components/Layout";
 import { Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
-  CheckCircle2, RefreshCw, Briefcase, ArrowRight,
-  Sparkles, CalendarDays, ClipboardList, Bell,
-  Timer, FileCheck2, Cpu,
-  MessageCircle, Headphones, LayoutGrid, Building2,
-  CheckSquare, UserCheck, Wrench, HeartHandshake, Activity,
-  GitPullRequest,
+  RefreshCw, ArrowRight, Sparkles,
+  ThumbsUp, ThumbsDown, Bell, Star,
+  Timer, Cpu, UserCheck, HeartHandshake, Activity,
+  CheckCircle, XCircle, Clock, CalendarCheck,
 } from "lucide-react";
 
 const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-const QUICK_ACCESS: { label: string; icon: React.ElementType; path: string; module: string; color: string }[] = [
-  { label: "Activity Sheet",       icon: ClipboardList,  path: "/hrms",                module: "hrms",               color: "#3b82f6" },
-  { label: "Say It Do It",         icon: CheckSquare,    path: "/tasks",               module: "tasks",              color: "#10b981" },
-  { label: "Leave Request",        icon: CalendarDays,   path: "/hrms/leave-request",  module: "hrms-leave-request", color: "#f59e0b" },
-  { label: "On Duty Request",      icon: UserCheck,      path: "/hrms/checkin",        module: "hrms-checkin",       color: "#06b6d4" },
-  { label: "Incident",             icon: Bell,           path: "/hrms/incidents",      module: "hrms-incidents",     color: "#ef4444" },
-  { label: "Grievance",            icon: MessageCircle,  path: "/hrms",                module: "hrms",               color: "#8b5cf6" },
-  { label: "IT Support",           icon: Headphones,     path: "/hrms",                module: "hrms",               color: "#6366f1" },
-  { label: "Vacancies",            icon: Building2,      path: "/hrms/recruitment",    module: "hrms-recruitment",   color: "#64748b" },
-  { label: "Technical Criteria",   icon: Wrench,         path: "/hrms/performance",    module: "hrms-performance",   color: "#0ea5e9" },
-  { label: "Behavioural Criteria", icon: HeartHandshake, path: "/hrms/performance",    module: "hrms-performance",   color: "#ec4899" },
-  { label: "Task Allocation",      icon: GitPullRequest, path: "/task-management",     module: "task-management",    color: "#22c55e" },
-];
-
 interface EmpDashData {
-  user?: string;
-  total_present_days?: number;
   today_first_checkin?: string;
   pending_work_updates?: number;
   present_days_this_month?: number;
   half_day_count?: number;
   absent_days_this_month?: number;
   checkin?: number;
-  reminders?: { reminder: string; reminder_date: string; status: string }[];
   ot_request_count?: number;
   ot_prior_info_count?: number;
   on_duty_request_count?: number;
@@ -58,50 +39,24 @@ function useNow() {
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(t); }, []);
   return now;
 }
-function formatTime(timeString?: string) {
-  if (!timeString) return "--";
-  try {
-    const [hours, minutes] = timeString.split(":");
-    const h = parseInt(hours);
-    return `${h % 12 || 12}:${minutes} ${h >= 12 ? "PM" : "AM"}`;
-  } catch { return timeString; }
+function formatTime(s?: string) {
+  if (!s) return "--";
+  try { const [h, m] = s.split(":"); const hr = parseInt(h); return `${hr % 12 || 12}:${m} ${hr >= 12 ? "PM" : "AM"}`; }
+  catch { return s; }
 }
-function formatDateTime(isoStr?: string) {
-  if (!isoStr) return { date: "--", time: "--" };
+function formatDateTime(iso?: string) {
+  if (!iso) return { date: "--", time: "--" };
   try {
-    const d = new Date(isoStr);
+    const d = new Date(iso);
     return {
-      date: d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }),
+      date: d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
       time: d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
     };
   } catch { return { date: "--", time: "--" }; }
 }
 
-function Skeleton({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-slate-100 rounded ${className}`} />;
-}
-
-function StatusBadge({ status }: { status?: string }) {
-  const s = (status || "").toLowerCase();
-  const cfg =
-    s === "completed"   ? { bg: "#f0fdf4", color: "#16a34a", border: "#bbf7d0" } :
-    s === "in progress" ? { bg: "#eff6ff", color: "#2563eb", border: "#bfdbfe" } :
-                          { bg: "#fffbeb", color: "#b45309", border: "#fde68a" };
-  return (
-    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border"
-      style={{ backgroundColor: cfg.bg, color: cfg.color, borderColor: cfg.border }}>
-      {status || "Pending"}
-    </span>
-  );
-}
-
-function InitialAvatar({ name }: { name?: string }) {
-  const initials = name?.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase() ?? "?";
-  return (
-    <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 text-[11px] font-bold shrink-0">
-      {initials}
-    </div>
-  );
+function Skel({ w = "w-full", h = "h-3" }: { w?: string; h?: string }) {
+  return <div className={`animate-pulse bg-slate-100 rounded ${w} ${h}`} />;
 }
 
 export default function Dashboard() {
@@ -113,229 +68,150 @@ export default function Dashboard() {
   const [empData, setEmpData] = useState<EmpDashData | null>(null);
   const [empLoading, setEmpLoading] = useState(true);
 
-  const ADMIN_EMAILS = ["edp@wttindia.com", "venkat@wttindia.com"];
-  const isAdmin = user ? ADMIN_EMAILS.includes(user.email.toLowerCase()) : false;
-  const [moduleRoles, setModuleRoles] = useState<Record<string, string> | null>(null);
-
-  useEffect(() => {
-    if (!user || isAdmin) { setModuleRoles(null); return; }
-    fetch(`${BASE_URL}/api/user-permissions/${encodeURIComponent(user.email)}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (!data) { setModuleRoles({}); return; }
-        if (data.moduleRoles) {
-          try {
-            const parsed = JSON.parse(data.moduleRoles) as Record<string, string>;
-            if (Object.keys(parsed).length > 0) { setModuleRoles(parsed); return; }
-          } catch {}
-        }
-        if (data.modules) {
-          try {
-            const mods = JSON.parse(data.modules) as string[];
-            const roles: Record<string, string> = {};
-            mods.forEach(m => { roles[m] = "write"; });
-            setModuleRoles(roles); return;
-          } catch {}
-        }
-        setModuleRoles({});
-      })
-      .catch(() => setModuleRoles(null));
-  }, [user?.email, isAdmin]);
-
-  const visibleQuickAccess = useMemo(() => {
-    if (isAdmin || moduleRoles === null) return QUICK_ACCESS;
-    return QUICK_ACCESS.filter(item => {
-      const role = moduleRoles[item.module];
-      return role === "read" || role === "write";
-    });
-  }, [isAdmin, moduleRoles]);
-
   const fetchProjects = useCallback(() => {
     if (!user?.email) return;
     setProjectsLoading(true);
-    fetch(`${BASE_URL}/api/projects${user.email ? `?email=${encodeURIComponent(user.email)}` : ""}`)
+    fetch(`${BASE_URL}/api/projects?email=${encodeURIComponent(user.email)}`)
       .then(r => r.ok ? r.json() : [])
-      .then(data => { setProjects(data); setProjectsLoading(false); })
+      .then(d => { setProjects(d); setProjectsLoading(false); })
       .catch(() => setProjectsLoading(false));
   }, [user?.email]);
 
   const fetchEmpData = useCallback(() => {
     if (!user?.email) return;
     setEmpLoading(true);
-    const qs = new URLSearchParams({ email: user.email }).toString();
-    fetch(`${BASE_URL}/api/employee-dashboard?${qs}`)
+    fetch(`${BASE_URL}/api/employee-dashboard?email=${encodeURIComponent(user.email)}`)
       .then(r => r.json())
-      .then(data => { setEmpData(data.error ? null : data); setEmpLoading(false); })
+      .then(d => { setEmpData(d.error ? null : d); setEmpLoading(false); })
       .catch(() => setEmpLoading(false));
   }, [user?.email]);
 
   useEffect(() => { fetchProjects(); fetchEmpData(); }, [fetchProjects, fetchEmpData]);
-  const refetchAll = () => { fetchProjects(); fetchEmpData(); };
 
   const total     = projects.length;
   const active    = projects.filter(p => p.status === "active").length;
   const planning  = projects.filter(p => p.status === "planning").length;
   const onHold    = projects.filter(p => p.status === "on_hold").length;
-  const completed = projects.filter(p => p.status === "completed").length;
-  const avgProgress = total ? Math.round(projects.reduce((a, p) => a + (p.progress ?? 0), 0) / total) : 0;
+  const done      = projects.filter(p => p.status === "completed").length;
+  const avgPct    = total ? Math.round(projects.reduce((a, p) => a + (p.progress ?? 0), 0) / total) : 0;
+  const recentProjects = [...projects].sort((a, b) => (b.progress ?? 0) - (a.progress ?? 0)).slice(0, 6);
 
-  const greeting = (() => {
-    const h = now.getHours();
-    if (h < 12) return "Good morning";
-    if (h < 17) return "Good afternoon";
-    return "Good evening";
-  })();
-  const firstName = user?.full_name?.split(" ")[0] ?? "there";
+  const greeting = (() => { const h = now.getHours(); return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"; })();
+  const firstName = user?.full_name ?? "there";
   const dateStr = now.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const timeStr = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-  const recentProjects = [...projects].sort((a, b) => (b.progress ?? 0) - (a.progress ?? 0)).slice(0, 5);
+  const weekday = now.toLocaleDateString("en-IN", { weekday: "long" }).toUpperCase();
 
-  const pendingApprovalTotal =
+  const overallPts = empData?.overall_points ?? (
+    (empData?.task_points ?? 0) + (empData?.incident_points ?? 0) +
+    (empData?.technical_points ?? 0) + (empData?.behavioral_points ?? 0) +
+    (empData?.reporting_points ?? 0)
+  );
+  const positiveInc = empData?.positive_incidents ?? 0;
+  const negativeInc = empData?.negative_incidents ?? 0;
+  const pendingApproval =
     (empData?.ot_request_count ?? 0) + (empData?.ot_prior_info_count ?? 0) +
     (empData?.on_duty_request_count ?? 0) + (empData?.technical_criteria_count ?? 0) +
     (empData?.behavioural_criteria_count ?? 0);
-
   const isLoading = projectsLoading || empLoading;
 
   return (
     <Layout>
-      <div className="h-full overflow-y-auto bg-slate-50">
-        <div className="max-w-[1600px] mx-auto p-4 md:p-6 space-y-5">
+      <div className="h-full overflow-y-auto" style={{ background: "#f5f6fa" }}>
+        <div className="max-w-[1600px] mx-auto p-4 space-y-4">
 
-          {/* ── BANNER ── */}
-          <div className="relative rounded-xl overflow-hidden" style={{ background: "#0f172a" }}>
-            {/* Subtle geometric accent */}
-            <div className="absolute inset-0 pointer-events-none overflow-hidden">
-              <div className="absolute -top-16 -right-16 w-64 h-64 rounded-full opacity-[0.06]"
-                style={{ background: "radial-gradient(circle, #3b82f6, transparent)" }} />
-              <div className="absolute bottom-0 left-1/3 w-48 h-48 rounded-full opacity-[0.04]"
-                style={{ background: "radial-gradient(circle, #60a5fa, transparent)" }} />
-            </div>
+          {/* ── TOP ROW: Banner + AI Card ── */}
+          <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 340px" }}>
 
-            <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-6 px-6 py-6 md:px-8 md:py-7">
+            {/* Banner */}
+            <div className="rounded-xl px-6 py-5 flex flex-col justify-between relative overflow-hidden"
+              style={{ background: "linear-gradient(135deg, #eef2ff 0%, #e0e7ff 60%, #dbeafe 100%)", minHeight: 140 }}>
+              <div className="absolute top-0 right-0 w-48 h-48 rounded-full opacity-20 pointer-events-none"
+                style={{ background: "radial-gradient(circle, #a5b4fc, transparent)", transform: "translate(30%, -30%)" }} />
               <div>
-                <p className="text-slate-400 text-xs font-medium mb-1.5">{dateStr}</p>
-                <h1 className="text-2xl md:text-3xl font-bold text-white leading-tight">{greeting}, {firstName}</h1>
-                {empData?.today_first_checkin
-                  ? <p className="text-emerald-400 text-sm mt-1.5 font-medium">Checked in at {formatTime(empData.today_first_checkin)}</p>
-                  : <p className="text-slate-500 text-sm mt-1.5">WTT International India · FlowMatriX</p>}
+                <p className="text-[11px] font-semibold text-indigo-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                  <Star className="w-3 h-3" /> FlowMatriX · WTT International India
+                </p>
+                <h1 className="text-2xl md:text-3xl font-bold text-slate-800 leading-tight">{greeting}, {firstName}!</h1>
+                <p className="text-sm text-slate-500 mt-1">{dateStr}</p>
+                {empData?.today_first_checkin && (
+                  <p className="text-xs text-emerald-600 mt-1 font-medium">Checked in at {formatTime(empData.today_first_checkin)}</p>
+                )}
               </div>
-              <div className="flex items-center gap-4 sm:shrink-0">
-                <div className="text-right">
-                  <p className="text-4xl font-bold text-white tabular-nums tracking-tight">{timeStr}</p>
-                  <p className="text-slate-400 text-[11px] uppercase tracking-widest mt-0.5">{now.toLocaleDateString("en-IN", { weekday: "long" })}</p>
-                </div>
-                <button onClick={refetchAll} disabled={isLoading}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium bg-white/10 hover:bg-white/15 border border-white/10 text-slate-300 transition-all disabled:opacity-50">
-                  <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} /> Refresh
+              <div className="flex items-center justify-between mt-3">
+                <button onClick={() => { fetchProjects(); fetchEmpData(); }} disabled={isLoading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/70 hover:bg-white border border-white/80 text-slate-600 transition-all disabled:opacity-50 shadow-sm">
+                  <RefreshCw className={`w-3 h-3 ${isLoading ? "animate-spin" : ""}`} /> Refresh
                 </button>
+                <div className="text-right">
+                  <p className="text-3xl font-bold text-slate-800 tabular-nums leading-none">{timeStr}</p>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">{weekday}</p>
+                </div>
               </div>
             </div>
 
-            {/* KPI strip */}
-            <div className="relative grid grid-cols-2 sm:grid-cols-3 border-t border-white/[0.07]">
-              {[
-                { label: "Active Projects",  value: projectsLoading ? "…" : active,                              sub: `of ${total} total`,       accent: "#60a5fa" },
-                { label: "Average Progress", value: projectsLoading ? "…" : `${avgProgress}%`,                  sub: "across all projects",     accent: "#34d399" },
-                { label: "Pending Tasks",    value: empLoading ? "…" : (empData?.pending_work_updates ?? "--"), sub: "require attention",       accent: "#fbbf24" },
-              ].map((kpi, i) => (
-                <div key={i} className={`px-6 py-4 ${i < 2 ? "border-r border-white/[0.07]" : ""}`}>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{kpi.label}</p>
-                  <p className="text-2xl font-bold tabular-nums mt-0.5" style={{ color: kpi.accent }}>{kpi.value}</p>
-                  <p className="text-[11px] text-slate-600 mt-0.5">{kpi.sub}</p>
+            {/* AI Assistant */}
+            <div className="rounded-xl p-4 flex flex-col" style={{ background: "#1e1b4b" }}>
+              <div className="flex items-center gap-2.5 mb-2">
+                <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center">
+                  <Sparkles className="w-4 h-4 text-indigo-300" />
                 </div>
-              ))}
+                <div>
+                  <p className="text-sm font-bold text-white">AI Assistant</p>
+                  <p className="text-[10px] text-indigo-400">Context-aware · Always ready</p>
+                </div>
+              </div>
+              <p className="text-[11px] text-indigo-300/70 mb-3">Ask about projects, HR, procurement, drawings, and more.</p>
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {["Project status?", "Pending tasks?", "Leave balance?", "Team today?"].map(q => (
+                  <span key={q} className="text-[10px] px-2 py-1 rounded-md border border-indigo-500/30 text-indigo-300 bg-indigo-500/10 cursor-pointer hover:bg-indigo-500/20 transition-colors">{q}</span>
+                ))}
+              </div>
+              <button className="mt-auto w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+                onClick={() => (document.querySelector("[data-ai-trigger]") as HTMLElement)?.click()}>
+                <Sparkles className="w-3.5 h-3.5" /> Ask AI
+              </button>
             </div>
           </div>
 
-          {/* ── MAIN CONTENT GRID ── */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {/* ── MAIN 3-COLUMN GRID ── */}
+          <div className="grid grid-cols-3 gap-4">
 
-            {/* ── LEFT COLUMN ── */}
-            <div className="space-y-5">
-
-              {/* Pending Tasks */}
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Pending Tasks</p>
-                    <p className="text-base font-bold text-slate-800 mt-0.5">Require Attention</p>
-                  </div>
-                  <Link href="/tasks"
-                    className="flex items-center gap-1 text-[11px] font-semibold px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors border border-slate-200">
-                    View all <ArrowRight className="w-3 h-3" />
-                  </Link>
+            {/* LEFT: Performance Overview */}
+            <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-50 flex items-center gap-2">
+                <div className="w-6 h-6 rounded bg-purple-100 flex items-center justify-center">
+                  <Activity className="w-3.5 h-3.5 text-purple-600" />
                 </div>
-                <div className="flex items-end gap-3">
-                  <p className="text-6xl font-bold tabular-nums leading-none" style={{ color: "#f59e0b" }}>
-                    {empLoading ? <span className="text-3xl text-slate-200">…</span> : empData?.pending_work_updates ?? "0"}
-                  </p>
-                  <div className="pb-1">
-                    <p className="text-slate-600 text-sm font-medium">tasks pending</p>
-                    <p className="text-slate-400 text-[11px]">as of today</p>
-                  </div>
-                </div>
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Performance Overview</p>
               </div>
-
-              {/* AI Assistant */}
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center border" style={{ background: "#eff6ff", borderColor: "#bfdbfe" }}>
-                    <Sparkles className="w-4 h-4" style={{ color: "#3b82f6" }} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-800">AI Assistant</p>
-                    <p className="text-[10px] text-slate-400">Context-aware · Always ready</p>
-                  </div>
+              <div className="px-4 py-4">
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1">Overall Points</p>
+                <div className="flex items-baseline gap-1 mb-4">
+                  <span className="text-3xl font-bold text-slate-800 tabular-nums">{empLoading ? "…" : overallPts}</span>
+                  <span className="text-sm text-slate-400 font-medium">/60</span>
                 </div>
-                <div className="flex flex-wrap gap-1.5 mb-4">
-                  {["Project status?", "Pending tasks?", "Leave balance?", "Team today?"].map(q => (
-                    <span key={q} className="text-[10px] px-2.5 py-1 rounded-lg border border-slate-200 text-slate-500 bg-slate-50 cursor-pointer hover:border-blue-200 hover:text-blue-600 transition-colors">{q}</span>
-                  ))}
+                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mb-4">
+                  <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(100,(overallPts/60)*100)}%`, background: "linear-gradient(90deg,#8b5cf6,#a78bfa)" }} />
                 </div>
-                <button className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold border text-blue-600 transition-colors hover:bg-blue-50"
-                  style={{ borderColor: "#bfdbfe", background: "#eff6ff" }}
-                  onClick={() => (document.querySelector("[data-ai-trigger]") as HTMLElement)?.click()}>
-                  <Sparkles className="w-3.5 h-3.5" /> Ask AI
-                </button>
-              </div>
-            </div>
-
-            {/* ── CENTER COLUMN: Pending Approvals ── */}
-            <div className="space-y-5">
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center border" style={{ background: "#fffbeb", borderColor: "#fde68a" }}>
-                    <Bell className="w-4 h-4" style={{ color: "#f59e0b" }} />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-bold text-slate-800">Pending Approvals</p>
-                    <p className="text-[10px] text-slate-400">Workflow items awaiting your action</p>
-                  </div>
-                  <div className="text-xl font-bold tabular-nums" style={{ color: "#f59e0b" }}>
-                    {empLoading ? "…" : pendingApprovalTotal}
-                  </div>
-                </div>
-
-                <div className="p-4 grid grid-cols-2 gap-3">
+                <div className="space-y-2.5">
                   {[
-                    { label: "On Duty",      value: empData?.on_duty_request_count,      icon: UserCheck,      color: "#10b981", bg: "#f0fdf4", border: "#bbf7d0" },
-                    { label: "Technical",    value: empData?.technical_criteria_count,   icon: Cpu,            color: "#f59e0b", bg: "#fffbeb", border: "#fde68a" },
-                    { label: "Behavioural",  value: empData?.behavioural_criteria_count, icon: HeartHandshake, color: "#8b5cf6", bg: "#faf5ff", border: "#ddd6fe" },
-                    { label: "OT Request",   value: empData?.ot_request_count,           icon: Timer,          color: "#f97316", bg: "#fff7ed", border: "#fed7aa" },
-                    { label: "OT Prior",     value: empData?.ot_prior_info_count,        icon: Activity,       color: "#06b6d4", bg: "#ecfeff", border: "#a5f3fc" },
-                    { label: "All Pending",  value: pendingApprovalTotal,                icon: FileCheck2,     color: "#6366f1", bg: "#eef2ff", border: "#c7d2fe" },
-                  ].map(({ label, value, icon: Icon, color, bg, border }) => (
-                    <div key={label} className="rounded-lg border p-3.5 flex items-center gap-3 hover:shadow-sm transition-all"
-                      style={{ backgroundColor: bg, borderColor: border }}>
-                      <div className="w-8 h-8 rounded-lg bg-white border flex items-center justify-center shrink-0" style={{ borderColor: border }}>
-                        <Icon className="w-4 h-4" style={{ color }} />
+                    { label: "Task",       pts: empData?.task_points,       max: 25, color: "#3b82f6" },
+                    { label: "Incident",   pts: empData?.incident_points,   max: 5,  color: "#10b981" },
+                    { label: "Technical",  pts: empData?.technical_points,  max: 10, color: "#f59e0b" },
+                    { label: "Behavioral", pts: empData?.behavioral_points, max: 10, color: "#8b5cf6" },
+                    { label: "Reporting",  pts: empData?.reporting_points,  max: 10, color: "#06b6d4" },
+                  ].map(s => (
+                    <div key={s.label}>
+                      <div className="flex justify-between items-center mb-0.5">
+                        <span className="text-[11px] text-slate-500">{s.label}</span>
+                        <span className="text-[11px] font-semibold tabular-nums" style={{ color: s.color }}>
+                          {empLoading ? "--" : (s.pts ?? "--")}<span className="text-slate-300 font-normal">/{s.max}</span>
+                        </span>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[11px] font-medium text-slate-500 truncate">{label}</p>
-                        <p className="text-xl font-bold tabular-nums leading-tight" style={{ color }}>
-                          {empLoading ? "…" : value ?? "0"}
-                        </p>
+                      <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-700"
+                          style={{ width: `${s.pts != null ? Math.min(100,(s.pts/s.max)*100) : 0}%`, backgroundColor: s.color }} />
                       </div>
                     </div>
                   ))}
@@ -343,169 +219,232 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* ── RIGHT COLUMN: Projects ── */}
-            <div className="space-y-5">
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center border" style={{ background: "#eff6ff", borderColor: "#bfdbfe" }}>
-                      <Briefcase className="w-4 h-4" style={{ color: "#3b82f6" }} />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-slate-800">Projects</p>
-                      <p className="text-[10px] text-slate-400">{total} total</p>
-                    </div>
-                  </div>
-                  <Link href="/projects" className="text-[11px] font-semibold flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition-colors hover:bg-blue-50 border"
-                    style={{ color: "#3b82f6", borderColor: "#bfdbfe", background: "#eff6ff" }}>
-                    View all <ArrowRight className="w-3 h-3" />
-                  </Link>
-                </div>
-                <div className="grid grid-cols-2 gap-0 border-b border-slate-100">
-                  {[
-                    { label: "Active",    value: active,    color: "#3b82f6" },
-                    { label: "Planning",  value: planning,  color: "#f59e0b" },
-                    { label: "On Hold",   value: onHold,    color: "#f97316" },
-                    { label: "Completed", value: completed, color: "#22c55e" },
-                  ].map((s, i) => (
-                    <div key={s.label} className={`py-4 text-center ${i % 2 === 0 ? "border-r border-slate-100" : ""} ${i < 2 ? "border-b border-slate-100" : ""}`}>
-                      <p className="text-2xl font-bold tabular-nums" style={{ color: s.color }}>{projectsLoading ? "…" : s.value}</p>
-                      <p className="text-[10px] font-medium text-slate-400 mt-0.5 uppercase tracking-wide">{s.label}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="px-5 py-3.5">
-                  <div className="flex items-center justify-between text-[10px] font-medium text-slate-400 uppercase tracking-wide mb-1.5">
-                    <span>Average Progress</span>
-                    <span className="font-semibold" style={{ color: "#3b82f6" }}>{avgProgress}%</span>
-                  </div>
-                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full transition-all duration-700" style={{ width: `${avgProgress}%`, background: "#3b82f6" }} />
-                  </div>
-                </div>
-              </div>
+            {/* CENTER: Attendance + Task Pending + Incidents */}
+            <div className="space-y-4">
 
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="px-5 py-4 border-b border-slate-100">
-                  <p className="text-sm font-bold text-slate-800">Top Projects</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Sorted by progress</p>
-                </div>
-                <div className="divide-y divide-slate-50">
-                  {projectsLoading ? Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="flex items-center gap-3 px-5 py-3.5">
-                      <Skeleton className="w-2 h-2 rounded-full" />
-                      <Skeleton className="flex-1 h-3" />
-                      <Skeleton className="w-20 h-2" />
+              {/* Attendance */}
+              <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+                <div className="px-4 py-3 border-b border-slate-50 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded bg-emerald-100 flex items-center justify-center">
+                      <CalendarCheck className="w-3.5 h-3.5 text-emerald-600" />
                     </div>
-                  )) : recentProjects.length === 0 ? (
-                    <div className="py-10 text-center text-slate-400 text-sm">No projects found</div>
-                  ) : recentProjects.map(project => {
-                    const pct = Math.min(100, Math.max(0, project.progress ?? 0));
-                    const color = project.status === "completed" ? "#22c55e" : project.status === "active" ? "#3b82f6" : project.status === "on_hold" ? "#f97316" : "#f59e0b";
-                    return (
-                      <div key={project.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50 transition-colors">
-                        <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
-                        <p className="text-sm font-medium text-slate-700 flex-1 truncate">{project.name}</p>
-                        <div className="flex items-center gap-2 shrink-0 w-28">
-                          <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
-                          </div>
-                          <span className="text-[11px] font-semibold tabular-nums" style={{ color }}>{pct}%</span>
+                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Attendance</p>
+                  </div>
+                  <span className="text-[10px] font-medium text-slate-400 bg-slate-50 border border-slate-100 px-2 py-0.5 rounded-full">This Month</span>
+                </div>
+                <div className="grid grid-cols-4">
+                  {[
+                    { label: "Present",  val: empData?.present_days_this_month, icon: CheckCircle, color: "#22c55e", bg: "#f0fdf4" },
+                    { label: "Half Day", val: empData?.half_day_count,           icon: Clock,       color: "#f59e0b", bg: "#fffbeb" },
+                    { label: "Absent",   val: empData?.absent_days_this_month,   icon: XCircle,     color: "#ef4444", bg: "#fef2f2" },
+                    { label: "Late",     val: empData?.checkin,                  icon: Clock,       color: "#f97316", bg: "#fff7ed" },
+                  ].map((a, i) => (
+                    <div key={a.label} className={`py-4 text-center ${i < 3 ? "border-r border-slate-50" : ""}`}>
+                      <div className="flex justify-center mb-1.5">
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{ background: a.bg }}>
+                          <a.icon className="w-4 h-4" style={{ color: a.color }} />
                         </div>
                       </div>
-                    );
-                  })}
+                      <p className="text-xl font-bold tabular-nums" style={{ color: a.color }}>
+                        {empLoading ? "…" : a.val ?? "0"}
+                      </p>
+                      <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wide mt-0.5">{a.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Task Pending */}
+              <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+                <div className="px-4 py-3 border-b border-slate-50 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded bg-teal-100 flex items-center justify-center">
+                      <Activity className="w-3.5 h-3.5 text-teal-600" />
+                    </div>
+                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Task Pending</p>
+                  </div>
+                  <Link href="/tasks" className="text-[10px] font-semibold text-teal-600 flex items-center gap-0.5 hover:underline">
+                    View all <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </div>
+                <div className="px-4 py-4">
+                  <p className="text-5xl font-bold tabular-nums" style={{ color: "#14b8a6" }}>
+                    {empLoading ? <span className="text-2xl text-slate-200">…</span> : empData?.pending_work_updates ?? "0"}
+                  </p>
+                  <Link href="/tasks" className="text-[11px] text-slate-400 mt-1.5 block hover:text-slate-600 transition-colors">
+                    Click to view all pending →
+                  </Link>
+                </div>
+              </div>
+
+              {/* Incidents */}
+              <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+                <div className="px-4 py-3 border-b border-slate-50 flex items-center gap-2">
+                  <div className="w-6 h-6 rounded bg-amber-100 flex items-center justify-center">
+                    <Bell className="w-3.5 h-3.5 text-amber-600" />
+                  </div>
+                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Incidents</p>
+                </div>
+                <div className="grid grid-cols-2">
+                  <div className="px-4 py-4 border-r border-slate-50 flex items-center gap-3" style={{ background: "#f0fdf4" }}>
+                    <ThumbsUp className="w-5 h-5 shrink-0" style={{ color: "#22c55e" }} />
+                    <div>
+                      <p className="text-2xl font-bold tabular-nums" style={{ color: "#22c55e" }}>
+                        {empLoading ? "…" : positiveInc}
+                      </p>
+                      <p className="text-[10px] font-semibold text-green-500 uppercase tracking-wide">Positive</p>
+                    </div>
+                  </div>
+                  <div className="px-4 py-4 flex items-center gap-3" style={{ background: "#fef2f2" }}>
+                    <ThumbsDown className="w-5 h-5 shrink-0" style={{ color: "#ef4444" }} />
+                    <div>
+                      <p className="text-2xl font-bold tabular-nums" style={{ color: "#ef4444" }}>
+                        {empLoading ? "…" : negativeInc}
+                      </p>
+                      <p className="text-[10px] font-semibold text-red-400 uppercase tracking-wide">Negative</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* ── RECENT WORK UPDATES ── */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <div>
-                <p className="text-base font-bold text-slate-800">Recent Work Updates</p>
-                <p className="text-[10px] text-slate-400 mt-0.5 uppercase tracking-wide">Latest activity from your team</p>
+            {/* RIGHT: Workflow & Reminders */}
+            <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-50 flex items-center gap-2">
+                <div className="w-6 h-6 rounded bg-amber-100 flex items-center justify-center">
+                  <Bell className="w-3.5 h-3.5 text-amber-600" />
+                </div>
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Workflow &amp; Reminders</p>
               </div>
-              <Link href="/tasks" className="flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-lg border transition-colors hover:bg-blue-50"
-                style={{ color: "#3b82f6", borderColor: "#bfdbfe", background: "#eff6ff" }}>
-                View All <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-
-            {empLoading ? (
-              <div className="p-5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="rounded-lg border border-slate-100 p-4 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Skeleton className="w-8 h-8 rounded-full" />
-                      <div className="space-y-1 flex-1">
-                        <Skeleton className="h-3 w-24" />
-                        <Skeleton className="h-2.5 w-16" />
-                      </div>
+              <div className="divide-y divide-slate-50">
+                {[
+                  { label: "Pending Approval",     value: pendingApproval,                           icon: Bell,          color: "#f59e0b" },
+                  { label: "On Duty",              value: empData?.on_duty_request_count,             icon: UserCheck,     color: "#10b981" },
+                  { label: "Technical",            value: empData?.technical_criteria_count,          icon: Cpu,           color: "#f59e0b" },
+                  { label: "Behavioural Criteria", value: empData?.behavioural_criteria_count,        icon: HeartHandshake,color: "#8b5cf6" },
+                  { label: "OT Request",           value: empData?.ot_request_count,                 icon: Timer,         color: "#f97316" },
+                  { label: "OT Prior Info",        value: empData?.ot_prior_info_count,              icon: Activity,      color: "#06b6d4" },
+                ].map(({ label, value, icon: Icon, color }) => (
+                  <div key={label} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: color + "18" }}>
+                      <Icon className="w-3.5 h-3.5" style={{ color }} />
                     </div>
-                    <Skeleton className="h-3 w-full" />
-                    <Skeleton className="h-2.5 w-3/4" />
+                    <p className="text-sm text-slate-600 flex-1">{label}</p>
+                    <p className="text-sm font-bold tabular-nums" style={{ color }}>
+                      {empLoading ? "…" : value ?? "0"}
+                    </p>
                   </div>
                 ))}
               </div>
-            ) : !empData?.work_updates?.length ? (
-              <div className="py-16 text-center text-slate-400">
-                <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-slate-200" />
-                <p className="text-sm font-medium">No recent work updates</p>
+            </div>
+          </div>
+
+          {/* ── BOTTOM ROW: Recent Tasks + Projects Overview ── */}
+          <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 340px" }}>
+
+            {/* Recent Tasks — table */}
+            <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-50">
+                <p className="text-sm font-bold text-slate-800">Recent Tasks</p>
+                <Link href="/tasks" className="text-[11px] font-semibold text-blue-600 flex items-center gap-1 hover:underline">
+                  View All <ArrowRight className="w-3 h-3" />
+                </Link>
               </div>
-            ) : (
-              <div className="p-5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                {empData.work_updates.slice(0, 6).map((t, i) => {
-                  const from = formatDateTime(t.from_time);
-                  const to   = formatDateTime(t.to_time);
+              {empLoading ? (
+                <div className="p-4 space-y-2">
+                  {Array.from({ length: 4 }).map((_, i) => <Skel key={i} h="h-8" />)}
+                </div>
+              ) : !empData?.work_updates?.length ? (
+                <div className="py-10 text-center text-slate-400 text-sm">No recent tasks</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-50">
+                      {["Employee", "Task", "From", "To", "Status"].map(h => (
+                        <th key={h} className="text-left text-[10px] font-semibold text-slate-400 uppercase tracking-wide px-4 py-2.5">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {empData.work_updates.slice(0, 8).map((t, i) => {
+                      const from = formatDateTime(t.from_time);
+                      const to   = formatDateTime(t.to_time);
+                      const s = (t.status || "").toLowerCase();
+                      const sc = s === "completed" ? { color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0" }
+                               : s === "in progress" ? { color: "#2563eb", bg: "#eff6ff", border: "#bfdbfe" }
+                               : { color: "#b45309", bg: "#fffbeb", border: "#fde68a" };
+                      return (
+                        <tr key={i} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-4 py-2.5 font-medium text-slate-700 text-xs whitespace-nowrap">{t.employee || "—"}</td>
+                          <td className="px-4 py-2.5 text-slate-600 text-xs max-w-[200px] truncate">{t.type_of_work || "—"}</td>
+                          <td className="px-4 py-2.5 text-slate-500 text-xs whitespace-nowrap">{from.date} {from.time}</td>
+                          <td className="px-4 py-2.5 text-slate-500 text-xs whitespace-nowrap">{to.date} {to.time}</td>
+                          <td className="px-4 py-2.5">
+                            <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold border"
+                              style={{ color: sc.color, backgroundColor: sc.bg, borderColor: sc.border }}>
+                              {t.status || "Pending"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Projects Overview */}
+            <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-50">
+                <p className="text-sm font-bold text-slate-800">Projects Overview</p>
+                <Link href="/projects" className="text-[10px] font-semibold text-blue-600 flex items-center gap-0.5 hover:underline">
+                  All <ArrowRight className="w-3 h-3" />
+                </Link>
+              </div>
+              {/* Stats grid */}
+              <div className="grid grid-cols-3 border-b border-slate-50">
+                {[
+                  { label: "Active",   value: active,   color: "#3b82f6" },
+                  { label: "Planning", value: planning, color: "#f59e0b" },
+                  { label: "On Hold",  value: onHold,   color: "#f97316" },
+                  { label: "Done",     value: done,     color: "#22c55e" },
+                  { label: "Total",    value: total,    color: "#64748b" },
+                  { label: "Avg %",    value: `${avgPct}%`, color: "#8b5cf6" },
+                ].map((s, i) => (
+                  <div key={s.label} className={`py-3 text-center ${i % 3 !== 2 ? "border-r border-slate-50" : ""} ${i < 3 ? "border-b border-slate-50" : ""}`}>
+                    <p className="text-lg font-bold tabular-nums" style={{ color: s.color }}>
+                      {projectsLoading ? "…" : s.value}
+                    </p>
+                    <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wide">{s.label}</p>
+                  </div>
+                ))}
+              </div>
+              {/* Project list */}
+              <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
+                {projectsLoading ? (
+                  <div className="p-3 space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skel key={i} h="h-6" />)}</div>
+                ) : recentProjects.length === 0 ? (
+                  <div className="py-8 text-center text-slate-400 text-xs">No projects</div>
+                ) : recentProjects.map(p => {
+                  const pct = Math.min(100, p.progress ?? 0);
+                  const color = p.status === "completed" ? "#22c55e" : p.status === "active" ? "#3b82f6" : p.status === "on_hold" ? "#f97316" : "#f59e0b";
                   return (
-                    <div key={i} className="rounded-lg border border-slate-100 hover:border-slate-200 hover:shadow-sm transition-all p-4 bg-white cursor-default">
-                      <div className="flex items-start gap-3 mb-3">
-                        <InitialAvatar name={t.employee} />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-slate-800 truncate">{t.employee || "—"}</p>
-                          <p className="text-[10px] text-slate-400">{from.date} {from.time} → {to.date} {to.time}</p>
+                    <div key={p.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors">
+                      <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                      <p className="text-xs font-medium text-slate-700 flex-1 truncate">{p.name}</p>
+                      <div className="flex items-center gap-1.5 shrink-0 w-20">
+                        <div className="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
                         </div>
-                        <StatusBadge status={t.status} />
+                        <span className="text-[10px] font-semibold tabular-nums" style={{ color }}>{pct}%</span>
                       </div>
-                      <p className="text-[13px] font-medium text-slate-600 leading-snug line-clamp-2">
-                        {t.type_of_work || "—"}
-                      </p>
                     </div>
                   );
                 })}
               </div>
-            )}
-          </div>
-
-          {/* ── QUICK ACCESS ── */}
-          {visibleQuickAccess.length > 0 && (
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-              <div className="flex items-center gap-2.5 mb-4">
-                <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center">
-                  <LayoutGrid className="w-4 h-4 text-slate-600" />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-slate-800">Quick Access</p>
-                  <p className="text-[10px] text-slate-400">Jump to frequently used modules</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-11 gap-2">
-                {visibleQuickAccess.map(({ label, icon: Icon, path, color }) => (
-                  <Link key={path + label} href={path}>
-                    <div className="group flex flex-col items-center gap-2 py-3.5 px-2 rounded-lg hover:bg-slate-50 transition-all cursor-pointer text-center border border-transparent hover:border-slate-200">
-                      <div className="w-10 h-10 rounded-lg flex items-center justify-center group-hover:scale-105 transition-transform border border-slate-100"
-                        style={{ backgroundColor: color + "14" }}>
-                        <Icon className="w-5 h-5" style={{ color }} />
-                      </div>
-                      <p className="text-[10px] font-medium text-slate-500 group-hover:text-slate-700 leading-tight">{label}</p>
-                    </div>
-                  </Link>
-                ))}
-              </div>
             </div>
-          )}
+          </div>
 
         </div>
       </div>
