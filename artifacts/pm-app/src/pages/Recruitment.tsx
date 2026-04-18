@@ -2395,178 +2395,139 @@ export default function Recruitment() {
         {/* Tracker list view */}
         {mainView === "tracker" && (
           <>
-            {/* Stats + filters bar */}
-            <div className="px-6 pt-3 pb-3 flex items-center gap-3 shrink-0 flex-wrap border-b border-gray-100 bg-white">
-              {/* Stat chips */}
-              <div className="flex gap-2 flex-wrap mr-2">
+            {/* Toolbar */}
+            <div className="px-5 py-2.5 flex items-center gap-3 shrink-0 border-b border-gray-200 bg-white">
+              {/* Search */}
+              <div className="relative w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search candidate or position…"
+                  className="w-full pl-9 pr-3 py-1.5 text-xs rounded-md border border-gray-300 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500" />
+              </div>
+              {/* Dept */}
+              {depts.length > 0 && (
+                <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
+                  className="appearance-none px-3 py-1.5 pr-7 text-xs rounded-md border border-gray-300 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                  style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%239ca3af'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 10px center" }}>
+                  <option value="">All Departments</option>
+                  {depts.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              )}
+              {/* Status */}
+              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+                className="appearance-none px-3 py-1.5 pr-7 text-xs rounded-md border border-gray-300 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%239ca3af'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 10px center" }}>
+                <option value="">All Status</option>
+                {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              {(search || statusFilter || deptFilter) && (
+                <button onClick={() => { setSearch(""); setStatusFilter(""); setDeptFilter(""); }}
+                  className="text-xs text-gray-500 hover:text-gray-800 px-2 py-1.5 rounded border border-gray-200 hover:border-gray-300 transition-colors">
+                  Clear
+                </button>
+              )}
+              <div className="ml-auto flex items-center gap-3">
+                {/* Quick status counts */}
                 {[
-                  { label: "Total", value: trackers.length, color: "bg-blue-500", filter: "" },
-                  { label: "Open", value: openCount, color: "bg-indigo-400", filter: "Open" },
-                  { label: "Selected", value: selectedCount, color: "bg-emerald-500", filter: "Selected" },
-                  { label: "Joined", value: joinedCount, color: "bg-teal-500", filter: "Joined" },
+                  { label: "Total", value: trackers.length },
+                  { label: "Open", value: openCount },
+                  { label: "Selected", value: selectedCount },
+                  { label: "Joined", value: joinedCount },
                 ].map(s => (
-                  <button key={s.label}
-                    onClick={() => setStatusFilter(statusFilter === s.filter ? "" : s.filter)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-[0_1px_2px_rgba(0,0,0,0.04)]
-                      ${statusFilter === s.filter ? "bg-indigo-600 text-white border-indigo-600 shadow-md" : "bg-white text-gray-700 border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/40"}`}>
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${statusFilter === s.filter ? "bg-white/70" : s.color}`} />
-                    {s.value} {s.label}
-                  </button>
+                  <span key={s.label} className="text-xs text-gray-500">
+                    <span className="font-semibold text-gray-800">{s.value}</span> {s.label}
+                  </span>
                 ))}
               </div>
-              {/* Search */}
-              <div className="relative flex-1 min-w-[180px] max-w-xs">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name or position…"
-                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all" />
-              </div>
-              {/* Dept filter */}
-              {depts.length > 0 && (
-                <div className="relative">
-                  <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
-                  <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
-                    className="appearance-none pl-8 pr-7 py-2 text-xs rounded-xl border border-gray-200 bg-gray-50 text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-300">
-                    <option value="">All Departments</option>
-                    {depts.map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
-                </div>
-              )}
-              {/* Status filter */}
-              <div className="relative">
-                <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-                  className="appearance-none pl-3 pr-7 py-2 text-xs rounded-xl border border-gray-200 bg-gray-50 text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-300">
-                  <option value="">All Status</option>
-                  {statuses.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
-              </div>
-              {/* Result count */}
-              {!loading && (
-                <span className="text-[11px] text-gray-400 font-medium ml-auto shrink-0">
-                  {filtered.length} of {trackers.length} records
-                </span>
-              )}
             </div>
 
-            {/* List */}
-            <div className="flex-1 overflow-y-auto px-6 pb-6 min-h-0 pt-4">
+            {/* Table */}
+            <div className="flex-1 overflow-y-auto min-h-0">
               {loading ? (
-                <div className="flex flex-col items-center justify-center py-24 gap-3">
-                  <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
-                  <p className="text-sm text-gray-400">Loading candidates…</p>
+                <div className="flex items-center justify-center py-24">
+                  <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+                  <span className="ml-2 text-sm text-gray-400">Loading…</span>
                 </div>
               ) : filtered.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-24 gap-2">
-                  <Users className="w-10 h-10 text-gray-200" />
-                  <p className="text-sm font-semibold text-gray-400">No candidates found</p>
+                  <Users className="w-8 h-8 text-gray-300" />
+                  <p className="text-sm text-gray-400">No candidates match your filters</p>
                   {(search || statusFilter || deptFilter) && (
                     <button onClick={() => { setSearch(""); setStatusFilter(""); setDeptFilter(""); }}
-                      className="text-xs text-indigo-500 hover:text-indigo-700 font-medium mt-1">Clear filters</button>
+                      className="text-xs text-blue-600 hover:underline mt-1">Clear filters</button>
                   )}
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {filtered.map((t, i) => {
-                    const hikeAmt = t.existing_salary_per_month && t.expected_salary
-                      ? Math.round(((t.expected_salary - t.existing_salary_per_month) / t.existing_salary_per_month) * 100)
-                      : null;
-                    const initials = (t.candidate_name || "??").trim().split(/\s+/).slice(0, 2).map((w: string) => w[0]).join("").toUpperCase();
-                    const avatarColors = [
-                      "from-blue-400 to-indigo-500",
-                      "from-violet-400 to-purple-500",
-                      "from-emerald-400 to-teal-500",
-                      "from-orange-400 to-rose-500",
-                      "from-sky-400 to-blue-500",
-                      "from-pink-400 to-fuchsia-500",
-                    ];
-                    const avatarColor = avatarColors[i % avatarColors.length];
-                    return (
-                      <div key={t.name} onClick={() => openDetail(t.name)}
-                        className="bg-white rounded-2xl border border-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.05)] hover:border-indigo-200 hover:shadow-[0_2px_8px_rgba(79,70,229,0.08)] transition-all cursor-pointer group">
-                        <div className="flex items-center gap-4 px-5 py-3.5">
-
-                          {/* Avatar */}
-                          <div className={`w-10 h-10 rounded-2xl bg-gradient-to-br ${avatarColor} flex items-center justify-center text-white text-sm font-black shrink-0 shadow-sm`}>
-                            {initials}
-                          </div>
-
-                          {/* Candidate Info */}
-                          <div className="flex-1 min-w-0 grid grid-cols-[1fr_1fr_auto_auto_auto] items-center gap-4">
-
-                            {/* Name + Qualification */}
-                            <div className="min-w-0">
-                              <p className="text-sm font-bold text-gray-900 truncate leading-tight group-hover:text-indigo-700 transition-colors">{t.candidate_name}</p>
-                              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                                {t.applying_for_the_post && (
-                                  <span className="text-[11px] font-semibold text-indigo-600 truncate">{t.applying_for_the_post}</span>
-                                )}
-                                {t.qualification && (
-                                  <>
-                                    <span className="text-gray-300 text-[10px]">·</span>
-                                    <span className="text-[11px] text-gray-400 truncate">{t.qualification}</span>
-                                  </>
-                                )}
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
+                      <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide w-8">#</th>
+                      <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Candidate</th>
+                      <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Position</th>
+                      <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Department</th>
+                      <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Location</th>
+                      <th className="text-right px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Expected Salary</th>
+                      <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Last Contact</th>
+                      <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {filtered.map((t, i) => {
+                      const initials = (t.candidate_name || "?").trim().split(/\s+/).slice(0, 2).map((w: string) => w[0]).join("").toUpperCase();
+                      const hikeAmt = t.existing_salary_per_month && t.expected_salary
+                        ? Math.round(((t.expected_salary - t.existing_salary_per_month) / t.existing_salary_per_month) * 100)
+                        : null;
+                      return (
+                        <tr key={t.name} onClick={() => openDetail(t.name)}
+                          className="hover:bg-blue-50/40 cursor-pointer transition-colors group">
+                          <td className="px-4 py-3 text-[11px] text-gray-400 tabular-nums">{i + 1}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-7 h-7 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center text-[11px] font-semibold text-gray-600 shrink-0 select-none">
+                                {initials}
+                              </div>
+                              <div>
+                                <p className="text-xs font-semibold text-gray-900 group-hover:text-blue-700 transition-colors leading-tight">{t.candidate_name}</p>
+                                {t.qualification && <p className="text-[11px] text-gray-400 leading-tight mt-0.5">{t.qualification}</p>}
                               </div>
                             </div>
-
-                            {/* Dept + Location */}
-                            <div className="min-w-0 hidden sm:block">
-                              {t.department && (
-                                <div className="flex items-center gap-1.5 mb-0.5">
-                                  <Building2 className="w-3 h-3 text-gray-300 shrink-0" />
-                                  <span className="text-xs text-gray-600 truncate">{t.department}</span>
-                                </div>
-                              )}
-                              {t.location && (
-                                <div className="flex items-center gap-1.5">
-                                  <MapPin className="w-3 h-3 text-gray-300 shrink-0" />
-                                  <span className="text-[11px] text-gray-400 truncate">{t.location}</span>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Salary */}
-                            <div className="text-right shrink-0 hidden md:block">
-                              <p className="text-[10px] text-gray-400 font-medium mb-0.5">Expected</p>
-                              <p className="text-xs font-bold text-emerald-600">{fmtCurrency(t.expected_salary)}</p>
-                              {hikeAmt !== null && (
-                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${hikeAmt > 30 ? "bg-red-50 text-red-500" : hikeAmt > 15 ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"}`}>
-                                  {hikeAmt > 0 ? `+${hikeAmt}%` : `${hikeAmt}%`}
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Date */}
-                            <div className="text-right shrink-0 hidden lg:block">
-                              {t.rt_last_convo ? (
-                                <>
-                                  <p className="text-[10px] text-gray-400 font-medium mb-0.5">Last Contact</p>
-                                  <p className="text-xs text-gray-600">{fmtDate(t.rt_last_convo)}</p>
-                                </>
-                              ) : t.date ? (
-                                <>
-                                  <p className="text-[10px] text-gray-400 font-medium mb-0.5">Applied</p>
-                                  <p className="text-xs text-gray-500">{fmtDate(t.date)}</p>
-                                </>
-                              ) : null}
-                            </div>
-
-                            {/* Status */}
-                            <div className="shrink-0">
-                              <StatusPill status={t.status} />
-                            </div>
-                          </div>
-
-                          {/* Arrow */}
-                          <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-indigo-400 transition-colors shrink-0" />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-700 max-w-[160px]">
+                            <span className="truncate block">{t.applying_for_the_post || "—"}</span>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-500 max-w-[130px]">
+                            <span className="truncate block">{t.department || "—"}</span>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-500">
+                            {t.location || "—"}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <span className="text-xs font-medium text-gray-800">{fmtCurrency(t.expected_salary)}</span>
+                            {hikeAmt !== null && (
+                              <span className={`ml-1.5 text-[10px] font-medium ${hikeAmt > 30 ? "text-red-500" : hikeAmt > 15 ? "text-amber-600" : "text-emerald-600"}`}>
+                                {hikeAmt > 0 ? `+${hikeAmt}%` : `${hikeAmt}%`}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-500">
+                            {fmtDate(t.rt_last_convo) !== "—" ? fmtDate(t.rt_last_convo) : fmtDate(t.date)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <StatusPill status={t.status} />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               )}
             </div>
+
+            {/* Footer count */}
+            {!loading && filtered.length > 0 && (
+              <div className="px-5 py-2 border-t border-gray-200 bg-white shrink-0">
+                <span className="text-[11px] text-gray-400">{filtered.length} of {trackers.length} candidates</span>
+              </div>
+            )}
           </>
         )}
       </div>
