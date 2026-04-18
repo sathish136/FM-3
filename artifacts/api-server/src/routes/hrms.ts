@@ -51,6 +51,18 @@ const ERPNEXT_URL = process.env.ERPNEXT_URL?.replace(/\/$/, "");
 const ERPNEXT_API_KEY = process.env.ERPNEXT_API_KEY;
 const ERPNEXT_API_SECRET = process.env.ERPNEXT_API_SECRET;
 
+// ── In-memory cache for recruitment list ──────────────────────────────────────
+const recruitmentCache = new Map<string, { data: unknown; ts: number }>();
+const RECRUITMENT_CACHE_TTL = 60_000; // 60 seconds
+function getCachedRecruitment(key: string) {
+  const entry = recruitmentCache.get(key);
+  if (entry && Date.now() - entry.ts < RECRUITMENT_CACHE_TTL) return entry.data;
+  return null;
+}
+function setCachedRecruitment(key: string, data: unknown) {
+  recruitmentCache.set(key, { data, ts: Date.now() });
+}
+
 function getOpenAI(): OpenAI {
   return new OpenAI({
     apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -580,7 +592,11 @@ router.post("/hrms/claims", async (req, res) => {
 router.get("/hrms/recruitment", async (req, res) => {
   try {
     const { status, department, position } = req.query as Record<string, string>;
+    const cacheKey = `list:${status || ""}:${department || ""}:${position || ""}`;
+    const cached = getCachedRecruitment(cacheKey);
+    if (cached) return res.json(cached);
     const data = await fetchErpNextRecruitmentTrackers({ status, department, position });
+    setCachedRecruitment(cacheKey, data);
     res.json(data);
   } catch (e) {
     res.status(500).json({ error: String(e) });
