@@ -591,13 +591,14 @@ router.post("/hrms/claims", async (req, res) => {
 
 router.get("/hrms/recruitment", async (req, res) => {
   try {
-    const { status, department, position } = req.query as Record<string, string>;
-    const cacheKey = `list:${status || ""}:${department || ""}:${position || ""}`;
+    const { status, department, position, search, page } = req.query as Record<string, string>;
+    const pageNum = Math.max(1, parseInt(page || "1", 10));
+    const cacheKey = `list:${status || ""}:${department || ""}:${position || ""}:${search || ""}:${pageNum}`;
     const cached = getCachedRecruitment(cacheKey);
     if (cached) return res.json(cached);
-    const data = await fetchErpNextRecruitmentTrackers({ status, department, position });
-    setCachedRecruitment(cacheKey, data);
-    res.json(data);
+    const result = await fetchErpNextRecruitmentTrackers({ status, department, position, search, page: pageNum, pageSize: 30 });
+    setCachedRecruitment(cacheKey, result);
+    res.json(result);
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -914,7 +915,7 @@ router.get("/hrms/analytics", async (req, res) => {
       fetchErpNextAttendance({ status: "Absent", from_date: todayStr, to_date: todayStr }),
       fetchErpNextAttendance({ status: "Absent", from_date: yesterdayStr, to_date: yesterdayStr }),
       fetchErpNextAttendance({ status: "Absent", from_date: monthStart, to_date: todayStr }),
-      fetchErpNextRecruitmentTrackers().catch(() => [] as Awaited<ReturnType<typeof fetchErpNextRecruitmentTrackers>>),
+      fetchErpNextRecruitmentTrackers({ pageSize: 500 }).then(r => r.data).catch(() => []),
       fetchErpNextGrievances({ from_date: yearStart, to_date: todayStr }),
       fetchErpNextGrievances({ from_date: monthStart, to_date: todayStr }),
       fetchErpNextGrievances({ from_date: prevMonthStart, to_date: prevMonthEndStr }),

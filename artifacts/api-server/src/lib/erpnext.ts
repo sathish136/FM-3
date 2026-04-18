@@ -1126,7 +1126,10 @@ export async function fetchErpNextRecruitmentTrackers(filters?: {
   status?: string;
   department?: string;
   position?: string;
-}): Promise<ErpRecruitmentTracker[]> {
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}): Promise<{ data: ErpRecruitmentTracker[]; total: number }> {
   if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
   const fields = JSON.stringify([
     "name", "date", "company", "candidate_name", "qualification",
@@ -1136,13 +1139,29 @@ export async function fetchErpNextRecruitmentTrackers(filters?: {
     "rt_last_convo", "not_suitable_reason", "experience_status",
     "candidate_resume", "owner", "modified",
   ]);
+  const pageSize = filters?.pageSize ?? 30;
+  const page = filters?.page ?? 1;
+  const limitStart = (page - 1) * pageSize;
+
   const fArr: any[] = [];
   if (filters?.status)     fArr.push(["Recruitment Tracker", "status", "=", filters.status]);
   if (filters?.department) fArr.push(["Recruitment Tracker", "department", "like", `%${filters.department}%`]);
   if (filters?.position)   fArr.push(["Recruitment Tracker", "applying_for_the_post", "like", `%${filters.position}%`]);
 
-  const params = new URLSearchParams({ fields, limit_page_length: "2000", order_by: "modified desc" });
+  const orFilters: any[] = [];
+  if (filters?.search) {
+    orFilters.push(["Recruitment Tracker", "candidate_name", "like", `%${filters.search}%`]);
+    orFilters.push(["Recruitment Tracker", "applying_for_the_post", "like", `%${filters.search}%`]);
+  }
+
+  const params = new URLSearchParams({
+    fields,
+    limit_page_length: String(pageSize),
+    limit_start: String(limitStart),
+    order_by: "modified desc",
+  });
   if (fArr.length) params.set("filters", JSON.stringify(fArr));
+  if (orFilters.length) params.set("or_filters", JSON.stringify(orFilters));
 
   const url = `${ERPNEXT_URL}/api/resource/Recruitment Tracker?${params.toString()}`;
   const res = await fetch(url, { headers: { Authorization: authHeader(), "Content-Type": "application/json" } });
@@ -1151,7 +1170,26 @@ export async function fetchErpNextRecruitmentTrackers(filters?: {
     throw new Error(`ERPNext Recruitment Tracker API error ${res.status}: ${body}`);
   }
   const json = await res.json();
-  return (json.data || []) as ErpRecruitmentTracker[];
+  const data = (json.data || []) as ErpRecruitmentTracker[];
+
+  // Fetch total count with a separate lightweight call
+  let total = data.length + limitStart;
+  try {
+    const countFields = JSON.stringify(["name"]);
+    const countParams = new URLSearchParams({ fields: countFields, limit_page_length: "0" });
+    if (fArr.length) countParams.set("filters", JSON.stringify(fArr));
+    if (orFilters.length) countParams.set("or_filters", JSON.stringify(orFilters));
+    const countRes = await fetch(
+      `${ERPNEXT_URL}/api/resource/Recruitment Tracker?${countParams.toString()}`,
+      { headers: { Authorization: authHeader() } }
+    );
+    if (countRes.ok) {
+      const countJson = await countRes.json();
+      total = (countJson.data || []).length;
+    }
+  } catch { /* use estimate */ }
+
+  return { data, total };
 }
 
 export async function fetchErpNextRecruitmentTracker(name: string): Promise<ErpRecruitmentTracker> {
