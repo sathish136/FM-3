@@ -18,6 +18,21 @@ function clearOtpSession() {
   try { sessionStorage.removeItem(OTP_SESSION_KEY); } catch {}
 }
 
+const loginAnimStyles = `
+  @keyframes lineReveal {
+    0%   { opacity: 0; transform: translateY(18px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  .line-anim {
+    opacity: 0;
+    animation: lineReveal 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+  .line-anim-1 { animation-delay: 0.05s; }
+  .line-anim-2 { animation-delay: 0.28s; }
+  .line-anim-3 { animation-delay: 0.48s; }
+  .line-anim-4 { animation-delay: 0.66s; }
+`;
+
 export default function Login() {
   const { login, verifyOtp } = useAuth();
 
@@ -127,19 +142,20 @@ export default function Login() {
       className="min-h-screen flex flex-col items-center justify-center p-4"
       style={{ background: "linear-gradient(135deg, #e8f0fe 0%, #f0f4ff 40%, #e3eeff 70%, #dbeafe 100%)" }}
     >
+      <style>{loginAnimStyles}</style>
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center mb-8 text-center">
           <img
             src="https://res.cloudinary.com/dd8fsxba6/image/upload/v1755166473/logo-bg_less_yaefzj.png"
             alt="WTT International"
-            className="h-40 w-auto object-contain mb-4"
+            className="h-40 w-auto object-contain mb-4 line-anim line-anim-1"
           />
-          <h1 className="text-4xl font-black tracking-tight leading-none flex items-baseline gap-0">
+          <h1 className="text-4xl font-black tracking-tight leading-none flex items-baseline gap-0 line-anim line-anim-2">
             <span style={{ color: "#0a2463" }}>FlowMatri</span>
             <span style={{ color: "#0ea5e9", fontSize: "1.35em", lineHeight: 1 }}>x</span>
           </h1>
-          <p className="text-[10px] font-semibold tracking-[0.2em] uppercase text-gray-400 mt-2 mb-3">Project Management</p>
-          <p className="text-gray-500 text-sm">
+          <p className="text-[10px] font-semibold tracking-[0.2em] uppercase text-gray-400 mt-2 mb-3 line-anim line-anim-3">Project Management</p>
+          <p className="text-gray-500 text-sm line-anim line-anim-4">
             {step === "credentials" ? "Sign in to your account" : "Two-Factor Authentication"}
           </p>
         </div>
