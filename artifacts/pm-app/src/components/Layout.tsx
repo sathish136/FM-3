@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { useAuth, type AuthUser } from "@/hooks/useAuth";
 import { AISearch } from "@/components/AISearch";
 import { GlobalSearch } from "@/components/GlobalSearch";
+import { useRecording } from "@/contexts/RecordingContext";
 import { WaterDropAnimation } from "@/components/WaterAnimation";
 import { useTheme, THEME_PRESETS } from "@/hooks/useTheme";
 import { useNavStyle } from "@/hooks/useNavStyle";
@@ -802,6 +803,8 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   const [permLoading, setPermLoading] = useState(true);
   const isAdmin = user ? ADMIN_EMAILS.includes(user.email.toLowerCase()) : false;
   const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const rec = useRecording();
+  const fmtDur = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
   useEffect(() => {
     if (!user) { setPermLoading(false); return; }
@@ -1009,6 +1012,13 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
               <GlobalSearch allowedPaths={isAdmin ? undefined : new Set(visibleAllNavItems.map(i => i.path))} />
             </div>
             <AISearch currentPath={location} forceOpen={aiTrigger} hideTriggerOnMobile />
+            {rec.isRecording && (
+              <Link href="/meeting-minutes"
+                className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition-colors shrink-0">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                REC {fmtDur(rec.duration)}
+              </Link>
+            )}
           </div>
 
           {/* Right */}

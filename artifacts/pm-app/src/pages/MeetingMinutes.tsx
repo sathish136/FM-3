@@ -6,6 +6,7 @@ import {
   Printer, MessageSquare, Mail, ChevronDown, Globe,
 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useRecording, getGlobalRec } from "@/contexts/RecordingContext";
 import { useListProjects } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -93,8 +94,8 @@ type RecordPhase = "idle" | "recording" | "transcribing" | "generating" | "done"
 const BAR_COUNT = 30;
 
 function RecordingView({ meeting, onUpdate, autoStart }: { meeting: Meeting; onUpdate: (m: Meeting) => void; autoStart?: boolean }) {
+  const rec = useRecording();
   const [phase, setPhase] = useState<RecordPhase>(meeting.aiSummary ? "done" : "idle");
-  const [duration, setDuration] = useState(0);
   const [micError, setMicError] = useState("");
   const [streamText, setStreamText] = useState("");
   const [transcript, setTranscript] = useState(meeting.rawNotes || "");
@@ -103,11 +104,6 @@ function RecordingView({ meeting, onUpdate, autoStart }: { meeting: Meeting; onU
   const [audioBlobUrl, setAudioBlobUrl] = useState<string | null>(null);
   const phaseRef = useRef<RecordPhase>(meeting.aiSummary ? "done" : "idle");
 
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const allChunksRef = useRef<Blob[]>([]);
-  const mimeRef = useRef("audio/webm");
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -124,6 +120,22 @@ function RecordingView({ meeting, onUpdate, autoStart }: { meeting: Meeting; onU
   useEffect(() => {
     return () => { if (audioBlobUrl) URL.revokeObjectURL(audioBlobUrl); };
   }, [audioBlobUrl]);
+
+  // HMR / navigation recovery: if a recording is already active for this meeting, reconnect visuals
+  useEffect(() => {
+    const g = getGlobalRec();
+    if (rec.isRecording && rec.currentMeetingId === meeting.id && g.stream) {
+      const p: RecordPhase = "recording";
+      setPhase(p); phaseRef.current = p;
+      startWaveform(g.stream);
+      startSpeechRecognition();
+    }
+    // On unmount: stop waveform/speech but keep the MediaRecorder alive in global state
+    return () => {
+      stopWaveform();
+      stopSpeechRecognition();
+    };
+  }, [meeting.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fmt = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
@@ -206,37 +218,16 @@ function RecordingView({ meeting, onUpdate, autoStart }: { meeting: Meeting; onU
     setMicError("");
     setLiveText("");
     liveTextRef.current = "";
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-
-      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus"
-        : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm"
-        : MediaRecorder.isTypeSupported("audio/ogg;codecs=opus") ? "audio/ogg;codecs=opus"
-        : MediaRecorder.isTypeSupported("audio/ogg") ? "audio/ogg"
-        : "";
-      mimeRef.current = mime || "audio/webm";
-
-      const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-      recorderRef.current = recorder;
-      allChunksRef.current = [];
-
-      recorder.ondataavailable = (e) => {
-        if (e.data?.size > 0) allChunksRef.current.push(e.data);
-      };
-
-      recorder.start(250);
-      const p: RecordPhase = "recording";
-      setPhase(p); phaseRef.current = p;
-      setDuration(0);
-      timerRef.current = setInterval(() => setDuration(d => d + 1), 1000);
-      startWaveform(stream);
-      startSpeechRecognition();
-    } catch (err: any) {
-      setMicError(err?.name === "NotAllowedError"
-        ? "Microphone access denied. Please allow microphone access in your browser."
-        : `Could not start microphone: ${err?.message}`);
+    const result = await rec.startRecording(meeting.id);
+    if (!result) {
+      setMicError("Could not start microphone. Please allow microphone access in your browser.");
+      return;
     }
+    const { stream } = result;
+    const p: RecordPhase = "recording";
+    setPhase(p); phaseRef.current = p;
+    startWaveform(stream);
+    startSpeechRecognition();
   };
 
   // Auto-start recording when this component mounts with autoStart=true
@@ -248,33 +239,23 @@ function RecordingView({ meeting, onUpdate, autoStart }: { meeting: Meeting; onU
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stopAndProcess = async () => {
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     stopWaveform();
     stopSpeechRecognition();
 
-    // Stop recorder and collect final chunks
-    await new Promise<void>(resolve => {
-      const rec = recorderRef.current;
-      if (!rec || rec.state === "inactive") { resolve(); return; }
-      rec.onstop = () => resolve();
-      rec.stop();
-    });
-
-    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
-
-    const allChunks = allChunksRef.current;
-    if (allChunks.length === 0) {
+    // Stop recorder via global context — collects all chunks (even from background recording)
+    const blobResult = await rec.stopAndGetBlob();
+    if (!blobResult) {
       setMicError("No audio recorded. Please try again.");
       setPhase("idle"); phaseRef.current = "idle";
       return;
     }
+    const { blob, mime: recordMime } = blobResult;
 
     // Step 1: Transcribe full audio
     setPhase("transcribing"); phaseRef.current = "transcribing";
     try {
-      const baseMime = mimeRef.current.split(";")[0].trim();
+      const baseMime = recordMime.split(";")[0].trim();
       const ext = baseMime.includes("ogg") ? "ogg" : "webm";
-      const blob = new Blob(allChunks, { type: mimeRef.current });
 
       // Capture blob URL for in-session playback
       const url = URL.createObjectURL(blob);
@@ -341,7 +322,7 @@ function RecordingView({ meeting, onUpdate, autoStart }: { meeting: Meeting; onU
         {/* Status label */}
         <div className="flex items-center gap-2 text-sm font-semibold">
           {phase === "idle" && !micError && <><Mic className="w-4 h-4 text-gray-400" /><span className="text-gray-400">Ready to record your meeting</span></>}
-          {phase === "recording" && <><span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" /><span className="text-red-600">Recording — {fmt(duration)}</span></>}
+          {phase === "recording" && <><span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" /><span className="text-red-600">Recording — {fmt(rec.duration)}</span></>}
           {phase === "transcribing" && <><Loader2 className="w-4 h-4 text-violet-600 animate-spin" /><span className="text-violet-700">Transcribing your audio…</span></>}
           {phase === "generating" && <><Loader2 className="w-4 h-4 text-blue-600 animate-spin" /><span className="text-blue-700">Generating meeting minutes…</span></>}
           {phase === "done" && <><CheckCircle className="w-4 h-4 text-green-600" /><span className="text-green-700">Meeting minutes ready</span></>}

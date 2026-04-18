@@ -72,6 +72,7 @@ import TeamReporting from "@/pages/TeamReporting";
 import IPCallLogs from "@/pages/IPCallLogs";
 import EmpAgent from "@/pages/EmpAgent";
 import { SlideshowProvider } from "@/contexts/SlideshowContext";
+import { RecordingProvider } from "@/contexts/RecordingContext";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -239,6 +240,7 @@ function App() {
       <AuthProvider>
         <TooltipProvider>
           <WouterRouter base={base}>
+            <RecordingProvider>
             <SlideshowProvider>
               <Switch>
                 <Route path="/pptx-viewer" component={PptxPreviewPage} />
@@ -246,6 +248,7 @@ function App() {
                 <Route component={ProtectedRoutes} />
               </Switch>
             </SlideshowProvider>
+            </RecordingProvider>
           </WouterRouter>
           <Toaster />
         </TooltipProvider>
