@@ -100,6 +100,7 @@ export const meetingMinutesTable = pgTable("meeting_minutes", {
   status: text("status").notNull().default("draft"),
   mode: text("mode").notNull().default("manual"),
   audioData: text("audio_data"),
+  createdBy: text("created_by"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

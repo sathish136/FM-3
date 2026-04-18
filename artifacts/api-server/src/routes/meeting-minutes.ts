@@ -21,6 +21,7 @@ pool.query(`
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
   );
   ALTER TABLE meeting_minutes ADD COLUMN IF NOT EXISTS audio_data TEXT;
+  ALTER TABLE meeting_minutes ADD COLUMN IF NOT EXISTS created_by TEXT;
   CREATE TABLE IF NOT EXISTS spreadsheets (
     id SERIAL PRIMARY KEY, name TEXT NOT NULL,
     project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
@@ -67,7 +68,7 @@ router.post("/meeting-minutes", async (req, res) => {
     const { projectId, ...rest } = req.body;
     const safeProjectId = await resolveProjectId(projectId);
     // Strip unknown keys; only pass known schema fields
-    const allowed = ["title","date","venue","attendees","status","mode","rawNotes","aiSummary","actionItems"];
+    const allowed = ["title","date","venue","attendees","status","mode","rawNotes","aiSummary","actionItems","createdBy"];
     const clean: Record<string, any> = {};
     for (const k of allowed) if (rest[k] !== undefined) clean[k] = rest[k] ?? null;
     const [row] = await db.insert(meetingMinutesTable).values({ ...clean, projectId: safeProjectId }).returning();
@@ -101,6 +102,24 @@ router.delete("/meeting-minutes/:id", async (req, res) => {
   try {
     await db.delete(meetingMinutesTable).where(eq(meetingMinutesTable.id, Number(req.params.id)));
     res.status(204).end();
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// Translate text to English
+router.post("/meeting-minutes/translate", async (req, res) => {
+  try {
+    const { text, sourceLang } = req.body;
+    if (!text?.trim()) return res.json({ translated: "" });
+    const openai = getOpenAI();
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: `You are a professional translator. Translate the given text to English. Preserve the meaning and tone. If the text is already in English, return it as-is. Only return the translated text, nothing else.${sourceLang ? ` Source language: ${sourceLang}.` : ""}` },
+        { role: "user", content: text },
+      ],
+      max_tokens: 1000,
+    });
+    res.json({ translated: response.choices[0]?.message?.content?.trim() || text });
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 

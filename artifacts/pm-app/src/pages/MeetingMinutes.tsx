@@ -14,7 +14,8 @@ type Meeting = {
   id: number; title: string; projectId: number | null;
   attendees: string | null; venue: string | null; date: string; rawNotes: string | null;
   aiSummary: string | null; actionItems: string | null;
-  status: string; mode?: string; audioData?: string | null; createdAt: string;
+  status: string; mode?: string; audioData?: string | null;
+  createdBy: string | null; createdAt: string;
 };
 
 const BASE = "/api";
@@ -1071,14 +1072,38 @@ function SpeechLangPicker({ value, onChange, disabled }: { value: string; onChan
   );
 }
 
-type LiveEntry = { id: number; text: string; ts: string };
+// ─── Language detection from text ────────────────────────────────────────────
+function detectScript(text: string): { lang: string; flag: string; isEnglish: boolean } {
+  if (!text.trim()) return { lang: "English", flag: "🇬🇧", isEnglish: true };
+  const counts = { tamil: 0, hindi: 0, arabic: 0, chinese: 0, japanese: 0, korean: 0, latin: 0 };
+  for (const c of text) {
+    const cp = c.codePointAt(0) ?? 0;
+    if (cp >= 0x0B80 && cp <= 0x0BFF) counts.tamil++;
+    else if (cp >= 0x0900 && cp <= 0x097F) counts.hindi++;
+    else if (cp >= 0x0600 && cp <= 0x06FF) counts.arabic++;
+    else if (cp >= 0x4E00 && cp <= 0x9FFF) counts.chinese++;
+    else if ((cp >= 0x3040 && cp <= 0x30FF) || (cp >= 0xFF65 && cp <= 0xFF9F)) counts.japanese++;
+    else if (cp >= 0xAC00 && cp <= 0xD7FF) counts.korean++;
+    else if ((cp >= 0x0041 && cp <= 0x007A) || (cp >= 0x00C0 && cp <= 0x024F)) counts.latin++;
+  }
+  const top = Object.entries(counts).sort(([, a], [, b]) => b - a)[0];
+  if (top[1] === 0 || top[0] === "latin") return { lang: "English", flag: "🇬🇧", isEnglish: true };
+  const map: Record<string, [string, string]> = {
+    tamil: ["Tamil", "🇮🇳"], hindi: ["Hindi", "🇮🇳"], arabic: ["Arabic", "🇸🇦"],
+    chinese: ["Chinese", "🇨🇳"], japanese: ["Japanese", "🇯🇵"], korean: ["Korean", "🇰🇷"],
+  };
+  const [name, flag] = map[top[0]] ?? ["Unknown", "🌐"];
+  return { lang: name, flag, isEnglish: false };
+}
+
+type LiveEntry = { id: number; text: string; translated: string | null; ts: string; detectedLang: string; detectedFlag: string; isEnglish: boolean; translating: boolean };
 
 function LiveSpeechMinutesView({
   onSaved,
-  projects,
+  createdBy,
 }: {
   onSaved: (meeting: Meeting) => void;
-  projects: any[];
+  createdBy: string;
 }) {
   const [lang, setLang] = useState("en-IN");
   const [isRecording, setIsRecording] = useState(false);
@@ -1088,13 +1113,28 @@ function LiveSpeechMinutesView({
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [liveDetected, setLiveDetected] = useState<{ lang: string; flag: string } | null>(null);
   const recognitionRef = useRef<any>(null);
   const liveTextRef = useRef("");
   const entryCountRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const isRecordingRef = useRef(false);
 
-  // Auto-scroll to bottom as entries grow
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [entries, liveText]);
+
+  const translateEntry = async (id: number, text: string, sourceLang: string) => {
+    setEntries(prev => prev.map(e => e.id === id ? { ...e, translating: true } : e));
+    try {
+      const r = await fetch(`${BASE}/meeting-minutes/translate`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, sourceLang }),
+      });
+      const { translated } = await r.json();
+      setEntries(prev => prev.map(e => e.id === id ? { ...e, translated, translating: false } : e));
+    } catch {
+      setEntries(prev => prev.map(e => e.id === id ? { ...e, translating: false } : e));
+    }
+  };
 
   const startRecording = () => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -1113,23 +1153,32 @@ function LiveSpeechMinutesView({
       }
       liveTextRef.current = interim;
       setLiveText(interim);
+      if (interim) {
+        const detected = detectScript(interim);
+        setLiveDetected({ lang: detected.lang, flag: detected.flag });
+      }
       if (finalText.trim()) {
         const id = ++entryCountRef.current;
-        const now = new Date();
-        const ts = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-        setEntries(prev => [...prev, { id, text: finalText.trim(), ts }]);
+        const ts = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        const detected = detectScript(finalText);
+        const entry: LiveEntry = { id, text: finalText.trim(), translated: null, ts, detectedLang: detected.lang, detectedFlag: detected.flag, isEnglish: detected.isEnglish, translating: false };
+        setEntries(prev => [...prev, entry]);
+        if (!detected.isEnglish) translateEntry(id, finalText.trim(), detected.lang);
         liveTextRef.current = "";
         setLiveText("");
+        setLiveDetected(null);
       }
     };
     r.onerror = () => {};
-    r.onend = () => { if (recognitionRef.current === r && isRecording) { try { r.start(); } catch {} } };
+    r.onend = () => { if (recognitionRef.current === r && isRecordingRef.current) { try { r.start(); } catch {} } };
     r.start();
     recognitionRef.current = r;
+    isRecordingRef.current = true;
     setIsRecording(true);
   };
 
   const stopRecording = () => {
+    isRecordingRef.current = false;
     if (recognitionRef.current) {
       recognitionRef.current.onend = null;
       recognitionRef.current.stop();
@@ -1138,27 +1187,33 @@ function LiveSpeechMinutesView({
     if (liveTextRef.current.trim()) {
       const id = ++entryCountRef.current;
       const ts = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-      setEntries(prev => [...prev, { id, text: liveTextRef.current.trim(), ts }]);
+      const detected = detectScript(liveTextRef.current);
+      const entry: LiveEntry = { id, text: liveTextRef.current.trim(), translated: null, ts, detectedLang: detected.lang, detectedFlag: detected.flag, isEnglish: detected.isEnglish, translating: false };
+      setEntries(prev => [...prev, entry]);
+      if (!detected.isEnglish) translateEntry(id, liveTextRef.current.trim(), detected.lang);
     }
     setLiveText("");
     liveTextRef.current = "";
+    setLiveDetected(null);
     setIsRecording(false);
   };
 
-  const clearAll = () => { setEntries([]); setLiveText(""); liveTextRef.current = ""; entryCountRef.current = 0; };
+  const clearAll = () => { setEntries([]); setLiveText(""); liveTextRef.current = ""; entryCountRef.current = 0; setLiveDetected(null); };
 
   const handleSave = async () => {
     if (!title.trim() || entries.length === 0) return;
     setSaving(true);
     try {
-      const transcript = entries.map(e => `[${e.ts}] ${e.text}`).join("\n");
+      const transcript = entries.map(e => {
+        const line = `[${e.ts}] ${e.text}`;
+        return e.translated && !e.isEnglish ? `${line}\n[EN] ${e.translated}` : line;
+      }).join("\n");
       const created = await apiFetch("/meeting-minutes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim(), date, rawNotes: transcript,
           status: "draft", mode: "speech",
-          attendees: null, venue: null, projectId: null,
+          attendees: null, venue: null, projectId: null, createdBy,
         }),
       }).then(r => r.json());
       setSaved(true);
@@ -1176,22 +1231,30 @@ function LiveSpeechMinutesView({
       <div className="flex-shrink-0 bg-gradient-to-r from-teal-600 via-teal-500 to-emerald-500 px-5 py-3">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <p className="text-teal-100 text-[9px] font-bold uppercase tracking-widest">Meeting Minutes</p>
+            <p className="text-teal-100 text-[9px] font-bold uppercase tracking-widest">Live Speech · Auto Translate to English</p>
             <h2 className="text-white font-bold text-base flex items-center gap-2">
-              <Mic className="w-4 h-4" /> Live Speech Minutes
+              <Mic className="w-4 h-4" /> Real-Time Speech Minutes
             </h2>
-            <p className="text-teal-100 text-xs mt-0.5">Speak and your words are captured as meeting minutes in real-time</p>
+            <p className="text-teal-100 text-xs mt-0.5">Speak in any language — auto-detects and translates to English</p>
           </div>
-          <SpeechLangPicker value={lang} onChange={v => { setLang(v); }} disabled={isRecording} />
+          <div className="flex flex-col items-end gap-1.5">
+            <SpeechLangPicker value={lang} onChange={v => { setLang(v); }} disabled={isRecording} />
+            {/* Live language detection indicator */}
+            {liveDetected && (
+              <div className="flex items-center gap-1.5 bg-white/20 backdrop-blur-sm px-2.5 py-1 rounded-full">
+                <span className="text-sm leading-none">{liveDetected.flag}</span>
+                <span className="text-white text-[10px] font-bold">{liveDetected.lang} detected</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Save form strip */}
       <div className="flex-shrink-0 bg-white border-b border-gray-100 px-5 py-3 flex items-center gap-3">
         <div className="flex-1 min-w-0">
-          <input
-            value={title}
-            onChange={e => setTitle(e.target.value)}
+          <input value={title} onChange={e => setTitle(e.target.value)}
             placeholder="Meeting title (required to save)…"
             className="w-full text-sm font-semibold text-gray-800 placeholder:text-gray-300 placeholder:font-normal bg-transparent outline-none border-b border-gray-200 focus:border-teal-400 pb-0.5 transition-colors"
           />
@@ -1220,17 +1283,37 @@ function LiveSpeechMinutesView({
             </div>
             <div>
               <p className="text-sm font-semibold text-gray-600">Ready to record</p>
-              <p className="text-xs text-gray-400 mt-1">Select your language and press the mic button below to start speaking</p>
+              <p className="text-xs text-gray-400 mt-1">Select your language and press the mic button below</p>
+              <p className="text-xs text-teal-500 mt-0.5 font-medium">Non-English speech is automatically translated to English</p>
             </div>
           </div>
         )}
 
         {entries.map(entry => (
           <div key={entry.id} className="flex items-start gap-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
-            <div className="flex-shrink-0 mt-1 w-2 h-2 rounded-full bg-teal-400" />
-            <div className="flex-1 bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-3">
-              <p className="text-sm text-gray-800 leading-relaxed">{entry.text}</p>
-              <p className="text-[10px] text-gray-400 mt-1">{entry.ts}</p>
+            <div className="flex-shrink-0 mt-2 text-sm leading-none">{entry.detectedFlag}</div>
+            <div className="flex-1 bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-3 space-y-1.5">
+              {/* Original text */}
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm text-gray-800 leading-relaxed flex-1">{entry.text}</p>
+                <span className="flex-shrink-0 text-[9px] font-bold text-gray-400 bg-gray-50 border border-gray-100 rounded px-1.5 py-0.5 mt-0.5">{entry.detectedLang}</span>
+              </div>
+              {/* English translation */}
+              {!entry.isEnglish && (
+                <div className="border-t border-gray-50 pt-1.5">
+                  {entry.translating ? (
+                    <div className="flex items-center gap-1.5 text-[10px] text-teal-500">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Translating to English…
+                    </div>
+                  ) : entry.translated ? (
+                    <div className="flex items-start gap-1.5">
+                      <Globe className="w-3 h-3 text-teal-500 mt-0.5 flex-shrink-0" />
+                      <p className="text-sm text-teal-700 leading-relaxed">{entry.translated}</p>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+              <p className="text-[10px] text-gray-300">{entry.ts}</p>
             </div>
           </div>
         ))}
@@ -1238,10 +1321,12 @@ function LiveSpeechMinutesView({
         {/* Live (interim) text */}
         {liveText && (
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 mt-1 w-2 h-2 rounded-full bg-teal-200 animate-pulse" />
+            <div className="flex-shrink-0 mt-2 text-sm leading-none">{liveDetected?.flag ?? "🎤"}</div>
             <div className="flex-1 bg-teal-50 rounded-xl border border-teal-100 px-4 py-3">
               <p className="text-sm text-teal-700 italic leading-relaxed">{liveText}</p>
-              <p className="text-[10px] text-teal-400 mt-1">Speaking…</p>
+              <p className="text-[10px] text-teal-400 mt-1">
+                {liveDetected ? `Speaking in ${liveDetected.lang}…` : "Listening…"}
+              </p>
             </div>
           </div>
         )}
@@ -1252,8 +1337,13 @@ function LiveSpeechMinutesView({
       {/* Stats + Mic button */}
       <div className="flex-shrink-0 bg-white border-t border-gray-100 px-5 py-4 flex items-center justify-between">
         <div className="text-xs text-gray-400 space-y-0.5">
-          <p>{entries.length} phrase{entries.length !== 1 ? "s" : ""} recorded · {fullTranscript.split(/\s+/).filter(Boolean).length} words</p>
-          <p className="text-[10px] text-gray-300">Language: {langLabel}</p>
+          <p>{entries.length} phrase{entries.length !== 1 ? "s" : ""} · {fullTranscript.split(/\s+/).filter(Boolean).length} words</p>
+          <p className="text-[10px] text-gray-300">Recognition: {langLabel}</p>
+          {entries.some(e => !e.isEnglish) && (
+            <p className="text-[10px] text-teal-500 font-medium">
+              {entries.filter(e => !e.isEnglish).length} phrase{entries.filter(e => !e.isEnglish).length !== 1 ? "s" : ""} translated to English
+            </p>
+          )}
         </div>
 
         <button
@@ -1264,18 +1354,13 @@ function LiveSpeechMinutesView({
               : "bg-gradient-to-br from-teal-500 to-emerald-600 shadow-teal-200 hover:scale-105"
             }`}
         >
-          {isRecording && (
-            <span className="absolute inset-0 rounded-full bg-red-400 opacity-30 animate-ping" />
-          )}
-          {isRecording
-            ? <Square className="w-6 h-6 text-white" fill="white" />
-            : <Mic className="w-6 h-6 text-white" />
-          }
+          {isRecording && <span className="absolute inset-0 rounded-full bg-red-400 opacity-30 animate-ping" />}
+          {isRecording ? <Square className="w-6 h-6 text-white" fill="white" /> : <Mic className="w-6 h-6 text-white" />}
         </button>
 
         <div className="text-xs text-right text-gray-400 space-y-0.5">
           {isRecording
-            ? <p className="text-red-500 font-semibold flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse inline-block" /> Recording…</p>
+            ? <p className="text-red-500 font-semibold flex items-center gap-1 justify-end"><span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse inline-block" /> Recording…</p>
             : <p>Tap mic to start</p>
           }
           <p className="text-[10px] text-gray-300">Tap again to stop</p>
@@ -1373,6 +1458,7 @@ export default function MeetingMinutes() {
         title: form.title, date: form.date,
         venue: form.venue || null, attendees: attendeesStr,
         projectId: resolvedProjectId, status: "draft", mode: apiMode,
+        createdBy: preparedBy,
       }),
     }).then(r => r.json());
     setMeetings(prev => [created, ...(prev || [])]);
@@ -1403,45 +1489,63 @@ export default function MeetingMinutes() {
 
         {/* ── Left list panel ── */}
         <div className="w-72 flex-shrink-0 border-r border-gray-200 bg-white flex flex-col">
-          <div className="px-3 py-2.5 border-b border-gray-100">
+          {/* Header */}
+          <div className="px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-blue-600 to-indigo-600">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-blue-600" />
-                <span className="font-semibold text-gray-800 text-sm">Meeting Minutes</span>
+                <FileText className="w-4 h-4 text-white/80" />
+                <span className="font-bold text-white text-sm">Meeting Minutes</span>
               </div>
               <button onClick={() => { setShowNew(true); setSelected(null); setNewMode("record"); }}
-                className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors">
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-semibold transition-all border border-white/20">
                 <Plus className="w-3 h-3" /> New
               </button>
             </div>
+            <p className="text-blue-100 text-[10px] mt-1">{meetings?.length ?? 0} meeting{meetings?.length !== 1 ? "s" : ""} recorded</p>
           </div>
 
           <div className="flex-1 overflow-y-auto py-2 px-2">
-            {loading && Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-14 rounded-lg bg-gray-100 animate-pulse mb-1.5" />)}
+            {loading && Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-16 rounded-xl bg-gray-100 animate-pulse mb-1.5" />
+            ))}
             {!loading && meetings?.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <FileText className="w-8 h-8 text-gray-200 mb-2" />
-                <p className="text-xs text-gray-400">No meetings yet</p>
+              <div className="flex flex-col items-center justify-center py-12 text-center gap-2">
+                <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center">
+                  <FileText className="w-5 h-5 text-blue-200" />
+                </div>
+                <p className="text-xs text-gray-400 font-medium">No meetings yet</p>
+                <p className="text-[10px] text-gray-300">Click New to create one</p>
               </div>
             )}
-            {meetings?.map(m => (
-              <div key={m.id} onClick={() => { setSelected(m); setShowNew(false); setShowReport(false); }}
-                className={`w-full text-left px-2.5 py-1.5 rounded-lg mb-0.5 transition-all group cursor-pointer ${selected?.id === m.id ? "bg-blue-50 ring-1 ring-blue-200" : "hover:bg-gray-50"}`}>
-                <div className="flex items-center justify-between gap-1.5">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1 mb-0.5">
-                      <ModeBadge mode={modeOf(m)} />
-                      <StatusBadge status={m.status} />
+            {meetings?.map(m => {
+              const initials = (m.createdBy || "?").split(" ").slice(0, 2).map((w: string) => w[0]?.toUpperCase()).join("");
+              const isActive = selected?.id === m.id;
+              return (
+                <div key={m.id} onClick={() => { setSelected(m); setShowNew(false); setShowReport(false); }}
+                  className={`w-full text-left px-3 py-2.5 rounded-xl mb-1 transition-all group cursor-pointer ${isActive ? "bg-blue-50 ring-1 ring-blue-200 shadow-sm" : "hover:bg-gray-50"}`}>
+                  <div className="flex items-start gap-2.5">
+                    {/* Creator avatar */}
+                    <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm mt-0.5 ${isActive ? "bg-blue-500" : "bg-gradient-to-br from-slate-400 to-slate-500"}`}>
+                      {initials}
                     </div>
-                    <p className="text-xs font-semibold text-gray-800 truncate leading-tight">{m.title}</p>
-                    <p className="text-[10px] text-gray-400 flex items-center gap-0.5 leading-tight"><Calendar className="w-2.5 h-2.5 shrink-0" />{m.date}</p>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1 mb-0.5">
+                        <ModeBadge mode={modeOf(m)} />
+                        <StatusBadge status={m.status} />
+                      </div>
+                      <p className="text-xs font-semibold text-gray-800 truncate leading-tight">{m.title}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px] text-gray-400 flex items-center gap-0.5"><Calendar className="w-2.5 h-2.5 shrink-0" />{m.date}</span>
+                        {m.createdBy && <span className="text-[10px] text-gray-400 truncate max-w-[80px]">by {m.createdBy.split(" ")[0]}</span>}
+                      </div>
+                    </div>
+                    <button onClick={e => handleDelete(m.id, e)} className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all flex-shrink-0">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
                   </div>
-                  <button onClick={e => handleDelete(m.id, e)} className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-300 hover:text-red-500 transition-all flex-shrink-0">
-                    <Trash2 className="w-3 h-3" />
-                  </button>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -1452,16 +1556,16 @@ export default function MeetingMinutes() {
           {showNew && (
             <div className="flex-1 flex flex-col overflow-hidden">
               {/* Gradient hero header — compact */}
-              <div className={`relative px-4 pt-3 pb-2.5 flex-shrink-0 ${newMode === "record" ? "bg-gradient-to-br from-red-600 via-rose-500 to-orange-400" : "bg-gradient-to-br from-blue-700 via-blue-500 to-indigo-400"}`}>
+              <div className={`relative px-4 pt-3 pb-2.5 flex-shrink-0 ${newMode === "record" ? "bg-gradient-to-br from-red-600 via-rose-500 to-orange-400" : newMode === "live-speech" ? "bg-gradient-to-br from-teal-600 via-teal-500 to-emerald-500" : "bg-gradient-to-br from-blue-700 via-blue-500 to-indigo-400"}`}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
-                      {newMode === "record" ? <Mic className="w-3.5 h-3.5 text-white" /> : <Type className="w-3.5 h-3.5 text-white" />}
+                      {newMode === "record" ? <Mic className="w-3.5 h-3.5 text-white" /> : newMode === "live-speech" ? <Globe className="w-3.5 h-3.5 text-white" /> : <Type className="w-3.5 h-3.5 text-white" />}
                     </div>
                     <div>
                       <p className="text-white/60 text-[9px] font-bold uppercase tracking-widest leading-none">New Meeting</p>
                       <h2 className="text-white text-sm font-bold leading-snug">
-                        {newMode === "record" ? "Auto Record & Transcribe" : "Manual Notes"}
+                        {newMode === "record" ? "Auto Record & Transcribe" : newMode === "live-speech" ? "Live Speech & Auto Translate" : "Manual Notes"}
                       </h2>
                     </div>
                   </div>
@@ -1480,95 +1584,66 @@ export default function MeetingMinutes() {
                     className={`flex items-center gap-1 px-3 py-1 rounded-md text-[11px] font-semibold transition-all ${newMode === "manual" ? "bg-white text-blue-600 shadow-sm" : "text-white/70 hover:text-white"}`}>
                     <Type className="w-2.5 h-2.5" /> Manual Notes
                   </button>
-                </div>
-              </div>
-
-              {/* Form body */}
-              <div className="flex-1 overflow-y-auto bg-[#f8fafc] px-4 py-3 space-y-2">
-
-                {/* Meeting Title */}
-                <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5">
-                  <label className="block text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1">Meeting Title <span className="text-red-400 normal-case">*</span></label>
-                  <input
-                    value={form.title}
-                    onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                    onKeyDown={e => e.key === "Enter" && form.title && form.date && handleCreate()}
-                    placeholder="e.g. Weekly Project Sync, Q1 Review, Sprint Planning…"
-                    autoFocus
-                    className="w-full text-sm font-semibold text-gray-800 placeholder:text-gray-300 placeholder:font-normal bg-transparent outline-none border-none"
-                  />
-                  <div className={`mt-1.5 h-px rounded-full transition-all ${form.title ? (newMode === "record" ? "bg-red-400" : "bg-blue-400") : "bg-gray-100"}`} />
-                </div>
-
-                {/* Date + Venue row */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5">
-                    <label className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1">
-                      <Calendar className="w-2.5 h-2.5" /> Date <span className="text-red-400 normal-case">*</span>
-                    </label>
-                    <input
-                      type="date"
-                      value={form.date}
-                      onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-                      className="w-full text-xs font-semibold text-gray-700 bg-transparent outline-none border-none"
-                    />
-                  </div>
-                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5">
-                    <label className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1">
-                      <MapPin className="w-2.5 h-2.5" /> Venue
-                    </label>
-                    <input
-                      value={form.venue}
-                      onChange={e => setForm(f => ({ ...f, venue: e.target.value }))}
-                      placeholder="Conference Room A, Zoom…"
-                      className="w-full text-xs font-semibold text-gray-700 placeholder:text-gray-300 placeholder:font-normal bg-transparent outline-none border-none"
-                    />
-                  </div>
-                </div>
-
-                {/* Project — dropdown OR manual text toggle */}
-                <ProjectField form={form} setForm={setForm} projects={projects as any[]} />
-
-                {/* Attendees — ERPNext search with manual fallback */}
-                <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5">
-                  <label className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">
-                    <Users className="w-2.5 h-2.5" /> Attendees
-                    {selectedAttendees.length > 0 && (
-                      <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold text-white ${newMode === "record" ? "bg-red-500" : "bg-blue-500"}`}>
-                        {selectedAttendees.length}
-                      </span>
-                    )}
-                  </label>
-                  <AttendeesPicker selected={selectedAttendees} onChange={setSelectedAttendees} />
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className="flex-shrink-0 px-4 py-2.5 bg-white border-t border-gray-100 flex items-center justify-between">
-                <p className="text-[11px] text-gray-400 italic">
-                  {newMode === "record" ? "Recording starts after creation" : "Add notes & AI summary after creation"}
-                </p>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => { setShowNew(false); setSelectedAttendees([]); setForm({ title: "", date: new Date().toISOString().slice(0, 10), venue: "", projectId: "", projectName: "", projectMode: "select" }); }}
-                    className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-all"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleCreate}
-                    disabled={!form.title || !form.date}
-                    className={`px-5 py-2.5 text-sm font-semibold text-white rounded-xl disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-2 shadow-lg ${
-                      newMode === "record"
-                        ? "bg-gradient-to-r from-red-600 to-rose-500 hover:from-red-700 hover:to-rose-600 shadow-red-200"
-                        : "bg-gradient-to-r from-blue-600 to-indigo-500 hover:from-blue-700 hover:to-indigo-600 shadow-blue-200"
-                    }`}
-                  >
-                    {newMode === "record" ? <Mic className="w-4 h-4" /> : <Type className="w-4 h-4" />}
-                    Create & {newMode === "record" ? "Start Recording" : "Start Writing"}
+                  <button onClick={() => setNewMode("live-speech")}
+                    className={`flex items-center gap-1 px-3 py-1 rounded-md text-[11px] font-semibold transition-all ${newMode === "live-speech" ? "bg-white text-teal-600 shadow-sm" : "text-white/70 hover:text-white"}`}>
+                    <Globe className="w-2.5 h-2.5" /> Live Speech
                   </button>
                 </div>
               </div>
+
+              {newMode === "live-speech" && (
+                <LiveSpeechMinutesView
+                  createdBy={preparedBy}
+                  onSaved={m => { setMeetings(prev => [m, ...(prev || [])]); setSelected(m); setShowNew(false); }}
+                />
+              )}
+              {newMode !== "live-speech" && (
+                <div className="flex-1 overflow-y-auto bg-[#f8fafc] px-4 py-3 space-y-2">
+                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5">
+                    <label className="block text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1">Meeting Title <span className="text-red-400 normal-case">*</span></label>
+                    <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} onKeyDown={e => e.key === "Enter" && form.title && form.date && handleCreate()} placeholder="e.g. Weekly Project Sync, Q1 Review, Sprint Planning…" autoFocus className="w-full text-sm font-semibold text-gray-800 placeholder:text-gray-300 placeholder:font-normal bg-transparent outline-none border-none" />
+                    <div className={["mt-1.5 h-px rounded-full transition-all", form.title ? (newMode === "record" ? "bg-red-400" : "bg-blue-400") : "bg-gray-100"].join(" ")} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5">
+                      <label className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1"><Calendar className="w-2.5 h-2.5" /> Date <span className="text-red-400 normal-case">*</span></label>
+                      <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className="w-full text-xs font-semibold text-gray-700 bg-transparent outline-none border-none" />
+                    </div>
+                    <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5">
+                      <label className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1"><MapPin className="w-2.5 h-2.5" /> Venue</label>
+                      <input value={form.venue} onChange={e => setForm(f => ({ ...f, venue: e.target.value }))} placeholder="Conference Room A, Zoom…" className="w-full text-xs font-semibold text-gray-700 placeholder:text-gray-300 placeholder:font-normal bg-transparent outline-none border-none" />
+                    </div>
+                  </div>
+                  <ProjectField form={form} setForm={setForm} projects={projects as any[]} />
+                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5">
+                    <label className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">
+                      <Users className="w-2.5 h-2.5" /> Attendees
+                      {selectedAttendees.length > 0 && (
+                        <span className={["ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold text-white", newMode === "record" ? "bg-red-500" : "bg-blue-500"].join(" ")}>
+                          {selectedAttendees.length}
+                        </span>
+                      )}
+                    </label>
+                    <AttendeesPicker selected={selectedAttendees} onChange={setSelectedAttendees} />
+                  </div>
+                </div>
+              )}
+              {newMode !== "live-speech" && (
+                <div className="flex-shrink-0 px-4 py-2.5 bg-white border-t border-gray-100 flex items-center justify-between">
+                  <p className="text-[11px] text-gray-400 italic">
+                    {newMode === "record" ? "Recording starts after creation" : "Add notes & AI summary after creation"}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => { setShowNew(false); setSelectedAttendees([]); setForm({ title: "", date: new Date().toISOString().slice(0, 10), venue: "", projectId: "", projectName: "", projectMode: "select" }); }} className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-all">Cancel</button>
+                    <button onClick={handleCreate} disabled={!form.title || !form.date}
+                      className={["px-5 py-2.5 text-sm font-semibold text-white rounded-xl disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-2 shadow-lg", newMode === "record" ? "bg-gradient-to-r from-red-600 to-rose-500 hover:from-red-700 hover:to-rose-600 shadow-red-200" : "bg-gradient-to-r from-blue-600 to-indigo-500 hover:from-blue-700 hover:to-indigo-600 shadow-blue-200"].join(" ")}
+                    >
+                      {newMode === "record" ? <Mic className="w-4 h-4" /> : <Type className="w-4 h-4" />}
+                      {"Create & "}{newMode === "record" ? "Start Recording" : "Start Writing"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1587,6 +1662,14 @@ export default function MeetingMinutes() {
                       <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{selected.date}</span>
                       {selected.venue && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{selected.venue}</span>}
                       {selected.attendees && <span className="flex items-center gap-1"><Users className="w-3 h-3" />{selected.attendees}</span>}
+                      {selected.createdBy && (
+                        <span className="flex items-center gap-1">
+                          <span className="w-4 h-4 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-[8px] font-bold flex-shrink-0">
+                            {selected.createdBy.split(" ").slice(0, 2).map((w: string) => w[0]?.toUpperCase()).join("")}
+                          </span>
+                          {selected.createdBy}
+                        </span>
+                      )}
                     </div>
                   </div>
                   {/* Generate Report button */}
