@@ -10,7 +10,10 @@ const BASE = "/api";
 type LangCode = string;
 type Lang = { code: LangCode; label: string; native: string; flag: string };
 
+const AUTO_LANG: Lang = { code: "auto", label: "Auto Detect", native: "Detect language automatically", flag: "🌐" };
+
 const LANGS: Lang[] = [
+  AUTO_LANG,
   { code: "en-IN", label: "English",    native: "English",         flag: "🇬🇧" },
   { code: "ta-IN", label: "Tamil",      native: "தமிழ்",           flag: "🇮🇳" },
   { code: "hi-IN", label: "Hindi",      native: "हिन्दी",          flag: "🇮🇳" },
@@ -57,7 +60,8 @@ async function translateToEnglish(text: string, sourceLang: string): Promise<str
   const res = await fetch(`${BASE}/translate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, sourceLang }),
+    // Pass null for auto-detect so the backend/API auto-detects the language
+    body: JSON.stringify({ text, sourceLang: sourceLang === "auto" ? null : sourceLang }),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -177,19 +181,19 @@ export default function SpeechTranslator() {
     const r = new SR();
     r.continuous = true;
     r.interimResults = true;
-    r.lang = activeLang;
+    // For auto-detect, leave lang unset so the browser uses its default detection
+    if (activeLang !== "auto") r.lang = activeLang;
     recognitionRef.current = r;
 
     r.onresult = (e: any) => {
+      // Use e.resultIndex to only process NEW results — avoids duplicate words
       let interim = "";
-      let final = "";
-      for (let i = 0; i < e.results.length; i++) {
+      for (let i = e.resultIndex; i < e.results.length; i++) {
         const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) final += t + " ";
+        if (e.results[i].isFinal) liveRef.current += t + " ";
         else interim += t;
       }
-      liveRef.current = final;
-      setLiveText(final + interim);
+      setLiveText(liveRef.current + interim);
     };
 
     r.onerror = () => {};
@@ -290,7 +294,11 @@ export default function SpeechTranslator() {
                 }
               </button>
               <span className={`text-xs font-semibold ${isRecording ? "text-red-600" : "text-gray-400"}`}>
-                {isRecording ? `Recording in ${langMeta.label}… tap to stop` : "Tap to start speaking"}
+                {isRecording
+                  ? activeLang === "auto"
+                    ? "Recording… language auto-detecting — tap to stop"
+                    : `Recording in ${langMeta.label}… tap to stop`
+                  : "Tap to start speaking"}
               </span>
             </div>
 
