@@ -307,9 +307,9 @@ export default function Projects() {
             {search && <p className="text-xs mt-1">Try a different search term</p>}
           </div>
         ) : viewMode === "list" ? (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden overflow-x-auto">
             {/* Table header */}
-            <div className="grid grid-cols-[110px_2fr_1fr_1fr_1fr_120px] gap-4 px-5 py-2.5 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <div className="grid grid-cols-[110px_2fr_1fr_1fr_1fr_120px] gap-4 px-5 py-2.5 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide min-w-[700px]">
               <span>Project No.</span>
               <button className="flex items-center gap-1 text-left hover:text-gray-700" onClick={() => toggleSort("name")}>
                 Project Name <SortIcon col="name" sortKey={sortKey} sortDir={sortDir} />
@@ -327,7 +327,7 @@ export default function Projects() {
             </div>
 
             {/* Rows */}
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-gray-100 min-w-[700px]">
               {tabProjects.map((project, idx) => (
                 <div
                   key={project.id}

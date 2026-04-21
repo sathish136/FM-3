@@ -656,13 +656,13 @@ export default function PresentationPage() {
                     {slidesLoading && <Loader2 className="inline w-3 h-3 ml-1.5 animate-spin text-gray-300" />}
                   </p>
                   {slidesLoading ? (
-                    <div className="grid grid-cols-5 gap-2">
+                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                       {[0,1,2,3,4].map(i => (
                         <div key={i} className="aspect-video rounded-lg bg-gray-100 animate-pulse" />
                       ))}
                     </div>
                   ) : slides.length > 0 ? (
-                    <div className="grid grid-cols-5 gap-2">
+                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                       {slides.map((slide, i) => (
                         <button key={i} onClick={() => { setActiveSlide(i); setProgress(0); }}
                           className={`aspect-video rounded-lg overflow-hidden relative transition-all ${
@@ -674,7 +674,7 @@ export default function PresentationPage() {
                       ))}
                     </div>
                   ) : (
-                    <div className="grid grid-cols-5 gap-2">
+                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                       {Array.from({ length: numSlides }, (_, i) => (
                         <button key={i} onClick={() => setActiveSlide(i)}
                           className={`aspect-video rounded-lg flex items-center justify-center transition-all text-white text-xs font-bold ${

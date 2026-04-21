@@ -68,9 +68,9 @@ function Field({ icon: Icon, label, value, accent }: {
 // Rows are separated from each other by a bottom border.
 function FieldRow({ left, right }: { left: React.ReactNode; right?: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-2 border-b border-border/50 last:border-0">
-      <div className="py-3.5 pr-5">{left}</div>
-      <div className={`py-3.5 pl-5 ${right ? "border-l border-border/50" : ""}`}>{right}</div>
+    <div className="grid grid-cols-1 sm:grid-cols-2 border-b border-border/50 last:border-0">
+      <div className="py-3.5 sm:pr-5">{left}</div>
+      <div className={`py-3.5 sm:pl-5 ${right ? "sm:border-l border-border/50" : ""}`}>{right}</div>
     </div>
   );
 }

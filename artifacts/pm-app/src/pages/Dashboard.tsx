@@ -121,7 +121,7 @@ export default function Dashboard() {
         <div className="max-w-[1600px] mx-auto p-4 space-y-4">
 
           {/* ── TOP ROW: Banner + AI Card ── */}
-          <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 340px" }}>
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_340px] gap-4">
 
             {/* Banner */}
             <div className="rounded-xl px-6 py-5 flex flex-col justify-between relative overflow-hidden"
@@ -175,7 +175,7 @@ export default function Dashboard() {
           </div>
 
           {/* ── MAIN 3-COLUMN GRID ── */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
             {/* LEFT: Performance Overview */}
             <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
@@ -341,7 +341,7 @@ export default function Dashboard() {
           </div>
 
           {/* ── BOTTOM ROW: Recent Tasks + Projects Overview ── */}
-          <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 340px" }}>
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_340px] gap-4">
 
             {/* Recent Tasks — table */}
             <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
@@ -358,6 +358,7 @@ export default function Dashboard() {
               ) : !empData?.work_updates?.length ? (
                 <div className="py-10 text-center text-slate-400 text-sm">No recent tasks</div>
               ) : (
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-50">
@@ -391,6 +392,7 @@ export default function Dashboard() {
                     })}
                   </tbody>
                 </table>
+                </div>
               )}
             </div>
 

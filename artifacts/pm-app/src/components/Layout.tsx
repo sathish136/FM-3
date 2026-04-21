@@ -471,7 +471,7 @@ function AppLauncher({ open, onClose, visibleNavGroups: _visibleNavGroups }: { o
                   <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400">{group.label}</p>
                   <div className="flex-1 h-px bg-slate-200" />
                 </div>
-                <div className="grid grid-cols-5 gap-3">
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
                   {group.items.map((item) => <AppItem key={item.path} item={item} location={location} theme={theme} onClose={onClose} />)}
                 </div>
               </div>

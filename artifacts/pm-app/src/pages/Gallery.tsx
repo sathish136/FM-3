@@ -52,7 +52,7 @@ export default function Gallery() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {[
             { label: "Total Files", value: assets.length, icon: FolderOpen, color: "text-blue-600 bg-blue-50" },
             { label: "Storage Used", value: "78.7 MB", icon: Download, color: "text-violet-600 bg-violet-50" },
@@ -142,8 +142,8 @@ export default function Gallery() {
 
         {/* List View */}
         {viewMode === "list" && (
-          <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden overflow-x-auto">
+            <table className="w-full text-sm min-w-[500px]">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>

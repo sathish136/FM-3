@@ -712,7 +712,7 @@ function AppearanceSettings() {
         <div className="p-5">
           <p className="text-sm font-semibold text-foreground mb-1">Accent Color</p>
           <p className="text-xs text-muted-foreground mb-4">Pick a color theme for the interface</p>
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
             {THEME_PRESETS.map((preset, i) => (
               <button
                 key={preset.name}

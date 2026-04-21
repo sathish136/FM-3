@@ -381,7 +381,7 @@ function SubscriptionForm({ initial, onSave, onCancel }: {
               {/* Type selector */}
               <div>
                 <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 block">Category</label>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                   {typeOptions.map(t => {
                     const m = TYPE_META[t]; const Icon = m.icon;
                     return (
@@ -686,7 +686,7 @@ function DetailPanel({ sub, onBack, onRefresh }: { sub: Subscription; onBack: ()
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4 bg-background">
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {[
             { label: "Amount", value: fmtAmt(sub.plan_amount), icon: DollarSign, color: "text-emerald-600" },
             { label: "Due Date", value: fmtDate(sub.due_date), icon: Calendar, color: days !== null && days < 0 ? "text-red-600" : "text-foreground" },

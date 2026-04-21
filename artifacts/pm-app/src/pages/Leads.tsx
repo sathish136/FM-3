@@ -328,21 +328,21 @@ export default function Leads() {
         </div>
 
         {/* Main panel */}
-        <div className="flex-1 min-h-0 flex gap-0 bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+        <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-0 bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
           {/* Table column */}
-          <div className={cn("flex flex-col min-h-0 transition-all", selected ? "w-[58%]" : "w-full")}>
+          <div className={cn("flex flex-col min-h-0 transition-all", selected ? "hidden md:flex md:w-[58%]" : "flex w-full")}>
             {/* Toolbar */}
-            <div className="flex items-center gap-3 px-5 py-4 border-b border-border shrink-0">
-              <div className="relative flex-1 max-w-xs">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 px-5 py-4 border-b border-border shrink-0">
+              <div className="relative w-full sm:flex-1 sm:max-w-xs">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                 <input value={search} onChange={e => setSearch(e.target.value)}
                   placeholder="Search leads…"
                   className="w-full pl-8 pr-3 py-2 text-sm rounded-xl border border-border bg-muted text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary" />
               </div>
-              <div className="flex items-center gap-1 bg-muted rounded-xl p-1">
+              <div className="flex items-center gap-1 bg-muted rounded-xl p-1 overflow-x-auto max-w-full">
                 {TABS.map(t => (
                   <button key={t.key} onClick={() => setTab(t.key)}
-                    className={cn("px-3 py-1.5 rounded-lg text-xs font-semibold transition-all",
+                    className={cn("px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap",
                       tab === t.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
                     {t.label}
                     <span className={cn("ml-1.5 text-[10px] font-bold", tab === t.key ? "text-primary" : "text-muted-foreground")}>
@@ -354,7 +354,7 @@ export default function Leads() {
             </div>
 
             {/* Table */}
-            <div className="flex-1 overflow-auto">
+            <div className="flex-1 overflow-auto overflow-x-auto">
               {isLoading ? (
                 <div className="p-6 space-y-3">
                   {[1,2,3,4,5].map(i => (
@@ -368,7 +368,7 @@ export default function Leads() {
                   <p className="text-sm mt-1">Try changing your filter or add a new lead</p>
                 </div>
               ) : (
-                <table className="w-full text-sm">
+                <table className="w-full text-sm min-w-[600px]">
                   <thead>
                     <tr className="border-b border-border">
                       <th className="text-left px-5 py-3 text-xs font-bold text-muted-foreground uppercase tracking-wider">Lead</th>
@@ -438,7 +438,7 @@ export default function Leads() {
 
           {/* Detail panel */}
           {selected && (
-            <div className="w-[42%] shrink-0 border-l border-border">
+            <div className="w-full md:w-[42%] shrink-0 border-t md:border-t-0 md:border-l border-border">
               <LeadPanel
                 lead={selected}
                 onEdit={() => setEditing(selected)}

@@ -454,7 +454,7 @@ export default function MisReport() {
                       {/* Projects */}
                       <Card title="Project Health" icon={Briefcase} iconColor="text-blue-500"
                         right={<button onClick={()=>setTab("Projects")} className="text-[9px] text-indigo-500 font-bold flex items-center gap-0.5 hover:underline">Details<ChevronRight className="w-3 h-3"/></button>}>
-                        <div className="grid grid-cols-3 gap-2 mb-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
                           <Stat label="Active" value={data.projects.active} color="text-blue-700"/>
                           <Stat label="Completed" value={data.projects.completed} color="text-emerald-700"/>
                           <Stat label="Overdue" value={data.projects.overdue} alert={data.projects.overdue>0}/>
@@ -667,7 +667,7 @@ export default function MisReport() {
                     <Card title="Our Side Pending — Sales Invoice Outstanding" icon={TrendingUp} iconColor="text-sky-500"
                       count={filtRec.length}
                       right={<span className="text-sm font-black text-sky-700">{fmtCr(filtRec.reduce((a: number, i: any) => a + (i.outstanding || 0), 0))}</span>}>
-                      <div className="grid grid-cols-3 gap-2 mb-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
                         <Stat label="Total Receivable" value={fmtCr(filtRec.reduce((a: number, i: any) => a + (i.outstanding || 0), 0))} color="text-sky-700" small />
                         <Stat label="Overdue Amount" value={fmtCr(filtRec.filter((i: any) => i.overdue).reduce((a: number, i: any) => a + (i.outstanding || 0), 0))} alert={filtRec.some((i: any) => i.overdue)} small />
                         <Stat label="Overdue Invoices" value={filtRec.filter((i: any) => i.overdue).length} alert={filtRec.some((i: any) => i.overdue)} />
@@ -693,7 +693,7 @@ export default function MisReport() {
                     <Card title="Accounts Side Pending — Purchase Invoice Outstanding" icon={TrendingDown} iconColor="text-orange-500"
                       count={filtPay.length}
                       right={<span className="text-sm font-black text-orange-700">{fmtCr(filtPay.reduce((a: number, i: any) => a + (i.outstanding || 0), 0))}</span>}>
-                      <div className="grid grid-cols-3 gap-2 mb-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
                         <Stat label="Total Payable" value={fmtCr(filtPay.reduce((a: number, i: any) => a + (i.outstanding || 0), 0))} color="text-orange-700" small />
                         <Stat label="Overdue Amount" value={fmtCr(filtPay.filter((i: any) => i.overdue).reduce((a: number, i: any) => a + (i.outstanding || 0), 0))} alert={filtPay.some((i: any) => i.overdue)} small />
                         <Stat label="Overdue Invoices" value={filtPay.filter((i: any) => i.overdue).length} alert={filtPay.some((i: any) => i.overdue)} />
@@ -722,7 +722,7 @@ export default function MisReport() {
                     <Card title="Sales Invoice Payments — Money Collected" icon={Wallet} iconColor="text-emerald-600"
                       count={filtPmt.filter((p: any) => p.type === "Receive").length}
                       right={<span className="text-sm font-black text-emerald-700">{fmtCr(filtPmt.filter((p: any) => p.type === "Receive").reduce((a: number, p: any) => a + (p.amount || 0), 0))}</span>}>
-                      <div className="grid grid-cols-3 gap-2 mb-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
                         <Stat label="Total Collected" value={fmtCr(filtPmt.filter((p: any) => p.type === "Receive").reduce((a: number, p: any) => a + (p.amount || 0), 0))} color="text-emerald-700" small />
                         <Stat label="Total Paid Out" value={fmtCr(filtPmt.filter((p: any) => p.type === "Pay").reduce((a: number, p: any) => a + (p.amount || 0), 0))} color="text-orange-700" small />
                         <Stat label="Net Cash Flow" value={fmtCr(
@@ -750,7 +750,7 @@ export default function MisReport() {
                     <Card title="PO Pending — Goods / Services Not Yet Received" icon={ShoppingBag} iconColor="text-amber-500"
                       count={filtPO.filter((p: any) => ["To Receive and Bill", "To Bill", "To Receive", "Draft"].includes(p.status)).length}
                       right={<span className="text-sm font-black text-amber-700">{fmtCr(filtPO.filter((p: any) => ["To Receive and Bill", "To Bill", "To Receive", "Draft"].includes(p.status)).reduce((a: number, p: any) => a + (p.amount || 0), 0))}</span>}>
-                      <div className="grid grid-cols-3 gap-2 mb-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
                         <Stat label="Pending POs" value={filtPO.filter((p: any) => ["To Receive and Bill", "To Bill", "To Receive", "Draft"].includes(p.status)).length} alert />
                         <Stat label="Pending Value" value={fmtCr(filtPO.filter((p: any) => ["To Receive and Bill", "To Bill", "To Receive", "Draft"].includes(p.status)).reduce((a: number, p: any) => a + (p.amount || 0), 0))} color="text-amber-700" small />
                         <Stat label="Overdue POs" value={filtPO.filter((p: any) => p.due && new Date(p.due) < new Date() && !["Completed","Closed"].includes(p.status)).length} alert={filtPO.some((p: any) => p.due && new Date(p.due) < new Date() && !["Completed","Closed"].includes(p.status))} />
@@ -943,7 +943,7 @@ export default function MisReport() {
                     <div className="space-y-3">
                       <Card title="Sales Orders" icon={Target} iconColor="text-violet-500" count={filtSO.length}
                         right={<span className="text-xs font-black text-violet-700">{fmtCr(filtSO.reduce((a:number,s:any)=>a+(s.amount||0),0))}</span>}>
-                        <div className="grid grid-cols-3 gap-2 mb-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
                           <Stat label="Active"    value={filtSO.filter((s:any)=>["To Deliver and Bill","To Bill","To Deliver","Submitted"].includes(s.status)).length} color="text-violet-700"/>
                           <Stat label="This Month" value={filtSO.filter((s:any)=>s.date>=data.period.month_start).length}/>
                           <Stat label="Delivered"  value={filtSO.filter((s:any)=>s.delivered_pct===100).length} color="text-emerald-700"/>
@@ -1155,7 +1155,7 @@ export default function MisReport() {
                   <Card title="Delivery Notes" icon={Truck} iconColor="text-teal-500" count={filtDN.length}
                     right={<span className="text-xs font-black text-teal-700">{fmtCr(filtDN.reduce((a: number, d: any) => a + (d.amount || 0), 0))}</span>}
                     span={2}>
-                    <div className="grid grid-cols-3 gap-2 mb-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
                       <Stat label="Pending Billing" value={filtDN.filter((d: any) => d.status === "To Bill" || d.status === "Draft").length} alert />
                       <Stat label="This Month" value={filtDN.filter((d: any) => d.date >= data.period.month_start).length} />
                       <Stat label="Total Value" value={fmtCr(filtDN.reduce((a: number, d: any) => a + (d.amount || 0), 0))} small color="text-teal-700" />
@@ -1217,7 +1217,7 @@ export default function MisReport() {
 
                   {/* Leave applications */}
                   <Card title="Leave Applications" icon={Calendar} iconColor="text-sky-500" count={data.hr.leave_applications.length}>
-                    <div className="grid grid-cols-3 gap-2 mb-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
                       <Stat label="On Leave Today" value={data.hr.on_leave_today} alert={data.hr.on_leave_today > 0} />
                       <Stat label="Pending" value={data.hr.pending_leave_approvals} alert={data.hr.pending_leave_approvals > 0} />
                       <Stat label="Total" value={data.hr.leave_applications.length} />
@@ -1236,7 +1236,7 @@ export default function MisReport() {
 
                   {/* Expense Claims */}
                   <Card title="Expense Claims" icon={IndianRupee} iconColor="text-purple-500" count={data.hr.expense_claims.list.length} span={2}>
-                    <div className="grid grid-cols-4 gap-2 mb-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
                       <Stat label="Pending" value={data.hr.expense_claims.pending} alert={data.hr.expense_claims.pending > 0}
                         sub={fmtCr(data.hr.expense_claims.total_pending_amount)} />
                       <Stat label="Approved" value={data.hr.expense_claims.approved} color="text-emerald-700"

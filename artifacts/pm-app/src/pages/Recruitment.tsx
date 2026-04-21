@@ -1281,7 +1281,7 @@ function DetailView({ record, onBack }: { record: RecruitmentTracker; onBack: ()
           {activeTab === "interview" && (
             <div className="space-y-4 max-w-3xl">
               {/* Status chips */}
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {[
                   { label: "Experience Status", value: record.experience_status, icon: Briefcase },
                   { label: "Telephonic Interview", value: record.rt_telephonic_interview ? fmtDate(record.rt_telephonic_interview) : null, icon: Phone },
@@ -1491,7 +1491,7 @@ function DetailView({ record, onBack }: { record: RecruitmentTracker; onBack: ()
                     )}
 
                     {/* Stats row */}
-                    <div className="grid grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       {[
                         { label: "Years Exp.", value: resume.total_experience_years ? `${resume.total_experience_years}y` : "—", color: "text-indigo-600", bg: "bg-indigo-50" },
                         { label: "Companies", value: (resume.experience || []).length || "—", color: "text-blue-600", bg: "bg-blue-50" },
@@ -2496,7 +2496,8 @@ export default function Recruitment() {
                   )}
                 </div>
               ) : (
-                <table className="w-full text-sm border-collapse">
+                <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse min-w-[700px]">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                       <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide w-8">#</th>
@@ -2558,6 +2559,7 @@ export default function Recruitment() {
                     })}
                   </tbody>
                 </table>
+                </div>
               )}
             </div>
 

@@ -533,7 +533,7 @@ export function HrAnalyticsContent() {
         {/* Headcount Drawer */}
         <Drawer open={drawerView === "headcount"} onClose={() => setDrawerView(null)} title="Headcount Analysis" badge={d.employees.total}>
           <div className="p-6 space-y-6">
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               {[
                 { label: "Total Employees", val: d.employees.total, color: "text-foreground" },
                 { label: "Active", val: d.employees.active, color: "text-green-500" },
@@ -588,7 +588,7 @@ export function HrAnalyticsContent() {
         {/* Interviews Drawer */}
         <Drawer open={drawerView === "interviews"} onClose={() => setDrawerView(null)} title="Interview Analytics" badge={d.recruitment.interviews.year}>
           <div className="p-6 space-y-6">
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[
                 { label: "This Year",      val: d.recruitment.interviews.year,      color: "text-foreground" },
                 { label: "This Month",     val: d.recruitment.interviews.month,     color: "text-blue-500" },
@@ -618,7 +618,7 @@ export function HrAnalyticsContent() {
         {/* Followups Drawer */}
         <Drawer open={drawerView === "followups"} onClose={() => setDrawerView(null)} title="Followup Analytics" badge={d.recruitment.followups.year}>
           <div className="p-6 space-y-6">
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[
                 { label: "This Year",      val: d.recruitment.followups.year,      color: "text-foreground" },
                 { label: "This Month",     val: d.recruitment.followups.month,     color: "text-teal-500" },
@@ -648,7 +648,7 @@ export function HrAnalyticsContent() {
         {/* Grievance Drawer */}
         <Drawer open={drawerView === "grievance"} onClose={() => setDrawerView(null)} title="Grievance Analysis" badge={d.grievances.year}>
           <div className="p-6 space-y-6">
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               {[
                 { label: "This Year",   val: d.grievances.year,      color: "text-foreground" },
                 { label: "This Month",  val: d.grievances.month,     color: "text-amber-500" },
@@ -671,7 +671,7 @@ export function HrAnalyticsContent() {
         {/* Incident Drawer */}
         <Drawer open={drawerView === "incident"} onClose={() => setDrawerView(null)} title="Incident Analysis" badge={d.incidents.year}>
           <div className="p-6 space-y-6">
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               {[
                 { label: "This Year",   val: d.incidents.year,      color: "text-foreground" },
                 { label: "This Month",  val: d.incidents.month,     color: "text-rose-500" },
