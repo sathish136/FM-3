@@ -28,6 +28,15 @@ pool.query(`
     data TEXT NOT NULL DEFAULT '{}',
     created_at TIMESTAMP NOT NULL DEFAULT NOW(), updated_at TIMESTAMP NOT NULL DEFAULT NOW()
   );
+  CREATE TABLE IF NOT EXISTS speech_translations (
+    id SERIAL PRIMARY KEY,
+    original TEXT NOT NULL,
+    translation TEXT,
+    source_lang TEXT NOT NULL,
+    source_lang_label TEXT,
+    recorded_at TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
 `).then(() => console.log("Meeting minutes & spreadsheets tables ready"))
   .catch((e: any) => console.error("Meeting minutes tables migration error:", e.message));
 import OpenAI from "openai";
@@ -261,6 +270,40 @@ IMPORTANT: Do NOT add any "Prepared by", signature, footer, or closing line at t
     res.write(`data: ${JSON.stringify({ error: String(e) })}\n\n`);
     res.end();
   }
+});
+
+// ─── Speech Translation History ──────────────────────────────────────────────
+router.get("/speech-translations", async (_req, res) => {
+  try {
+    const rows = await pool.query("SELECT * FROM speech_translations ORDER BY created_at DESC LIMIT 200");
+    res.json(rows.rows);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.post("/speech-translations", async (req, res) => {
+  try {
+    const { original, translation, sourceLang, sourceLangLabel, recordedAt } = req.body;
+    if (!original?.trim()) return res.status(400).json({ error: "original is required" });
+    const row = await pool.query(
+      "INSERT INTO speech_translations (original, translation, source_lang, source_lang_label, recorded_at) VALUES ($1,$2,$3,$4,$5) RETURNING *",
+      [original, translation || null, sourceLang || "auto", sourceLangLabel || null, recordedAt || new Date().toLocaleTimeString()]
+    );
+    res.status(201).json(row.rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.delete("/speech-translations/:id", async (req, res) => {
+  try {
+    await pool.query("DELETE FROM speech_translations WHERE id=$1", [Number(req.params.id)]);
+    res.status(204).end();
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.delete("/speech-translations", async (_req, res) => {
+  try {
+    await pool.query("DELETE FROM speech_translations");
+    res.status(204).end();
+  } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
 // ─── Translate any text to a target language ─────────────────────────────────
