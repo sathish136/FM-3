@@ -137,7 +137,7 @@ function LangPicker({ value, onChange, disabled }: { value: string; onChange: (v
           ${disabled ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200 text-gray-500"
                      : "bg-white border-gray-200 hover:border-violet-400 text-gray-800 shadow-sm cursor-pointer"}`}
       >
-        <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center text-white text-[10px] font-black tracking-wide flex-shrink-0">
+        <span className="w-8 h-8 rounded-lg bg-violet-600 flex items-center justify-center text-white text-[10px] font-black tracking-wide flex-shrink-0">
           {sel.abbr}
         </span>
         <div className="text-left flex-1 min-w-0">
@@ -159,7 +159,7 @@ function LangPicker({ value, onChange, disabled }: { value: string; onChange: (v
                 className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors
                   ${value === lang.code ? "bg-violet-50 text-violet-700" : "text-gray-700 hover:bg-gray-50"}`}
               >
-                <span className="w-7 h-7 rounded-md bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-[9px] font-black flex-shrink-0">
+                <span className="w-7 h-7 rounded-md bg-violet-600 flex items-center justify-center text-white text-[9px] font-black flex-shrink-0">
                   {lang.abbr}
                 </span>
                 <div className="min-w-0">
@@ -408,7 +408,7 @@ export default function SpeechTranslator() {
       <div className="flex flex-col h-[calc(100vh-48px)] bg-gray-50">
 
         {/* Header */}
-        <div className="flex-shrink-0 bg-gradient-to-r from-violet-700 via-purple-600 to-indigo-600 px-5 py-3.5">
+        <div className="flex-shrink-0 bg-violet-700 px-5 py-3.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
@@ -444,8 +444,8 @@ export default function SpeechTranslator() {
               <button onClick={() => recording ? stopRecording() : startRecording()}
                 className={`relative w-20 h-20 rounded-full flex flex-col items-center justify-center gap-1 shadow-xl transition-all duration-300 focus:outline-none
                   ${recording
-                    ? "bg-gradient-to-br from-red-500 to-rose-600 shadow-red-400/50 scale-110"
-                    : "bg-gradient-to-br from-violet-600 to-indigo-700 shadow-violet-500/40 hover:scale-105"
+                    ? "bg-red-500 shadow-red-400/50 scale-110"
+                    : "bg-violet-600 shadow-violet-500/40 hover:scale-105"
                   }`}
               >
                 {recording ? (
