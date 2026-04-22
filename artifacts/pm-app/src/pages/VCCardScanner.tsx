@@ -52,13 +52,27 @@ const CAT_META: Record<CardCategory, { label: string; color: string; bg: string;
   other:    { label: "Other",    color: "text-slate-700",   bg: "bg-slate-100 border-slate-200",    icon: TagIcon },
 };
 
-// ─── Camera modal: captures a single image and returns dataURL ─────────────
-function CameraCaptureModal({ side, onCapture, onClose }: { side: "Front" | "Back"; onCapture: (dataUrl: string) => void; onClose: () => void; }) {
+// ─── Auto-detect camera modal: captures front, prompts for back, auto-snaps ─
+type AutoCaptureResult = { front: string; back: string | null };
+
+function AutoCaptureModal({ onComplete, onClose }: { onComplete: (r: AutoCaptureResult) => void; onClose: () => void; }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const sampleRef = useRef<HTMLCanvasElement | null>(null);
+  const prevFrameRef = useRef<ImageData | null>(null);
+  const stableSinceRef = useRef<number>(0);
+  const rafRef = useRef<number | null>(null);
+  const cardDetectedRef = useRef<boolean>(false);
+
   const [error, setError] = useState<string>("");
   const [ready, setReady] = useState(false);
+  const [phase, setPhase] = useState<"front" | "ask-back" | "back" | "done">("front");
+  const [statusMsg, setStatusMsg] = useState("Looking for card…");
+  const [capturedFront, setCapturedFront] = useState<string | null>(null);
+  const [flash, setFlash] = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
 
+  // ─── camera bring-up ────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -78,80 +92,207 @@ function CameraCaptureModal({ side, onCapture, onClose }: { side: "Front" | "Bac
     })();
     return () => {
       cancelled = true;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
       streamRef.current?.getTracks().forEach(t => t.stop());
       streamRef.current = null;
     };
   }, []);
 
-  const snap = () => {
-    const v = videoRef.current; if (!v) return;
+  const snap = (): string | null => {
+    const v = videoRef.current; if (!v || !v.videoWidth) return null;
     const c = document.createElement("canvas");
     c.width = v.videoWidth; c.height = v.videoHeight;
-    const ctx = c.getContext("2d"); if (!ctx) return;
+    const ctx = c.getContext("2d"); if (!ctx) return null;
     ctx.drawImage(v, 0, 0);
-    onCapture(c.toDataURL("image/jpeg", 0.85));
-    onClose();
+    setFlash(true); setTimeout(() => setFlash(false), 220);
+    return c.toDataURL("image/jpeg", 0.88);
   };
+
+  // ─── auto-detection loop (runs while phase is "front" or "back") ───
+  useEffect(() => {
+    if (!ready || (phase !== "front" && phase !== "back")) return;
+    cardDetectedRef.current = false;
+    stableSinceRef.current = 0;
+    prevFrameRef.current = null;
+    setStatusMsg("Looking for card…");
+    setCountdown(null);
+
+    const sample = sampleRef.current || (sampleRef.current = document.createElement("canvas"));
+    sample.width = 96; sample.height = 60;
+    const sctx = sample.getContext("2d", { willReadFrequently: true })!;
+
+    let lastTick = 0;
+
+    const tick = (t: number) => {
+      rafRef.current = requestAnimationFrame(tick);
+      const v = videoRef.current; if (!v || v.readyState < 2) return;
+      if (t - lastTick < 140) return;  // ~7 fps sampling
+      lastTick = t;
+
+      try { sctx.drawImage(v, 0, 0, sample.width, sample.height); }
+      catch { return; }
+      const cur = sctx.getImageData(0, 0, sample.width, sample.height);
+
+      // brightness-based "card present" heuristic on centre region
+      let br = 0, count = 0;
+      const x0 = Math.floor(sample.width * 0.15), x1 = Math.floor(sample.width * 0.85);
+      const y0 = Math.floor(sample.height * 0.20), y1 = Math.floor(sample.height * 0.80);
+      for (let y = y0; y < y1; y += 2) {
+        for (let x = x0; x < x1; x += 2) {
+          const i = (y * sample.width + x) * 4;
+          br += (cur.data[i] + cur.data[i + 1] + cur.data[i + 2]) / 3;
+          count++;
+        }
+      }
+      const avgBr = br / count;
+      const cardLikely = avgBr > 70 && avgBr < 235;
+
+      // motion vs previous frame
+      let diff = 0;
+      if (prevFrameRef.current) {
+        const prev = prevFrameRef.current.data;
+        const data = cur.data;
+        let dSum = 0, dCount = 0;
+        for (let p = 0; p < data.length; p += 16) {
+          dSum += Math.abs(data[p] - prev[p]) + Math.abs(data[p + 1] - prev[p + 1]) + Math.abs(data[p + 2] - prev[p + 2]);
+          dCount++;
+        }
+        diff = dSum / (dCount * 3);
+      }
+      prevFrameRef.current = cur;
+
+      const stable = diff < 6;  // pixel-avg diff threshold
+
+      if (!cardLikely) {
+        stableSinceRef.current = 0;
+        setStatusMsg("Looking for card…");
+        setCountdown(null);
+        return;
+      }
+      if (!stable) {
+        stableSinceRef.current = 0;
+        setStatusMsg("Hold steady…");
+        setCountdown(null);
+        return;
+      }
+      if (stableSinceRef.current === 0) stableSinceRef.current = t;
+      const heldMs = t - stableSinceRef.current;
+      const remain = Math.max(0, 1100 - heldMs);
+      setStatusMsg("Card detected — capturing");
+      setCountdown(Math.ceil(remain / 1000));
+
+      if (heldMs >= 1100 && !cardDetectedRef.current) {
+        cardDetectedRef.current = true;
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        const img = snap();
+        if (!img) return;
+        if (phase === "front") {
+          setCapturedFront(img);
+          setPhase("ask-back");
+        } else {
+          setPhase("done");
+          onComplete({ front: capturedFront!, back: img });
+        }
+      }
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [ready, phase]);
+
+  const skipBack = () => {
+    setPhase("done");
+    onComplete({ front: capturedFront!, back: null });
+  };
+  const startBack = () => setPhase("back");
+
+  const sideLabel = phase === "back" ? "Back" : "Front";
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/85 flex items-center justify-center p-4">
       <div className="bg-slate-900 rounded-2xl overflow-hidden max-w-2xl w-full shadow-2xl">
         <div className="flex items-center justify-between px-5 py-3 border-b border-slate-800">
           <div className="flex items-center gap-2 text-white">
-            <Camera className="w-4 h-4" />
-            <span className="text-sm font-bold">Capture {side} of card</span>
+            <ScanLine className="w-4 h-4" />
+            <span className="text-sm font-bold">
+              Auto-scan · {phase === "ask-back" ? "Front captured" : `${sideLabel} side`}
+            </span>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
         </div>
+
         <div className="relative bg-black" style={{ aspectRatio: "16/10" }}>
           {error
             ? <div className="absolute inset-0 flex items-center justify-center text-rose-300 text-sm p-6 text-center">{error}</div>
             : <video ref={videoRef} className="w-full h-full object-contain" playsInline muted />}
+
           {/* Card-shaped guide */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="border-2 border-white/40 border-dashed rounded-xl" style={{ width: "78%", aspectRatio: "1.66/1" }} />
-          </div>
+          {(phase === "front" || phase === "back") && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div
+                className={`border-2 border-dashed rounded-xl transition-all ${
+                  countdown !== null ? "border-emerald-400" : "border-white/50"
+                }`}
+                style={{ width: "78%", aspectRatio: "1.66/1" }}
+              />
+            </div>
+          )}
+
+          {/* Front-captured preview overlay while asking for back */}
+          {phase === "ask-back" && capturedFront && (
+            <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-4 p-5">
+              <img src={capturedFront} alt="Front" className="max-h-[55%] rounded-lg shadow-xl border border-white/10" />
+              <p className="text-white text-sm font-semibold">Front captured. Does the card have a back side?</p>
+              <div className="flex items-center gap-2">
+                <button onClick={skipBack}
+                  className="px-5 py-2 rounded-lg text-xs font-bold bg-white/10 text-white hover:bg-white/20">
+                  No, finish
+                </button>
+                <button onClick={startBack}
+                  className="flex items-center gap-1.5 px-5 py-2 rounded-lg text-xs font-bold bg-emerald-500 hover:bg-emerald-600 text-white">
+                  <Camera className="w-3.5 h-3.5" /> Yes, capture back
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Status pill */}
+          {(phase === "front" || phase === "back") && !error && (
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/65 text-white text-[11px] font-semibold backdrop-blur">
+              {countdown !== null
+                ? <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
+                : <Loader2 className="w-3.5 h-3.5 animate-spin text-white/70" />}
+              <span>{statusMsg}{countdown !== null && countdown > 0 ? ` · ${countdown}` : ""}</span>
+            </div>
+          )}
+
+          {/* Flash effect */}
+          {flash && <div className="absolute inset-0 bg-white/80 animate-pulse pointer-events-none" />}
         </div>
-        <div className="px-5 py-4 flex items-center justify-between bg-slate-900">
-          <p className="text-[11px] text-slate-400">Align the {side.toLowerCase()} of the card inside the dashed box.</p>
-          <div className="flex items-center gap-2">
-            <button onClick={onClose} className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-300 hover:bg-slate-800">Cancel</button>
-            <button disabled={!ready || !!error} onClick={snap}
-              className="flex items-center gap-1.5 px-5 py-2 bg-white hover:bg-slate-100 disabled:opacity-40 text-slate-900 text-xs font-bold rounded-lg">
-              <Camera className="w-4 h-4" /> Capture
-            </button>
-          </div>
+
+        <div className="px-5 py-3 flex items-center justify-between bg-slate-900">
+          <p className="text-[11px] text-slate-400">
+            Hold the {sideLabel.toLowerCase()} of the card inside the box — capture is automatic.
+          </p>
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-300 hover:bg-slate-800">
+            Cancel
+          </button>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Image-input slot (front/back) ─────────────────────────────────────────
-function CardSideSlot({
-  side, value, onChange,
-}: { side: "front" | "back"; value: string | null; onChange: (v: string | null) => void; }) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [showCam, setShowCam] = useState(false);
+// ─── Image preview slot (read-only display of captured side) ───────────────
+function CardSidePreview({ side, value, onClear }: { side: "front" | "back"; value: string | null; onClear: () => void; }) {
   const label = side === "front" ? "Front" : "Back";
-
-  const onFile = (f: File) => {
-    const r = new FileReader();
-    r.onload = () => onChange(typeof r.result === "string" ? r.result : null);
-    r.readAsDataURL(f);
-  };
-
   return (
     <div className="flex-1">
-      {showCam && <CameraCaptureModal side={label as "Front" | "Back"} onCapture={onChange} onClose={() => setShowCam(false)} />}
-      <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden"
-        onChange={e => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }} />
       <div className="flex items-center justify-between mb-1.5">
         <span className={`text-[10px] font-bold uppercase tracking-widest ${side === "front" ? "text-slate-700" : "text-slate-500"}`}>
           {label} {side === "front" && <span className="text-rose-500">*</span>}
         </span>
         {value && (
-          <button onClick={() => onChange(null)} className="text-[10px] font-semibold text-slate-400 hover:text-rose-600 flex items-center gap-0.5">
+          <button onClick={onClear} className="text-[10px] font-semibold text-slate-400 hover:text-rose-600 flex items-center gap-0.5">
             <X className="w-3 h-3" /> Remove
           </button>
         )}
@@ -161,18 +302,10 @@ function CardSideSlot({
           <img src={value} alt={label} className="w-full h-full object-contain" />
         </div>
       ) : (
-        <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 transition-colors flex flex-col items-center justify-center text-center p-4 gap-2"
+        <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center text-center p-4 gap-1"
           style={{ aspectRatio: "1.66/1" }}>
-          <CreditCard className="w-8 h-8 text-slate-300" />
-          <p className="text-[11px] text-slate-500">Add the {label.toLowerCase()} of the visiting card</p>
-          <div className="flex items-center gap-1.5">
-            <button onClick={() => setShowCam(true)} className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-900 hover:bg-black text-white text-[11px] font-semibold rounded-md">
-              <Camera className="w-3 h-3" /> Camera
-            </button>
-            <button onClick={() => fileRef.current?.click()} className="flex items-center gap-1 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-slate-400 text-slate-700 text-[11px] font-semibold rounded-md">
-              <Upload className="w-3 h-3" /> Upload
-            </button>
-          </div>
+          <CreditCard className="w-7 h-7 text-slate-300" />
+          <p className="text-[11px] text-slate-500">{label} {side === "back" ? "(optional)" : ""}</p>
         </div>
       )}
     </div>
@@ -196,6 +329,10 @@ export default function VCCardScanner() {
   const [scanning, setScanning] = useState(false);
   const [saving, setSaving] = useState(false);
   const [extracted, setExtracted] = useState<Partial<VCard> | null>(null);
+  const [showAutoCam, setShowAutoCam] = useState(false);
+  const [autoStatus, setAutoStatus] = useState<string>("");
+  const uploadFrontRef = useRef<HTMLInputElement>(null);
+  const uploadBackRef = useRef<HTMLInputElement>(null);
 
   const fetchCards = async () => {
     setLoading(true);
@@ -220,18 +357,65 @@ export default function VCCardScanner() {
   useEffect(() => { fetchCards(); }, [filterCat]);
   useEffect(() => { if (tab === "report") fetchStats(); }, [tab]);
 
-  const onScan = async () => {
-    if (!front) return;
+  // Auto pipeline: scan → save (used after auto-capture or upload)
+  const runAutoPipeline = async (frontImg: string, backImg: string | null) => {
     setScanning(true);
+    setAutoStatus("Reading card with AI…");
+    let data: Partial<VCard> = {};
     try {
       const r = await fetch(`${BASE}/visiting-cards/scan`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ frontImage: front, backImage: back }),
+        body: JSON.stringify({ frontImage: frontImg, backImage: backImg }),
       });
-      const { data } = await r.json();
-      setExtracted({ ...(data || {}), category: (data?.category as CardCategory) || "lead" });
-    } catch (e) { alert("Scan failed: " + e); }
-    finally { setScanning(false); }
+      const j = await r.json();
+      data = j?.data || {};
+    } catch (e) {
+      setAutoStatus("");
+      setScanning(false);
+      setExtracted({ category: "lead" });
+      alert("Scan failed: " + e);
+      return;
+    }
+    setScanning(false);
+
+    const finalData: Partial<VCard> = { ...data, category: (data.category as CardCategory) || "lead" };
+    setExtracted(finalData);
+
+    // Auto-save
+    setSaving(true);
+    setAutoStatus("Saving contact…");
+    try {
+      const payload = {
+        ...finalData, frontImage: frontImg, backImage: backImg,
+        source: "scan", createdBy: user?.email || null,
+      };
+      await fetch(`${BASE}/visiting-cards`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      setAutoStatus("Saved!");
+      setTimeout(() => {
+        setFront(null); setBack(null); setExtracted(null); setAutoStatus("");
+        setTab("list");
+        fetchCards();
+      }, 700);
+    } catch (e) {
+      setAutoStatus("");
+      alert("Save failed: " + e);
+    } finally { setSaving(false); }
+  };
+
+  const onAutoCaptureComplete = (r: AutoCaptureResult) => {
+    setShowAutoCam(false);
+    setFront(r.front);
+    setBack(r.back);
+    runAutoPipeline(r.front, r.back);
+  };
+
+  // Manual scan (used only when user uploads images instead of auto-capture)
+  const onScan = async () => {
+    if (!front) return;
+    runAutoPipeline(front, back);
   };
 
   const onSave = async () => {
@@ -246,14 +430,34 @@ export default function VCCardScanner() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      // Reset
       setFront(null); setBack(null); setExtracted(null);
       setTab("list");
       fetchCards();
     } finally { setSaving(false); }
   };
 
-  const reset = () => { setFront(null); setBack(null); setExtracted(null); };
+  const reset = () => { setFront(null); setBack(null); setExtracted(null); setAutoStatus(""); };
+
+  const onUploadFile = (f: File, side: "front" | "back") => {
+    const r = new FileReader();
+    r.onload = () => {
+      const v = typeof r.result === "string" ? r.result : null;
+      if (!v) return;
+      if (side === "front") {
+        setFront(v);
+        // If only front uploaded, immediately ask whether to add a back
+        if (!back && confirm("Front uploaded. Does the card have a back side to add?")) {
+          uploadBackRef.current?.click();
+          return;
+        }
+        runAutoPipeline(v, back);
+      } else {
+        setBack(v);
+        if (front) runAutoPipeline(front, v);
+      }
+    };
+    r.readAsDataURL(f);
+  };
 
   const onDelete = async (id: number) => {
     if (!confirm("Delete this card?")) return;
@@ -306,32 +510,57 @@ export default function VCCardScanner() {
         {/* SCAN tab */}
         {tab === "scan" && (
           <div className="flex-1 overflow-y-auto p-6">
+            {showAutoCam && <AutoCaptureModal onComplete={onAutoCaptureComplete} onClose={() => setShowAutoCam(false)} />}
+            <input ref={uploadFrontRef} type="file" accept="image/*" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) onUploadFile(f, "front"); e.target.value = ""; }} />
+            <input ref={uploadBackRef} type="file" accept="image/*" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) onUploadFile(f, "back"); e.target.value = ""; }} />
+
             <div className="max-w-5xl mx-auto space-y-5">
-              {/* Step 1: capture */}
+              {/* Step 1: auto-capture */}
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Step 1</p>
-                    <h2 className="text-base font-bold text-slate-900">Capture both sides of the card</h2>
+                    <h2 className="text-base font-bold text-slate-900">Auto-scan visiting card</h2>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Camera detects the card automatically · asks for the back side · saves the contact for you.
+                    </p>
                   </div>
-                  {(front || back) && (
+                  {(front || back || extracted) && !scanning && !saving && (
                     <button onClick={reset} className="text-xs font-semibold text-slate-400 hover:text-rose-600 flex items-center gap-1">
                       <RefreshCw className="w-3 h-3" /> Reset
                     </button>
                   )}
                 </div>
+
                 <div className="flex flex-col sm:flex-row gap-4">
-                  <CardSideSlot side="front" value={front} onChange={setFront} />
-                  <CardSideSlot side="back" value={back} onChange={setBack} />
+                  <CardSidePreview side="front" value={front} onClear={() => setFront(null)} />
+                  <CardSidePreview side="back" value={back} onClear={() => setBack(null)} />
                 </div>
-                <div className="mt-4 flex items-center justify-between">
-                  <p className="text-[11px] text-slate-500">
-                    Tip: a clear, well-lit photo improves AI accuracy. Back is optional but recommended.
-                  </p>
-                  <button onClick={onScan} disabled={!front || scanning}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-black disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl shadow-sm">
-                    {scanning ? <><Loader2 className="w-4 h-4 animate-spin" /> Extracting…</> : <><Sparkles className="w-4 h-4" /> Scan with AI</>}
-                  </button>
+
+                <div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-[12px] text-slate-600 min-h-[24px]">
+                    {(scanning || saving) && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500" />}
+                    {autoStatus && <span className="font-semibold">{autoStatus}</span>}
+                    {!scanning && !saving && !autoStatus && (
+                      <span className="text-slate-500">Tap “Auto-scan” — capture &amp; save are fully automatic.</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => uploadFrontRef.current?.click()} disabled={scanning || saving}
+                      className="flex items-center gap-1.5 px-4 py-2.5 bg-white border border-slate-200 hover:border-slate-400 disabled:opacity-50 text-slate-700 text-xs font-bold rounded-xl">
+                      <Upload className="w-3.5 h-3.5" /> Upload
+                    </button>
+                    <button onClick={() => setShowAutoCam(true)} disabled={scanning || saving}
+                      className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-black disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl shadow-sm">
+                      {scanning
+                        ? <><Loader2 className="w-4 h-4 animate-spin" /> Extracting…</>
+                        : saving
+                          ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
+                          : <><ScanLine className="w-4 h-4" /> Auto-scan</>}
+                    </button>
+                  </div>
                 </div>
               </div>
 
