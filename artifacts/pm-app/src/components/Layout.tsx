@@ -886,15 +886,8 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
     try { localStorage.setItem(COLLAPSED_KEY, String(value)); } catch {}
   };
 
-  // Sync with DB-applied sidebar preference (dispatched by applyUserSettingsFromDb)
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ collapsed: boolean }>).detail;
-      setCollapsedState(detail.collapsed);
-    };
-    window.addEventListener("fm_sidebar_change", handler);
-    return () => window.removeEventListener("fm_sidebar_change", handler);
-  }, []);
+  // Sidebar always starts collapsed on app load — ignore any saved preference
+  // that would expand it automatically. The user can still expand it manually.
 
   useEffect(() => {
     // Keep the sidebar / launcher open when navigating between pages.
