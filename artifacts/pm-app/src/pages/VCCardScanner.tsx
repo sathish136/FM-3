@@ -212,7 +212,7 @@ function AutoCaptureModal({ onComplete, onClose }: { onComplete: (image: string)
       setStatusMsg("Card detected — capturing");
       setCountdown(Math.ceil(remain / 1000));
 
-      if (heldMs >= 1100 && !cardDetectedRef.current) {
+      if (heldMs >= 450 && !cardDetectedRef.current) {
         cardDetectedRef.current = true;
         if (rafRef.current) cancelAnimationFrame(rafRef.current);
         const img = snap();
@@ -225,6 +225,17 @@ function AutoCaptureModal({ onComplete, onClose }: { onComplete: (image: string)
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [ready, done]);
 
+  // Manual capture (tap on the video to snap right away)
+  const manualCapture = () => {
+    if (done || !ready || cardDetectedRef.current) return;
+    cardDetectedRef.current = true;
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    const img = snap();
+    if (!img) { cardDetectedRef.current = false; return; }
+    setDone(true);
+    onComplete(img);
+  };
+
   return (
     <div className="fixed inset-0 z-[100] bg-black/85 flex items-center justify-center p-4">
       <div className="bg-slate-900 rounded-2xl overflow-hidden max-w-2xl w-full shadow-2xl">
@@ -236,7 +247,7 @@ function AutoCaptureModal({ onComplete, onClose }: { onComplete: (image: string)
           <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
         </div>
 
-        <div className="relative bg-black" style={{ aspectRatio: "16/10" }}>
+        <div className="relative bg-black cursor-pointer select-none" style={{ aspectRatio: "16/10" }} onClick={manualCapture}>
           {error
             ? <div className="absolute inset-0 flex items-center justify-center text-rose-300 text-sm p-6 text-center">{error}</div>
             : <video ref={videoRef} className="w-full h-full object-contain" playsInline muted />}
@@ -267,7 +278,7 @@ function AutoCaptureModal({ onComplete, onClose }: { onComplete: (image: string)
 
         <div className="px-5 py-3 flex items-center justify-between bg-slate-900">
           <p className="text-[11px] text-slate-400">
-            Hold the card inside the box — capture is automatic.
+            Hold the card inside the box · tap the screen to capture instantly.
           </p>
           <button onClick={onClose} className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-300 hover:bg-slate-800">
             Cancel
@@ -298,10 +309,16 @@ function CardSidePreview({ side, value, onClear }: { side: "front" | "back"; val
           <img src={value} alt={label} className="w-full h-full object-contain" />
         </div>
       ) : (
-        <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center text-center p-4 gap-1"
+        <div className="relative rounded-xl border-2 border-dashed border-slate-300 bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col items-center justify-center text-center p-4 gap-2 overflow-hidden"
           style={{ aspectRatio: "1.66/1" }}>
-          <CreditCard className="w-7 h-7 text-slate-300" />
-          <p className="text-[11px] text-slate-500">{label} {side === "back" ? "(optional)" : ""}</p>
+          <div className="relative w-14 h-14 rounded-2xl bg-white shadow-sm border border-slate-200 flex items-center justify-center">
+            <ScanLine className="w-7 h-7 text-slate-700" />
+            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 ring-2 ring-white flex items-center justify-center">
+              <Sparkles className="w-2.5 h-2.5 text-white" />
+            </span>
+          </div>
+          <p className="text-[12px] font-semibold text-slate-700">No card yet</p>
+          <p className="text-[10px] text-slate-500 leading-tight">Tap <span className="font-semibold text-slate-700">Auto-scan</span> or <span className="font-semibold text-slate-700">Upload</span> to begin</p>
         </div>
       )}
     </div>
@@ -370,25 +387,28 @@ export default function VCCardScanner() {
       img.src = dataUrl;
     });
 
-  const playBeep = () => {
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const playBeep = async () => {
     try {
       const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
       if (!Ctx) return;
-      const ctx = new Ctx();
-      const beep = (freq: number, start: number, dur: number) => {
+      if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
+      const ctx = audioCtxRef.current!;
+      if (ctx.state === "suspended") await ctx.resume();
+      const now = ctx.currentTime;
+      const tone = (freq: number, start: number, dur: number, type: OscillatorType = "sine") => {
         const o = ctx.createOscillator();
         const g = ctx.createGain();
-        o.type = "sine"; o.frequency.value = freq;
+        o.type = type; o.frequency.value = freq;
         o.connect(g); g.connect(ctx.destination);
-        g.gain.setValueAtTime(0, ctx.currentTime + start);
-        g.gain.linearRampToValueAtTime(0.25, ctx.currentTime + start + 0.01);
-        g.gain.linearRampToValueAtTime(0, ctx.currentTime + start + dur);
-        o.start(ctx.currentTime + start);
-        o.stop(ctx.currentTime + start + dur + 0.02);
+        g.gain.setValueAtTime(0.0001, now + start);
+        g.gain.exponentialRampToValueAtTime(0.6, now + start + 0.015);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+        o.start(now + start);
+        o.stop(now + start + dur + 0.02);
       };
-      beep(880, 0, 0.12);
-      beep(1320, 0.14, 0.16);
-      setTimeout(() => ctx.close().catch(() => {}), 500);
+      tone(880, 0, 0.16);
+      tone(1320, 0.18, 0.22);
     } catch {}
   };
 
