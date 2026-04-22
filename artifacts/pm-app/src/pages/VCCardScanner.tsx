@@ -408,6 +408,21 @@ export default function VCCardScanner() {
   const [autoStatus, setAutoStatus] = useState<string>("");
   const uploadRef = useRef<HTMLInputElement>(null);
 
+  // Default tag (persists in browser) — auto-applied to new scans
+  const [defaultTag, setDefaultTag] = useState<string>(
+    () => (typeof window !== "undefined" && localStorage.getItem("vc_default_tag")) || ""
+  );
+  useEffect(() => {
+    try { localStorage.setItem("vc_default_tag", defaultTag); } catch {}
+  }, [defaultTag]);
+  const mergeDefaultTag = (tags: string | null | undefined): string | null => {
+    const dt = defaultTag.trim();
+    if (!dt) return tags ?? null;
+    const list = (tags || "").split(",").map(s => s.trim()).filter(Boolean);
+    if (!list.some(t => t.toLowerCase() === dt.toLowerCase())) list.unshift(dt);
+    return list.join(", ");
+  };
+
   const fetchCards = async () => {
     setLoading(true);
     try {
@@ -499,7 +514,7 @@ export default function VCCardScanner() {
         city: data.city ?? null,
         country: data.country ?? null,
         notes: data.notes ?? null,
-        tags: data.tags ?? null,
+        tags: mergeDefaultTag(data.tags),
         rawText: data.rawText ?? null,
         category: (data.category as CardCategory) || "lead",
       };
@@ -626,6 +641,24 @@ export default function VCCardScanner() {
                       <RefreshCw className="w-3 h-3" /> Reset
                     </button>
                   )}
+                </div>
+
+                {/* Default tag — auto-applied to every scan, e.g. expo or event name */}
+                <div className="mb-4 flex flex-col sm:flex-row sm:items-center gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200">
+                  <div className="flex items-center gap-2 shrink-0">
+                    <TagIcon className="w-4 h-4 text-amber-700" />
+                    <label className="text-[11px] font-bold uppercase tracking-widest text-amber-800">Default tag</label>
+                  </div>
+                  <input
+                    type="text"
+                    value={defaultTag}
+                    onChange={e => setDefaultTag(e.target.value)}
+                    placeholder="e.g. ExpoMumbai2026, IMTEX, follow-up…"
+                    className="flex-1 bg-white border border-amber-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-amber-500"
+                  />
+                  <p className="text-[10px] text-amber-700 sm:max-w-[180px] leading-tight">
+                    Added to every new scan — handy at expos &amp; events.
+                  </p>
                 </div>
 
                 <div className="max-w-md">
@@ -771,11 +804,11 @@ export default function VCCardScanner() {
                       return (
                         <li key={c.id}>
                           <button onClick={() => setSelected(c)}
-                            className={`w-full flex items-center gap-3 px-5 py-3 hover:bg-slate-50 transition-colors text-left ${selected?.id === c.id ? "bg-slate-50" : ""}`}>
-                            <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 overflow-hidden">
+                            className={`w-full flex items-center gap-4 px-5 py-3 hover:bg-slate-50 transition-colors text-left ${selected?.id === c.id ? "bg-slate-50" : ""}`}>
+                            <div className="w-20 h-12 rounded-lg bg-white border border-slate-200 shadow-sm flex items-center justify-center shrink-0 overflow-hidden">
                               {c.frontImage
                                 ? <img src={c.frontImage} alt="" className="w-full h-full object-cover" />
-                                : <UserIcon className="w-4 h-4 text-slate-400" />}
+                                : <UserIcon className="w-5 h-5 text-slate-300" />}
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
@@ -818,10 +851,11 @@ export default function VCCardScanner() {
                   </div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-5 space-y-4">
-                  <div className="grid grid-cols-2 gap-3">
-                    <CardImageView label="Front" src={selected.frontImage} />
-                    <CardImageView label="Back"  src={selected.backImage} />
-                  </div>
+                  {selected.frontImage && (
+                    <div className="max-w-md">
+                      <CardImageView label="Card" src={selected.frontImage} />
+                    </div>
+                  )}
                   <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2.5">
                     <h3 className="text-xl font-bold text-slate-900">{selected.name || "(unnamed)"}</h3>
                     <p className="text-sm text-slate-600">{[selected.designation, selected.company, selected.department].filter(Boolean).join(" · ")}</p>
