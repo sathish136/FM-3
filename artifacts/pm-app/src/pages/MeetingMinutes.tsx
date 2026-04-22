@@ -1105,7 +1105,7 @@ type Block =
 
 const PARAGRAPH_GAP_MS = 4000; // commit a speech paragraph after 4s of silence
 const AUTO_LANGS = ["en-IN", "ta-IN", "hi-IN"];
-const CHUNK_MS = 3500; // upload an audio chunk to Whisper roughly every 3.5s
+const DG_TIMESLICE_MS = 250; // send a small audio frame to Deepgram every 250ms
 
 // Pick a MediaRecorder mime type the browser actually supports
 function pickRecorderMime(): string {
@@ -1119,6 +1119,12 @@ function pickRecorderMime(): string {
     try { if ((window as any).MediaRecorder?.isTypeSupported?.(m)) return m; } catch {}
   }
   return "";
+}
+
+// Build the Deepgram proxy WebSocket URL on the same origin, swapping http(s)→ws(s).
+function buildDeepgramWsUrl(): string {
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${proto}//${window.location.host}/api/deepgram-ws?lang=multi`;
 }
 
 function CameraCaptureModal({ onCapture, onClose }: { onCapture: (dataUrl: string) => void; onClose: () => void }) {
@@ -1218,11 +1224,11 @@ function LiveSpeechMinutesView({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
 
-  // Chunked Whisper recording refs
+  // Deepgram realtime streaming refs
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
-  const recorderMimeRef = useRef<string>("");
-  const chunkCycleRef = useRef<number | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const wsReadyRef = useRef(false);
   const isRecordingRef = useRef(false);
   const isPausedRef = useRef(false);
 
@@ -1287,61 +1293,95 @@ function LiveSpeechMinutesView({
     if (!detected.isEnglish) translateBlock(id, text, detected.lang);
   };
 
-  // ─── Chunked Whisper recording ────────────────────────────────────────────
+  // ─── Deepgram realtime streaming ──────────────────────────────────────────
   const teardownStream = () => {
-    try { recorderRef.current?.stop(); } catch {}
+    try { recorderRef.current?.state !== "inactive" && recorderRef.current?.stop(); } catch {}
     recorderRef.current = null;
-    if (chunkCycleRef.current) { window.clearTimeout(chunkCycleRef.current); chunkCycleRef.current = null; }
+    try {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        try { wsRef.current.send(JSON.stringify({ type: "stop" })); } catch {}
+        wsRef.current.close();
+      }
+    } catch {}
+    wsRef.current = null;
+    wsReadyRef.current = false;
     if (streamRef.current) {
       try { streamRef.current.getTracks().forEach(t => t.stop()); } catch {}
       streamRef.current = null;
     }
   };
 
-  // Start a fresh MediaRecorder that records exactly one CHUNK_MS slice,
-  // then on stop uploads to Whisper and immediately starts the next chunk.
-  const startChunkCycle = () => {
-    if (!isRecordingRef.current || isPausedRef.current) return;
-    const stream = streamRef.current;
-    if (!stream) return;
+  // Open the proxy WebSocket and start the recorder. Audio frames are sent every
+  // DG_TIMESLICE_MS (250ms) so Deepgram can return interim transcripts in real time.
+  const startStreaming = (stream: MediaStream) => {
+    const ws = new WebSocket(buildDeepgramWsUrl());
+    ws.binaryType = "arraybuffer";
+    wsRef.current = ws;
+    wsReadyRef.current = false;
 
-    let mr: MediaRecorder;
-    try {
-      mr = recorderMimeRef.current
-        ? new MediaRecorder(stream, { mimeType: recorderMimeRef.current })
-        : new MediaRecorder(stream);
-    } catch {
-      try { mr = new MediaRecorder(stream); } catch { return; }
-    }
-    recorderRef.current = mr;
-
-    const parts: BlobPart[] = [];
-    mr.ondataavailable = (e) => { if (e.data && e.data.size > 0) parts.push(e.data); };
-    mr.onstop = async () => {
-      // Schedule the next cycle immediately so capture is continuous
-      if (isRecordingRef.current && !isPausedRef.current) {
-        chunkCycleRef.current = window.setTimeout(startChunkCycle, 0);
-      }
-      const mime = mr.mimeType || recorderMimeRef.current || "audio/webm";
-      const blob = new Blob(parts, { type: mime });
-      if (blob.size < 2000) return; // too small to contain speech
-
+    ws.onopen = () => {
+      // Start MediaRecorder once the socket is open so no audio is lost.
+      const mime = pickRecorderMime();
+      let mr: MediaRecorder;
       try {
-        const ext = mime.includes("ogg") ? "ogg" : mime.includes("mp4") ? "mp4" : "webm";
-        const fd = new FormData();
-        fd.append("audio", blob, `chunk.${ext}`);
-        const r = await fetch(`${BASE}/transcribe`, { method: "POST", body: fd });
-        if (!r.ok) return;
-        const { transcript } = await r.json();
-        if (transcript && transcript.trim()) appendSpeechChunk(transcript);
+        mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      } catch {
+        try { mr = new MediaRecorder(stream); } catch { return; }
+      }
+      recorderRef.current = mr;
+      mr.ondataavailable = async (e) => {
+        if (!e.data || e.data.size === 0) return;
+        if (ws.readyState !== WebSocket.OPEN) return;
+        try {
+          const buf = await e.data.arrayBuffer();
+          ws.send(buf);
+        } catch {}
+      };
+      mr.start(DG_TIMESLICE_MS);
+    };
+
+    ws.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(typeof ev.data === "string" ? ev.data : "");
+        // Server "ready" frame
+        if (msg.type === "ready") { wsReadyRef.current = true; return; }
+        if (msg.type === "error") { console.error("[Deepgram] error:", msg.message); return; }
+
+        // Deepgram "Results" frame
+        if (msg.type === "Results") {
+          const alt = msg.channel?.alternatives?.[0];
+          const transcript: string = (alt?.transcript || "").trim();
+          if (!transcript) return;
+          const detected = detectScript(transcript);
+
+          if (msg.is_final) {
+            // Final hypothesis for this segment.
+            // speech_final = end of an utterance → commit a block.
+            if (msg.speech_final) {
+              appendSpeechChunk(transcript);
+            } else {
+              // Show as a stable interim while we wait for the utterance end.
+              setLiveText(transcript);
+              setLiveDetected({ lang: detected.lang, flag: detected.flag });
+            }
+          } else {
+            // Live interim — updates several times per second.
+            setLiveText(transcript);
+            setLiveDetected({ lang: detected.lang, flag: detected.flag });
+          }
+          return;
+        }
+
+        // UtteranceEnd frame: flush whatever is currently shown as live text
+        if (msg.type === "UtteranceEnd") {
+          // Nothing to do — final frames already handled above.
+          return;
+        }
       } catch {}
     };
 
-    mr.start();
-    // Stop after CHUNK_MS so onstop fires with a complete, decodable file
-    chunkCycleRef.current = window.setTimeout(() => {
-      try { mr.state === "recording" && mr.stop(); } catch {}
-    }, CHUNK_MS);
+    ws.onerror = () => { /* surfaced via close */ };
+    ws.onclose = () => { wsReadyRef.current = false; };
   };
 
   const startRecording = async () => {
@@ -1354,7 +1394,6 @@ function LiveSpeechMinutesView({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
       streamRef.current = stream;
-      recorderMimeRef.current = pickRecorderMime();
       isRecordingRef.current = true;
       isPausedRef.current = false;
       setIsRecording(true);
@@ -1362,7 +1401,7 @@ function LiveSpeechMinutesView({
       setDuration(0);
       setLiveText("");
       setLiveDetected(null);
-      startChunkCycle();
+      startStreaming(stream);
     } catch (e) {
       alert("Could not access the microphone. Please allow microphone access in your browser.");
     }
@@ -1371,21 +1410,18 @@ function LiveSpeechMinutesView({
   const pauseRecording = () => {
     isPausedRef.current = true;
     setIsPaused(true);
-    if (chunkCycleRef.current) { window.clearTimeout(chunkCycleRef.current); chunkCycleRef.current = null; }
-    try { recorderRef.current?.state === "recording" && recorderRef.current.stop(); } catch {}
+    try { recorderRef.current?.state === "recording" && recorderRef.current.pause(); } catch {}
   };
 
   const resumeRecording = () => {
     isPausedRef.current = false;
     setIsPaused(false);
-    startChunkCycle();
+    try { recorderRef.current?.state === "paused" && recorderRef.current.resume(); } catch {}
   };
 
   const stopRecording = () => {
     isRecordingRef.current = false;
     isPausedRef.current = false;
-    if (chunkCycleRef.current) { window.clearTimeout(chunkCycleRef.current); chunkCycleRef.current = null; }
-    try { recorderRef.current?.state === "recording" && recorderRef.current.stop(); } catch {}
     teardownStream();
     setLiveText("");
     setLiveDetected(null);
@@ -1573,7 +1609,7 @@ function LiveSpeechMinutesView({
               <span className="font-semibold">{liveDetected.lang}</span>
             </span>
           )}
-          <span className="text-[11px] text-slate-500 hidden sm:inline">· transcribed every {Math.round(CHUNK_MS / 1000)}s with auto-translate</span>
+          <span className="text-[11px] text-slate-500 hidden sm:inline">· live captions · auto-translate</span>
           <div className="ml-auto flex items-center gap-1.5">
             {isPaused
               ? <button onClick={resumeRecording} className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-md transition-colors">
