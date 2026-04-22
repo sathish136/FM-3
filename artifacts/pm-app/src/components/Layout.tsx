@@ -531,7 +531,22 @@ function AppItem({ item, location, theme }: { item: any; location: string; theme
   );
 }
 
+const SIDEBAR_SCROLL_KEY = "fm_sidebar_scroll";
+function useSidebarScrollMemory() {
+  const ref = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    const saved = Number(sessionStorage.getItem(SIDEBAR_SCROLL_KEY) || "0");
+    if (!Number.isNaN(saved)) el.scrollTop = saved;
+    const onScroll = () => { sessionStorage.setItem(SIDEBAR_SCROLL_KEY, String(el.scrollTop)); };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+  return ref;
+}
+
 function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, toggleGroup, setCollapsed, setMobileSidebarOpen, aiTrigger, setAiTrigger, logout, theme, user, slideshowProps, visibleNavGroups: _visibleNavGroups }: any) {
+  const navScrollRef = useSidebarScrollMemory();
   const ss = slideshowProps ?? {};
   const groups = (_visibleNavGroups ?? navGroups) as typeof navGroups;
   return (
@@ -559,7 +574,7 @@ function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, to
         </button>
       </div>
 
-      <nav className="relative flex-1 overflow-y-auto py-3 px-2 space-y-0.5 custom-scrollbar">
+      <nav ref={navScrollRef as any} className="relative flex-1 overflow-y-auto py-3 px-2 space-y-0.5 custom-scrollbar">
         {groups.map((group, gi) => {
           const isGroupExpanded = expandedGroups.includes(group.label);
           const groupHasActive = group.items.some(
@@ -701,6 +716,7 @@ function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, to
 }
 
 function MiniSidebar({ location, expandedItems, toggleExpand, setCollapsed, aiTrigger, setAiTrigger, logout, theme, user, darkMode, toggleDarkMode, setShowThemePicker, visibleAllNavItems: _visibleAllNavItems }: any) {
+  const navScrollRef = useSidebarScrollMemory();
   const navItems = (_visibleAllNavItems ?? allNavItems) as typeof allNavItems;
   return (
     <div className="flex flex-col h-full items-center relative overflow-x-hidden">
@@ -711,7 +727,7 @@ function MiniSidebar({ location, expandedItems, toggleExpand, setCollapsed, aiTr
           <span style={{ color: "#22d3ee", textShadow: "0 0 8px rgba(34,211,238,0.8)" }}>M</span>
         </span>
       </div>
-      <nav className="relative flex flex-col items-center gap-0.5 w-full px-2 flex-1 py-3 overflow-y-auto overflow-x-hidden scrollbar-none">
+      <nav ref={navScrollRef as any} className="relative flex flex-col items-center gap-0.5 w-full px-2 flex-1 py-3 overflow-y-auto overflow-x-hidden scrollbar-none">
         {navItems.map((item) => {
           const isActive = location === item.path || item.children?.some((c: any) => c.path === location);
           const Icon = item.icon;
