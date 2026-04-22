@@ -351,6 +351,28 @@ export default function VCCardScanner() {
   useEffect(() => { fetchCards(); }, [filterCat]);
   useEffect(() => { if (tab === "report") fetchStats(); }, [tab]);
 
+  const playBeep = () => {
+    try {
+      const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      const beep = (freq: number, start: number, dur: number) => {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = "sine"; o.frequency.value = freq;
+        o.connect(g); g.connect(ctx.destination);
+        g.gain.setValueAtTime(0, ctx.currentTime + start);
+        g.gain.linearRampToValueAtTime(0.25, ctx.currentTime + start + 0.01);
+        g.gain.linearRampToValueAtTime(0, ctx.currentTime + start + dur);
+        o.start(ctx.currentTime + start);
+        o.stop(ctx.currentTime + start + dur + 0.02);
+      };
+      beep(880, 0, 0.12);
+      beep(1320, 0.14, 0.16);
+      setTimeout(() => ctx.close().catch(() => {}), 500);
+    } catch {}
+  };
+
   // Run AI scan — user reviews & saves manually afterwards
   const runScan = async (img: string) => {
     setScanning(true);
@@ -380,6 +402,7 @@ export default function VCCardScanner() {
       };
       setExtracted(next);
       setAutoStatus("Review the details below, then tap Save.");
+      playBeep();
     } catch (e) {
       setAutoStatus("");
       setExtracted({ category: "lead" });
