@@ -4,6 +4,7 @@ import {
   X, Save, Loader2, CheckCircle, Clock, Mic,
   Square, Type, Radio, MapPin, Search, FolderOpen,
   Printer, MessageSquare, Mail, ChevronDown, Globe,
+  Camera, Image as ImageIcon, StickyNote, Paperclip, Pause, Play,
 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRecording, getGlobalRec } from "@/contexts/RecordingContext";
@@ -28,7 +29,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
 
 function ModeBadge({ mode }: { mode: string }) {
   if (mode === "record") return <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[9px] font-bold tracking-wide text-red-600 bg-red-50 border border-red-200"><Mic className="w-2 h-2" />REC</span>;
-  if (mode === "speech") return <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[9px] font-bold tracking-wide text-teal-600 bg-teal-50 border border-teal-200"><Globe className="w-2 h-2" />SPEECH</span>;
+  if (mode === "speech") return <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[9px] font-bold tracking-wide text-emerald-700 bg-emerald-50 border border-emerald-200"><Users className="w-2 h-2" />CUSTOMER</span>;
   return <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded text-[9px] font-bold tracking-wide text-blue-600 bg-blue-50 border border-blue-200"><Type className="w-2 h-2" />MANUAL</span>;
 }
 
@@ -995,6 +996,7 @@ function MeetingReport({ meeting, onClose, preparedBy, preparedByDesignation, us
 
 // ─── Live Speech Minutes Tab ──────────────────────────────────────────────────
 const SPEECH_LANGS = [
+  { code: "auto",  label: "Auto Detect", native: "Multi-language",   flag: "🌐" },
   { code: "en-IN", label: "English",    native: "English",          flag: "🇬🇧" },
   { code: "ta-IN", label: "Tamil",      native: "தமிழ்",            flag: "🇮🇳" },
   { code: "hi-IN", label: "Hindi",      native: "हिन्दी",           flag: "🇮🇳" },
@@ -1096,7 +1098,84 @@ function detectScript(text: string): { lang: string; flag: string; isEnglish: bo
   return { lang: name, flag, isEnglish: false };
 }
 
-type LiveEntry = { id: number; text: string; translated: string | null; ts: string; detectedLang: string; detectedFlag: string; isEnglish: boolean; translating: boolean };
+type Block =
+  | { kind: "speech"; id: number; text: string; translated: string | null; ts: string; tsMs: number; detectedLang: string; detectedFlag: string; isEnglish: boolean; translating: boolean }
+  | { kind: "note"; id: number; text: string; ts: string; tsMs: number }
+  | { kind: "image"; id: number; dataUrl: string; caption: string; ts: string; tsMs: number; source: "upload" | "capture" };
+
+const PARAGRAPH_GAP_MS = 4000; // commit a speech paragraph after 4s of silence
+const AUTO_LANGS = ["en-IN", "ta-IN", "hi-IN"];
+
+function CameraCaptureModal({ onCapture, onClose }: { onCapture: (dataUrl: string) => void; onClose: () => void }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => {});
+        }
+      } catch (e: any) {
+        setError(e?.message || "Could not access camera");
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+    };
+  }, []);
+
+  const snap = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    const w = v.videoWidth || 1280;
+    const h = v.videoHeight || 720;
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(v, 0, 0, w, h);
+    const dataUrl = c.toDataURL("image/jpeg", 0.85);
+    onCapture(dataUrl);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <Camera className="w-4 h-4 text-slate-700" />
+            <span className="text-sm font-semibold text-slate-800">Capture Photo</span>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="bg-black relative aspect-video flex items-center justify-center">
+          {error
+            ? <p className="text-white/80 text-sm px-4 text-center">{error}</p>
+            : <video ref={videoRef} playsInline muted className="w-full h-full object-contain" />
+          }
+        </div>
+        <div className="flex items-center justify-between px-4 py-3 bg-slate-50">
+          <p className="text-[11px] text-slate-500">Photo will be attached to the meeting timeline.</p>
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200 rounded-lg">Cancel</button>
+            <button onClick={snap} disabled={!!error} className="flex items-center gap-1.5 px-4 py-1.5 bg-slate-900 hover:bg-black disabled:opacity-40 text-white text-xs font-semibold rounded-lg">
+              <Camera className="w-3.5 h-3.5" /> Capture
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function LiveSpeechMinutesView({
   onSaved,
@@ -1105,45 +1184,102 @@ function LiveSpeechMinutesView({
   onSaved: (meeting: Meeting) => void;
   createdBy: string;
 }) {
-  const [lang, setLang] = useState("en-IN");
+  const [lang, setLang] = useState("auto");
   const [isRecording, setIsRecording] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [liveText, setLiveText] = useState("");
-  const [entries, setEntries] = useState<LiveEntry[]>([]);
+  const [blocks, setBlocks] = useState<Block[]>([]);
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [venue, setVenue] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [liveDetected, setLiveDetected] = useState<{ lang: string; flag: string } | null>(null);
-  const recognitionRef = useRef<any>(null);
-  const liveTextRef = useRef("");
-  const entryCountRef = useRef(0);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [showCamera, setShowCamera] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Speech recognition refs
+  const recognitionsRef = useRef<any[]>([]);
   const isRecordingRef = useRef(false);
+  const isPausedRef = useRef(false);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [entries, liveText]);
+  // Paragraph buffer — accumulates final segments until silence gap
+  const paragraphBufRef = useRef<string>("");
+  const paragraphLangRef = useRef<string>("");
+  const paragraphTimerRef = useRef<number | null>(null);
+  const paragraphStartedAtRef = useRef<number>(0);
 
-  const translateEntry = async (id: number, text: string, sourceLang: string) => {
-    setEntries(prev => prev.map(e => e.id === id ? { ...e, translating: true } : e));
+  const idCounterRef = useRef(0);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [blocks, liveText]);
+  useEffect(() => () => {
+    recognitionsRef.current.forEach(r => { try { r.onend = null; r.stop(); } catch {} });
+    if (paragraphTimerRef.current) window.clearTimeout(paragraphTimerRef.current);
+  }, []);
+
+  const nowTs = () => ({ ts: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), tsMs: Date.now() });
+
+  const translateBlock = async (id: number, text: string, sourceLang: string) => {
+    setBlocks(prev => prev.map(b => b.kind === "speech" && b.id === id ? { ...b, translating: true } : b));
     try {
       const r = await fetch(`${BASE}/meeting-minutes/translate`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, sourceLang }),
       });
       const { translated } = await r.json();
-      setEntries(prev => prev.map(e => e.id === id ? { ...e, translated, translating: false } : e));
+      setBlocks(prev => prev.map(b => b.kind === "speech" && b.id === id ? { ...b, translated, translating: false } : b));
     } catch {
-      setEntries(prev => prev.map(e => e.id === id ? { ...e, translating: false } : e));
+      setBlocks(prev => prev.map(b => b.kind === "speech" && b.id === id ? { ...b, translating: false } : b));
     }
   };
 
-  const startRecording = () => {
+  // Commit accumulated speech buffer as one paragraph block
+  const commitParagraph = () => {
+    const text = paragraphBufRef.current.trim().replace(/\s+/g, " ");
+    paragraphBufRef.current = "";
+    if (paragraphTimerRef.current) { window.clearTimeout(paragraphTimerRef.current); paragraphTimerRef.current = null; }
+    if (!text) return;
+    const detected = detectScript(text);
+    const id = ++idCounterRef.current;
+    const t = nowTs();
+    const block: Block = {
+      kind: "speech", id, text, translated: null, ts: t.ts, tsMs: t.tsMs,
+      detectedLang: detected.lang, detectedFlag: detected.flag, isEnglish: detected.isEnglish, translating: false,
+    };
+    setBlocks(prev => [...prev, block]);
+    if (!detected.isEnglish) translateBlock(id, text, detected.lang);
+    paragraphStartedAtRef.current = 0;
+    paragraphLangRef.current = "";
+  };
+
+  const scheduleCommit = () => {
+    if (paragraphTimerRef.current) window.clearTimeout(paragraphTimerRef.current);
+    paragraphTimerRef.current = window.setTimeout(commitParagraph, PARAGRAPH_GAP_MS);
+  };
+
+  // Decide if we accept a final result from a recognizer (auto-mode arbitration)
+  const acceptFinal = (text: string, recognizerLang: string) => {
+    if (lang !== "auto") return true;
+    const detected = detectScript(text);
+    // For Tamil/Hindi recognizers: accept if their script is detected
+    if (recognizerLang === "ta-IN") return detected.lang === "Tamil";
+    if (recognizerLang === "hi-IN") return detected.lang === "Hindi";
+    // English recognizer accepts only Latin text (and only if no other recognizer claimed Tamil/Hindi for same window)
+    if (recognizerLang === "en-IN") return detected.isEnglish;
+    return true;
+  };
+
+  const startRecognizer = (recognizerLang: string) => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) { alert("Speech recognition is not supported in this browser. Please use Chrome."); return; }
+    if (!SR) return null;
     const r = new SR();
     r.continuous = true;
     r.interimResults = true;
-    r.lang = lang;
+    r.lang = recognizerLang;
     r.onresult = (e: any) => {
+      if (isPausedRef.current) return;
       let interim = "";
       let finalText = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -1151,69 +1287,131 @@ function LiveSpeechMinutesView({
         if (e.results[i].isFinal) finalText += t;
         else interim += t;
       }
-      liveTextRef.current = interim;
-      setLiveText(interim);
-      if (interim) {
-        const detected = detectScript(interim);
-        setLiveDetected({ lang: detected.lang, flag: detected.flag });
+      if (interim.trim()) {
+        const d = detectScript(interim);
+        // In auto mode prefer to show whichever recognizer matches its script
+        if (lang === "auto") {
+          if (recognizerLang === "ta-IN" && d.lang !== "Tamil") return;
+          if (recognizerLang === "hi-IN" && d.lang !== "Hindi") return;
+          if (recognizerLang === "en-IN" && !d.isEnglish && (d.lang === "Tamil" || d.lang === "Hindi")) return;
+        }
+        setLiveText(interim);
+        setLiveDetected({ lang: d.lang, flag: d.flag });
       }
-      if (finalText.trim()) {
-        const id = ++entryCountRef.current;
-        const ts = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-        const detected = detectScript(finalText);
-        const entry: LiveEntry = { id, text: finalText.trim(), translated: null, ts, detectedLang: detected.lang, detectedFlag: detected.flag, isEnglish: detected.isEnglish, translating: false };
-        setEntries(prev => [...prev, entry]);
-        if (!detected.isEnglish) translateEntry(id, finalText.trim(), detected.lang);
-        liveTextRef.current = "";
+      if (finalText.trim() && acceptFinal(finalText, recognizerLang)) {
+        const piece = finalText.trim();
+        // Same paragraph if same script as current buffer; else commit existing first
+        const d = detectScript(piece);
+        if (paragraphBufRef.current && paragraphLangRef.current && paragraphLangRef.current !== d.lang) {
+          commitParagraph();
+        }
+        if (!paragraphBufRef.current) paragraphStartedAtRef.current = Date.now();
+        paragraphBufRef.current = (paragraphBufRef.current + " " + piece).trim();
+        paragraphLangRef.current = d.lang;
         setLiveText("");
         setLiveDetected(null);
+        scheduleCommit();
       }
     };
     r.onerror = () => {};
-    r.onend = () => { if (recognitionRef.current === r && isRecordingRef.current) { try { r.start(); } catch {} } };
-    r.start();
-    recognitionRef.current = r;
+    r.onend = () => { if (isRecordingRef.current && !isPausedRef.current) { try { r.start(); } catch {} } };
+    try { r.start(); } catch {}
+    return r;
+  };
+
+  const startRecording = () => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) { alert("Speech recognition is not supported in this browser. Please use Chrome or Edge."); return; }
     isRecordingRef.current = true;
+    isPausedRef.current = false;
+    const langs = lang === "auto" ? AUTO_LANGS : [lang];
+    recognitionsRef.current = langs.map(l => startRecognizer(l)).filter(Boolean);
     setIsRecording(true);
+    setIsPaused(false);
+  };
+
+  const pauseRecording = () => {
+    isPausedRef.current = true;
+    setIsPaused(true);
+    recognitionsRef.current.forEach(r => { try { r.stop(); } catch {} });
+  };
+
+  const resumeRecording = () => {
+    isPausedRef.current = false;
+    setIsPaused(false);
+    recognitionsRef.current.forEach(r => { try { r.start(); } catch {} });
   };
 
   const stopRecording = () => {
     isRecordingRef.current = false;
-    if (recognitionRef.current) {
-      recognitionRef.current.onend = null;
-      recognitionRef.current.stop();
-      recognitionRef.current = null;
-    }
-    if (liveTextRef.current.trim()) {
-      const id = ++entryCountRef.current;
-      const ts = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-      const detected = detectScript(liveTextRef.current);
-      const entry: LiveEntry = { id, text: liveTextRef.current.trim(), translated: null, ts, detectedLang: detected.lang, detectedFlag: detected.flag, isEnglish: detected.isEnglish, translating: false };
-      setEntries(prev => [...prev, entry]);
-      if (!detected.isEnglish) translateEntry(id, liveTextRef.current.trim(), detected.lang);
-    }
+    isPausedRef.current = false;
+    recognitionsRef.current.forEach(r => { r.onend = null; try { r.stop(); } catch {} });
+    recognitionsRef.current = [];
+    commitParagraph();
     setLiveText("");
-    liveTextRef.current = "";
     setLiveDetected(null);
     setIsRecording(false);
+    setIsPaused(false);
   };
 
-  const clearAll = () => { setEntries([]); setLiveText(""); liveTextRef.current = ""; entryCountRef.current = 0; setLiveDetected(null); };
+  const addNote = () => {
+    const text = noteDraft.trim();
+    if (!text) return;
+    commitParagraph(); // close any in-flight speech paragraph
+    const id = ++idCounterRef.current;
+    const t = nowTs();
+    setBlocks(prev => [...prev, { kind: "note", id, text, ts: t.ts, tsMs: t.tsMs }]);
+    setNoteDraft("");
+  };
+
+  const addImageFromFile = async (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || "");
+      if (!dataUrl) return;
+      commitParagraph();
+      const id = ++idCounterRef.current;
+      const t = nowTs();
+      setBlocks(prev => [...prev, { kind: "image", id, dataUrl, caption: file.name, ts: t.ts, tsMs: t.tsMs, source: "upload" }]);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const addCapturedImage = (dataUrl: string) => {
+    commitParagraph();
+    const id = ++idCounterRef.current;
+    const t = nowTs();
+    setBlocks(prev => [...prev, { kind: "image", id, dataUrl, caption: "Camera capture", ts: t.ts, tsMs: t.tsMs, source: "capture" }]);
+  };
+
+  const removeBlock = (id: number) => setBlocks(prev => prev.filter(b => b.id !== id));
+
+  const clearAll = () => {
+    setBlocks([]);
+    paragraphBufRef.current = "";
+    setLiveText("");
+    setLiveDetected(null);
+    idCounterRef.current = 0;
+  };
 
   const handleSave = async () => {
-    if (!title.trim() || entries.length === 0) return;
+    if (!title.trim() || blocks.length === 0) return;
     setSaving(true);
     try {
-      const transcript = entries.map(e => {
-        const line = `[${e.ts}] ${e.text}`;
-        return e.translated && !e.isEnglish ? `${line}\n[EN] ${e.translated}` : line;
-      }).join("\n");
+      const transcript = blocks.map(b => {
+        if (b.kind === "speech") {
+          const line = `[${b.ts}] ${b.text}`;
+          return b.translated && !b.isEnglish ? `${line}\n[EN] ${b.translated}` : line;
+        }
+        if (b.kind === "note") return `[${b.ts}] 📝 NOTE: ${b.text}`;
+        return `[${b.ts}] 📷 IMAGE (${b.source}): ${b.caption}\n${b.dataUrl}`;
+      }).join("\n\n");
       const created = await apiFetch("/meeting-minutes", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim(), date, rawNotes: transcript,
           status: "draft", mode: "speech",
-          attendees: null, venue: null, projectId: null, createdBy,
+          attendees: null, venue: venue.trim() || null, projectId: null, createdBy,
         }),
       }).then(r => r.json());
       setSaved(true);
@@ -1223,147 +1421,253 @@ function LiveSpeechMinutesView({
   };
 
   const langLabel = SPEECH_LANGS.find(l => l.code === lang)?.label || "English";
-  const fullTranscript = entries.map(e => e.text).join(" ");
+  const speechBlocks = blocks.filter(b => b.kind === "speech") as Extract<Block, { kind: "speech" }>[];
+  const wordCount = speechBlocks.reduce((sum, b) => sum + b.text.split(/\s+/).filter(Boolean).length, 0);
+  const noteCount = blocks.filter(b => b.kind === "note").length;
+  const imgCount = blocks.filter(b => b.kind === "image").length;
+  const translatedCount = speechBlocks.filter(b => !b.isEnglish).length;
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="flex-shrink-0 bg-gradient-to-r from-teal-600 via-teal-500 to-emerald-500 px-5 py-3">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <p className="text-teal-100 text-[9px] font-bold uppercase tracking-widest">Live Speech · Auto Translate to English</p>
-            <h2 className="text-white font-bold text-base flex items-center gap-2">
-              <Mic className="w-4 h-4" /> Real-Time Speech Minutes
-            </h2>
-            <p className="text-teal-100 text-xs mt-0.5">Speak in any language — auto-detects and translates to English</p>
+    <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
+      {showCamera && <CameraCaptureModal onCapture={addCapturedImage} onClose={() => setShowCamera(false)} />}
+      <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) addImageFromFile(f); e.target.value = ""; }} />
+
+      {/* ── Professional header strip ── */}
+      <div className="flex-shrink-0 bg-white border-b border-slate-200 px-5 py-3">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-lg bg-slate-900 flex items-center justify-center shrink-0">
+              <Users className="w-4 h-4 text-white" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">Customer Meeting</p>
+              <h2 className="text-sm font-bold text-slate-800 leading-tight">Live Transcription &amp; Notes</h2>
+              <p className="text-[11px] text-slate-500 mt-0.5">Speak in any language · attach photos · add manual notes — all on one timeline.</p>
+            </div>
           </div>
-          <div className="flex flex-col items-end gap-1.5">
-            <SpeechLangPicker value={lang} onChange={v => { setLang(v); }} disabled={isRecording} />
-            {/* Live language detection indicator */}
-            {liveDetected && (
-              <div className="flex items-center gap-1.5 bg-white/20 backdrop-blur-sm px-2.5 py-1 rounded-full">
+          <div className="flex items-center gap-2">
+            <SpeechLangPicker value={lang} onChange={setLang} disabled={isRecording && !isPaused} />
+            {liveDetected && lang === "auto" && (
+              <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 rounded-lg">
                 <span className="text-sm leading-none">{liveDetected.flag}</span>
-                <span className="text-white text-[10px] font-bold">{liveDetected.lang} detected</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                <span className="text-emerald-700 text-[10px] font-bold">{liveDetected.lang}</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Save form strip */}
-      <div className="flex-shrink-0 bg-white border-b border-gray-100 px-5 py-3 flex items-center gap-3">
-        <div className="flex-1 min-w-0">
+      {/* ── Meeting metadata strip ── */}
+      <div className="flex-shrink-0 bg-white border-b border-slate-200 px-5 py-2.5 grid grid-cols-12 gap-3 items-center">
+        <div className="col-span-6 min-w-0">
+          <label className="block text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Customer / Meeting Title <span className="text-rose-500">*</span></label>
           <input value={title} onChange={e => setTitle(e.target.value)}
-            placeholder="Meeting title (required to save)…"
-            className="w-full text-sm font-semibold text-gray-800 placeholder:text-gray-300 placeholder:font-normal bg-transparent outline-none border-b border-gray-200 focus:border-teal-400 pb-0.5 transition-colors"
-          />
+            placeholder="e.g. Acme Corp — Q2 onboarding call"
+            className="w-full text-sm font-semibold text-slate-800 placeholder:text-slate-300 placeholder:font-normal bg-transparent outline-none border-b border-slate-200 focus:border-slate-900 pb-0.5 transition-colors" />
         </div>
-        <input type="date" value={date} onChange={e => setDate(e.target.value)}
-          className="text-xs font-semibold text-gray-700 border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-teal-300" />
-        {entries.length > 0 && (
-          <button onClick={clearAll} disabled={isRecording}
-            className="flex items-center gap-1 px-3 py-2 rounded-lg border border-gray-200 text-xs font-medium text-gray-500 hover:text-red-500 hover:border-red-200 transition-colors disabled:opacity-40">
-            <Trash2 className="w-3 h-3" /> Clear
-          </button>
-        )}
-        <button onClick={handleSave}
-          disabled={!title.trim() || entries.length === 0 || saving || saved}
-          className="flex items-center gap-1.5 px-4 py-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white text-xs font-semibold rounded-lg transition-colors shadow-sm">
-          {saved ? <><CheckCircle className="w-3.5 h-3.5" /> Saved!</> : saving ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</> : <><Save className="w-3.5 h-3.5" /> Save as Meeting</>}
-        </button>
+        <div className="col-span-3 min-w-0">
+          <label className="block text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Date</label>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)}
+            className="w-full text-xs font-semibold text-slate-700 outline-none border-b border-slate-200 focus:border-slate-900 pb-0.5" />
+        </div>
+        <div className="col-span-3 min-w-0">
+          <label className="block text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Venue</label>
+          <input value={venue} onChange={e => setVenue(e.target.value)}
+            placeholder="On-site / Zoom / Office"
+            className="w-full text-xs font-semibold text-slate-700 placeholder:text-slate-300 placeholder:font-normal outline-none border-b border-slate-200 focus:border-slate-900 pb-0.5" />
+        </div>
       </div>
 
-      {/* Transcript area */}
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2 bg-[#f8fafc]">
-        {entries.length === 0 && !liveText && !isRecording && (
-          <div className="flex flex-col items-center justify-center h-full gap-4 text-center pb-12">
-            <div className="w-20 h-20 rounded-full bg-teal-50 border-2 border-teal-100 flex items-center justify-center">
-              <Mic className="w-9 h-9 text-teal-300" />
+      {/* ── Timeline (single source of truth) ── */}
+      <div className="flex-1 overflow-y-auto px-5 py-4">
+        {blocks.length === 0 && !liveText && !isRecording && (
+          <div className="flex flex-col items-center justify-center h-full gap-3 text-center pb-12">
+            <div className="w-16 h-16 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center">
+              <Mic className="w-7 h-7 text-slate-300" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-600">Ready to record</p>
-              <p className="text-xs text-gray-400 mt-1">Select your language and press the mic button below</p>
-              <p className="text-xs text-teal-500 mt-0.5 font-medium">Non-English speech is automatically translated to English</p>
+              <p className="text-sm font-semibold text-slate-700">Ready when you are</p>
+              <p className="text-xs text-slate-400 mt-1 max-w-xs">Press the record button below. You can also add typed notes and attach photos at any time during the meeting.</p>
             </div>
           </div>
         )}
 
-        {entries.map(entry => (
-          <div key={entry.id} className="flex items-start gap-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
-            <div className="flex-shrink-0 mt-2 text-sm leading-none">{entry.detectedFlag}</div>
-            <div className="flex-1 bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-3 space-y-1.5">
-              {/* Original text */}
-              <div className="flex items-start justify-between gap-2">
-                <p className="text-sm text-gray-800 leading-relaxed flex-1">{entry.text}</p>
-                <span className="flex-shrink-0 text-[9px] font-bold text-gray-400 bg-gray-50 border border-gray-100 rounded px-1.5 py-0.5 mt-0.5">{entry.detectedLang}</span>
+        <div className="max-w-3xl mx-auto space-y-3">
+          {blocks.map(b => (
+            <div key={`${b.kind}-${b.id}`} className="group flex items-start gap-3">
+              <div className="flex-shrink-0 w-12 text-right">
+                <p className="text-[10px] font-semibold text-slate-400 mt-2 tabular-nums">{b.ts}</p>
               </div>
-              {/* English translation */}
-              {!entry.isEnglish && (
-                <div className="border-t border-gray-50 pt-1.5">
-                  {entry.translating ? (
-                    <div className="flex items-center gap-1.5 text-[10px] text-teal-500">
-                      <Loader2 className="w-3 h-3 animate-spin" /> Translating to English…
+
+              {b.kind === "speech" && (
+                <div className="flex-1 bg-white rounded-lg border border-slate-200 shadow-sm px-4 py-3">
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <span className="text-sm leading-none">{b.detectedFlag}</span>
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{b.detectedLang}</span>
+                    <button onClick={() => removeBlock(b.id)}
+                      className="ml-auto opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-opacity">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap">{b.text}</p>
+                  {!b.isEnglish && (
+                    <div className="mt-2 pt-2 border-t border-slate-100">
+                      {b.translating ? (
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                          <Loader2 className="w-3 h-3 animate-spin" /> Translating to English…
+                        </div>
+                      ) : b.translated ? (
+                        <div className="flex items-start gap-1.5">
+                          <Globe className="w-3 h-3 text-emerald-600 mt-0.5 flex-shrink-0" />
+                          <p className="text-[13px] text-emerald-800 leading-relaxed italic">{b.translated}</p>
+                        </div>
+                      ) : null}
                     </div>
-                  ) : entry.translated ? (
-                    <div className="flex items-start gap-1.5">
-                      <Globe className="w-3 h-3 text-teal-500 mt-0.5 flex-shrink-0" />
-                      <p className="text-sm text-teal-700 leading-relaxed">{entry.translated}</p>
-                    </div>
-                  ) : null}
+                  )}
                 </div>
               )}
-              <p className="text-[10px] text-gray-300">{entry.ts}</p>
-            </div>
-          </div>
-        ))}
 
-        {/* Live (interim) text */}
-        {liveText && (
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 mt-2 text-sm leading-none">{liveDetected?.flag ?? "🎤"}</div>
-            <div className="flex-1 bg-teal-50 rounded-xl border border-teal-100 px-4 py-3">
-              <p className="text-sm text-teal-700 italic leading-relaxed">{liveText}</p>
-              <p className="text-[10px] text-teal-400 mt-1">
-                {liveDetected ? `Speaking in ${liveDetected.lang}…` : "Listening…"}
-              </p>
-            </div>
-          </div>
-        )}
+              {b.kind === "note" && (
+                <div className="flex-1 bg-amber-50 rounded-lg border border-amber-200 shadow-sm px-4 py-3 relative">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <StickyNote className="w-3 h-3 text-amber-600" />
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-amber-700">Manual note</span>
+                    <button onClick={() => removeBlock(b.id)}
+                      className="ml-auto opacity-0 group-hover:opacity-100 text-amber-300 hover:text-rose-500 transition-opacity">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap">{b.text}</p>
+                </div>
+              )}
 
-        <div ref={bottomRef} />
+              {b.kind === "image" && (
+                <div className="flex-1 bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-slate-100">
+                    {b.source === "capture" ? <Camera className="w-3 h-3 text-slate-500" /> : <ImageIcon className="w-3 h-3 text-slate-500" />}
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                      {b.source === "capture" ? "Photo" : "Attachment"}
+                    </span>
+                    <span className="text-[10px] text-slate-400 truncate">· {b.caption}</span>
+                    <button onClick={() => removeBlock(b.id)}
+                      className="ml-auto opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-opacity">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <a href={b.dataUrl} target="_blank" rel="noreferrer" className="block bg-slate-50">
+                    <img src={b.dataUrl} alt={b.caption} className="max-h-72 w-auto mx-auto" />
+                  </a>
+                </div>
+              )}
+            </div>
+          ))}
+
+          {/* Live interim speech */}
+          {liveText && (
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 w-12 text-right">
+                <span className="inline-block w-2 h-2 rounded-full bg-rose-500 animate-pulse mt-3" />
+              </div>
+              <div className="flex-1 bg-white rounded-lg border border-dashed border-slate-300 px-4 py-3">
+                <p className="text-sm text-slate-500 italic leading-relaxed">{liveText}</p>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  {liveDetected ? `${liveDetected.flag} ${liveDetected.lang} · listening…` : "Listening…"}
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div ref={bottomRef} />
+        </div>
       </div>
 
-      {/* Stats + Mic button */}
-      <div className="flex-shrink-0 bg-white border-t border-gray-100 px-5 py-4 flex items-center justify-between">
-        <div className="text-xs text-gray-400 space-y-0.5">
-          <p>{entries.length} phrase{entries.length !== 1 ? "s" : ""} · {fullTranscript.split(/\s+/).filter(Boolean).length} words</p>
-          <p className="text-[10px] text-gray-300">Recognition: {langLabel}</p>
-          {entries.some(e => !e.isEnglish) && (
-            <p className="text-[10px] text-teal-500 font-medium">
-              {entries.filter(e => !e.isEnglish).length} phrase{entries.filter(e => !e.isEnglish).length !== 1 ? "s" : ""} translated to English
-            </p>
-          )}
+      {/* ── Bottom command bar: notes input + attach + record + save ── */}
+      <div className="flex-shrink-0 bg-white border-t border-slate-200">
+        {/* Manual note + attachment row */}
+        <div className="px-5 py-2.5 flex items-center gap-2 border-b border-slate-100">
+          <div className="flex-1 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 focus-within:border-slate-900">
+            <StickyNote className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <input
+              value={noteDraft}
+              onChange={e => setNoteDraft(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addNote(); } }}
+              placeholder="Type a manual note and press Enter…"
+              className="flex-1 text-sm text-slate-800 placeholder:text-slate-400 bg-transparent outline-none"
+            />
+            {noteDraft.trim() && (
+              <button onClick={addNote} className="text-[11px] font-semibold text-slate-900 hover:text-black px-2">Add</button>
+            )}
+          </div>
+          <button onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-200 hover:border-slate-400 hover:bg-slate-50 text-xs font-semibold text-slate-700 transition-colors">
+            <Paperclip className="w-3.5 h-3.5" /> Attach
+          </button>
+          <button onClick={() => setShowCamera(true)}
+            className="flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-200 hover:border-slate-400 hover:bg-slate-50 text-xs font-semibold text-slate-700 transition-colors">
+            <Camera className="w-3.5 h-3.5" /> Capture
+          </button>
         </div>
 
-        <button
-          onClick={isRecording ? stopRecording : startRecording}
-          className={`relative w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition-all duration-200 focus:outline-none
-            ${isRecording
-              ? "bg-gradient-to-br from-red-500 to-rose-600 shadow-red-200 scale-110"
-              : "bg-gradient-to-br from-teal-500 to-emerald-600 shadow-teal-200 hover:scale-105"
-            }`}
-        >
-          {isRecording && <span className="absolute inset-0 rounded-full bg-red-400 opacity-30 animate-ping" />}
-          {isRecording ? <Square className="w-6 h-6 text-white" fill="white" /> : <Mic className="w-6 h-6 text-white" />}
-        </button>
+        {/* Record / pause / save row */}
+        <div className="px-5 py-3 flex items-center justify-between gap-3">
+          <div className="text-[11px] text-slate-500 space-y-0.5 min-w-0">
+            <p className="font-semibold text-slate-700">
+              {speechBlocks.length} paragraph{speechBlocks.length !== 1 ? "s" : ""} · {wordCount} word{wordCount !== 1 ? "s" : ""}
+              {noteCount > 0 && <> · <span className="text-amber-700">{noteCount} note{noteCount !== 1 ? "s" : ""}</span></>}
+              {imgCount > 0 && <> · <span className="text-slate-700">{imgCount} image{imgCount !== 1 ? "s" : ""}</span></>}
+            </p>
+            <p className="text-[10px] text-slate-400">
+              Recognition: {langLabel}
+              {translatedCount > 0 && <> · {translatedCount} auto-translated</>}
+            </p>
+          </div>
 
-        <div className="text-xs text-right text-gray-400 space-y-0.5">
-          {isRecording
-            ? <p className="text-red-500 font-semibold flex items-center gap-1 justify-end"><span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse inline-block" /> Recording…</p>
-            : <p>Tap mic to start</p>
-          }
-          <p className="text-[10px] text-gray-300">Tap again to stop</p>
+          <div className="flex items-center gap-2">
+            {blocks.length > 0 && !isRecording && (
+              <button onClick={clearAll}
+                className="flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-200 hover:border-rose-300 hover:text-rose-600 text-xs font-medium text-slate-500 transition-colors">
+                <Trash2 className="w-3 h-3" /> Clear
+              </button>
+            )}
+
+            {!isRecording ? (
+              <button onClick={startRecording}
+                className="flex items-center gap-2 px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors">
+                <Mic className="w-4 h-4" /> Start Recording
+              </button>
+            ) : (
+              <>
+                {isPaused ? (
+                  <button onClick={resumeRecording}
+                    className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors">
+                    <Play className="w-3.5 h-3.5" /> Resume
+                  </button>
+                ) : (
+                  <button onClick={pauseRecording}
+                    className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold rounded-lg transition-colors">
+                    <Pause className="w-3.5 h-3.5" /> Pause
+                  </button>
+                )}
+                <button onClick={stopRecording}
+                  className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 hover:bg-black text-white text-sm font-semibold rounded-lg shadow-sm transition-colors">
+                  <Square className="w-3.5 h-3.5" fill="white" /> Stop
+                </button>
+                {!isPaused && (
+                  <span className="flex items-center gap-1.5 text-[11px] font-semibold text-rose-600 ml-1">
+                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" /> Live
+                  </span>
+                )}
+              </>
+            )}
+
+            <button onClick={handleSave}
+              disabled={!title.trim() || blocks.length === 0 || saving || saved}
+              className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 hover:bg-black disabled:opacity-30 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors">
+              {saved ? <><CheckCircle className="w-4 h-4" /> Saved</> : saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</> : <><Save className="w-4 h-4" /> Save Meeting</>}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1488,20 +1792,25 @@ export default function MeetingMinutes() {
       <div className="flex h-[calc(100vh-48px)]">
 
         {/* ── Left list panel ── */}
-        <div className="w-72 flex-shrink-0 border-r border-gray-200 bg-white flex flex-col">
+        <div className="w-72 flex-shrink-0 border-r border-slate-200 bg-white flex flex-col">
           {/* Header */}
-          <div className="px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-blue-600 to-indigo-600">
+          <div className="px-4 py-3 border-b border-slate-200 bg-white">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-white/80" />
-                <span className="font-bold text-white text-sm">Meeting Minutes</span>
+                <div className="w-7 h-7 rounded-lg bg-slate-900 flex items-center justify-center">
+                  <FileText className="w-3.5 h-3.5 text-white" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400 leading-none">Workspace</p>
+                  <span className="font-bold text-slate-800 text-sm leading-tight">Meeting Minutes</span>
+                </div>
               </div>
-              <button onClick={() => { setShowNew(true); setSelected(null); setNewMode("record"); }}
-                className="flex items-center gap-1 px-2.5 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-semibold transition-all border border-white/20">
+              <button onClick={() => { setShowNew(true); setSelected(null); setNewMode("live-speech"); }}
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-900 hover:bg-black text-white rounded-lg text-xs font-semibold transition-all">
                 <Plus className="w-3 h-3" /> New
               </button>
             </div>
-            <p className="text-blue-100 text-[10px] mt-1">{meetings?.length ?? 0} meeting{meetings?.length !== 1 ? "s" : ""} recorded</p>
+            <p className="text-slate-400 text-[10px] mt-1.5">{meetings?.length ?? 0} meeting{meetings?.length !== 1 ? "s" : ""} on file</p>
           </div>
 
           <div className="flex-1 overflow-y-auto py-2 px-2">
@@ -1555,38 +1864,38 @@ export default function MeetingMinutes() {
           {/* NEW MEETING FORM */}
           {showNew && (
             <div className="flex-1 flex flex-col overflow-hidden">
-              {/* Gradient hero header — compact */}
-              <div className={`relative px-4 pt-3 pb-2.5 flex-shrink-0 ${newMode === "record" ? "bg-gradient-to-br from-red-600 via-rose-500 to-orange-400" : newMode === "live-speech" ? "bg-gradient-to-br from-teal-600 via-teal-500 to-emerald-500" : "bg-gradient-to-br from-blue-700 via-blue-500 to-indigo-400"}`}>
+              {/* Professional header */}
+              <div className="relative px-5 pt-3 pb-2.5 flex-shrink-0 bg-white border-b border-slate-200">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
-                      {newMode === "record" ? <Mic className="w-3.5 h-3.5 text-white" /> : newMode === "live-speech" ? <Globe className="w-3.5 h-3.5 text-white" /> : <Type className="w-3.5 h-3.5 text-white" />}
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center shrink-0">
+                      {newMode === "record" ? <Mic className="w-3.5 h-3.5 text-white" /> : newMode === "live-speech" ? <Users className="w-3.5 h-3.5 text-white" /> : <Type className="w-3.5 h-3.5 text-white" />}
                     </div>
                     <div>
-                      <p className="text-white/60 text-[9px] font-bold uppercase tracking-widest leading-none">New Meeting</p>
-                      <h2 className="text-white text-sm font-bold leading-snug">
-                        {newMode === "record" ? "Auto Record & Transcribe" : newMode === "live-speech" ? "Live Speech & Auto Translate" : "Manual Notes"}
+                      <p className="text-slate-400 text-[9px] font-bold uppercase tracking-[0.18em] leading-none">New Meeting</p>
+                      <h2 className="text-slate-800 text-sm font-bold leading-snug mt-0.5">
+                        {newMode === "record" ? "Auto Record & Transcribe" : newMode === "live-speech" ? "Customer Meeting" : "Manual Notes"}
                       </h2>
                     </div>
                   </div>
                   <button onClick={() => { setShowNew(false); setSelectedAttendees([]); setForm({ title: "", date: new Date().toISOString().slice(0, 10), venue: "", projectId: "", projectName: "", projectMode: "select" }); }}
-                    className="w-7 h-7 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center text-white/80 hover:text-white transition-all flex-shrink-0">
+                    className="w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-800 transition-all flex-shrink-0">
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
                 {/* Mode toggle */}
-                <div className="mt-2 flex items-center gap-0.5 bg-black/20 p-0.5 rounded-lg w-fit">
+                <div className="mt-2.5 flex items-center gap-0.5 bg-slate-100 p-0.5 rounded-lg w-fit">
                   <button onClick={() => setNewMode("record")}
-                    className={`flex items-center gap-1 px-3 py-1 rounded-md text-[11px] font-semibold transition-all ${newMode === "record" ? "bg-white text-red-600 shadow-sm" : "text-white/70 hover:text-white"}`}>
+                    className={`flex items-center gap-1 px-3 py-1 rounded-md text-[11px] font-semibold transition-all ${newMode === "record" ? "bg-white text-rose-600 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}>
                     <Mic className="w-2.5 h-2.5" /> Auto Record
                   </button>
                   <button onClick={() => setNewMode("manual")}
-                    className={`flex items-center gap-1 px-3 py-1 rounded-md text-[11px] font-semibold transition-all ${newMode === "manual" ? "bg-white text-blue-600 shadow-sm" : "text-white/70 hover:text-white"}`}>
+                    className={`flex items-center gap-1 px-3 py-1 rounded-md text-[11px] font-semibold transition-all ${newMode === "manual" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}>
                     <Type className="w-2.5 h-2.5" /> Manual Notes
                   </button>
                   <button onClick={() => setNewMode("live-speech")}
-                    className={`flex items-center gap-1 px-3 py-1 rounded-md text-[11px] font-semibold transition-all ${newMode === "live-speech" ? "bg-white text-teal-600 shadow-sm" : "text-white/70 hover:text-white"}`}>
-                    <Globe className="w-2.5 h-2.5" /> Live Speech
+                    className={`flex items-center gap-1 px-3 py-1 rounded-md text-[11px] font-semibold transition-all ${newMode === "live-speech" ? "bg-white text-emerald-700 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}>
+                    <Users className="w-2.5 h-2.5" /> Customer Meeting
                   </button>
                 </div>
               </div>
