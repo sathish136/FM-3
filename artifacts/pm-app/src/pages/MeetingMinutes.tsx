@@ -1216,6 +1216,7 @@ function LiveSpeechMinutesView({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [liveDetected, setLiveDetected] = useState<{ lang: string; flag: string } | null>(null);
+  const [recError, setRecError] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [showCamera, setShowCamera] = useState(false);
   const [metaOpen, setMetaOpen] = useState(false);
@@ -1314,19 +1315,33 @@ function LiveSpeechMinutesView({
   // Open the proxy WebSocket and start the recorder. Audio frames are sent every
   // DG_TIMESLICE_MS (250ms) so Deepgram can return interim transcripts in real time.
   const startStreaming = (stream: MediaStream) => {
-    const ws = new WebSocket(buildDeepgramWsUrl());
+    const wsUrl = buildDeepgramWsUrl();
+    console.log("[Deepgram] connecting to", wsUrl);
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(wsUrl);
+    } catch (err: any) {
+      console.error("[Deepgram] WS construct failed:", err);
+      setRecError(`Cannot open WebSocket: ${err?.message || err}`);
+      return;
+    }
     ws.binaryType = "arraybuffer";
     wsRef.current = ws;
     wsReadyRef.current = false;
 
     ws.onopen = () => {
+      console.log("[Deepgram] WS open, starting recorder");
       // Start MediaRecorder once the socket is open so no audio is lost.
       const mime = pickRecorderMime();
       let mr: MediaRecorder;
       try {
         mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
-      } catch {
-        try { mr = new MediaRecorder(stream); } catch { return; }
+      } catch (err: any) {
+        try { mr = new MediaRecorder(stream); } catch (e2: any) {
+          console.error("[Deepgram] MediaRecorder failed:", e2);
+          setRecError(`MediaRecorder unsupported: ${e2?.message || e2}`);
+          return;
+        }
       }
       recorderRef.current = mr;
       mr.ondataavailable = async (e) => {
@@ -1335,17 +1350,33 @@ function LiveSpeechMinutesView({
         try {
           const buf = await e.data.arrayBuffer();
           ws.send(buf);
-        } catch {}
+        } catch (err) {
+          console.error("[Deepgram] send error:", err);
+        }
       };
-      mr.start(DG_TIMESLICE_MS);
+      mr.onerror = (ev: any) => {
+        console.error("[Deepgram] recorder error:", ev?.error || ev);
+        setRecError(`Recorder error: ${ev?.error?.message || "unknown"}`);
+      };
+      try {
+        mr.start(DG_TIMESLICE_MS);
+        console.log("[Deepgram] recorder started, mime=", mr.mimeType);
+      } catch (err: any) {
+        console.error("[Deepgram] recorder.start failed:", err);
+        setRecError(`Recorder start failed: ${err?.message || err}`);
+      }
     };
 
     ws.onmessage = (ev) => {
       try {
         const msg = JSON.parse(typeof ev.data === "string" ? ev.data : "");
         // Server "ready" frame
-        if (msg.type === "ready") { wsReadyRef.current = true; return; }
-        if (msg.type === "error") { console.error("[Deepgram] error:", msg.message); return; }
+        if (msg.type === "ready") { wsReadyRef.current = true; console.log("[Deepgram] ready"); return; }
+        if (msg.type === "error") {
+          console.error("[Deepgram] error:", msg.message);
+          setRecError(`Deepgram: ${msg.message}`);
+          return;
+        }
 
         // Deepgram "Results" frame
         if (msg.type === "Results") {
@@ -1380,31 +1411,52 @@ function LiveSpeechMinutesView({
       } catch {}
     };
 
-    ws.onerror = () => { /* surfaced via close */ };
-    ws.onclose = () => { wsReadyRef.current = false; };
+    ws.onerror = (ev) => {
+      console.error("[Deepgram] WS error event", ev);
+      setRecError("WebSocket error — see browser console.");
+    };
+    ws.onclose = (ev) => {
+      console.log("[Deepgram] WS closed", ev.code, ev.reason);
+      wsReadyRef.current = false;
+      if (isRecordingRef.current && !ev.wasClean) {
+        setRecError(`Connection closed (code ${ev.code}${ev.reason ? `: ${ev.reason}` : ""}).`);
+      }
+    };
   };
 
   const startRecording = async () => {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      alert("Microphone access is not available in this browser.");
+    setRecError(null);
+    if (!window.isSecureContext) {
+      setRecError("Microphone needs HTTPS — open the app over https:// to record.");
       return;
     }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setRecError("Microphone API not available in this browser.");
+      return;
+    }
+    if (typeof (window as any).MediaRecorder === "undefined") {
+      setRecError("MediaRecorder is not supported in this browser.");
+      return;
+    }
+    let stream: MediaStream;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
-      streamRef.current = stream;
-      isRecordingRef.current = true;
-      isPausedRef.current = false;
-      setIsRecording(true);
-      setIsPaused(false);
-      setDuration(0);
-      setLiveText("");
-      setLiveDetected(null);
-      startStreaming(stream);
-    } catch (e) {
-      alert("Could not access the microphone. Please allow microphone access in your browser.");
+    } catch (e: any) {
+      console.error("[Deepgram] getUserMedia failed:", e);
+      setRecError(`Microphone blocked: ${e?.name || ""} ${e?.message || e}`.trim());
+      return;
     }
+    streamRef.current = stream;
+    isRecordingRef.current = true;
+    isPausedRef.current = false;
+    setIsRecording(true);
+    setIsPaused(false);
+    setDuration(0);
+    setLiveText("");
+    setLiveDetected(null);
+    startStreaming(stream);
   };
 
   const pauseRecording = () => {
@@ -1610,6 +1662,9 @@ function LiveSpeechMinutesView({
             </span>
           )}
           <span className="text-[11px] text-slate-500 hidden sm:inline">· live captions · auto-translate</span>
+          {recError && (
+            <span className="text-[11px] text-rose-600 font-semibold ml-1 truncate max-w-[260px]" title={recError}>· {recError}</span>
+          )}
           <div className="ml-auto flex items-center gap-1.5">
             {isPaused
               ? <button onClick={resumeRecording} className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-md transition-colors">
