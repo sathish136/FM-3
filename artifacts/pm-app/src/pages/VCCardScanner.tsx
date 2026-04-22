@@ -351,6 +351,25 @@ export default function VCCardScanner() {
   useEffect(() => { fetchCards(); }, [filterCat]);
   useEffect(() => { if (tab === "report") fetchStats(); }, [tab]);
 
+  // Downscale a data-URL image to keep payload small & AI fast
+  const shrinkImage = (dataUrl: string, maxW = 1280): Promise<string> =>
+    new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxW / img.width);
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const c = document.createElement("canvas");
+        c.width = w; c.height = h;
+        const ctx = c.getContext("2d");
+        if (!ctx) return resolve(dataUrl);
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(c.toDataURL("image/jpeg", 0.82));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+
   const playBeep = () => {
     try {
       const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
@@ -378,9 +397,10 @@ export default function VCCardScanner() {
     setScanning(true);
     setAutoStatus("Reading card with AI…");
     try {
+      const small = await shrinkImage(img, 1280);
       const r = await fetch(`${BASE}/visiting-cards/scan`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ frontImage: img }),
+        body: JSON.stringify({ frontImage: small }),
       });
       const j = await r.json();
       const data: Partial<VCard> = j?.data || {};
