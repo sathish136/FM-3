@@ -1,5 +1,5 @@
 import { Layout } from "@/components/Layout";
-import { useState, useEffect, useRef, useCallback, Fragment, type ElementType } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Fragment, type ElementType } from "react";
 import {
   GanttChartSquare, ShoppingCart, AlertTriangle, ChevronDown,
   RefreshCw, CalendarDays, CheckCircle2,
@@ -7,13 +7,23 @@ import {
   User, ChevronRight, BarChart3, Target, IndianRupee,
   Activity, Layers, ArrowUp, ArrowDown,
   Info, Building2, Star, Users, CreditCard, Clock, Hourglass,
-  BadgeCheck, XCircle,
+  BadgeCheck, XCircle, Search, Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const API = "/api";
 
-type Project = { name: string; project_name: string };
+type Project = {
+  name: string;
+  project_name: string;
+  status?: string | null;
+  percent_complete?: number;
+  estimated_costing?: number;
+  actual_expense?: number;
+  expected_start_date?: string | null;
+  expected_end_date?: string | null;
+  department?: string | null;
+};
 
 type ProjectDetail = {
   name: string;
@@ -226,11 +236,15 @@ function OverviewView({
   projectDetail,
   selectedProject,
   taskAllocations,
+  projects,
+  onSelectProject,
 }: {
   data: TimelineData;
   projectDetail: ProjectDetail | null;
   selectedProject: string;
   taskAllocations: TaskAllocation[];
+  projects: Project[];
+  onSelectProject: (name: string) => void;
 }) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -879,12 +893,282 @@ function OverviewView({
       )}
 
       {!selectedProject && (
-        <div className="flex flex-col items-center py-10 text-gray-400">
-          <Target className="w-10 h-10 mb-2 opacity-40" />
-          <p className="text-sm font-medium text-gray-500">Select a project to see detailed overview</p>
-          <p className="text-xs mt-1">Use the project dropdown above</p>
-        </div>
+        <AllProjectsCostOverview projects={projects} onSelectProject={onSelectProject} />
       )}
+    </div>
+  );
+}
+
+// ─── All Projects Cost Overview ──────────────────────────────────────────────
+
+function AllProjectsCostOverview({
+  projects,
+  onSelectProject,
+}: {
+  projects: Project[];
+  onSelectProject: (name: string) => void;
+}) {
+  const [q, setQ] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [sortKey, setSortKey] = useState<"name" | "est" | "act" | "var" | "pct">("act");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  const totals = useMemo(() => {
+    const est = projects.reduce((s, p) => s + (p.estimated_costing || 0), 0);
+    const act = projects.reduce((s, p) => s + (p.actual_expense || 0), 0);
+    const over = projects.filter(p => (p.estimated_costing || 0) > 0 && (p.actual_expense || 0) > (p.estimated_costing || 0)).length;
+    const open = projects.filter(p => p.status && p.status.toLowerCase() === "open").length;
+    return { est, act, over, open, count: projects.length, variance: act - est };
+  }, [projects]);
+
+  const statuses = useMemo(() => {
+    const s = new Set<string>();
+    projects.forEach(p => { if (p.status) s.add(p.status); });
+    return Array.from(s).sort();
+  }, [projects]);
+
+  const filtered = useMemo(() => {
+    let rows = projects;
+    if (statusFilter !== "all") rows = rows.filter(p => p.status === statusFilter);
+    if (q.trim()) {
+      const ql = q.toLowerCase();
+      rows = rows.filter(p =>
+        p.project_name.toLowerCase().includes(ql) ||
+        p.name.toLowerCase().includes(ql) ||
+        (p.department || "").toLowerCase().includes(ql)
+      );
+    }
+    const dir = sortDir === "asc" ? 1 : -1;
+    rows = [...rows].sort((a, b) => {
+      const va = (
+        sortKey === "name" ? a.project_name.toLowerCase() :
+        sortKey === "est"  ? (a.estimated_costing || 0) :
+        sortKey === "act"  ? (a.actual_expense || 0) :
+        sortKey === "var"  ? ((a.actual_expense || 0) - (a.estimated_costing || 0)) :
+        (a.percent_complete || 0)
+      ) as any;
+      const vb = (
+        sortKey === "name" ? b.project_name.toLowerCase() :
+        sortKey === "est"  ? (b.estimated_costing || 0) :
+        sortKey === "act"  ? (b.actual_expense || 0) :
+        sortKey === "var"  ? ((b.actual_expense || 0) - (b.estimated_costing || 0)) :
+        (b.percent_complete || 0)
+      ) as any;
+      if (va < vb) return -1 * dir;
+      if (va > vb) return 1 * dir;
+      return 0;
+    });
+    return rows;
+  }, [projects, q, statusFilter, sortKey, sortDir]);
+
+  function toggleSort(k: typeof sortKey) {
+    if (sortKey === k) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortKey(k); setSortDir(k === "name" ? "asc" : "desc"); }
+  }
+
+  function exportCsv() {
+    const header = ["Project ID", "Project Name", "Status", "Department", "Start", "End", "% Complete", "Estimated Cost", "Actual Expense", "Variance", "Variance %"];
+    const lines = [header.join(",")];
+    for (const p of filtered) {
+      const est = p.estimated_costing || 0;
+      const act = p.actual_expense || 0;
+      const variance = act - est;
+      const variancePct = est > 0 ? (variance / est * 100).toFixed(1) : "";
+      const row = [
+        p.name, p.project_name, p.status || "", p.department || "",
+        p.expected_start_date || "", p.expected_end_date || "",
+        (p.percent_complete || 0).toFixed(0),
+        est.toFixed(2), act.toFixed(2), variance.toFixed(2), variancePct,
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`);
+      lines.push(row.join(","));
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `project-costs-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  if (projects.length === 0) {
+    return (
+      <div className="flex flex-col items-center py-10 text-gray-400">
+        <Target className="w-10 h-10 mb-2 opacity-40" />
+        <p className="text-sm font-medium text-gray-500">No projects found</p>
+      </div>
+    );
+  }
+
+  const SortHead = ({ k, label, align = "left" }: { k: typeof sortKey; label: string; align?: "left" | "right" }) => (
+    <th className={cn("px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase cursor-pointer select-none hover:text-blue-600", align === "right" ? "text-right" : "text-left")}
+        onClick={() => toggleSort(k)}>
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {sortKey === k && <span className="text-blue-500">{sortDir === "asc" ? "▲" : "▼"}</span>}
+      </span>
+    </th>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
+          <BarChart3 className="w-4 h-4 text-indigo-500" />
+          All Projects · Cost Overview
+        </h2>
+        <p className="text-xs text-gray-500 mt-0.5">Estimated vs actual cost across every project. Click any row to drill in.</p>
+      </div>
+
+      {/* KPI cards */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="bg-white border border-gray-200 rounded-xl p-3">
+          <p className="text-[11px] text-gray-500 uppercase font-semibold">Projects</p>
+          <p className="text-lg font-extrabold text-gray-900 mt-0.5">{totals.count}</p>
+          {totals.open > 0 && <p className="text-[10px] text-blue-600 mt-0.5">{totals.open} open</p>}
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-3">
+          <p className="text-[11px] text-gray-500 uppercase font-semibold">Total Estimated</p>
+          <p className="text-lg font-extrabold text-gray-900 mt-0.5">{fmtMoney(totals.est)}</p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-3">
+          <p className="text-[11px] text-gray-500 uppercase font-semibold">Total Actual</p>
+          <p className={cn("text-lg font-extrabold mt-0.5", totals.act > totals.est && totals.est > 0 ? "text-red-600" : "text-emerald-600")}>
+            {fmtMoney(totals.act)}
+          </p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-3">
+          <p className="text-[11px] text-gray-500 uppercase font-semibold">Variance</p>
+          <p className={cn("text-lg font-extrabold mt-0.5", totals.variance > 0 ? "text-red-600" : "text-emerald-600")}>
+            {totals.variance >= 0 ? "+" : "−"}{fmtMoney(Math.abs(totals.variance))}
+          </p>
+          {totals.est > 0 && (
+            <p className="text-[10px] text-gray-400 mt-0.5">{(totals.variance / totals.est * 100).toFixed(1)}% of budget</p>
+          )}
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-3">
+          <p className="text-[11px] text-gray-500 uppercase font-semibold">Over Budget</p>
+          <p className={cn("text-lg font-extrabold mt-0.5", totals.over > 0 ? "text-red-600" : "text-gray-900")}>{totals.over}</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">projects exceeded estimate</p>
+        </div>
+      </div>
+
+      {/* Filter bar */}
+      <div className="flex flex-wrap items-center gap-2 bg-white border border-gray-200 rounded-xl p-2.5">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+          <input
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            placeholder="Search project, code or department..."
+            className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-blue-400"
+          />
+        </div>
+        <select
+          value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value)}
+          className="px-2.5 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-blue-400 bg-white"
+        >
+          <option value="all">All statuses</option>
+          {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <button
+          onClick={exportCsv}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg font-medium border border-indigo-200"
+        >
+          <Download className="w-3.5 h-3.5" /> CSV
+        </button>
+        <span className="text-[11px] text-gray-400 ml-auto">{filtered.length} of {projects.length}</span>
+      </div>
+
+      {/* Cost table */}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <SortHead k="name" label="Project" />
+                <th className="px-3 py-2 text-left text-[11px] font-semibold text-gray-500 uppercase">Status</th>
+                <SortHead k="pct" label="Progress" align="right" />
+                <SortHead k="est" label="Estimated" align="right" />
+                <SortHead k="act" label="Actual" align="right" />
+                <SortHead k="var" label="Variance" align="right" />
+                <th className="px-3 py-2 text-right text-[11px] font-semibold text-gray-500 uppercase">Used</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {filtered.map(p => {
+                const est = p.estimated_costing || 0;
+                const act = p.actual_expense || 0;
+                const variance = act - est;
+                const usedPct = est > 0 ? (act / est) * 100 : 0;
+                const over = est > 0 && act > est;
+                const pct = p.percent_complete || 0;
+                return (
+                  <tr
+                    key={p.name}
+                    onClick={() => onSelectProject(p.name)}
+                    className="hover:bg-blue-50 cursor-pointer transition-colors"
+                  >
+                    <td className="px-3 py-2.5">
+                      <div className="font-medium text-gray-900 truncate max-w-[280px]">{p.project_name}</div>
+                      <div className="text-[10px] text-gray-400 truncate">
+                        {p.name}{p.department ? ` · ${p.department}` : ""}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {p.status ? <StatusBadge status={p.status} /> : <span className="text-xs text-gray-400">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">
+                      <div className="text-xs font-semibold text-gray-700">{pct.toFixed(0)}%</div>
+                      <div className="w-16 h-1 bg-gray-100 rounded-full mt-1 ml-auto overflow-hidden">
+                        <div className="h-full bg-blue-500 rounded-full" style={{ width: `${Math.min(pct, 100)}%` }} />
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-gray-700">
+                      {est > 0 ? fmtMoney(est) : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">
+                      <span className={cn("font-semibold", over ? "text-red-600" : act > 0 ? "text-emerald-700" : "text-gray-300")}>
+                        {act > 0 ? fmtMoney(act) : "—"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">
+                      {est > 0 || act > 0 ? (
+                        <span className={cn("font-semibold", variance > 0 ? "text-red-600" : "text-emerald-600")}>
+                          {variance >= 0 ? "+" : "−"}{fmtMoney(Math.abs(variance))}
+                        </span>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-right">
+                      {est > 0 ? (
+                        <div className="flex items-center justify-end gap-2">
+                          <span className={cn("text-xs font-bold tabular-nums", usedPct > 100 ? "text-red-600" : usedPct > 90 ? "text-amber-600" : "text-emerald-600")}>
+                            {usedPct.toFixed(0)}%
+                          </span>
+                          <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div
+                              className={cn("h-full rounded-full", usedPct > 100 ? "bg-red-500" : usedPct > 90 ? "bg-amber-500" : "bg-emerald-500")}
+                              style={{ width: `${Math.min(usedPct, 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      ) : <span className="text-gray-300 text-xs">—</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-3 py-10 text-center text-sm text-gray-400">
+                    No projects match the current filters.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2443,19 +2727,42 @@ function ProjectDropdown({
             >
               All Projects
             </button>
-            {filtered.map(p => (
-              <button
-                key={p.name}
-                className={cn(
-                  "w-full text-left px-3 py-2 text-sm hover:bg-blue-50 transition-colors border-t border-gray-50",
-                  selected === p.name ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700"
-                )}
-                onClick={() => { onChange(p.name); setOpen(false); setQ(""); }}
-              >
-                <div className="font-medium truncate">{p.project_name}</div>
-                <div className="text-[10px] text-gray-400">{p.name}</div>
-              </button>
-            ))}
+            {filtered.map(p => {
+              const est = p.estimated_costing || 0;
+              const act = p.actual_expense || 0;
+              const over = est > 0 && act > est;
+              return (
+                <button
+                  key={p.name}
+                  className={cn(
+                    "w-full text-left px-3 py-2 text-sm hover:bg-blue-50 transition-colors border-t border-gray-50",
+                    selected === p.name ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700"
+                  )}
+                  onClick={() => { onChange(p.name); setOpen(false); setQ(""); }}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate">{p.project_name}</div>
+                      <div className="text-[10px] text-gray-400 truncate">
+                        {p.name}
+                        {p.status && <span className="ml-1.5 px-1 py-0.5 rounded bg-gray-100 text-gray-600">{p.status}</span>}
+                      </div>
+                    </div>
+                    {(est > 0 || act > 0) && (
+                      <div className="text-right shrink-0">
+                        <div className={cn("text-[11px] font-semibold tabular-nums", over ? "text-red-600" : "text-emerald-600")}>
+                          {fmtMoney(act)}
+                        </div>
+                        <div className="text-[9px] text-gray-400 tabular-nums">/ {fmtMoney(est)}</div>
+                      </div>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+            {filtered.length === 0 && (
+              <div className="px-3 py-6 text-center text-xs text-gray-400">No projects match</div>
+            )}
           </div>
         </div>
       )}
@@ -2486,10 +2793,9 @@ export default function ProjectTimeline() {
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   useEffect(() => {
-    const email = (() => { try { const s = localStorage.getItem("wtt_auth_user"); return s ? JSON.parse(s).email || "" : ""; } catch { return ""; } })();
-    fetch(`${API}/timeline/projects${email ? `?email=${encodeURIComponent(email)}` : ""}`)
+    fetch(`${API}/timeline/projects`)
       .then(r => r.json())
-      .then(setProjects)
+      .then((rows: Project[]) => setProjects(Array.isArray(rows) ? rows : []))
       .catch(console.error);
   }, []);
 
@@ -2648,7 +2954,14 @@ export default function ProjectTimeline() {
           ) : (
             <>
               {tab === "overview" && (
-                <OverviewView data={data} projectDetail={projectDetail} selectedProject={selectedProject} taskAllocations={taskAllocations} />
+                <OverviewView
+                  data={data}
+                  projectDetail={projectDetail}
+                  selectedProject={selectedProject}
+                  taskAllocations={taskAllocations}
+                  projects={projects}
+                  onSelectProject={(name) => { setSelectedProject(name); setTab("overview"); }}
+                />
               )}
               {tab === "gantt" && <GanttView tasks={data.tasks} />}
               {tab === "purchase" && <PurchaseView mrs={data.materialRequests} pos={data.purchaseOrders} />}

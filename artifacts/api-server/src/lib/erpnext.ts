@@ -520,15 +520,41 @@ export async function fetchErpNextMrRemarks(project?: string): Promise<string[]>
   return ((data.data || []) as any[]).map((r: any) => r.name);
 }
 
-export async function fetchErpNextProjectList(): Promise<{ name: string; project_name: string }[]> {
+export interface ErpProjectListItem {
+  name: string;
+  project_name: string;
+  status: string | null;
+  percent_complete: number;
+  estimated_costing: number;
+  actual_expense: number;
+  expected_start_date: string | null;
+  expected_end_date: string | null;
+  department: string | null;
+}
+
+export async function fetchErpNextProjectList(): Promise<ErpProjectListItem[]> {
   if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
-  const fields = JSON.stringify(["name", "project_name"]);
+  const fields = JSON.stringify([
+    "name", "project_name", "status", "percent_complete",
+    "estimated_costing", "actual_expense",
+    "expected_start_date", "expected_end_date", "department",
+  ]);
   const params = new URLSearchParams({ fields, limit_page_length: "2000", order_by: "project_name asc" });
   const url = `${ERPNEXT_URL}/api/resource/Project?${params}`;
   const res = await fetch(url, { headers: { Authorization: authHeader() } });
   if (!res.ok) return [];
   const json = await res.json();
-  return (json.data || []) as { name: string; project_name: string }[];
+  return ((json.data || []) as any[]).map(p => ({
+    name: p.name,
+    project_name: p.project_name || p.name,
+    status: p.status ?? null,
+    percent_complete: Number(p.percent_complete) || 0,
+    estimated_costing: Number(p.estimated_costing) || 0,
+    actual_expense: Number(p.actual_expense) || 0,
+    expected_start_date: p.expected_start_date ?? null,
+    expected_end_date: p.expected_end_date ?? null,
+    department: p.department ?? null,
+  }));
 }
 
 export interface ErpProjectDetail {
