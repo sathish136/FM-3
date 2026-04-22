@@ -589,17 +589,13 @@ export default function VCCardScanner() {
     <Layout>
       <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
         {/* Header */}
-        <div className="flex-shrink-0 bg-white border-b border-slate-200 px-6 py-4">
+        <div className="flex-shrink-0 bg-white border-b border-slate-200 px-4 py-2.5">
           <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl bg-slate-900 flex items-center justify-center">
-                <ScanLine className="w-5 h-5 text-white" />
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-lg bg-slate-900 flex items-center justify-center">
+                <ScanLine className="w-4 h-4 text-white" />
               </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Contacts</p>
-                <h1 className="text-lg font-bold text-slate-900 leading-tight">Visiting Card Scanner</h1>
-                <p className="text-[11px] text-slate-500 mt-0.5">Snap a card · AI extracts the contact details · review and save.</p>
-              </div>
+              <h1 className="text-base font-bold text-slate-900 leading-tight">Visiting Card Scanner</h1>
             </div>
             <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
               {([
@@ -620,22 +616,16 @@ export default function VCCardScanner() {
 
         {/* SCAN tab */}
         {tab === "scan" && (
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto p-4">
             {showAutoCam && <AutoCaptureModal onComplete={onAutoCaptureComplete} onClose={() => setShowAutoCam(false)} />}
             <input ref={uploadRef} type="file" accept="image/*" className="hidden"
               onChange={e => { const f = e.target.files?.[0]; if (f) onUploadFile(f); e.target.value = ""; }} />
 
-            <div className="max-w-5xl mx-auto space-y-5">
-              {/* Step 1: auto-capture */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Step 1</p>
-                    <h2 className="text-base font-bold text-slate-900">Auto-scan visiting card</h2>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Camera detects the card automatically · AI extracts the contact details for you to review.
-                    </p>
-                  </div>
+            <div className="max-w-5xl mx-auto space-y-3">
+              {/* Auto-capture */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-base font-bold text-slate-900">Auto-scan visiting card</h2>
                   {(image || extracted) && !scanning && !saving && (
                     <button onClick={reset} className="text-xs font-semibold text-slate-400 hover:text-rose-600 flex items-center gap-1">
                       <RefreshCw className="w-3 h-3" /> Reset
@@ -644,21 +634,16 @@ export default function VCCardScanner() {
                 </div>
 
                 {/* Default tag — auto-applied to every scan, e.g. expo or event name */}
-                <div className="mb-4 flex flex-col sm:flex-row sm:items-center gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200">
-                  <div className="flex items-center gap-2 shrink-0">
-                    <TagIcon className="w-4 h-4 text-amber-700" />
-                    <label className="text-[11px] font-bold uppercase tracking-widest text-amber-800">Default tag</label>
-                  </div>
+                <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200">
+                  <TagIcon className="w-4 h-4 text-amber-700 shrink-0" />
+                  <label className="text-[11px] font-bold uppercase tracking-widest text-amber-800 shrink-0">Tag</label>
                   <input
                     type="text"
                     value={defaultTag}
                     onChange={e => setDefaultTag(e.target.value)}
                     placeholder="e.g. ExpoMumbai2026, IMTEX, follow-up…"
-                    className="flex-1 bg-white border border-amber-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-amber-500"
+                    className="flex-1 min-w-0 bg-white border border-amber-200 rounded-md px-2.5 py-1 text-sm outline-none focus:border-amber-500"
                   />
-                  <p className="text-[10px] text-amber-700 sm:max-w-[180px] leading-tight">
-                    Added to every new scan — handy at expos &amp; events.
-                  </p>
                 </div>
 
                 <div className="max-w-md">
@@ -736,22 +721,6 @@ export default function VCCardScanner() {
                 </div>
               )}
 
-              {/* Help / empty hint */}
-              {!extracted && !image && (
-                <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl text-white p-6 grid grid-cols-1 md:grid-cols-3 gap-5">
-                  {[
-                    { icon: Camera,   t: "Snap or upload",  d: "Take a photo of the visiting card." },
-                    { icon: Sparkles, t: "AI extracts",     d: "Name, company, email, phone, address & more." },
-                    { icon: BarChart3, t: "Build reports",  d: "Categorise contacts, export CSV, track pipeline." },
-                  ].map((s, i) => (
-                    <div key={i} className="space-y-2">
-                      <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center"><s.icon className="w-4 h-4" /></div>
-                      <p className="text-sm font-bold">{s.t}</p>
-                      <p className="text-[12px] text-slate-300 leading-relaxed">{s.d}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -760,25 +729,25 @@ export default function VCCardScanner() {
         {tab === "list" && (
           <div className="flex-1 flex overflow-hidden">
             <div className={`${selected ? "hidden md:flex md:w-3/5" : "flex w-full"} flex-col border-r border-slate-200 bg-white`}>
-              <div className="px-5 py-3 border-b border-slate-200 flex items-center gap-2">
-                <div className="flex-1 flex items-center gap-2 bg-slate-100 rounded-lg px-3 py-2">
-                  <Search className="w-3.5 h-3.5 text-slate-400" />
+              <div className="px-4 py-3 border-b border-slate-200 flex flex-wrap items-center gap-2">
+                <div className="flex-1 min-w-[200px] flex items-center gap-2 bg-slate-100 rounded-lg px-3 py-2">
+                  <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                   <input value={search} onChange={e => setSearch(e.target.value)}
-                    placeholder="Search name, company, email, phone…"
-                    className="flex-1 bg-transparent outline-none text-sm placeholder:text-slate-400" />
+                    placeholder="Search name, company, email…"
+                    className="flex-1 min-w-0 bg-transparent outline-none text-sm placeholder:text-slate-400" />
                 </div>
                 <select value={filterCat} onChange={e => setFilterCat(e.target.value as any)}
-                  className="text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg px-2.5 py-2 outline-none">
-                  <option value="all">All categories</option>
+                  className="text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg px-2 py-2 outline-none">
+                  <option value="all">All</option>
                   {(["customer","vendor","partner","lead","other"] as const).map(c => <option key={c} value={c}>{CAT_META[c].label}</option>)}
                 </select>
                 <button
                   onClick={() => filtered.length && downloadVCF(`contacts-${new Date().toISOString().slice(0,10)}`, filtered.map(buildVCard).join("\r\n"))}
                   disabled={!filtered.length}
-                  className="flex items-center gap-1 px-3 py-2 bg-white border border-slate-200 hover:border-slate-400 disabled:opacity-50 text-slate-700 text-xs font-bold rounded-lg">
-                  <Download className="w-3.5 h-3.5" /> Export .vcf
+                  className="flex items-center gap-1 px-2.5 py-2 bg-white border border-slate-200 hover:border-slate-400 disabled:opacity-50 text-slate-700 text-xs font-bold rounded-lg whitespace-nowrap">
+                  <Download className="w-3.5 h-3.5" /> .vcf
                 </button>
-                <button onClick={() => setTab("scan")} className="flex items-center gap-1 px-3 py-2 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-lg">
+                <button onClick={() => setTab("scan")} className="flex items-center gap-1 px-2.5 py-2 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-lg whitespace-nowrap">
                   <Plus className="w-3.5 h-3.5" /> Scan
                 </button>
               </div>
@@ -834,12 +803,14 @@ export default function VCCardScanner() {
             {/* Detail */}
             {selected && (
               <div className="flex-1 flex flex-col bg-slate-50 overflow-hidden">
-                <div className="flex items-center justify-between px-5 py-3 bg-white border-b border-slate-200">
-                  <button onClick={() => setSelected(null)} className="md:hidden text-xs font-semibold text-slate-500 flex items-center gap-1">
-                    <ChevronRight className="w-3 h-3 rotate-180" /> Back
-                  </button>
-                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Contact details</p>
-                  <div className="flex items-center gap-3">
+                <div className="flex items-center justify-between gap-2 px-4 py-3 bg-white border-b border-slate-200">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <button onClick={() => setSelected(null)} className="md:hidden text-xs font-semibold text-slate-500 flex items-center gap-1 shrink-0">
+                      <ChevronRight className="w-3 h-3 rotate-180" /> Back
+                    </button>
+                    <p className="text-xs font-bold uppercase tracking-widest text-slate-400 truncate">Contact details</p>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
                     <button
                       onClick={() => downloadVCF((selected.name || "contact").replace(/[^\w-]+/g, "_"), buildVCard(selected))}
                       className="text-xs font-semibold text-slate-700 hover:text-slate-900 flex items-center gap-1">
