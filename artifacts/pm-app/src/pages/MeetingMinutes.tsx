@@ -1105,6 +1105,21 @@ type Block =
 
 const PARAGRAPH_GAP_MS = 4000; // commit a speech paragraph after 4s of silence
 const AUTO_LANGS = ["en-IN", "ta-IN", "hi-IN"];
+const CHUNK_MS = 3500; // upload an audio chunk to Whisper roughly every 3.5s
+
+// Pick a MediaRecorder mime type the browser actually supports
+function pickRecorderMime(): string {
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/ogg;codecs=opus",
+    "audio/mp4",
+  ];
+  for (const m of candidates) {
+    try { if ((window as any).MediaRecorder?.isTypeSupported?.(m)) return m; } catch {}
+  }
+  return "";
+}
 
 function CameraCaptureModal({ onCapture, onClose }: { onCapture: (dataUrl: string) => void; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -1203,26 +1218,22 @@ function LiveSpeechMinutesView({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
 
-  // Speech recognition refs
-  const recognitionsRef = useRef<any[]>([]);
+  // Chunked Whisper recording refs
+  const streamRef = useRef<MediaStream | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recorderMimeRef = useRef<string>("");
+  const chunkCycleRef = useRef<number | null>(null);
   const isRecordingRef = useRef(false);
   const isPausedRef = useRef(false);
-
-  // Paragraph buffer — accumulates final segments until silence gap
-  const paragraphBufRef = useRef<string>("");
-  const paragraphLangRef = useRef<string>("");
-  const paragraphTimerRef = useRef<number | null>(null);
-  const paragraphStartedAtRef = useRef<number>(0);
 
   const idCounterRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [blocks, liveText]);
   useEffect(() => () => {
-    recognitionsRef.current.forEach(r => { try { r.onend = null; r.stop(); } catch {} });
-    if (paragraphTimerRef.current) window.clearTimeout(paragraphTimerRef.current);
+    teardownStream();
     if (durationTimerRef.current) window.clearInterval(durationTimerRef.current);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Live recording timer
   useEffect(() => {
@@ -1238,6 +1249,7 @@ function LiveSpeechMinutesView({
 
   const nowTs = () => ({ ts: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), tsMs: Date.now() });
 
+  // ─── Translation ──────────────────────────────────────────────────────────
   const translateBlock = async (id: number, text: string, sourceLang: string) => {
     setBlocks(prev => prev.map(b => b.kind === "speech" && b.id === id ? { ...b, translating: true } : b));
     try {
@@ -1252,12 +1264,16 @@ function LiveSpeechMinutesView({
     }
   };
 
-  // Commit accumulated speech buffer as one paragraph block
-  const commitParagraph = () => {
-    const text = paragraphBufRef.current.trim().replace(/\s+/g, " ");
-    paragraphBufRef.current = "";
-    if (paragraphTimerRef.current) { window.clearTimeout(paragraphTimerRef.current); paragraphTimerRef.current = null; }
+  // Append a finished Whisper transcript chunk to the timeline + auto-translate
+  const appendSpeechChunk = (rawText: string) => {
+    const text = rawText.trim().replace(/\s+/g, " ");
     if (!text) return;
+
+    // Filter common Whisper hallucinations on silent audio
+    const lower = text.toLowerCase();
+    const noise = ["thank you", "thanks for watching", "you", ".", "..", "...", "[music]", "[silence]"];
+    if (text.length < 3 || noise.includes(lower)) return;
+
     const detected = detectScript(text);
     const id = ++idCounterRef.current;
     const t = nowTs();
@@ -1266,106 +1282,111 @@ function LiveSpeechMinutesView({
       detectedLang: detected.lang, detectedFlag: detected.flag, isEnglish: detected.isEnglish, translating: false,
     };
     setBlocks(prev => [...prev, block]);
+    setLiveText("");
+    setLiveDetected({ lang: detected.lang, flag: detected.flag });
     if (!detected.isEnglish) translateBlock(id, text, detected.lang);
-    paragraphStartedAtRef.current = 0;
-    paragraphLangRef.current = "";
   };
 
-  const scheduleCommit = () => {
-    if (paragraphTimerRef.current) window.clearTimeout(paragraphTimerRef.current);
-    paragraphTimerRef.current = window.setTimeout(commitParagraph, PARAGRAPH_GAP_MS);
+  // ─── Chunked Whisper recording ────────────────────────────────────────────
+  const teardownStream = () => {
+    try { recorderRef.current?.stop(); } catch {}
+    recorderRef.current = null;
+    if (chunkCycleRef.current) { window.clearTimeout(chunkCycleRef.current); chunkCycleRef.current = null; }
+    if (streamRef.current) {
+      try { streamRef.current.getTracks().forEach(t => t.stop()); } catch {}
+      streamRef.current = null;
+    }
   };
 
-  // Decide if we accept a final result from a recognizer (auto-mode arbitration)
-  const acceptFinal = (text: string, recognizerLang: string) => {
-    if (lang !== "auto") return true;
-    const detected = detectScript(text);
-    // For Tamil/Hindi recognizers: accept if their script is detected
-    if (recognizerLang === "ta-IN") return detected.lang === "Tamil";
-    if (recognizerLang === "hi-IN") return detected.lang === "Hindi";
-    // English recognizer accepts only Latin text (and only if no other recognizer claimed Tamil/Hindi for same window)
-    if (recognizerLang === "en-IN") return detected.isEnglish;
-    return true;
-  };
+  // Start a fresh MediaRecorder that records exactly one CHUNK_MS slice,
+  // then on stop uploads to Whisper and immediately starts the next chunk.
+  const startChunkCycle = () => {
+    if (!isRecordingRef.current || isPausedRef.current) return;
+    const stream = streamRef.current;
+    if (!stream) return;
 
-  const startRecognizer = (recognizerLang: string) => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) return null;
-    const r = new SR();
-    r.continuous = true;
-    r.interimResults = true;
-    r.lang = recognizerLang;
-    r.onresult = (e: any) => {
-      if (isPausedRef.current) return;
-      let interim = "";
-      let finalText = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) finalText += t;
-        else interim += t;
+    let mr: MediaRecorder;
+    try {
+      mr = recorderMimeRef.current
+        ? new MediaRecorder(stream, { mimeType: recorderMimeRef.current })
+        : new MediaRecorder(stream);
+    } catch {
+      try { mr = new MediaRecorder(stream); } catch { return; }
+    }
+    recorderRef.current = mr;
+
+    const parts: BlobPart[] = [];
+    mr.ondataavailable = (e) => { if (e.data && e.data.size > 0) parts.push(e.data); };
+    mr.onstop = async () => {
+      // Schedule the next cycle immediately so capture is continuous
+      if (isRecordingRef.current && !isPausedRef.current) {
+        chunkCycleRef.current = window.setTimeout(startChunkCycle, 0);
       }
-      if (interim.trim()) {
-        const d = detectScript(interim);
-        // In auto mode prefer to show whichever recognizer matches its script
-        if (lang === "auto") {
-          if (recognizerLang === "ta-IN" && d.lang !== "Tamil") return;
-          if (recognizerLang === "hi-IN" && d.lang !== "Hindi") return;
-          if (recognizerLang === "en-IN" && !d.isEnglish && (d.lang === "Tamil" || d.lang === "Hindi")) return;
-        }
-        setLiveText(interim);
-        setLiveDetected({ lang: d.lang, flag: d.flag });
-      }
-      if (finalText.trim() && acceptFinal(finalText, recognizerLang)) {
-        const piece = finalText.trim();
-        // Same paragraph if same script as current buffer; else commit existing first
-        const d = detectScript(piece);
-        if (paragraphBufRef.current && paragraphLangRef.current && paragraphLangRef.current !== d.lang) {
-          commitParagraph();
-        }
-        if (!paragraphBufRef.current) paragraphStartedAtRef.current = Date.now();
-        paragraphBufRef.current = (paragraphBufRef.current + " " + piece).trim();
-        paragraphLangRef.current = d.lang;
-        setLiveText("");
-        setLiveDetected(null);
-        scheduleCommit();
-      }
+      const mime = mr.mimeType || recorderMimeRef.current || "audio/webm";
+      const blob = new Blob(parts, { type: mime });
+      if (blob.size < 2000) return; // too small to contain speech
+
+      try {
+        const ext = mime.includes("ogg") ? "ogg" : mime.includes("mp4") ? "mp4" : "webm";
+        const fd = new FormData();
+        fd.append("audio", blob, `chunk.${ext}`);
+        const r = await fetch(`${BASE}/transcribe`, { method: "POST", body: fd });
+        if (!r.ok) return;
+        const { transcript } = await r.json();
+        if (transcript && transcript.trim()) appendSpeechChunk(transcript);
+      } catch {}
     };
-    r.onerror = () => {};
-    r.onend = () => { if (isRecordingRef.current && !isPausedRef.current) { try { r.start(); } catch {} } };
-    try { r.start(); } catch {}
-    return r;
+
+    mr.start();
+    // Stop after CHUNK_MS so onstop fires with a complete, decodable file
+    chunkCycleRef.current = window.setTimeout(() => {
+      try { mr.state === "recording" && mr.stop(); } catch {}
+    }, CHUNK_MS);
   };
 
-  const startRecording = () => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) { alert("Speech recognition is not supported in this browser. Please use Chrome or Edge."); return; }
-    isRecordingRef.current = true;
-    isPausedRef.current = false;
-    const langs = lang === "auto" ? AUTO_LANGS : [lang];
-    recognitionsRef.current = langs.map(l => startRecognizer(l)).filter(Boolean);
-    setIsRecording(true);
-    setIsPaused(false);
-    setDuration(0);
+  const startRecording = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      alert("Microphone access is not available in this browser.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+      streamRef.current = stream;
+      recorderMimeRef.current = pickRecorderMime();
+      isRecordingRef.current = true;
+      isPausedRef.current = false;
+      setIsRecording(true);
+      setIsPaused(false);
+      setDuration(0);
+      setLiveText("");
+      setLiveDetected(null);
+      startChunkCycle();
+    } catch (e) {
+      alert("Could not access the microphone. Please allow microphone access in your browser.");
+    }
   };
 
   const pauseRecording = () => {
     isPausedRef.current = true;
     setIsPaused(true);
-    recognitionsRef.current.forEach(r => { try { r.stop(); } catch {} });
+    if (chunkCycleRef.current) { window.clearTimeout(chunkCycleRef.current); chunkCycleRef.current = null; }
+    try { recorderRef.current?.state === "recording" && recorderRef.current.stop(); } catch {}
   };
 
   const resumeRecording = () => {
     isPausedRef.current = false;
     setIsPaused(false);
-    recognitionsRef.current.forEach(r => { try { r.start(); } catch {} });
+    startChunkCycle();
   };
 
   const stopRecording = () => {
     isRecordingRef.current = false;
     isPausedRef.current = false;
-    recognitionsRef.current.forEach(r => { r.onend = null; try { r.stop(); } catch {} });
-    recognitionsRef.current = [];
-    commitParagraph();
+    if (chunkCycleRef.current) { window.clearTimeout(chunkCycleRef.current); chunkCycleRef.current = null; }
+    try { recorderRef.current?.state === "recording" && recorderRef.current.stop(); } catch {}
+    teardownStream();
     setLiveText("");
     setLiveDetected(null);
     setIsRecording(false);
@@ -1375,7 +1396,6 @@ function LiveSpeechMinutesView({
   const addNote = () => {
     const text = noteDraft.trim();
     if (!text) return;
-    commitParagraph(); // close any in-flight speech paragraph
     const id = ++idCounterRef.current;
     const t = nowTs();
     setBlocks(prev => [...prev, { kind: "note", id, text, ts: t.ts, tsMs: t.tsMs }]);
@@ -1387,7 +1407,6 @@ function LiveSpeechMinutesView({
     reader.onload = () => {
       const dataUrl = String(reader.result || "");
       if (!dataUrl) return;
-      commitParagraph();
       const id = ++idCounterRef.current;
       const t = nowTs();
       setBlocks(prev => [...prev, { kind: "image", id, dataUrl, caption: file.name, ts: t.ts, tsMs: t.tsMs, source: "upload" }]);
@@ -1396,7 +1415,6 @@ function LiveSpeechMinutesView({
   };
 
   const addCapturedImage = (dataUrl: string) => {
-    commitParagraph();
     const id = ++idCounterRef.current;
     const t = nowTs();
     setBlocks(prev => [...prev, { kind: "image", id, dataUrl, caption: "Camera capture", ts: t.ts, tsMs: t.tsMs, source: "capture" }]);
@@ -1406,7 +1424,6 @@ function LiveSpeechMinutesView({
 
   const clearAll = () => {
     setBlocks([]);
-    paragraphBufRef.current = "";
     setLiveText("");
     setLiveDetected(null);
     idCounterRef.current = 0;
@@ -1556,7 +1573,7 @@ function LiveSpeechMinutesView({
               <span className="font-semibold">{liveDetected.lang}</span>
             </span>
           )}
-          <span className="text-[11px] text-slate-500 hidden sm:inline">· paragraphs auto-commit on pause</span>
+          <span className="text-[11px] text-slate-500 hidden sm:inline">· transcribed every {Math.round(CHUNK_MS / 1000)}s with auto-translate</span>
           <div className="ml-auto flex items-center gap-1.5">
             {isPaused
               ? <button onClick={resumeRecording} className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-md transition-colors">
