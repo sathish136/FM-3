@@ -34,6 +34,7 @@ import civilDrawingRouter from "./civil-drawing";
 import stockReportsRouter from "./stock-reports";
 import callLogsRouter from "./call-logs";
 import deptCallLogsRouter from "./dept-call-logs";
+import visitingCardsRouter from "./visiting-cards";
 
 const router: IRouter = Router();
 
@@ -72,5 +73,6 @@ router.use(civilDrawingRouter);
 router.use(stockReportsRouter);
 router.use(callLogsRouter);
 router.use(deptCallLogsRouter);
+router.use(visitingCardsRouter);
 
 export default router;

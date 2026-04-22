@@ -70,6 +70,7 @@ import TaskManagement from "@/pages/TaskManagement";
 import TeamPulse from "@/pages/TeamPulse";
 import TeamReporting from "@/pages/TeamReporting";
 import IPCallLogs from "@/pages/IPCallLogs";
+import VCCardScanner from "@/pages/VCCardScanner";
 import EmpAgent from "@/pages/EmpAgent";
 import { SlideshowProvider } from "@/contexts/SlideshowContext";
 import { RecordingProvider } from "@/contexts/RecordingContext";
@@ -228,6 +229,7 @@ function ProtectedRoutes() {
       <Route path="/ip-call-logs/project" component={IPCallLogs} />
       <Route path="/ip-call-logs/purchase" component={IPCallLogs} />
       <Route path="/ip-call-logs/marketing" component={IPCallLogs} />
+      <Route path="/vc-card-scanner" component={VCCardScanner} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -5,6 +5,7 @@ import {
   LogOut, ChevronDown, ChevronRight as ChevronRightIcon, Menu, MoreHorizontal,
   MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp, ListChecks, ClipboardList, Truck, Building2, Package,
   Play, Square, Phone, ShieldOff, Loader2, Languages, Globe,
+  ScanLine,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -276,9 +277,10 @@ const navGroups: { label: string; items: NavItem[] }[] = [
   {
     label: "Marketing & CRM",
     items: [
-      { path: "/marketing", label: "Marketing", icon: Megaphone, color: "text-violet-400", bgColor: "bg-violet-500/15" },
-      { path: "/leads",     label: "Leads",     icon: Target,    color: "text-rose-400",   bgColor: "bg-rose-500/15" },
-      { path: "/campaigns", label: "Campaigns", icon: BarChart3, color: "text-pink-400",   bgColor: "bg-pink-500/15" },
+      { path: "/marketing",        label: "Marketing",       icon: Megaphone, color: "text-violet-400", bgColor: "bg-violet-500/15" },
+      { path: "/leads",            label: "Leads",           icon: Target,    color: "text-rose-400",   bgColor: "bg-rose-500/15" },
+      { path: "/vc-card-scanner",  label: "VC Card Scanner", icon: ScanLine,  color: "text-amber-400",  bgColor: "bg-amber-500/15" },
+      { path: "/campaigns",        label: "Campaigns",       icon: BarChart3, color: "text-pink-400",   bgColor: "bg-pink-500/15" },
     ],
   },
   {
@@ -340,6 +342,7 @@ const PATH_TO_MODULE: Record<string, string> = {
   "/ip-call-logs":          "ip-call-logs",
   "/project-timeline":      "project-timeline",
   "/meeting-minutes":       "meeting-minutes",
+  "/vc-card-scanner":       "vc-card-scanner",
   "/speech-translator":     "speech-translator",
   "/translator":            "translator",
   "/project-drawings":      "project-drawings",

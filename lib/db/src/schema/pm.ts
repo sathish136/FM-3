@@ -278,6 +278,34 @@ export const resumeAnalysisCacheTable = pgTable("resume_analysis_cache", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const visitingCardsTable = pgTable("visiting_cards", {
+  id: serial("id").primaryKey(),
+  name: text("name"),
+  designation: text("designation"),
+  company: text("company"),
+  department: text("department"),
+  email: text("email"),
+  phones: text("phones"),
+  website: text("website"),
+  address: text("address"),
+  city: text("city"),
+  country: text("country"),
+  notes: text("notes"),
+  tags: text("tags"),
+  category: text("category").notNull().default("lead"),
+  source: text("source").notNull().default("scan"),
+  meetingContext: text("meeting_context"),
+  frontImage: text("front_image"),
+  backImage: text("back_image"),
+  rawText: text("raw_text"),
+  meta: jsonb("meta"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type VisitingCard = typeof visitingCardsTable.$inferSelect;
+export type InsertVisitingCard = typeof visitingCardsTable.$inferInsert;
+
 export const design3dRecordsTable = pgTable("design_3d_records", {
   name: text("name").primaryKey(),
   project: text("project").notNull().default(""),
