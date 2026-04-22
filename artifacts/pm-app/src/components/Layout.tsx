@@ -798,15 +798,8 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   const [location] = useLocation();
   const { navStyle } = useNavStyle();
   const [expandedItems, setExpandedItems] = useState<string[]>(["/drawings"]);
-  const [expandedGroups, setExpandedGroups] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem(EXPANDED_GROUPS_KEY);
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    const active = getActiveGroupLabel(location);
-    const defaults = ["Shortcuts", "Main"];
-    return active ? [...new Set([...defaults, active])] : defaults;
-  });
+  // Always start with all submenu groups collapsed on app load.
+  const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
   // Always start in expanded mode when the app loads (user can collapse manually).
   const [collapsed, setCollapsedState] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -889,19 +882,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   // Sidebar always starts collapsed on app load — ignore any saved preference
   // that would expand it automatically. The user can still expand it manually.
 
-  useEffect(() => {
-    // Keep the sidebar / launcher open when navigating between pages.
-    // The user can dismiss them manually with the close button or backdrop.
-    const activeGroup = getActiveGroupLabel(location);
-    if (activeGroup) {
-      setExpandedGroups(prev => {
-        if (prev.includes(activeGroup)) return prev;
-        const next = [...prev, activeGroup];
-        try { localStorage.setItem(EXPANDED_GROUPS_KEY, JSON.stringify(next)); } catch {}
-        return next;
-      });
-    }
-  }, [location]);
+  // Submenu groups stay collapsed on navigation — the user expands them manually.
 
   useEffect(() => {
     if (navStyle === "sidebar" && (location === "/email" || location === "/smart-inbox")) {
