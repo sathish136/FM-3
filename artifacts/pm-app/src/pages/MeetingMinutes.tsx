@@ -1197,7 +1197,11 @@ function LiveSpeechMinutesView({
   const [liveDetected, setLiveDetected] = useState<{ lang: string; flag: string } | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [showCamera, setShowCamera] = useState(false);
+  const [metaOpen, setMetaOpen] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const durationTimerRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
 
   // Speech recognition refs
   const recognitionsRef = useRef<any[]>([]);
@@ -1217,7 +1221,20 @@ function LiveSpeechMinutesView({
   useEffect(() => () => {
     recognitionsRef.current.forEach(r => { try { r.onend = null; r.stop(); } catch {} });
     if (paragraphTimerRef.current) window.clearTimeout(paragraphTimerRef.current);
+    if (durationTimerRef.current) window.clearInterval(durationTimerRef.current);
   }, []);
+
+  // Live recording timer
+  useEffect(() => {
+    if (isRecording && !isPaused) {
+      durationTimerRef.current = window.setInterval(() => setDuration(d => d + 1), 1000);
+    } else if (durationTimerRef.current) {
+      window.clearInterval(durationTimerRef.current); durationTimerRef.current = null;
+    }
+    return () => { if (durationTimerRef.current) { window.clearInterval(durationTimerRef.current); durationTimerRef.current = null; } };
+  }, [isRecording, isPaused]);
+
+  const fmtDur = (s: number) => `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
   const nowTs = () => ({ ts: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), tsMs: Date.now() });
 
@@ -1328,6 +1345,7 @@ function LiveSpeechMinutesView({
     recognitionsRef.current = langs.map(l => startRecognizer(l)).filter(Boolean);
     setIsRecording(true);
     setIsPaused(false);
+    setDuration(0);
   };
 
   const pauseRecording = () => {
@@ -1427,248 +1445,312 @@ function LiveSpeechMinutesView({
   const imgCount = blocks.filter(b => b.kind === "image").length;
   const translatedCount = speechBlocks.filter(b => !b.isEnglish).length;
 
+  const totalItems = blocks.length;
+  const canSave = !!title.trim() && totalItems > 0 && !saving && !saved;
+  const showEmpty = totalItems === 0 && !liveText && !isRecording;
+
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
+    <div className="flex-1 flex flex-col overflow-hidden bg-slate-50 relative">
       {showCamera && <CameraCaptureModal onCapture={addCapturedImage} onClose={() => setShowCamera(false)} />}
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
         onChange={e => { const f = e.target.files?.[0]; if (f) addImageFromFile(f); e.target.value = ""; }} />
 
-      {/* ── Professional header strip ── */}
-      <div className="flex-shrink-0 bg-white border-b border-slate-200 px-5 py-3">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-lg bg-slate-900 flex items-center justify-center shrink-0">
-              <Users className="w-4 h-4 text-white" />
+      {/* ── Compact top bar: title + status + save ── */}
+      <div className="flex-shrink-0 bg-white border-b border-slate-200">
+        <div className="px-5 py-2.5 flex items-center gap-3">
+          {/* Status dot/icon */}
+          <button
+            onClick={() => setMetaOpen(o => !o)}
+            className="flex items-center gap-2 shrink-0 group"
+            title="Meeting details"
+          >
+            <div className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${isRecording && !isPaused ? "bg-rose-600" : isPaused ? "bg-amber-500" : "bg-slate-900"}`}>
+              {isRecording && !isPaused
+                ? <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                : isPaused
+                  ? <Pause className="w-3.5 h-3.5 text-white" fill="white" />
+                  : <Users className="w-4 h-4 text-white" />}
             </div>
-            <div className="min-w-0">
-              <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">Customer Meeting</p>
-              <h2 className="text-sm font-bold text-slate-800 leading-tight">Live Transcription &amp; Notes</h2>
-              <p className="text-[11px] text-slate-500 mt-0.5">Speak in any language · attach photos · add manual notes — all on one timeline.</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <SpeechLangPicker value={lang} onChange={setLang} disabled={isRecording && !isPaused} />
-            {liveDetected && lang === "auto" && (
-              <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 rounded-lg">
-                <span className="text-sm leading-none">{liveDetected.flag}</span>
-                <span className="text-emerald-700 text-[10px] font-bold">{liveDetected.lang}</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+          </button>
 
-      {/* ── Meeting metadata strip ── */}
-      <div className="flex-shrink-0 bg-white border-b border-slate-200 px-5 py-2.5 grid grid-cols-12 gap-3 items-center">
-        <div className="col-span-6 min-w-0">
-          <label className="block text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Customer / Meeting Title <span className="text-rose-500">*</span></label>
-          <input value={title} onChange={e => setTitle(e.target.value)}
-            placeholder="e.g. Acme Corp — Q2 onboarding call"
-            className="w-full text-sm font-semibold text-slate-800 placeholder:text-slate-300 placeholder:font-normal bg-transparent outline-none border-b border-slate-200 focus:border-slate-900 pb-0.5 transition-colors" />
-        </div>
-        <div className="col-span-3 min-w-0">
-          <label className="block text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Date</label>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)}
-            className="w-full text-xs font-semibold text-slate-700 outline-none border-b border-slate-200 focus:border-slate-900 pb-0.5" />
-        </div>
-        <div className="col-span-3 min-w-0">
-          <label className="block text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Venue</label>
-          <input value={venue} onChange={e => setVenue(e.target.value)}
-            placeholder="On-site / Zoom / Office"
-            className="w-full text-xs font-semibold text-slate-700 placeholder:text-slate-300 placeholder:font-normal outline-none border-b border-slate-200 focus:border-slate-900 pb-0.5" />
-        </div>
-      </div>
-
-      {/* ── Timeline (single source of truth) ── */}
-      <div className="flex-1 overflow-y-auto px-5 py-4">
-        {blocks.length === 0 && !liveText && !isRecording && (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-center pb-12">
-            <div className="w-16 h-16 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center">
-              <Mic className="w-7 h-7 text-slate-300" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-slate-700">Ready when you are</p>
-              <p className="text-xs text-slate-400 mt-1 max-w-xs">Press the record button below. You can also add typed notes and attach photos at any time during the meeting.</p>
-            </div>
-          </div>
-        )}
-
-        <div className="max-w-3xl mx-auto space-y-3">
-          {blocks.map(b => (
-            <div key={`${b.kind}-${b.id}`} className="group flex items-start gap-3">
-              <div className="flex-shrink-0 w-12 text-right">
-                <p className="text-[10px] font-semibold text-slate-400 mt-2 tabular-nums">{b.ts}</p>
-              </div>
-
-              {b.kind === "speech" && (
-                <div className="flex-1 bg-white rounded-lg border border-slate-200 shadow-sm px-4 py-3">
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <span className="text-sm leading-none">{b.detectedFlag}</span>
-                    <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{b.detectedLang}</span>
-                    <button onClick={() => removeBlock(b.id)}
-                      className="ml-auto opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-opacity">
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                  <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap">{b.text}</p>
-                  {!b.isEnglish && (
-                    <div className="mt-2 pt-2 border-t border-slate-100">
-                      {b.translating ? (
-                        <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                          <Loader2 className="w-3 h-3 animate-spin" /> Translating to English…
-                        </div>
-                      ) : b.translated ? (
-                        <div className="flex items-start gap-1.5">
-                          <Globe className="w-3 h-3 text-emerald-600 mt-0.5 flex-shrink-0" />
-                          <p className="text-[13px] text-emerald-800 leading-relaxed italic">{b.translated}</p>
-                        </div>
-                      ) : null}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {b.kind === "note" && (
-                <div className="flex-1 bg-amber-50 rounded-lg border border-amber-200 shadow-sm px-4 py-3 relative">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <StickyNote className="w-3 h-3 text-amber-600" />
-                    <span className="text-[9px] font-bold uppercase tracking-wider text-amber-700">Manual note</span>
-                    <button onClick={() => removeBlock(b.id)}
-                      className="ml-auto opacity-0 group-hover:opacity-100 text-amber-300 hover:text-rose-500 transition-opacity">
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                  <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap">{b.text}</p>
-                </div>
-              )}
-
-              {b.kind === "image" && (
-                <div className="flex-1 bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-slate-100">
-                    {b.source === "capture" ? <Camera className="w-3 h-3 text-slate-500" /> : <ImageIcon className="w-3 h-3 text-slate-500" />}
-                    <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
-                      {b.source === "capture" ? "Photo" : "Attachment"}
-                    </span>
-                    <span className="text-[10px] text-slate-400 truncate">· {b.caption}</span>
-                    <button onClick={() => removeBlock(b.id)}
-                      className="ml-auto opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-opacity">
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                  <a href={b.dataUrl} target="_blank" rel="noreferrer" className="block bg-slate-50">
-                    <img src={b.dataUrl} alt={b.caption} className="max-h-72 w-auto mx-auto" />
-                  </a>
-                </div>
-              )}
-            </div>
-          ))}
-
-          {/* Live interim speech */}
-          {liveText && (
-            <div className="flex items-start gap-3">
-              <div className="flex-shrink-0 w-12 text-right">
-                <span className="inline-block w-2 h-2 rounded-full bg-rose-500 animate-pulse mt-3" />
-              </div>
-              <div className="flex-1 bg-white rounded-lg border border-dashed border-slate-300 px-4 py-3">
-                <p className="text-sm text-slate-500 italic leading-relaxed">{liveText}</p>
-                <p className="text-[10px] text-slate-400 mt-1">
-                  {liveDetected ? `${liveDetected.flag} ${liveDetected.lang} · listening…` : "Listening…"}
-                </p>
-              </div>
-            </div>
-          )}
-
-          <div ref={bottomRef} />
-        </div>
-      </div>
-
-      {/* ── Bottom command bar: notes input + attach + record + save ── */}
-      <div className="flex-shrink-0 bg-white border-t border-slate-200">
-        {/* Manual note + attachment row */}
-        <div className="px-5 py-2.5 flex items-center gap-2 border-b border-slate-100">
-          <div className="flex-1 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 focus-within:border-slate-900">
-            <StickyNote className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          {/* Title input — primary focus */}
+          <div className="flex-1 min-w-0">
             <input
-              value={noteDraft}
-              onChange={e => setNoteDraft(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addNote(); } }}
-              placeholder="Type a manual note and press Enter…"
-              className="flex-1 text-sm text-slate-800 placeholder:text-slate-400 bg-transparent outline-none"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="Untitled customer meeting"
+              className="w-full text-base font-bold text-slate-900 placeholder:text-slate-300 placeholder:font-medium bg-transparent outline-none"
             />
-            {noteDraft.trim() && (
-              <button onClick={addNote} className="text-[11px] font-semibold text-slate-900 hover:text-black px-2">Add</button>
-            )}
-          </div>
-          <button onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-200 hover:border-slate-400 hover:bg-slate-50 text-xs font-semibold text-slate-700 transition-colors">
-            <Paperclip className="w-3.5 h-3.5" /> Attach
-          </button>
-          <button onClick={() => setShowCamera(true)}
-            className="flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-200 hover:border-slate-400 hover:bg-slate-50 text-xs font-semibold text-slate-700 transition-colors">
-            <Camera className="w-3.5 h-3.5" /> Capture
-          </button>
-        </div>
-
-        {/* Record / pause / save row */}
-        <div className="px-5 py-3 flex items-center justify-between gap-3">
-          <div className="text-[11px] text-slate-500 space-y-0.5 min-w-0">
-            <p className="font-semibold text-slate-700">
-              {speechBlocks.length} paragraph{speechBlocks.length !== 1 ? "s" : ""} · {wordCount} word{wordCount !== 1 ? "s" : ""}
-              {noteCount > 0 && <> · <span className="text-amber-700">{noteCount} note{noteCount !== 1 ? "s" : ""}</span></>}
-              {imgCount > 0 && <> · <span className="text-slate-700">{imgCount} image{imgCount !== 1 ? "s" : ""}</span></>}
-            </p>
-            <p className="text-[10px] text-slate-400">
-              Recognition: {langLabel}
-              {translatedCount > 0 && <> · {translatedCount} auto-translated</>}
-            </p>
+            <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
+              <span>{date}</span>
+              {venue && <><span className="text-slate-300">·</span><span className="truncate">{venue}</span></>}
+              <span className="text-slate-300">·</span>
+              <button onClick={() => setMetaOpen(o => !o)} className="text-slate-500 hover:text-slate-900 font-medium inline-flex items-center gap-0.5">
+                Details <ChevronDown className={`w-3 h-3 transition-transform ${metaOpen ? "rotate-180" : ""}`} />
+              </button>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {blocks.length > 0 && !isRecording && (
-              <button onClick={clearAll}
-                className="flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-200 hover:border-rose-300 hover:text-rose-600 text-xs font-medium text-slate-500 transition-colors">
-                <Trash2 className="w-3 h-3" /> Clear
+          {/* Right: counts + save */}
+          <div className="flex items-center gap-2 shrink-0">
+            {totalItems > 0 && (
+              <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-500 px-2.5 py-1 bg-slate-100 rounded-full">
+                {speechBlocks.length > 0 && <span className="font-semibold text-slate-700">{speechBlocks.length} ¶</span>}
+                {noteCount > 0 && <span className="font-semibold text-amber-700">{noteCount} 📝</span>}
+                {imgCount > 0 && <span className="font-semibold text-slate-700">{imgCount} 📷</span>}
+              </div>
+            )}
+            {totalItems > 0 && !isRecording && (
+              <button onClick={clearAll} title="Clear all"
+                className="w-9 h-9 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-rose-600 transition-colors">
+                <Trash2 className="w-4 h-4" />
               </button>
             )}
-
-            {!isRecording ? (
-              <button onClick={startRecording}
-                className="flex items-center gap-2 px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors">
-                <Mic className="w-4 h-4" /> Start Recording
-              </button>
-            ) : (
-              <>
-                {isPaused ? (
-                  <button onClick={resumeRecording}
-                    className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors">
-                    <Play className="w-3.5 h-3.5" /> Resume
-                  </button>
-                ) : (
-                  <button onClick={pauseRecording}
-                    className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold rounded-lg transition-colors">
-                    <Pause className="w-3.5 h-3.5" /> Pause
-                  </button>
-                )}
-                <button onClick={stopRecording}
-                  className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 hover:bg-black text-white text-sm font-semibold rounded-lg shadow-sm transition-colors">
-                  <Square className="w-3.5 h-3.5" fill="white" /> Stop
-                </button>
-                {!isPaused && (
-                  <span className="flex items-center gap-1.5 text-[11px] font-semibold text-rose-600 ml-1">
-                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" /> Live
-                  </span>
-                )}
-              </>
-            )}
-
-            <button onClick={handleSave}
-              disabled={!title.trim() || blocks.length === 0 || saving || saved}
-              className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 hover:bg-black disabled:opacity-30 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors">
-              {saved ? <><CheckCircle className="w-4 h-4" /> Saved</> : saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</> : <><Save className="w-4 h-4" /> Save Meeting</>}
+            <button
+              onClick={handleSave}
+              disabled={!canSave}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-black disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg transition-colors">
+              {saved
+                ? <><CheckCircle className="w-3.5 h-3.5" /> Saved</>
+                : saving
+                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving</>
+                  : <><Save className="w-3.5 h-3.5" /> Save</>}
             </button>
           </div>
         </div>
+
+        {/* Collapsible details panel */}
+        {metaOpen && (
+          <div className="px-5 pb-3 pt-1 grid grid-cols-12 gap-3 border-t border-slate-100 bg-slate-50/50">
+            <label className="col-span-6 block">
+              <span className="block text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Date</span>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                className="w-full text-xs font-semibold text-slate-700 px-2.5 py-1.5 rounded-md border border-slate-200 outline-none focus:border-slate-900 bg-white" />
+            </label>
+            <label className="col-span-6 block">
+              <span className="block text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Venue</span>
+              <input value={venue} onChange={e => setVenue(e.target.value)}
+                placeholder="On-site / Zoom / Office"
+                className="w-full text-xs font-semibold text-slate-700 px-2.5 py-1.5 rounded-md border border-slate-200 outline-none focus:border-slate-900 bg-white placeholder:text-slate-300 placeholder:font-normal" />
+            </label>
+            <div className="col-span-12">
+              <span className="block text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Recognition Language</span>
+              <SpeechLangPicker value={lang} onChange={setLang} disabled={isRecording && !isPaused} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Recording status banner (only while recording) ── */}
+      {isRecording && (
+        <div className={`flex-shrink-0 px-5 py-2 flex items-center gap-3 border-b ${isPaused ? "bg-amber-50 border-amber-200" : "bg-rose-50 border-rose-200"}`}>
+          <span className={`flex items-center gap-1.5 text-xs font-bold ${isPaused ? "text-amber-700" : "text-rose-700"}`}>
+            {isPaused
+              ? <><Pause className="w-3.5 h-3.5" /> Paused</>
+              : <><span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse" /> Recording</>}
+          </span>
+          <span className="text-xs font-mono font-semibold text-slate-700 tabular-nums">{fmtDur(duration)}</span>
+          {liveDetected && (
+            <span className="flex items-center gap-1 text-[11px] text-slate-600">
+              <span>{liveDetected.flag}</span>
+              <span className="font-semibold">{liveDetected.lang}</span>
+            </span>
+          )}
+          <span className="text-[11px] text-slate-500 hidden sm:inline">· paragraphs auto-commit on pause</span>
+          <div className="ml-auto flex items-center gap-1.5">
+            {isPaused
+              ? <button onClick={resumeRecording} className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-md transition-colors">
+                  <Play className="w-3 h-3" fill="white" /> Resume
+                </button>
+              : <button onClick={pauseRecording} className="flex items-center gap-1 px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-md transition-colors">
+                  <Pause className="w-3 h-3" /> Pause
+                </button>}
+            <button onClick={stopRecording} className="flex items-center gap-1 px-3 py-1.5 bg-slate-900 hover:bg-black text-white text-xs font-semibold rounded-md transition-colors">
+              <Square className="w-3 h-3" fill="white" /> End
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Timeline (chat-style) ── */}
+      <div className="flex-1 overflow-y-auto">
+        {showEmpty ? (
+          <div className="h-full flex flex-col items-center justify-center text-center px-8 gap-5">
+            <div className="w-20 h-20 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center">
+              <Mic className="w-9 h-9 text-slate-300" />
+            </div>
+            <div className="max-w-sm space-y-1.5">
+              <p className="text-base font-bold text-slate-800">Start your customer meeting</p>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Press <span className="font-semibold text-slate-700">Record</span> to capture speech in any language.
+                You can also type quick notes or attach photos at any moment.
+              </p>
+            </div>
+            <button onClick={startRecording}
+              className="flex items-center gap-2 px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-xl shadow-md shadow-rose-200 transition-colors">
+              <Mic className="w-4 h-4" /> Start Recording
+            </button>
+            <div className="flex items-center gap-2 text-[11px] text-slate-400">
+              <button onClick={() => composerRef.current?.focus()} className="flex items-center gap-1 hover:text-slate-700"><StickyNote className="w-3 h-3" /> Type a note</button>
+              <span>·</span>
+              <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-1 hover:text-slate-700"><Paperclip className="w-3 h-3" /> Attach</button>
+              <span>·</span>
+              <button onClick={() => setShowCamera(true)} className="flex items-center gap-1 hover:text-slate-700"><Camera className="w-3 h-3" /> Capture</button>
+            </div>
+          </div>
+        ) : (
+          <div className="max-w-3xl mx-auto px-5 py-4 space-y-3 pb-32">
+            {blocks.map(b => (
+              <div key={`${b.kind}-${b.id}`} className="group flex items-start gap-3">
+                <div className="flex-shrink-0 w-12 text-right">
+                  <p className="text-[10px] font-semibold text-slate-400 mt-2 tabular-nums">{b.ts}</p>
+                </div>
+
+                {b.kind === "speech" && (
+                  <div className="flex-1 bg-white rounded-2xl rounded-tl-sm border border-slate-200 shadow-sm px-4 py-3">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <span className="text-sm leading-none">{b.detectedFlag}</span>
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{b.detectedLang}</span>
+                      <button onClick={() => removeBlock(b.id)}
+                        className="ml-auto opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-opacity">
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                    <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap">{b.text}</p>
+                    {!b.isEnglish && (
+                      <div className="mt-2 pt-2 border-t border-slate-100">
+                        {b.translating ? (
+                          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                            <Loader2 className="w-3 h-3 animate-spin" /> Translating to English…
+                          </div>
+                        ) : b.translated ? (
+                          <div className="flex items-start gap-1.5">
+                            <Globe className="w-3 h-3 text-emerald-600 mt-0.5 flex-shrink-0" />
+                            <p className="text-[13px] text-emerald-800 leading-relaxed italic">{b.translated}</p>
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {b.kind === "note" && (
+                  <div className="flex-1 bg-amber-50 rounded-2xl rounded-tl-sm border border-amber-200 shadow-sm px-4 py-3">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <StickyNote className="w-3 h-3 text-amber-600" />
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-amber-700">Manual note</span>
+                      <button onClick={() => removeBlock(b.id)}
+                        className="ml-auto opacity-0 group-hover:opacity-100 text-amber-300 hover:text-rose-500 transition-opacity">
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                    <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap">{b.text}</p>
+                  </div>
+                )}
+
+                {b.kind === "image" && (
+                  <div className="flex-1 bg-white rounded-2xl rounded-tl-sm border border-slate-200 shadow-sm overflow-hidden">
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-slate-100">
+                      {b.source === "capture" ? <Camera className="w-3 h-3 text-slate-500" /> : <ImageIcon className="w-3 h-3 text-slate-500" />}
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                        {b.source === "capture" ? "Photo" : "Attachment"}
+                      </span>
+                      <span className="text-[10px] text-slate-400 truncate">· {b.caption}</span>
+                      <button onClick={() => removeBlock(b.id)}
+                        className="ml-auto opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-opacity">
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                    <a href={b.dataUrl} target="_blank" rel="noreferrer" className="block bg-slate-50">
+                      <img src={b.dataUrl} alt={b.caption} className="max-h-72 w-auto mx-auto" />
+                    </a>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* Live interim speech */}
+            {liveText && (
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-12 text-right">
+                  <span className="inline-block w-2 h-2 rounded-full bg-rose-500 animate-pulse mt-3" />
+                </div>
+                <div className="flex-1 bg-white rounded-2xl rounded-tl-sm border border-dashed border-slate-300 px-4 py-3">
+                  <p className="text-sm text-slate-500 italic leading-relaxed">{liveText}</p>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    {liveDetected ? `${liveDetected.flag} ${liveDetected.lang} · listening…` : "Listening…"}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div ref={bottomRef} />
+          </div>
+        )}
+      </div>
+
+      {/* ── Bottom composer (chat-style) ── */}
+      <div className="flex-shrink-0 bg-white border-t border-slate-200 px-3 py-2.5">
+        <div className="max-w-3xl mx-auto flex items-end gap-2">
+          {/* Attach */}
+          <button onClick={() => fileInputRef.current?.click()}
+            title="Attach image"
+            className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-900 transition-colors shrink-0">
+            <Paperclip className="w-4 h-4" />
+          </button>
+          {/* Camera */}
+          <button onClick={() => setShowCamera(true)}
+            title="Capture photo"
+            className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-900 transition-colors shrink-0">
+            <Camera className="w-4 h-4" />
+          </button>
+
+          {/* Note composer */}
+          <div className="flex-1 flex items-end bg-slate-100 rounded-2xl px-3.5 py-2 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-900/10 focus-within:border focus-within:border-slate-300 transition-all">
+            <textarea
+              ref={composerRef}
+              value={noteDraft}
+              onChange={e => setNoteDraft(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addNote(); }
+              }}
+              placeholder={isRecording ? "Drop a quick note while you talk…" : "Type a note (Enter to add, Shift+Enter for newline)…"}
+              rows={1}
+              className="flex-1 bg-transparent outline-none text-sm text-slate-800 placeholder:text-slate-400 resize-none max-h-32 leading-snug py-0.5"
+              style={{ minHeight: 20 }}
+            />
+            {noteDraft.trim() && (
+              <button onClick={addNote}
+                className="ml-2 w-7 h-7 rounded-full bg-slate-900 hover:bg-black flex items-center justify-center text-white shrink-0">
+                <ChevronDown className="w-3.5 h-3.5 -rotate-90" />
+              </button>
+            )}
+          </div>
+
+          {/* Record FAB */}
+          {!isRecording ? (
+            <button onClick={startRecording}
+              title="Start recording"
+              className="w-11 h-11 rounded-full bg-rose-600 hover:bg-rose-700 flex items-center justify-center text-white shadow-md shadow-rose-200 transition-all hover:scale-105 shrink-0">
+              <Mic className="w-5 h-5" />
+            </button>
+          ) : (
+            <button onClick={stopRecording}
+              title="Stop recording"
+              className="relative w-11 h-11 rounded-full bg-slate-900 hover:bg-black flex items-center justify-center text-white shadow-md transition-all shrink-0">
+              <span className="absolute inset-0 rounded-full bg-rose-500 opacity-30 animate-ping" />
+              <Square className="w-4 h-4 relative" fill="white" />
+            </button>
+          )}
+        </div>
+
+        {/* Tiny meta footer (only when not empty) */}
+        {(translatedCount > 0 || wordCount > 0) && (
+          <p className="max-w-3xl mx-auto mt-1.5 text-[10px] text-slate-400 px-12">
+            {wordCount} word{wordCount !== 1 ? "s" : ""} captured · Recognition: {langLabel}
+            {translatedCount > 0 && <> · {translatedCount} auto-translated</>}
+          </p>
+        )}
       </div>
     </div>
   );
