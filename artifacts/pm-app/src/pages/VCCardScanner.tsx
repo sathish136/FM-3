@@ -44,6 +44,46 @@ interface Stats {
   recent: VCard[];
 }
 
+// ─── vCard (.vcf) helpers ──────────────────────────────────────────────────
+const vcfEscape = (s: string) => s.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
+function buildVCard(c: Partial<VCard>): string {
+  const lines: string[] = ["BEGIN:VCARD", "VERSION:3.0"];
+  const name = (c.name || "").trim();
+  if (name) {
+    const parts = name.split(/\s+/);
+    const last = parts.length > 1 ? parts.pop()! : "";
+    const first = parts.join(" ");
+    lines.push(`N:${vcfEscape(last)};${vcfEscape(first)};;;`);
+    lines.push(`FN:${vcfEscape(name)}`);
+  } else {
+    lines.push("N:;;;;"); lines.push("FN:(unnamed)");
+  }
+  if (c.company)     lines.push(`ORG:${vcfEscape(c.company)}${c.department ? ";" + vcfEscape(c.department) : ""}`);
+  if (c.designation) lines.push(`TITLE:${vcfEscape(c.designation)}`);
+  if (c.email)       lines.push(`EMAIL;TYPE=INTERNET,WORK:${vcfEscape(c.email)}`);
+  (c.phones || "").split(",").map(p => p.trim()).filter(Boolean).forEach(p =>
+    lines.push(`TEL;TYPE=CELL,VOICE:${vcfEscape(p)}`));
+  if (c.website)     lines.push(`URL:${vcfEscape(c.website)}`);
+  const adr = [c.address, c.city, c.country].filter(Boolean).join(", ");
+  if (adr) lines.push(`ADR;TYPE=WORK:;;${vcfEscape(c.address || "")};${vcfEscape(c.city || "")};;;${vcfEscape(c.country || "")}`);
+  if (c.notes)       lines.push(`NOTE:${vcfEscape(c.notes)}`);
+  if (c.tags)        lines.push(`CATEGORIES:${vcfEscape(c.tags)}`);
+  if (c.frontImage && c.frontImage.startsWith("data:image/")) {
+    const m = c.frontImage.match(/^data:image\/(\w+);base64,(.+)$/);
+    if (m) lines.push(`PHOTO;ENCODING=b;TYPE=${m[1].toUpperCase()}:${m[2]}`);
+  }
+  lines.push("END:VCARD");
+  return lines.join("\r\n");
+}
+function downloadVCF(filename: string, body: string) {
+  const blob = new Blob([body], { type: "text/vcard;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename.endsWith(".vcf") ? filename : `${filename}.vcf`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 800);
+}
+
 const CAT_META: Record<CardCategory, { label: string; color: string; bg: string; icon: any }> = {
   customer: { label: "Customer", color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200", icon: UsersIcon },
   vendor:   { label: "Vendor",   color: "text-amber-700",   bg: "bg-amber-50 border-amber-200",     icon: Briefcase },
@@ -95,6 +135,27 @@ function AutoCaptureModal({ onComplete, onClose }: { onComplete: (image: string)
     };
   }, []);
 
+  const playShutter = () => {
+    try {
+      const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (!Ctx) return;
+      const ac = new Ctx();
+      const resume = ac.state === "suspended" ? ac.resume() : Promise.resolve();
+      resume.then(() => {
+        const now = ac.currentTime;
+        const o = ac.createOscillator();
+        const g = ac.createGain();
+        o.type = "square"; o.frequency.value = 1800;
+        o.connect(g); g.connect(ac.destination);
+        g.gain.setValueAtTime(0.0001, now);
+        g.gain.exponentialRampToValueAtTime(0.55, now + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+        o.start(now); o.stop(now + 0.11);
+        setTimeout(() => ac.close().catch(() => {}), 250);
+      }).catch(() => {});
+    } catch {}
+  };
+
   const snap = (): string | null => {
     const v = videoRef.current; if (!v || !v.videoWidth) return null;
     const c = document.createElement("canvas");
@@ -102,6 +163,7 @@ function AutoCaptureModal({ onComplete, onClose }: { onComplete: (image: string)
     const ctx = c.getContext("2d"); if (!ctx) return null;
     ctx.drawImage(v, 0, 0);
     setFlash(true); setTimeout(() => setFlash(false), 220);
+    playShutter();
     return c.toDataURL("image/jpeg", 0.88);
   };
 
@@ -290,7 +352,7 @@ function AutoCaptureModal({ onComplete, onClose }: { onComplete: (image: string)
 }
 
 // ─── Image preview slot (read-only display of captured side) ───────────────
-function CardSidePreview({ side, value, onClear }: { side: "front" | "back"; value: string | null; onClear: () => void; }) {
+function CardSidePreview({ side, value, onClear, onOpenCamera }: { side: "front" | "back"; value: string | null; onClear: () => void; onOpenCamera?: () => void; }) {
   const label = side === "front" ? "Front" : "Back";
   return (
     <div className="flex-1">
@@ -309,17 +371,18 @@ function CardSidePreview({ side, value, onClear }: { side: "front" | "back"; val
           <img src={value} alt={label} className="w-full h-full object-contain" />
         </div>
       ) : (
-        <div className="relative rounded-xl border-2 border-dashed border-slate-300 bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col items-center justify-center text-center p-4 gap-2 overflow-hidden"
+        <button type="button" onClick={onOpenCamera}
+          className="w-full relative rounded-xl border-2 border-dashed border-slate-300 hover:border-slate-900 bg-gradient-to-br from-slate-50 to-slate-100 hover:from-white hover:to-slate-50 flex flex-col items-center justify-center text-center p-4 gap-2 overflow-hidden transition-all cursor-pointer group"
           style={{ aspectRatio: "1.66/1" }}>
-          <div className="relative w-14 h-14 rounded-2xl bg-white shadow-sm border border-slate-200 flex items-center justify-center">
-            <ScanLine className="w-7 h-7 text-slate-700" />
+          <div className="relative w-14 h-14 rounded-2xl bg-white shadow-sm border border-slate-200 flex items-center justify-center group-hover:scale-110 transition-transform">
+            <Camera className="w-7 h-7 text-slate-700" />
             <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 ring-2 ring-white flex items-center justify-center">
               <Sparkles className="w-2.5 h-2.5 text-white" />
             </span>
           </div>
-          <p className="text-[12px] font-semibold text-slate-700">No card yet</p>
-          <p className="text-[10px] text-slate-500 leading-tight">Tap <span className="font-semibold text-slate-700">Auto-scan</span> or <span className="font-semibold text-slate-700">Upload</span> to begin</p>
-        </div>
+          <p className="text-[12px] font-semibold text-slate-700">Tap to open camera</p>
+          <p className="text-[10px] text-slate-500 leading-tight">or use the buttons below</p>
+        </button>
       )}
     </div>
   );
@@ -566,7 +629,7 @@ export default function VCCardScanner() {
                 </div>
 
                 <div className="max-w-md">
-                  <CardSidePreview side="front" value={image} onClear={() => setImage(null)} />
+                  <CardSidePreview side="front" value={image} onClear={() => setImage(null)} onOpenCamera={() => setShowAutoCam(true)} />
                 </div>
 
                 <div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
@@ -676,6 +739,12 @@ export default function VCCardScanner() {
                   <option value="all">All categories</option>
                   {(["customer","vendor","partner","lead","other"] as const).map(c => <option key={c} value={c}>{CAT_META[c].label}</option>)}
                 </select>
+                <button
+                  onClick={() => filtered.length && downloadVCF(`contacts-${new Date().toISOString().slice(0,10)}`, filtered.map(buildVCard).join("\r\n"))}
+                  disabled={!filtered.length}
+                  className="flex items-center gap-1 px-3 py-2 bg-white border border-slate-200 hover:border-slate-400 disabled:opacity-50 text-slate-700 text-xs font-bold rounded-lg">
+                  <Download className="w-3.5 h-3.5" /> Export .vcf
+                </button>
                 <button onClick={() => setTab("scan")} className="flex items-center gap-1 px-3 py-2 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-lg">
                   <Plus className="w-3.5 h-3.5" /> Scan
                 </button>
@@ -737,9 +806,16 @@ export default function VCCardScanner() {
                     <ChevronRight className="w-3 h-3 rotate-180" /> Back
                   </button>
                   <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Contact details</p>
-                  <button onClick={() => onDelete(selected.id)} className="text-xs font-semibold text-rose-600 hover:text-rose-700 flex items-center gap-1">
-                    <Trash2 className="w-3 h-3" /> Delete
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => downloadVCF((selected.name || "contact").replace(/[^\w-]+/g, "_"), buildVCard(selected))}
+                      className="text-xs font-semibold text-slate-700 hover:text-slate-900 flex items-center gap-1">
+                      <Download className="w-3 h-3" /> Save .vcf
+                    </button>
+                    <button onClick={() => onDelete(selected.id)} className="text-xs font-semibold text-rose-600 hover:text-rose-700 flex items-center gap-1">
+                      <Trash2 className="w-3 h-3" /> Delete
+                    </button>
+                  </div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-5 space-y-4">
                   <div className="grid grid-cols-2 gap-3">
