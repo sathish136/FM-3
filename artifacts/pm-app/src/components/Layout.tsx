@@ -492,14 +492,14 @@ function AppLauncher({ open, onClose, visibleNavGroups: _visibleNavGroups }: { o
   );
 }
 
-function AppItem({ item, location, theme, onClose }: { item: any; location: string; theme: any; onClose: () => void }) {
+function AppItem({ item, location, theme }: { item: any; location: string; theme: any; onClose: () => void }) {
   const isActive = location === item.path || item.children?.some((c: any) => c.path === location);
   const Icon = item.icon;
   // Convert dark-mode tints (bg-xxx-500/15, text-xxx-400) → solid light-mode versions
   const lightBg    = (item.bgColor ?? "bg-slate-100").replace(/bg-(\w+)-\d+\/\d+/, "bg-$1-100");
   const lightColor = (item.color  ?? "text-slate-500").replace(/text-(\w+)-\d+/,   "text-$1-600");
   return (
-    <Link href={item.path} onClick={onClose}>
+    <Link href={item.path}>
       <div className={cn(
         "group flex flex-col items-center justify-center gap-2 py-4 px-2 rounded-2xl cursor-pointer transition-all duration-150 text-center relative overflow-hidden",
         isActive
@@ -884,8 +884,8 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   }, []);
 
   useEffect(() => {
-    setMobileSidebarOpen(false);
-    setLauncherOpen(false);
+    // Keep the sidebar / launcher open when navigating between pages.
+    // The user can dismiss them manually with the close button or backdrop.
     const activeGroup = getActiveGroupLabel(location);
     if (activeGroup) {
       setExpandedGroups(prev => {
