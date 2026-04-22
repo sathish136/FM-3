@@ -133,21 +133,49 @@ function AutoCaptureModal({ onComplete, onClose }: { onComplete: (r: AutoCapture
       catch { return; }
       const cur = sctx.getImageData(0, 0, sample.width, sample.height);
 
-      // brightness-based "card present" heuristic on centre region
-      let br = 0, count = 0;
+      // Compute on the centre region (where the card guide is)
       const x0 = Math.floor(sample.width * 0.15), x1 = Math.floor(sample.width * 0.85);
       const y0 = Math.floor(sample.height * 0.20), y1 = Math.floor(sample.height * 0.80);
-      for (let y = y0; y < y1; y += 2) {
-        for (let x = x0; x < x1; x += 2) {
+
+      // 1) Brightness — card surface should be neither dark nor blown-out
+      let brSum = 0, brCount = 0;
+      const lum: number[] = [];
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
           const i = (y * sample.width + x) * 4;
-          br += (cur.data[i] + cur.data[i + 1] + cur.data[i + 2]) / 3;
-          count++;
+          const l = 0.299 * cur.data[i] + 0.587 * cur.data[i + 1] + 0.114 * cur.data[i + 2];
+          lum.push(l);
+          brSum += l; brCount++;
         }
       }
-      const avgBr = br / count;
-      const cardLikely = avgBr > 70 && avgBr < 235;
+      const avgBr = brSum / brCount;
+      const cardLikely = avgBr > 80 && avgBr < 230;
 
-      // motion vs previous frame
+      // 2) Edge / text density — text creates many high-contrast horizontal transitions.
+      //    Count strong horizontal pixel-to-pixel luminance jumps within the centre region.
+      const w = x1 - x0;
+      const h = y1 - y0;
+      let edgeJumps = 0;
+      const EDGE_THRESH = 35;
+      for (let yy = 0; yy < h; yy++) {
+        const rowOff = yy * w;
+        for (let xx = 1; xx < w; xx++) {
+          if (Math.abs(lum[rowOff + xx] - lum[rowOff + xx - 1]) > EDGE_THRESH) edgeJumps++;
+        }
+      }
+      const edgeDensity = edgeJumps / (w * h);   // fraction of pixels that are strong edges
+
+      // 3) Variance — uniform surfaces (table, hand, wall) have low variance.
+      let varSum = 0;
+      for (let i = 0; i < lum.length; i++) {
+        const d = lum[i] - avgBr;
+        varSum += d * d;
+      }
+      const stdDev = Math.sqrt(varSum / lum.length);
+
+      const hasText = edgeDensity > 0.045 && stdDev > 22;
+
+      // 4) Motion vs previous frame — must hold steady
       let diff = 0;
       if (prevFrameRef.current) {
         const prev = prevFrameRef.current.data;
@@ -161,11 +189,17 @@ function AutoCaptureModal({ onComplete, onClose }: { onComplete: (r: AutoCapture
       }
       prevFrameRef.current = cur;
 
-      const stable = diff < 6;  // pixel-avg diff threshold
+      const stable = diff < 5;
 
       if (!cardLikely) {
         stableSinceRef.current = 0;
         setStatusMsg("Looking for card…");
+        setCountdown(null);
+        return;
+      }
+      if (!hasText) {
+        stableSinceRef.current = 0;
+        setStatusMsg("No text detected — point camera at a card");
         setCountdown(null);
         return;
       }
@@ -357,65 +391,36 @@ export default function VCCardScanner() {
   useEffect(() => { fetchCards(); }, [filterCat]);
   useEffect(() => { if (tab === "report") fetchStats(); }, [tab]);
 
-  // Auto pipeline: scan → save (used after auto-capture or upload)
-  const runAutoPipeline = async (frontImg: string, backImg: string | null) => {
+  // Run AI scan only — user reviews & saves the result manually
+  const runScan = async (frontImg: string, backImg: string | null) => {
     setScanning(true);
     setAutoStatus("Reading card with AI…");
-    let data: Partial<VCard> = {};
     try {
       const r = await fetch(`${BASE}/visiting-cards/scan`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ frontImage: frontImg, backImage: backImg }),
       });
       const j = await r.json();
-      data = j?.data || {};
+      const data: Partial<VCard> = j?.data || {};
+      setExtracted({ ...data, category: (data.category as CardCategory) || "lead" });
+      setAutoStatus("Review the details below, then tap Save.");
     } catch (e) {
       setAutoStatus("");
-      setScanning(false);
       setExtracted({ category: "lead" });
       alert("Scan failed: " + e);
-      return;
-    }
-    setScanning(false);
-
-    const finalData: Partial<VCard> = { ...data, category: (data.category as CardCategory) || "lead" };
-    setExtracted(finalData);
-
-    // Auto-save
-    setSaving(true);
-    setAutoStatus("Saving contact…");
-    try {
-      const payload = {
-        ...finalData, frontImage: frontImg, backImage: backImg,
-        source: "scan", createdBy: user?.email || null,
-      };
-      await fetch(`${BASE}/visiting-cards`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      setAutoStatus("Saved!");
-      setTimeout(() => {
-        setFront(null); setBack(null); setExtracted(null); setAutoStatus("");
-        setTab("list");
-        fetchCards();
-      }, 700);
-    } catch (e) {
-      setAutoStatus("");
-      alert("Save failed: " + e);
-    } finally { setSaving(false); }
+    } finally { setScanning(false); }
   };
 
   const onAutoCaptureComplete = (r: AutoCaptureResult) => {
     setShowAutoCam(false);
     setFront(r.front);
     setBack(r.back);
-    runAutoPipeline(r.front, r.back);
+    runScan(r.front, r.back);
   };
 
-  // Manual scan (used only when user uploads images instead of auto-capture)
   const onScan = async () => {
     if (!front) return;
-    runAutoPipeline(front, back);
+    runScan(front, back);
   };
 
   const onSave = async () => {
@@ -450,10 +455,10 @@ export default function VCCardScanner() {
           uploadBackRef.current?.click();
           return;
         }
-        runAutoPipeline(v, back);
+        runScan(v, back);
       } else {
         setBack(v);
-        if (front) runAutoPipeline(front, v);
+        if (front) runScan(front, v);
       }
     };
     r.readAsDataURL(f);
