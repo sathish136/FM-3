@@ -807,8 +807,8 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
     const defaults = ["Shortcuts", "Main"];
     return active ? [...new Set([...defaults, active])] : defaults;
   });
-  // Always start in collapsed mode when the app loads (user can expand manually).
-  const [collapsed, setCollapsedState] = useState(true);
+  // Always start in expanded mode when the app loads (user can collapse manually).
+  const [collapsed, setCollapsedState] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [launcherOpen, setLauncherOpen] = useState(false);
   const [aiTrigger, setAiTrigger] = useState(0);
