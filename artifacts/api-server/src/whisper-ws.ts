@@ -69,7 +69,16 @@ const HALLUCINATION_PATTERNS: RegExp[] = [
   /^வணக்கம்[!.\s]*$/,
   // Hindi/Devanagari bare greeting
   /^नमस्ते[!.\s]*$/,
-  /^नमस्कार[!.\s]*$/,
+  /^नमस्कார[!.\s]*$/,
+  // Common Japanese hallucinations Whisper produces from silence/noise.
+  // (Whisper was trained on a lot of anime/YouTube subtitles in Japanese.)
+  /^おい[、。!.\s]*行(く|こ)う?ぞ?[!.\s]*$/,
+  /^ご視聴(ありがとうございました|いただきありがとうございます)[!.\s]*$/,
+  /^チャンネル登録(お願いします)?[!.\s]*$/,
+  /^字幕(by|提供)?.*$/i,
+  /^(はい|うん|ええ|あの|えー)[!.\s]*$/,
+  // Korean filler hallucinations
+  /^(네|예|아|음)[!.\s]*$/,
   // Pure punctuation / dots
   /^[\.\s\-…।!?]+$/,
 ];
@@ -79,6 +88,109 @@ function isLikelyHallucination(text: string): boolean {
   if (!t) return true;
   if (t.length < 3) return true;
   return HALLUCINATION_PATTERNS.some((re) => re.test(t));
+}
+
+// Each language is associated with one or more Unicode script ranges. When the
+// user has explicitly selected a language, we drop any transcript that is
+// dominated by characters from a *different* script — this catches the classic
+// "Tamil session randomly returns Japanese" Whisper failure mode.
+type ScriptName = "latin" | "tamil" | "devanagari" | "bengali" | "gurmukhi"
+  | "gujarati" | "oriya" | "telugu" | "kannada" | "malayalam"
+  | "arabic" | "hebrew" | "cjk" | "hangul" | "kana" | "thai" | "cyrillic" | "greek";
+
+// Codepoint test for each script we care about.
+const SCRIPT_TESTS: Record<ScriptName, (cp: number) => boolean> = {
+  latin:      (c) => (c >= 0x0041 && c <= 0x024F) || (c >= 0x1E00 && c <= 0x1EFF),
+  tamil:      (c) => c >= 0x0B80 && c <= 0x0BFF,
+  devanagari: (c) => c >= 0x0900 && c <= 0x097F,
+  bengali:    (c) => c >= 0x0980 && c <= 0x09FF,
+  gurmukhi:   (c) => c >= 0x0A00 && c <= 0x0A7F,
+  gujarati:   (c) => c >= 0x0A80 && c <= 0x0AFF,
+  oriya:      (c) => c >= 0x0B00 && c <= 0x0B7F,
+  telugu:     (c) => c >= 0x0C00 && c <= 0x0C7F,
+  kannada:    (c) => c >= 0x0C80 && c <= 0x0CFF,
+  malayalam:  (c) => c >= 0x0D00 && c <= 0x0D7F,
+  arabic:     (c) => (c >= 0x0600 && c <= 0x06FF) || (c >= 0x0750 && c <= 0x077F),
+  hebrew:     (c) => c >= 0x0590 && c <= 0x05FF,
+  cjk:        (c) => (c >= 0x4E00 && c <= 0x9FFF) || (c >= 0x3400 && c <= 0x4DBF),
+  hangul:     (c) => (c >= 0xAC00 && c <= 0xD7AF) || (c >= 0x1100 && c <= 0x11FF),
+  kana:       (c) => (c >= 0x3040 && c <= 0x309F) || (c >= 0x30A0 && c <= 0x30FF),
+  thai:       (c) => c >= 0x0E00 && c <= 0x0E7F,
+  cyrillic:   (c) => c >= 0x0400 && c <= 0x04FF,
+  greek:      (c) => c >= 0x0370 && c <= 0x03FF,
+};
+
+// Which scripts are acceptable for a given UI language. English uses Latin;
+// most Indian languages use their own script; Japanese accepts both kana and
+// CJK; Filipino/Indonesian/etc. use Latin; etc.
+const LANG_SCRIPTS: Record<string, ScriptName[]> = {
+  en:  ["latin"],
+  ta:  ["tamil"],
+  hi:  ["devanagari"],
+  ar:  ["arabic"],
+  bn:  ["bengali"],
+  zh:  ["cjk"],
+  nl:  ["latin"],
+  fil: ["latin"],
+  fr:  ["latin"],
+  de:  ["latin"],
+  el:  ["greek"],
+  he:  ["hebrew"],
+  id:  ["latin"],
+  it:  ["latin"],
+  ja:  ["kana", "cjk"],
+  ko:  ["hangul"],
+  ms:  ["latin"],
+  fa:  ["arabic"],
+  pl:  ["latin"],
+  pt:  ["latin"],
+  ru:  ["cyrillic"],
+  es:  ["latin"],
+  sv:  ["latin"],
+  th:  ["thai"],
+  tr:  ["latin"],
+  uk:  ["cyrillic"],
+  ur:  ["arabic"],
+  vi:  ["latin"],
+};
+
+// Returns true iff the transcript is in a script that does NOT match the
+// user-selected language. A small sprinkle of Latin punctuation/digits is
+// always allowed (numbers, brand names, "OK", etc.).
+function isWrongScript(text: string, uiLang: string): boolean {
+  const allowed = LANG_SCRIPTS[uiLang];
+  if (!allowed || !text) return false;
+
+  const allowedTests = allowed.map((s) => SCRIPT_TESTS[s]);
+  // Latin is always considered "neutral" — most transcripts contain digits,
+  // brand names, or English loan words.
+  const latinNeutral = !allowed.includes("latin");
+
+  let allowedCount = 0;
+  let foreignCount = 0;
+  for (const ch of text) {
+    const cp = ch.codePointAt(0)!;
+    // Skip whitespace, ASCII digits, and ASCII punctuation entirely.
+    if (cp <= 0x007F && !((cp >= 0x0041 && cp <= 0x005A) || (cp >= 0x0061 && cp <= 0x007A))) continue;
+
+    const isAllowed = allowedTests.some((t) => t(cp));
+    if (isAllowed) { allowedCount++; continue; }
+
+    if (latinNeutral && SCRIPT_TESTS.latin(cp)) continue;
+
+    // Any character belonging to a known *other* script counts as foreign.
+    for (const [name, test] of Object.entries(SCRIPT_TESTS) as [ScriptName, (c: number) => boolean][]) {
+      if (allowed.includes(name)) continue;
+      if (name === "latin" && latinNeutral) continue;
+      if (test(cp)) { foreignCount++; break; }
+    }
+  }
+
+  if (allowedCount === 0 && foreignCount === 0) return false;
+  // Drop the segment if more than ~30% of the meaningful characters are from
+  // an unrelated script. This is generous enough that a single stray symbol
+  // won't trigger a false drop, but catches "おい、行くぞ" hard.
+  return foreignCount / Math.max(1, allowedCount + foreignCount) > 0.3;
 }
 
 // Friendly language name we feed to GPT for the translation prompt.
@@ -226,6 +338,15 @@ export function setupWhisperWS(httpServer: Server) {
         // Skip well-known Whisper hallucinations on silent / noise-only segments.
         if (isLikelyHallucination(original)) {
           console.log(`[Whisper WS] dropped hallucination seg=${id}: "${original}"`);
+          try { clientWs.send(JSON.stringify({ type: "segment", id, original: "", translation: "", skipped: true })); } catch {}
+          return;
+        }
+
+        // Drop transcripts that came back in the wrong script — i.e. user
+        // selected Tamil but Whisper produced Japanese. This is the most
+        // common accuracy complaint with the realtime pipeline.
+        if (uiLang !== "auto" && isWrongScript(original, uiLang)) {
+          console.log(`[Whisper WS] dropped wrong-script seg=${id} (expected ${uiLang}): "${original}"`);
           try { clientWs.send(JSON.stringify({ type: "segment", id, original: "", translation: "", skipped: true })); } catch {}
           return;
         }
