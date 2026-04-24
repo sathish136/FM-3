@@ -590,9 +590,10 @@ function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, to
             <div key={gi}>
               <div className="flex items-center gap-1">
                 <button
+                  type="button"
                   onClick={() => toggleGroup(group.label)}
                   className={cn(
-                    "flex-1 flex items-center justify-between px-3 py-2 rounded-lg transition-all duration-150 select-none",
+                    "flex-1 flex items-center justify-between px-3 py-2 rounded-lg transition-all duration-150 select-none cursor-pointer",
                     groupHasActive
                       ? "text-white"
                       : "text-slate-300 hover:text-white hover:bg-white/[0.04]"
@@ -803,8 +804,17 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   const [location] = useLocation();
   const { navStyle } = useNavStyle();
   const [expandedItems, setExpandedItems] = useState<string[]>(["/drawings"]);
-  // Always start with all submenu groups collapsed on app load.
-  const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
+  // Restore previously expanded groups from localStorage so they persist across page navigations.
+  const [expandedGroups, setExpandedGroups] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(EXPANDED_GROUPS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed.filter((x): x is string => typeof x === "string");
+      }
+    } catch {}
+    return [];
+  });
   // Always start in expanded mode when the app loads (user can collapse manually).
   const [collapsed, setCollapsedState] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -894,6 +904,20 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
       setCollapsed(true);
     }
   }, [location, navStyle]);
+
+  // Auto-expand the group containing the current page so the user always sees where they are.
+  useEffect(() => {
+    const activeGroup = navGroups.find(g =>
+      g.items.some(item => item.path === location || item.children?.some((c: any) => c.path === location))
+    );
+    if (!activeGroup) return;
+    setExpandedGroups(prev => {
+      if (prev.includes(activeGroup.label)) return prev;
+      const next = [...prev, activeGroup.label];
+      try { localStorage.setItem(EXPANDED_GROUPS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, [location]);
 
   const toggleExpand = (path: string) => {
     setExpandedItems(prev => prev.includes(path) ? prev.filter(p => p !== path) : [...prev, path]);
