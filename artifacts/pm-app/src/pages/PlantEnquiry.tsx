@@ -348,6 +348,7 @@ function VCScanCard({ onApply }: { onApply: (c: VCard) => void }) {
   const [scanning, setScanning] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastCard, setLastCard] = useState<VCard | null>(null);
   const [rawJson, setRawJson] = useState<string | null>(null);
@@ -403,18 +404,8 @@ function VCScanCard({ onApply }: { onApply: (c: VCard) => void }) {
           </button>
           <button
             type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              const w = 980, h = 720;
-              const left = window.screenX + Math.max(0, (window.outerWidth - w) / 2);
-              const top = window.screenY + Math.max(0, (window.outerHeight - h) / 2);
-              window.open(
-                "/pm-app/vc-card-scanner",
-                "vc-card-scanner",
-                `popup=yes,width=${w},height=${h},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`
-              );
-            }}
-            title="Open VC Card Scanner in a popup window"
+            onClick={() => setScannerOpen(true)}
+            title="Open VC Card Scanner here"
             className="inline-flex items-center gap-1 px-2 py-1 rounded border border-gray-200 hover:border-gray-400 hover:bg-gray-50 text-[10px] font-semibold text-gray-700 transition"
           >
             <Sparkles className="w-3 h-3" /> Scan Card
@@ -488,6 +479,37 @@ function VCScanCard({ onApply }: { onApply: (c: VCard) => void }) {
       </div>
 
       <ContactPicker open={pickerOpen} onClose={() => setPickerOpen(false)} onPick={onApply} />
+
+      {scannerOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-3"
+          onClick={() => setScannerOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[88vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 bg-gradient-to-r from-indigo-50 to-violet-50 shrink-0">
+              <ScanLine className="w-4 h-4 text-indigo-600" />
+              <span className="font-bold text-sm text-indigo-900">VC Card Scanner</span>
+              <span className="text-[10px] text-gray-500 ml-1">— scan here, then close to pick from Saved</span>
+              <button
+                onClick={() => setScannerOpen(false)}
+                className="ml-auto p-1 rounded-md hover:bg-white text-gray-500"
+                title="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <iframe
+              src="/pm-app/vc-card-scanner"
+              title="VC Card Scanner"
+              className="flex-1 w-full border-0"
+              allow="camera; microphone"
+            />
+          </div>
+        </div>
+      )}
     </>
   );
 }
