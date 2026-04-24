@@ -2,14 +2,16 @@ import { WebSocketServer, WebSocket } from "ws";
 import { IncomingMessage, Server } from "http";
 
 export function setupTranscribeWS(httpServer: Server) {
-  const wss = new WebSocketServer({ noServer: true });
+  // noServer + manual upgrade routing so we can coexist with other WS endpoints.
+  const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
 
   httpServer.on("upgrade", (req: IncomingMessage, socket, head) => {
-    if (req.url === "/api/transcribe-ws") {
-      wss.handleUpgrade(req, socket, head, (ws) => {
-        wss.emit("connection", ws, req);
-      });
-    }
+    if (!req.url) return;
+    const pathname = req.url.split("?")[0];
+    if (pathname !== "/api/transcribe-ws") return;
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit("connection", ws, req);
+    });
   });
 
   wss.on("connection", (clientWs: WebSocket) => {

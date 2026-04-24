@@ -19,7 +19,19 @@ const clients: Set<ChatClient> = new Set();
 export async function setupChatWS(server: Server) {
   await initChatTables();
 
-  const wss = new WebSocketServer({ server, path: "/api/chat-ws" });
+  // Use noServer + manual upgrade routing so multiple WS endpoints can coexist
+  // on the same httpServer. Attaching with `{server, path}` would abort other
+  // endpoints' upgrades with HTTP 400 because ws calls shouldHandle on every
+  // upgrade event, regardless of path.
+  const wss = new WebSocketServer({ noServer: true });
+  server.on("upgrade", (req, socket, head) => {
+    if (!req.url) return;
+    const pathname = req.url.split("?")[0];
+    if (pathname !== "/api/chat-ws") return;
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit("connection", ws, req);
+    });
+  });
 
   wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     const url = new URL(req.url!, `http://localhost`);

@@ -13,21 +13,21 @@ import { URL } from "url";
 // interim + final transcripts in true realtime (sub-second latency).
 
 export function setupDeepgramWS(httpServer: Server) {
-  // Disable permessage-deflate: when this socket is double-proxied (Replit edge →
-  // Vite dev proxy → here), compression negotiation gets mangled and the browser
-  // sees "Invalid frame header" with abnormal close code 1006. Plain frames just work.
+  // noServer + manual upgrade routing: required because we share httpServer
+  // with other WS endpoints (chat-ws, transcribe-ws). Using `{server, path}`
+  // would make ws abort the upgrades meant for other endpoints with HTTP 400.
+  // Disable permessage-deflate: proxy chain doesn't reliably negotiate it.
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
 
   httpServer.on("upgrade", (req: IncomingMessage, socket, head) => {
     if (!req.url) return;
-    const u = new URL(req.url, "http://x");
-    if (u.pathname === "/api/deepgram-ws") {
-      console.log("[Deepgram WS] upgrade received from", req.socket.remoteAddress, "ua=", String(req.headers["user-agent"] || "").slice(0, 60));
-      wss.handleUpgrade(req, socket, head, (ws) => {
-        wss.emit("connection", ws, req);
-      });
-    }
+    const pathname = req.url.split("?")[0];
+    if (pathname !== "/api/deepgram-ws") return;
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit("connection", ws, req);
+    });
   });
+  console.log("[Deepgram WS] ready at /api/deepgram-ws");
 
   wss.on("connection", (clientWs: WebSocket, req) => {
     console.log("[Deepgram WS] client connected, opening upstream to Deepgram…");
