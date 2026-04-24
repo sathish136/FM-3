@@ -363,9 +363,17 @@ function VCScanCard({ onApply }: { onApply: (c: VCard) => void }) {
     setPreview(URL.createObjectURL(f));
     setScanning(true);
     try {
-      const fd = new FormData();
-      fd.append("frontImage", f);
-      const r = await fetch(`${VC_BASE}/visiting-cards/scan`, { method: "POST", body: fd });
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(String(fr.result));
+        fr.onerror = () => reject(fr.error || new Error("Failed to read file"));
+        fr.readAsDataURL(f);
+      });
+      const r = await fetch(`${VC_BASE}/visiting-cards/scan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ frontImage: dataUrl }),
+      });
       if (!r.ok) throw new Error(`Scan failed (${r.status})`);
       const j = await r.json();
       const data = j?.data || j || {};
@@ -492,11 +500,11 @@ function VCScanCard({ onApply }: { onApply: (c: VCard) => void }) {
             setPreview(dataUrl);
             setScanning(true);
             try {
-              const blob = await (await fetch(dataUrl)).blob();
-              const file = new File([blob], `card-${Date.now()}.jpg`, { type: blob.type || "image/jpeg" });
-              const fd = new FormData();
-              fd.append("frontImage", file);
-              const r = await fetch(`${VC_BASE}/visiting-cards/scan`, { method: "POST", body: fd });
+              const r = await fetch(`${VC_BASE}/visiting-cards/scan`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ frontImage: dataUrl }),
+              });
               if (!r.ok) throw new Error(`Scan failed (${r.status})`);
               const j = await r.json();
               const data = j?.data || j || {};
