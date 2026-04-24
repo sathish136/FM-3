@@ -5,7 +5,7 @@ import {
   LogOut, ChevronDown, ChevronRight as ChevronRightIcon, Menu, MoreHorizontal,
   MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp, ListChecks, ClipboardList, Truck, Building2, Package,
   Play, Square, Phone, ShieldOff, Loader2, Languages, Globe,
-  ScanLine,
+  ScanLine, Factory,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -196,6 +196,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { path: "/finance-dashboard",   label: "Finance Dashboard",   icon: Receipt,    color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
       { path: "/hrms/analytics",      label: "HR Analytics",        icon: BarChart3,  color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
       { path: "/hrms/task-summary",   label: "Task Summary",        icon: ListChecks, color: "text-lime-400",    bgColor: "bg-lime-500/15" },
+      { path: "/sales-dashboard",     label: "Sales Dashboard",     icon: BarChart3,  color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
     ],
   },
   {
@@ -278,8 +279,10 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     label: "Marketing & CRM",
     items: [
       { path: "/marketing",        label: "Marketing",       icon: Megaphone, color: "text-violet-400", bgColor: "bg-violet-500/15" },
+      { path: "/sales-dashboard",  label: "Sales Dashboard", icon: BarChart3, color: "text-emerald-400",bgColor: "bg-emerald-500/15" },
       { path: "/leads",            label: "Leads",           icon: Target,    color: "text-rose-400",   bgColor: "bg-rose-500/15" },
       { path: "/vc-card-scanner",  label: "VC Card Scanner", icon: ScanLine,  color: "text-amber-400",  bgColor: "bg-amber-500/15" },
+      { path: "/plant-enquiry",    label: "Plant Enquiry",   icon: Factory,   color: "text-blue-400",   bgColor: "bg-blue-500/15" },
       { path: "/campaigns",        label: "Campaigns",       icon: BarChart3, color: "text-pink-400",   bgColor: "bg-pink-500/15" },
     ],
   },
@@ -371,6 +374,8 @@ const PATH_TO_MODULE: Record<string, string> = {
   "/marketing":             "marketing",
   "/leads":                 "leads",
   "/campaigns":             "campaigns",
+  "/sales-dashboard":       "sales-dashboard",
+  "/sales":                 "sales-dashboard",
   "/hrms":                  "hrms",
   "/hrms/checkin":          "hrms-checkin",
   "/hrms/leave-request":    "hrms-leave-request",
@@ -885,7 +890,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   // Submenu groups stay collapsed on navigation — the user expands them manually.
 
   useEffect(() => {
-    if (navStyle === "sidebar" && (location === "/email" || location === "/smart-inbox")) {
+    if (navStyle === "sidebar" && (location === "/email" || location === "/smart-inbox" || location === "/plant-enquiry")) {
       setCollapsed(true);
     }
   }, [location, navStyle]);

@@ -256,6 +256,25 @@ router.get("/marketing/followup-report", async (_req, res) => {
   }
 });
 
+// GET /api/marketing/agent-details
+// Fetches the "Agent Details" doctype list from the WTT ERP (mirrors /app/agent-details).
+router.get("/marketing/agent-details", async (_req, res) => {
+  const params = new URLSearchParams({
+    doctype: "Agent Details",
+    fields: '["*"]',
+    limit_page_length: "0",
+    order_by: "modified desc",
+  });
+  const url = `${ERP_BASE}/api/method/frappe.client.get_list?${params}`;
+  try {
+    const data = await erpFetch(url);
+    return res.json({ agents: data?.message ?? [] });
+  } catch (err: any) {
+    console.error("marketing/agent-details error:", err.message);
+    return res.json({ agents: [] });
+  }
+});
+
 // GET /api/marketing/proposal-request
 router.get("/marketing/proposal-request", async (_req, res) => {
   const url = `${ERP_BASE}/api/method/wtt_module.customization.custom.rfq.get_proposal_request`;

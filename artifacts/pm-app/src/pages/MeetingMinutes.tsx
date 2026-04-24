@@ -1698,6 +1698,26 @@ function LiveSpeechMinutesView({
               className="flex items-center gap-2 px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-xl shadow-md shadow-rose-200 transition-colors">
               <Mic className="w-4 h-4" /> Start Recording
             </button>
+            {recError && (
+              <div className="max-w-md w-full rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-left">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-rose-700 mb-1">Microphone error</p>
+                <p className="text-xs text-rose-700 leading-relaxed break-words">{recError}</p>
+                {window.self !== window.top && (
+                  <p className="text-[11px] text-rose-600 mt-2 leading-relaxed">
+                    The preview is running inside a frame that may block microphone access.{" "}
+                    <a
+                      href={window.location.href}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline font-semibold hover:text-rose-800"
+                    >
+                      Open in a new tab
+                    </a>{" "}
+                    and allow microphone access.
+                  </p>
+                )}
+              </div>
+            )}
             <div className="flex items-center gap-2 text-[11px] text-slate-400">
               <button onClick={() => composerRef.current?.focus()} className="flex items-center gap-1 hover:text-slate-700"><StickyNote className="w-3 h-3" /> Type a note</button>
               <span>·</span>
@@ -2038,8 +2058,14 @@ export default function MeetingMinutes() {
                         {m.createdBy && <span className="text-[10px] text-gray-400 truncate max-w-[80px]">by {m.createdBy.split(" ")[0]}</span>}
                       </div>
                     </div>
-                    <button onClick={e => handleDelete(m.id, e)} className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all flex-shrink-0">
-                      <Trash2 className="w-3 h-3" />
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        if (window.confirm(`Delete meeting "${m.title}"? This cannot be undone.`)) handleDelete(m.id, e);
+                      }}
+                      title="Delete meeting"
+                      className="p-1 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all flex-shrink-0">
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
@@ -2178,6 +2204,19 @@ export default function MeetingMinutes() {
                   >
                     <FileText className="w-4 h-4" />
                     Generate Report
+                  </button>
+                  {/* Delete meeting button */}
+                  <button
+                    onClick={e => {
+                      if (window.confirm(`Delete meeting "${selected.title}"? This cannot be undone.`)) {
+                        handleDelete(selected.id, e);
+                      }
+                    }}
+                    title="Delete meeting"
+                    className="flex-shrink-0 flex items-center gap-2 px-3 py-2 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl text-sm font-semibold shadow-sm transition-all"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete
                   </button>
                 </div>
 

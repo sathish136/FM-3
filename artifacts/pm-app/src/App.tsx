@@ -72,6 +72,8 @@ import TeamReporting from "@/pages/TeamReporting";
 import IPCallLogs from "@/pages/IPCallLogs";
 import VCCardScanner from "@/pages/VCCardScanner";
 import EmpAgent from "@/pages/EmpAgent";
+import SalesDashboard from "@/pages/SalesDashboard";
+import PlantEnquiry from "@/pages/PlantEnquiry";
 import { SlideshowProvider } from "@/contexts/SlideshowContext";
 import { RecordingProvider } from "@/contexts/RecordingContext";
 
@@ -230,6 +232,9 @@ function ProtectedRoutes() {
       <Route path="/ip-call-logs/purchase" component={IPCallLogs} />
       <Route path="/ip-call-logs/marketing" component={IPCallLogs} />
       <Route path="/vc-card-scanner" component={VCCardScanner} />
+      <Route path="/sales-dashboard" component={SalesDashboard} />
+      <Route path="/sales" component={SalesDashboard} />
+      <Route path="/plant-enquiry" component={PlantEnquiry} />
       <Route component={NotFound} />
     </Switch>
   );

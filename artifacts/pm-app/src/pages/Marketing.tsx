@@ -5,7 +5,8 @@ import {
   Globe, MapPin, Newspaper, Users, TrendingUp, BarChart3,
   Filter, RefreshCw, Search, Building2,
   Megaphone, Target, Wifi, Map, X, Download, Info,
-  ArrowUpRight, ArrowDownRight, ChevronRight, Layers, Calendar, FileText
+  ArrowUpRight, ArrowDownRight, ChevronRight, Layers, Calendar, FileText,
+  UserCheck, Mail, Phone
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -21,7 +22,7 @@ import { FollowupCalendar } from "@/components/FollowupCalendar";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "world-map" | "overview" | "india-map" | "lead-details" | "news" | "competitors" | "followup" | "proposal-request";
+type Tab = "world-map" | "overview" | "india-map" | "lead-details" | "news" | "competitors" | "followup" | "proposal-request" | "agent-details";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -1487,6 +1488,173 @@ function ProposalRequestTab() {
   );
 }
 
+// ── Agent Details Tab ─────────────────────────────────────────────────────────
+
+function AgentDetailsTab() {
+  const [search, setSearch] = useState("");
+  const { data, isLoading, refetch, isFetching } = useQuery({
+    queryKey: ["marketing-agent-details"],
+    queryFn: async () => {
+      const r = await fetch("/api/marketing/agent-details");
+      return r.json();
+    },
+  });
+
+  const agents: any[] = data?.agents ?? [];
+
+  // Discover columns dynamically. Prefer a curated set if present, otherwise show every field.
+  const PREFERRED_KEYS = [
+    "agent_name", "name", "first_name", "last_name", "designation", "department",
+    "email", "email_id", "mobile_no", "phone", "country", "state", "city", "status",
+  ];
+  const allKeys = useMemo(() => {
+    const set = new Set<string>();
+    agents.forEach(a => Object.keys(a || {}).forEach(k => set.add(k)));
+    return Array.from(set);
+  }, [agents]);
+  const HIDDEN = new Set(["owner", "creation", "modified", "modified_by", "docstatus", "idx", "_assign", "_comments", "_user_tags", "_liked_by", "doctype", "parent", "parentfield", "parenttype"]);
+  const visibleKeys = useMemo(() => {
+    if (!agents.length) return [];
+    const present = PREFERRED_KEYS.filter(k => allKeys.includes(k));
+    if (present.length >= 4) return present;
+    return allKeys.filter(k => !HIDDEN.has(k)).slice(0, 12);
+  }, [allKeys, agents.length]);
+
+  const filtered = agents.filter(a => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return Object.values(a || {}).some(v => String(v ?? "").toLowerCase().includes(q));
+  });
+
+  function exportAgents() {
+    const ws = XLSX.utils.json_to_sheet(filtered);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Agents");
+    XLSX.writeFile(wb, "Agent_Details.xlsx");
+  }
+
+  const labelOf = (k: string) => k.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+
+  return (
+    <div className="space-y-4">
+      {/* Toolbar */}
+      <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="relative flex-1 min-w-48">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-300" />
+            <input
+              className="w-full bg-white border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-sm text-gray-700 placeholder-gray-300 outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100 transition-all"
+              placeholder="Search agent name, email, mobile, location..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+          <button
+            onClick={() => refetch()}
+            className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-500 hover:text-cyan-600 hover:border-cyan-200 transition-all"
+            title="Refresh"
+          >
+            <RefreshCw className={cn("w-3.5 h-3.5", (isLoading || isFetching) && "animate-spin")} />
+          </button>
+          <button
+            onClick={exportAgents}
+            disabled={!filtered.length}
+            className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl px-4 py-2 text-sm hover:bg-emerald-100 transition-colors font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Download className="w-3.5 h-3.5" /> Export
+          </button>
+          <a
+            href="https://erp.wttint.com/app/agent-details"
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-cyan-600 transition-colors"
+            title="Open in ERP"
+          >
+            <ArrowUpRight className="w-3.5 h-3.5" /> View in ERP
+          </a>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+          <span className="text-sm font-semibold text-gray-700">
+            <span className="text-cyan-600 font-bold">{filtered.length.toLocaleString()}</span>{" "}
+            agent{filtered.length !== 1 ? "s" : ""}
+          </span>
+          {filtered.length > 500 && (
+            <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg">
+              Showing top 500 — refine your search
+            </span>
+          )}
+        </div>
+
+        <div className="overflow-auto max-h-[600px]">
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-16 text-gray-300 gap-2">
+              <RefreshCw className="w-5 h-5 animate-spin text-cyan-300" />
+              <span className="text-sm">Loading agents…</span>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
+              <div className="w-14 h-14 rounded-2xl bg-cyan-50 border border-cyan-100 flex items-center justify-center">
+                <UserCheck className="w-6 h-6 text-cyan-300" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-700">No agent details found</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {search ? "Try a different search term." : "Create agents in the ERP to see them here."}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-gray-50 border-b border-gray-100">
+                <tr>
+                  <th className="px-3 py-2.5 text-left text-gray-400 font-semibold uppercase tracking-wider whitespace-nowrap">#</th>
+                  {visibleKeys.map(k => (
+                    <th key={k} className="px-3 py-2.5 text-left text-gray-400 font-semibold uppercase tracking-wider whitespace-nowrap">
+                      {labelOf(k)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.slice(0, 500).map((a, i) => (
+                  <tr key={a.name || i} className={cn("border-b border-gray-50 hover:bg-cyan-50/30 transition-colors", i % 2 !== 0 ? "bg-gray-50/30" : "")}>
+                    <td className="px-3 py-2.5 text-gray-300 font-semibold">{i + 1}</td>
+                    {visibleKeys.map(k => {
+                      const v = a?.[k];
+                      const str = v === null || v === undefined || v === "" ? "—" : String(v);
+                      const isEmail = /email/i.test(k) && str !== "—";
+                      const isPhone = /(mobile|phone)/i.test(k) && str !== "—";
+                      return (
+                        <td key={k} className="px-3 py-2.5 text-gray-700 whitespace-nowrap max-w-xs truncate" title={str}>
+                          {isEmail ? (
+                            <a href={`mailto:${str}`} className="inline-flex items-center gap-1 text-cyan-700 hover:underline">
+                              <Mail className="w-3 h-3" /> {str}
+                            </a>
+                          ) : isPhone ? (
+                            <a href={`tel:${str}`} className="inline-flex items-center gap-1 text-emerald-700 hover:underline">
+                              <Phone className="w-3 h-3" /> {str}
+                            </a>
+                          ) : (
+                            str
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 const TABS: { id: Tab; label: string; icon: React.ElementType; activeColor: string }[] = [
@@ -1498,6 +1666,7 @@ const TABS: { id: Tab; label: string; icon: React.ElementType; activeColor: stri
   { id: "competitors",      label: "Competitors",         icon: Building2,  activeColor: "bg-rose-600" },
   { id: "followup",         label: "Followup Calendar",   icon: Calendar,   activeColor: "bg-purple-600" },
   { id: "proposal-request", label: "Proposal Requests",  icon: FileText,   activeColor: "bg-emerald-600" },
+  { id: "agent-details",    label: "Agent Details",       icon: UserCheck,  activeColor: "bg-cyan-600" },
 ];
 
 export default function Marketing() {
@@ -1546,6 +1715,7 @@ export default function Marketing() {
           {activeTab === "competitors"      && <CompetitorTab />}
           {activeTab === "followup"         && <FollowupCalendar />}
           {activeTab === "proposal-request" && <ProposalRequestTab />}
+          {activeTab === "agent-details"    && <AgentDetailsTab />}
         </div>
       </div>
     </Layout>
