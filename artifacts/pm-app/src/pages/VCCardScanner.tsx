@@ -391,6 +391,12 @@ function CardSidePreview({ side, value, onClear, onOpenCamera }: { side: "front"
 // ─── Main page ─────────────────────────────────────────────────────────────
 export default function VCCardScanner() {
   const { user } = useAuth();
+  // When loaded inside an iframe (e.g. Plant Enquiry's Scan Card modal) or with ?embed=1,
+  // hide the FlowMatriX sidebar/header so only the scanner UI is visible.
+  const embedded = typeof window !== "undefined" && (
+    window.self !== window.top ||
+    new URLSearchParams(window.location.search).get("embed") === "1"
+  );
   const [tab, setTab] = useState<"scan" | "list" | "report">("scan");
   const [cards, setCards] = useState<VCard[]>([]);
   const [loading, setLoading] = useState(false);
@@ -586,7 +592,7 @@ export default function VCCardScanner() {
   }, [cards, search]);
 
   return (
-    <Layout>
+    <Layout hideChrome={embedded}>
       <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
         {/* Header */}
         <div className="flex-shrink-0 bg-white border-b border-slate-200 px-4 py-2.5">
