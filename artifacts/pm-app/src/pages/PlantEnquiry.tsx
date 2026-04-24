@@ -9,8 +9,10 @@ import {
   ClipboardList, Sparkles, Layers, ScanLine, NotebookPen, Plus,
   Trash2, GripVertical, ListChecks, FileText, Navigation, ExternalLink,
   Loader2, Crosshair, Eye, FileCheck2, UserCheck, BadgeCheck, MessageCircle,
-  Trophy, XCircle, Filter, Mic, Square, Languages,
+  Trophy, XCircle, Filter, Mic, Square, Languages, Clipboard,
 } from "lucide-react";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
 const VC_BASE = "/api";
 
@@ -621,26 +623,163 @@ async function reverseGeocode(lat: string, lng: string): Promise<GeoAddr> {
   } catch { return {}; }
 }
 
+type PlaceHit = { display_name: string; lat: string; lon: string };
+
+async function searchPlaces(q: string): Promise<PlaceHit[]> {
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&accept-language=en&q=${encodeURIComponent(q)}`, {
+      headers: { "Accept": "application/json" },
+    });
+    if (!r.ok) return [];
+    const j = await r.json();
+    return Array.isArray(j) ? j as PlaceHit[] : [];
+  } catch { return []; }
+}
+
 function MapPicker({
-  open, onClose, lat, lng, onSave,
-}: { open: boolean; onClose: () => void; lat: string; lng: string; onSave: (ll: LatLng, addr: GeoAddr) => void }) {
+  open, onClose, lat, lng, onSave, initialPaste,
+}: { open: boolean; onClose: () => void; lat: string; lng: string; onSave: (ll: LatLng, addr: GeoAddr) => void; initialPaste?: string }) {
   const [pasted, setPasted] = useState("");
   const [cur, setCur] = useState<LatLng>({ lat, lng });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [addr, setAddr] = useState<GeoAddr>({});
+  const [hits, setHits] = useState<PlaceHit[]>([]);
+  const [searching, setSearching] = useState(false);
 
+  const mapElRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
+  const searchTimerRef = useRef<number | null>(null);
+
+  // Reset state every time the modal opens
   useEffect(() => {
     if (!open) return;
     setCur({ lat, lng });
-    setPasted("");
+    setPasted(initialPaste || "");
     setErr(null);
     setAddr({});
+    setHits([]);
     if (lat && lng) {
       setBusy(true);
       reverseGeocode(lat, lng).then((a) => { setAddr(a); setBusy(false); });
     }
-  }, [open, lat, lng]);
+    if (initialPaste) {
+      // Auto-run paste as soon as opened with seeded text
+      setTimeout(() => { void usePasted(initialPaste); }, 50);
+    }
+  }, [open, lat, lng, initialPaste]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Initialise / tear down Leaflet when the modal opens / closes
+  useEffect(() => {
+    if (!open || !mapElRef.current) return;
+
+    const startLat = parseFloat(lat) || 20.5937;
+    const startLng = parseFloat(lng) || 78.9629;
+    const startZoom = (lat && lng) ? 15 : 4;
+
+    const map = L.map(mapElRef.current, {
+      center: [startLat, startLng],
+      zoom: startZoom,
+      zoomControl: true,
+      tap: true,
+    });
+    mapRef.current = map;
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap contributors',
+    }).addTo(map);
+
+    // Custom big touch-friendly pin
+    const pinIcon = L.divIcon({
+      className: "",
+      html: `<div style="position:relative;width:30px;height:42px;transform:translate(-50%,-100%);filter:drop-shadow(0 3px 4px rgba(0,0,0,.35));">
+        <svg viewBox="0 0 30 42" width="30" height="42" xmlns="http://www.w3.org/2000/svg">
+          <path d="M15 0C7 0 1 6 1 14c0 11 14 28 14 28s14-17 14-28C29 6 23 0 15 0z" fill="#dc2626"/>
+          <circle cx="15" cy="14" r="5" fill="#fff"/>
+        </svg>
+      </div>`,
+      iconSize: [30, 42],
+      iconAnchor: [15, 42],
+    });
+
+    if (lat && lng) {
+      const m = L.marker([startLat, startLng], { icon: pinIcon, draggable: true }).addTo(map);
+      m.on("dragend", () => {
+        const p = m.getLatLng();
+        const next = { lat: p.lat.toFixed(6), lng: p.lng.toFixed(6) };
+        setCur(next);
+        void runReverseGeocode(next.lat, next.lng);
+      });
+      markerRef.current = m;
+    }
+
+    map.on("click", (e: L.LeafletMouseEvent) => {
+      const next = { lat: e.latlng.lat.toFixed(6), lng: e.latlng.lng.toFixed(6) };
+      setCur(next);
+      if (markerRef.current) {
+        markerRef.current.setLatLng(e.latlng);
+      } else {
+        const m = L.marker(e.latlng, { icon: pinIcon, draggable: true }).addTo(map);
+        m.on("dragend", () => {
+          const p = m.getLatLng();
+          const n = { lat: p.lat.toFixed(6), lng: p.lng.toFixed(6) };
+          setCur(n);
+          void runReverseGeocode(n.lat, n.lng);
+        });
+        markerRef.current = m;
+      }
+      void runReverseGeocode(next.lat, next.lng);
+    });
+
+    // Force layout calc once modal painted (esp. on mobile)
+    setTimeout(() => { try { map.invalidateSize(); } catch {} }, 100);
+
+    return () => {
+      try { map.remove(); } catch {}
+      mapRef.current = null;
+      markerRef.current = null;
+    };
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const runReverseGeocode = async (la: string, ln: string) => {
+    setBusy(true); setErr(null);
+    const a = await reverseGeocode(la, ln);
+    setAddr(a);
+    setBusy(false);
+  };
+
+  // Move map + marker programmatically
+  const flyTo = (la: string, ln: string, zoom = 16) => {
+    const map = mapRef.current; if (!map) return;
+    const latN = parseFloat(la), lngN = parseFloat(ln);
+    if (!isFinite(latN) || !isFinite(lngN)) return;
+    map.setView([latN, lngN], zoom);
+    if (markerRef.current) {
+      markerRef.current.setLatLng([latN, lngN]);
+    } else {
+      const pinIcon = L.divIcon({
+        className: "",
+        html: `<div style="position:relative;width:30px;height:42px;transform:translate(-50%,-100%);filter:drop-shadow(0 3px 4px rgba(0,0,0,.35));">
+          <svg viewBox="0 0 30 42" width="30" height="42" xmlns="http://www.w3.org/2000/svg">
+            <path d="M15 0C7 0 1 6 1 14c0 11 14 28 14 28s14-17 14-28C29 6 23 0 15 0z" fill="#dc2626"/>
+            <circle cx="15" cy="14" r="5" fill="#fff"/>
+          </svg>
+        </div>`,
+        iconSize: [30, 42],
+        iconAnchor: [15, 42],
+      });
+      const m = L.marker([latN, lngN], { icon: pinIcon, draggable: true }).addTo(map);
+      m.on("dragend", () => {
+        const p = m.getLatLng();
+        const next = { lat: p.lat.toFixed(6), lng: p.lng.toFixed(6) };
+        setCur(next);
+        void runReverseGeocode(next.lat, next.lng);
+      });
+      markerRef.current = m;
+    }
+  };
 
   const useCurrent = () => {
     if (!navigator.geolocation) { setErr("Geolocation not supported"); return; }
@@ -649,6 +788,7 @@ function MapPicker({
       async (p) => {
         const next = { lat: p.coords.latitude.toFixed(6), lng: p.coords.longitude.toFixed(6) };
         setCur(next);
+        flyTo(next.lat, next.lng, 17);
         const a = await reverseGeocode(next.lat, next.lng);
         setAddr(a);
         setBusy(false);
@@ -658,15 +798,70 @@ function MapPicker({
     );
   };
 
-  const usePasted = async () => {
-    const ll = parseLatLng(pasted);
-    if (!ll) { setErr("Couldn't read coordinates. Paste like '12.97, 77.59' or a Google Maps URL."); return; }
-    setErr(null);
-    setCur(ll);
+  // "Use" the search/paste box: try coords first, otherwise forward-geocode the text
+  const usePasted = async (text?: string) => {
+    const v = (text ?? pasted).trim();
+    if (!v) return;
+    const ll = parseLatLng(v);
+    if (ll) {
+      setErr(null);
+      setCur(ll);
+      flyTo(ll.lat, ll.lng, 16);
+      setBusy(true);
+      const a = await reverseGeocode(ll.lat, ll.lng);
+      setAddr(a);
+      setBusy(false);
+      setHits([]);
+      return;
+    }
+    // Forward geocode the address text
+    setSearching(true); setErr(null);
+    const results = await searchPlaces(v);
+    setSearching(false);
+    if (results.length === 0) {
+      setErr("Couldn't find that place. Paste coordinates like '12.97, 77.59' or a Google Maps URL.");
+      setHits([]);
+      return;
+    }
+    if (results.length === 1) {
+      pickHit(results[0]);
+    } else {
+      setHits(results);
+    }
+  };
+
+  const pickHit = async (h: PlaceHit) => {
+    const next = { lat: parseFloat(h.lat).toFixed(6), lng: parseFloat(h.lon).toFixed(6) };
+    setCur(next);
+    setHits([]);
+    setPasted(h.display_name);
+    flyTo(next.lat, next.lng, 16);
     setBusy(true);
-    const a = await reverseGeocode(ll.lat, ll.lng);
+    const a = await reverseGeocode(next.lat, next.lng);
     setAddr(a);
     setBusy(false);
+  };
+
+  // Live suggestions while typing (debounced) — only for non-coordinate text
+  useEffect(() => {
+    if (searchTimerRef.current) { clearTimeout(searchTimerRef.current); searchTimerRef.current = null; }
+    const v = pasted.trim();
+    if (!v || v.length < 3) { setHits([]); return; }
+    if (parseLatLng(v)) { setHits([]); return; }
+    searchTimerRef.current = window.setTimeout(async () => {
+      setSearching(true);
+      const r = await searchPlaces(v);
+      setSearching(false);
+      setHits(r);
+    }, 450);
+    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
+  }, [pasted]);
+
+  const pasteFromClipboard = async () => {
+    try {
+      const t = await navigator.clipboard.readText();
+      if (t) { setPasted(t); void usePasted(t); }
+    } catch { setErr("Clipboard access denied. Long-press the box to paste."); }
   };
 
   const lookupAddr = async () => {
@@ -679,89 +874,131 @@ function MapPicker({
 
   if (!open) return null;
   const hasLL = !!(cur.lat && cur.lng);
-  const mapSrc = hasLL
-    ? `https://www.openstreetmap.org/export/embed.html?bbox=${parseFloat(cur.lng)-0.01}%2C${parseFloat(cur.lat)-0.01}%2C${parseFloat(cur.lng)+0.01}%2C${parseFloat(cur.lat)+0.01}&layer=mapnik&marker=${cur.lat}%2C${cur.lng}`
-    : "";
   const gmapsLink = hasLL ? `https://www.google.com/maps/?q=${cur.lat},${cur.lng}` : "";
   const gmapsPick = `https://www.google.com/maps`;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-3xl max-h-[88vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-200 bg-gray-50">
-          <MapPin className="w-4 h-4 text-gray-700" />
-          <span className="font-semibold text-sm text-gray-800">Pick site location (latitude / longitude)</span>
-          <button onClick={onClose} className="ml-auto p-1 rounded hover:bg-white text-gray-500"><X className="w-4 h-4" /></button>
-        </div>
-
-        <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-3 border-b border-gray-200">
-          <button
-            onClick={useCurrent}
-            disabled={busy}
-            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded border border-gray-300 hover:border-gray-500 hover:bg-gray-50 text-xs font-semibold text-gray-700 disabled:opacity-50"
-          >
-            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Crosshair className="w-3.5 h-3.5" />}
-            Use my current location
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-stretch sm:items-center justify-center sm:p-4" onClick={onClose}>
+      <div
+        className="bg-white shadow-2xl w-full sm:max-w-3xl h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:rounded-2xl rounded-none flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center gap-2 px-3 sm:px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-amber-50 to-orange-50">
+          <MapPin className="w-4 h-4 text-amber-700" />
+          <span className="font-semibold text-sm text-gray-800">Pick site location</span>
+          <span className="hidden sm:inline text-[11px] text-gray-500">— tap the map, drag the pin, or paste/search below</span>
+          <button onClick={onClose} className="ml-auto p-1.5 rounded-lg hover:bg-white/70 active:scale-95 text-gray-500" aria-label="Close">
+            <X className="w-5 h-5" />
           </button>
-          <a
-            href={gmapsPick}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded border border-gray-300 hover:border-gray-500 hover:bg-gray-50 text-xs font-semibold text-gray-700"
-          >
-            <ExternalLink className="w-3.5 h-3.5" /> Open Google Maps to pick
-          </a>
-          <div className="md:col-span-2 flex gap-2">
-            <input
-              value={pasted}
-              onChange={(e) => setPasted(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") usePasted(); }}
-              placeholder="Paste Google Maps URL or coordinates (e.g. 12.972, 77.594)"
-              className="flex-1 px-2.5 py-1.5 text-xs rounded border border-gray-200 focus:outline-none focus:border-gray-500"
-            />
-            <button onClick={usePasted} className="px-3 rounded bg-gray-800 text-white text-xs font-semibold hover:bg-gray-900">Use</button>
-          </div>
-          <label className="block">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Latitude</span>
-            <input
-              value={cur.lat}
-              onChange={(e) => setCur((c) => ({ ...c, lat: e.target.value }))}
-              placeholder="e.g. 12.972"
-              className="w-full mt-1 px-2.5 py-1.5 text-xs rounded border border-gray-200 focus:outline-none focus:border-gray-500 font-mono"
-            />
-          </label>
-          <label className="block">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Longitude</span>
-            <input
-              value={cur.lng}
-              onChange={(e) => setCur((c) => ({ ...c, lng: e.target.value }))}
-              placeholder="e.g. 77.594"
-              className="w-full mt-1 px-2.5 py-1.5 text-xs rounded border border-gray-200 focus:outline-none focus:border-gray-500 font-mono"
-            />
-          </label>
-          {err && <div className="md:col-span-2 text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1">{err}</div>}
         </div>
 
-        <div className="flex-1 min-h-[260px] bg-gray-100 relative">
-          {hasLL ? (
-            <iframe
-              key={`${cur.lat},${cur.lng}`}
-              src={mapSrc}
-              title="Map preview"
-              className="w-full h-full border-0"
-            />
-          ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400 text-xs gap-2">
-              <MapPin className="w-8 h-8" />
-              <span>Enter coordinates above to preview the location</span>
+        {/* Search / paste row */}
+        <div className="px-3 sm:px-4 py-2.5 border-b border-gray-200 bg-white space-y-2">
+          <div className="relative flex items-center gap-1.5">
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                value={pasted}
+                onChange={(e) => setPasted(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void usePasted(); } }}
+                placeholder="Paste address, place, coordinates, or Google Maps URL"
+                className="w-full pl-8 pr-8 py-2.5 text-sm rounded-lg border border-gray-300 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100"
+                autoComplete="off"
+                inputMode="search"
+              />
+              {pasted && (
+                <button
+                  type="button"
+                  onClick={() => { setPasted(""); setHits([]); setErr(null); }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-100 text-gray-400"
+                  aria-label="Clear"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={pasteFromClipboard}
+              title="Paste from clipboard"
+              className="shrink-0 inline-flex items-center gap-1 px-2.5 py-2.5 rounded-lg border border-gray-300 hover:border-amber-500 hover:bg-amber-50 text-xs font-semibold text-gray-700 active:scale-95"
+            >
+              <Clipboard className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Paste</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => void usePasted()}
+              disabled={!pasted.trim()}
+              className="shrink-0 px-3 py-2.5 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 disabled:opacity-40 active:scale-95"
+            >
+              {searching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Go"}
+            </button>
+          </div>
+
+          {/* Search suggestions */}
+          {hits.length > 0 && (
+            <div className="rounded-lg border border-gray-200 bg-white shadow-sm max-h-48 overflow-y-auto divide-y divide-gray-100">
+              {hits.map((h, i) => (
+                <button
+                  key={`${h.lat}-${h.lon}-${i}`}
+                  type="button"
+                  onClick={() => pickHit(h)}
+                  className="w-full text-left px-3 py-2 hover:bg-amber-50 active:bg-amber-100 text-[12px] text-gray-700 flex items-start gap-2"
+                >
+                  <MapPin className="w-3.5 h-3.5 text-amber-600 mt-0.5 shrink-0" />
+                  <span className="line-clamp-2">{h.display_name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={useCurrent}
+              disabled={busy}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-gray-300 hover:border-amber-500 hover:bg-amber-50 text-xs font-semibold text-gray-700 disabled:opacity-50 active:scale-95"
+            >
+              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Crosshair className="w-3.5 h-3.5" />}
+              Use my location
+            </button>
+            <a
+              href={gmapsPick}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-gray-300 hover:border-amber-500 hover:bg-amber-50 text-xs font-semibold text-gray-700 active:scale-95"
+            >
+              <ExternalLink className="w-3.5 h-3.5" /> Google Maps
+            </a>
+            {hasLL && (
+              <span className="ml-auto inline-flex items-center gap-1 text-[10px] text-gray-500 font-mono bg-gray-100 px-2 py-1 rounded">
+                {parseFloat(cur.lat).toFixed(5)}, {parseFloat(cur.lng).toFixed(5)}
+              </span>
+            )}
+          </div>
+          {err && <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1">{err}</div>}
+        </div>
+
+        {/* Map */}
+        <div className="flex-1 min-h-[300px] bg-gray-100 relative">
+          <div ref={mapElRef} className="absolute inset-0" />
+          {!hasLL && (
+            <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center">
+              <div className="pointer-events-auto bg-white/95 backdrop-blur shadow-md rounded-full px-3 py-1.5 text-[11px] font-semibold text-gray-700 border border-gray-200 flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-amber-600" />
+                Tap anywhere on the map to drop a pin
+              </div>
             </div>
           )}
         </div>
 
+        {/* Address footer */}
         {(addr.address || hasLL) && (
-          <div className="px-4 py-2 border-t border-gray-200 bg-gray-50 text-[11px] text-gray-700 space-y-1">
-            {addr.address && <div className="truncate"><span className="font-semibold">Address: </span>{addr.address}</div>}
-            <div className="flex flex-wrap gap-3 text-[10px] text-gray-500">
+          <div className="px-3 sm:px-4 py-2 border-t border-gray-200 bg-gray-50 text-[11px] text-gray-700 space-y-1">
+            {addr.address && <div className="line-clamp-2"><span className="font-semibold">Address: </span>{addr.address}</div>}
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-gray-500">
               {addr.city && <span><b className="text-gray-700">District:</b> {addr.city}</span>}
               {addr.state && <span><b className="text-gray-700">State:</b> {addr.state}</span>}
               {addr.country && <span><b className="text-gray-700">Country:</b> {addr.country}</span>}
@@ -775,17 +1012,18 @@ function MapPicker({
           </div>
         )}
 
-        <div className="px-4 py-2.5 border-t border-gray-200 bg-white flex items-center justify-end gap-2">
+        {/* Action bar */}
+        <div className="px-3 sm:px-4 py-3 border-t border-gray-200 bg-white flex items-center justify-end gap-2">
           {hasLL && !addr.address && (
-            <button onClick={lookupAddr} disabled={busy} className="px-3 py-1.5 rounded border border-gray-300 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+            <button onClick={lookupAddr} disabled={busy} className="px-3 py-2 rounded-lg border border-gray-300 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">
               {busy ? "Looking up…" : "Look up address"}
             </button>
           )}
-          <button onClick={onClose} className="px-3 py-1.5 rounded border border-gray-300 text-xs font-semibold text-gray-700 hover:bg-gray-50">Cancel</button>
+          <button onClick={onClose} className="px-3 py-2 rounded-lg border border-gray-300 text-xs font-semibold text-gray-700 hover:bg-gray-50 active:scale-95">Cancel</button>
           <button
             onClick={() => { if (cur.lat && cur.lng) onSave(cur, addr); onClose(); }}
             disabled={!hasLL}
-            className="px-3 py-1.5 rounded bg-gray-800 text-white text-xs font-semibold hover:bg-gray-900 disabled:opacity-40"
+            className="px-4 py-2 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 disabled:opacity-40 shadow-sm active:scale-95"
           >
             Use this location
           </button>
@@ -1561,6 +1799,7 @@ export default function PlantEnquiry() {
   });
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
+  const [mapPasteSeed, setMapPasteSeed] = useState<string>("");
   const [view, setView] = useState<"dashboard" | "form">("dashboard");
   const [list, setList] = useState<SavedEnquiry[]>(() => loadList());
   const [currentId, setCurrentId] = useState<string | null>(null);
@@ -2233,22 +2472,36 @@ export default function PlantEnquiry() {
               title="Site Address"
               accent="bg-amber-50 text-amber-800 border-amber-100"
               right={
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 flex-wrap justify-end">
                   {form.latitude && form.longitude && (
                     <a
                       href={`https://www.google.com/maps/?q=${form.latitude},${form.longitude}`}
                       target="_blank"
                       rel="noreferrer"
                       title="Open in Google Maps"
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-amber-300 hover:border-amber-500 bg-white text-[10px] font-semibold text-amber-800 transition"
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded border border-amber-300 hover:border-amber-500 bg-white text-[10px] font-semibold text-amber-800 transition active:scale-95"
                     >
                       <ExternalLink className="w-3 h-3" /> {parseFloat(form.latitude).toFixed(3)}, {parseFloat(form.longitude).toFixed(3)}
                     </a>
                   )}
                   <button
                     type="button"
-                    onClick={() => setMapOpen(true)}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-amber-300 hover:border-amber-500 bg-white text-[10px] font-semibold text-amber-800 transition"
+                    onClick={async () => {
+                      try {
+                        const t = await navigator.clipboard.readText();
+                        setMapPasteSeed(t || "");
+                      } catch { setMapPasteSeed(""); }
+                      setMapOpen(true);
+                    }}
+                    title="Paste address, coordinates, or Google Maps link from clipboard"
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded border border-amber-300 hover:border-amber-500 bg-white text-[10px] font-semibold text-amber-800 transition active:scale-95"
+                  >
+                    <Clipboard className="w-3 h-3" /> Paste
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setMapPasteSeed(""); setMapOpen(true); }}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded border border-amber-300 hover:border-amber-500 bg-white text-[10px] font-semibold text-amber-800 transition active:scale-95"
                   >
                     <Navigation className="w-3 h-3" /> {form.latitude ? "Change" : "Pick on Map"}
                   </button>
@@ -2463,9 +2716,10 @@ export default function PlantEnquiry() {
 
       <MapPicker
         open={mapOpen}
-        onClose={() => setMapOpen(false)}
+        onClose={() => { setMapOpen(false); setMapPasteSeed(""); }}
         lat={form.latitude}
         lng={form.longitude}
+        initialPaste={mapPasteSeed}
         onSave={(ll, addr) => {
           setForm((f) => ({
             ...f,

@@ -93,7 +93,21 @@ async function streamGenerate(
 
 // ─── Recording Mode ─────────────────────────────────────────────────────────
 type RecordPhase = "idle" | "recording" | "transcribing" | "generating" | "done" | "error";
-const BAR_COUNT = 30;
+const BAR_COUNT = 48;
+
+const SR_LANGS: Array<{ code: string; label: string }> = [
+  { code: "en-IN", label: "English" },
+  { code: "ta-IN", label: "Tamil" },
+  { code: "hi-IN", label: "Hindi" },
+  { code: "te-IN", label: "Telugu" },
+  { code: "kn-IN", label: "Kannada" },
+  { code: "ml-IN", label: "Malayalam" },
+  { code: "mr-IN", label: "Marathi" },
+  { code: "gu-IN", label: "Gujarati" },
+  { code: "bn-IN", label: "Bengali" },
+];
+
+const SR_LANG_KEY = "meeting-sr-lang";
 
 function RecordingView({ meeting, onUpdate, autoStart }: { meeting: Meeting; onUpdate: (m: Meeting) => void; autoStart?: boolean }) {
   const rec = useRecording();
@@ -102,14 +116,24 @@ function RecordingView({ meeting, onUpdate, autoStart }: { meeting: Meeting; onU
   const [streamText, setStreamText] = useState("");
   const [transcript, setTranscript] = useState(meeting.rawNotes || "");
   const [waveData, setWaveData] = useState<number[]>(new Array(BAR_COUNT).fill(0));
-  const [liveText, setLiveText] = useState("");
+  const [liveFinal, setLiveFinal] = useState("");
+  const [liveInterim, setLiveInterim] = useState("");
+  const [audioLevel, setAudioLevel] = useState(0);
   const [audioBlobUrl, setAudioBlobUrl] = useState<string | null>(null);
+  const [srLang, setSrLang] = useState<string>(() => {
+    try { return localStorage.getItem(SR_LANG_KEY) || "en-IN"; } catch { return "en-IN"; }
+  });
   const phaseRef = useRef<RecordPhase>(meeting.aiSummary ? "done" : "idle");
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const recognitionRef = useRef<any>(null);
-  const liveTextRef = useRef("");
+  const liveFinalRef = useRef("");
+  const srLangRef = useRef(srLang);
+  const srStoppedRef = useRef(false);
+  const liveScrollRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => { srLangRef.current = srLang; try { localStorage.setItem(SR_LANG_KEY, srLang); } catch {} }, [srLang]);
 
   useEffect(() => {
     setTranscript(meeting.rawNotes || "");
@@ -122,6 +146,12 @@ function RecordingView({ meeting, onUpdate, autoStart }: { meeting: Meeting; onU
   useEffect(() => {
     return () => { if (audioBlobUrl) URL.revokeObjectURL(audioBlobUrl); };
   }, [audioBlobUrl]);
+
+  // Auto-scroll the live transcript box as new text arrives
+  useEffect(() => {
+    const el = liveScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [liveFinal, liveInterim]);
 
   // HMR / navigation recovery: if a recording is already active for this meeting, reconnect visuals
   useEffect(() => {
@@ -147,19 +177,42 @@ function RecordingView({ meeting, onUpdate, autoStart }: { meeting: Meeting; onU
       audioCtxRef.current = ctx;
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256; // must be power of 2; gives 128 time-domain samples
-      analyser.smoothingTimeConstant = 0.75;
+      analyser.fftSize = 512; // power of 2 → 256 freq bins, smoother visuals
+      analyser.smoothingTimeConstant = 0.78;
       source.connect(analyser);
-      const data = new Uint8Array(analyser.fftSize);
-      const step = Math.floor(analyser.fftSize / BAR_COUNT);
+      const freq = new Uint8Array(analyser.frequencyBinCount);
+      const time = new Uint8Array(analyser.fftSize);
+
+      // Skip the lowest bins (HVAC rumble) and the very top (hiss) for a richer voice band
+      const startBin = 2;
+      const usableBins = Math.min(analyser.frequencyBinCount - startBin, 180);
+      const binsPerBar = Math.max(1, Math.floor(usableBins / BAR_COUNT));
+
       const tick = () => {
-        analyser.getByteTimeDomainData(data);
-        const bars: number[] = [];
+        analyser.getByteFrequencyData(freq);
+        analyser.getByteTimeDomainData(time);
+
+        const bars: number[] = new Array(BAR_COUNT);
         for (let i = 0; i < BAR_COUNT; i++) {
-          const v = data[i * step] ?? 128;
-          bars.push(Math.abs((v - 128) / 128)); // 0 = silence, 1 = max amplitude
+          let sum = 0;
+          for (let j = 0; j < binsPerBar; j++) {
+            sum += freq[startBin + i * binsPerBar + j] ?? 0;
+          }
+          // Normalised 0..1, mild log curve so quiet voice still looks alive
+          const norm = (sum / binsPerBar) / 255;
+          bars[i] = Math.pow(norm, 0.85);
         }
         setWaveData(bars);
+
+        // Overall RMS level for the centre orb
+        let rms = 0;
+        for (let i = 0; i < time.length; i++) {
+          const v = (time[i] - 128) / 128;
+          rms += v * v;
+        }
+        rms = Math.sqrt(rms / time.length);
+        setAudioLevel(Math.min(1, rms * 2.4));
+
         animFrameRef.current = requestAnimationFrame(tick);
       };
       animFrameRef.current = requestAnimationFrame(tick);
@@ -170,56 +223,100 @@ function RecordingView({ meeting, onUpdate, autoStart }: { meeting: Meeting; onU
     if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null; }
     if (audioCtxRef.current) { audioCtxRef.current.close().catch(() => {}); audioCtxRef.current = null; }
     setWaveData(new Array(BAR_COUNT).fill(0));
+    setAudioLevel(0);
   };
 
-  // Tracks per-language live text from three parallel recognition instances
-  const langTextsRef = useRef<Record<string, string>>({ "ta-IN": "", "hi-IN": "", "en-IN": "" });
-  const recognitionsRef = useRef<any[]>([]);
-
+  // Single SpeechRecognition instance (running 3 in parallel produces duplicated, jumbled text
+  // and is not supported by Chrome). Use the user-selected language with fast auto-restart.
   const startSpeechRecognition = () => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) return;
-    const langs = ["ta-IN", "hi-IN", "en-IN"];
-    recognitionsRef.current = [];
-    langs.forEach(lang => {
+    srStoppedRef.current = false;
+
+    const make = () => {
       try {
         const r = new SR();
         r.continuous = true;
         r.interimResults = true;
-        r.lang = lang;
+        r.maxAlternatives = 1;
+        r.lang = srLangRef.current || "en-IN";
+
         r.onresult = (e: any) => {
-          let text = "";
-          for (let i = 0; i < e.results.length; i++) text += e.results[i][0].transcript + " ";
-          langTextsRef.current[lang] = text.trim();
-          const combined = langs.map(l => langTextsRef.current[l]).filter(Boolean).join(" ").trim();
-          liveTextRef.current = combined;
-          setLiveText(combined);
+          // Walk only NEW results from this event for finals; build interim from latest
+          let newFinal = "";
+          let interim = "";
+          for (let i = e.resultIndex; i < e.results.length; i++) {
+            const res = e.results[i];
+            const txt = (res[0]?.transcript || "").trim();
+            if (!txt) continue;
+            if (res.isFinal) {
+              newFinal += (newFinal ? " " : "") + txt;
+            } else {
+              interim = txt;
+            }
+          }
+          if (newFinal) {
+            const next = (liveFinalRef.current ? liveFinalRef.current + " " : "") + newFinal;
+            liveFinalRef.current = next;
+            setLiveFinal(next);
+          }
+          setLiveInterim(interim);
         };
-        r.onerror = () => {};
-        r.onend = () => { try { r.start(); } catch {} }; // auto-restart if it stops
+
+        r.onerror = (e: any) => {
+          // 'no-speech' / 'aborted' / 'network' — let onend handle restart
+          if (e?.error === "not-allowed" || e?.error === "service-not-allowed") {
+            srStoppedRef.current = true;
+          }
+        };
+
+        r.onend = () => {
+          if (srStoppedRef.current) return;
+          // Restart on next tick so we keep streaming
+          setTimeout(() => {
+            if (srStoppedRef.current) return;
+            try { r.start(); } catch {
+              // If 'already started' fires, build a fresh instance
+              recognitionRef.current = make();
+            }
+          }, 200);
+        };
+
         r.start();
-        recognitionsRef.current.push(r);
-      } catch {}
-    });
+        return r;
+      } catch { return null; }
+    };
+
+    recognitionRef.current = make();
   };
 
   const stopSpeechRecognition = () => {
-    recognitionsRef.current.forEach(r => {
-      r.onend = null;
+    srStoppedRef.current = true;
+    const r = recognitionRef.current;
+    if (r) {
+      try { r.onend = null; r.onresult = null; r.onerror = null; } catch {}
       try { r.stop(); } catch {}
-    });
-    recognitionsRef.current = [];
-    langTextsRef.current = { "ta-IN": "", "hi-IN": "", "en-IN": "" };
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch {}
-      recognitionRef.current = null;
+      try { r.abort?.(); } catch {}
+    }
+    recognitionRef.current = null;
+  };
+
+  // Switch language while recording — restart the recogniser with the new lang
+  const switchSrLang = (code: string) => {
+    setSrLang(code);
+    srLangRef.current = code;
+    if (phaseRef.current === "recording") {
+      stopSpeechRecognition();
+      // brief delay so the previous instance fully releases
+      setTimeout(() => { startSpeechRecognition(); }, 250);
     }
   };
 
   const startRecording = async () => {
     setMicError("");
-    setLiveText("");
-    liveTextRef.current = "";
+    setLiveFinal("");
+    setLiveInterim("");
+    liveFinalRef.current = "";
     const result = await rec.startRecording(meeting.id);
     if (!result) {
       setMicError("Could not start microphone. Please allow microphone access in your browser.");
@@ -270,7 +367,7 @@ function RecordingView({ meeting, onUpdate, autoStart }: { meeting: Meeting; onU
       if (!tRes.ok) throw new Error(await tRes.text());
       const tData = await tRes.json();
       let text = tData.transcript?.trim() || "";
-      if (!text && liveTextRef.current) text = liveTextRef.current;
+      if (!text && liveFinalRef.current) text = liveFinalRef.current;
       setTranscript(text);
       if (tData.meeting) onUpdate(tData.meeting);
 
@@ -334,30 +431,94 @@ function RecordingView({ meeting, onUpdate, autoStart }: { meeting: Meeting; onU
         {/* Live waveform + real-time transcript */}
         {phase === "recording" && (
           <div className="w-full flex flex-col items-center gap-3">
-            {/* Waveform: bars grow from center up & down */}
-            <div className="flex items-center gap-[3px] h-16 px-2">
-              {waveData.map((v, i) => {
-                const amp = Math.max(0.03, v);
-                const halfH = Math.round(amp * 28); // half-bar height in px (max 28 → 56px total)
-                const bright = 200 + Math.round(v * 55); // intensity: darker when louder
-                return (
-                  <div key={i} className="flex flex-col items-center justify-center" style={{ height: 64 }}>
+            {/* Premium waveform: gradient mirrored bars + pulsating audio orb at centre */}
+            <div className="relative w-full max-w-xl rounded-xl overflow-hidden bg-gradient-to-b from-rose-950/95 via-rose-900/90 to-red-950/95 px-3 py-3 shadow-inner">
+              {/* Soft halo */}
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  background: `radial-gradient(circle at 50% 50%, rgba(239,68,68,${0.15 + audioLevel * 0.35}) 0%, transparent 60%)`,
+                  transition: "background 80ms linear",
+                }}
+              />
+              {/* Centre line */}
+              <div className="absolute inset-x-3 top-1/2 -translate-y-px h-[1px] bg-white/10" />
+
+              {/* Bars container */}
+              <div className="relative flex items-center justify-center gap-[3px] h-20">
+                {waveData.map((v, i) => {
+                  const amp = Math.max(0.04, v);
+                  const halfH = Math.max(2, Math.round(amp * 36));
+                  // Peak frequencies sit in the middle bins; make ends slightly shorter
+                  const positional = 1 - Math.pow(Math.abs(i - BAR_COUNT / 2) / (BAR_COUNT / 2), 1.6) * 0.25;
+                  const h = Math.round(halfH * positional * 2);
+                  // Hue shift across bars (rose→amber for a richer look)
+                  const hue = 350 - i * (40 / BAR_COUNT);
+                  const sat = 90;
+                  const lite = 55 + Math.round(v * 12);
+                  return (
                     <div
-                      className="rounded-full transition-[height] duration-75"
+                      key={i}
+                      className="rounded-full"
                       style={{
-                        width: 4,
-                        height: halfH * 2,
-                        background: `rgb(${bright},50,50)`,
-                        boxShadow: v > 0.4 ? `0 0 5px rgba(239,68,68,0.5)` : "none",
+                        width: 3,
+                        height: h,
+                        background: `linear-gradient(180deg, hsl(${hue},${sat}%,${lite + 8}%) 0%, hsl(${hue},${sat}%,${lite}%) 50%, hsl(${hue},${sat}%,${lite - 12}%) 100%)`,
+                        boxShadow: v > 0.45 ? `0 0 6px hsla(${hue},${sat}%,60%,0.7)` : "none",
+                        opacity: 0.95,
+                        transition: "height 70ms cubic-bezier(0.22,1,0.36,1)",
                       }}
                     />
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
+
+              {/* Pulsating mic orb */}
+              <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center">
+                <div
+                  className="rounded-full bg-red-500/30"
+                  style={{
+                    width: 36 + audioLevel * 28,
+                    height: 36 + audioLevel * 28,
+                    transition: "width 80ms linear, height 80ms linear",
+                    boxShadow: `0 0 ${10 + audioLevel * 30}px rgba(239,68,68,${0.4 + audioLevel * 0.4})`,
+                  }}
+                />
+                <div className="absolute w-9 h-9 rounded-full bg-red-600 flex items-center justify-center shadow-lg">
+                  <Mic className="w-4 h-4 text-white" />
+                </div>
+              </div>
+
+              {/* Language picker — top-left chip */}
+              <div className="absolute left-3 top-2.5 flex items-center gap-1">
+                <Languages className="w-3 h-3 text-white/70" />
+                <select
+                  value={srLang}
+                  onChange={(e) => switchSrLang(e.target.value)}
+                  className="text-[10px] font-semibold bg-white/15 hover:bg-white/25 text-white border border-white/20 rounded px-1.5 py-0.5 outline-none cursor-pointer backdrop-blur"
+                  title="Live transcript language"
+                >
+                  {SR_LANGS.map(l => (
+                    <option key={l.code} value={l.code} className="text-gray-900">{l.label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
-            {liveText && (
-              <div className="w-full max-w-md rounded-lg px-3 py-2 bg-white/80 border border-red-100 text-[11px] text-gray-600 leading-relaxed text-center italic line-clamp-3">
-                {liveText}
+
+            {/* Live transcript: scrolling box with finalised + interim */}
+            {(liveFinal || liveInterim) ? (
+              <div
+                ref={liveScrollRef}
+                className="w-full max-w-xl rounded-lg px-3 py-2 bg-white/95 border border-red-200 text-[12px] text-gray-700 leading-relaxed max-h-28 overflow-y-auto shadow-sm"
+              >
+                <span className="whitespace-pre-wrap">{liveFinal}</span>
+                {liveInterim && (
+                  <span className="text-gray-400 italic">{liveFinal ? " " : ""}{liveInterim}</span>
+                )}
+              </div>
+            ) : (
+              <div className="text-[10.5px] text-red-400/80 italic">
+                Listening… speak clearly toward the mic
               </div>
             )}
           </div>
