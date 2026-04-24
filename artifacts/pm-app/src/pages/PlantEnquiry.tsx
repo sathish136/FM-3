@@ -1243,6 +1243,14 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
   const flushTimerRef = useRef<number | null>(null);
   const lastHeardRef = useRef(0);
   const restartAttemptsRef = useRef(0);
+  // Windowed transcription recorder — separate from the continuous "save" recorder.
+  // Stops/restarts every WINDOW_MS so each blob is a complete, decodable file we can
+  // POST to /api/transcribe (OpenAI Whisper). Works inside iframes & in any browser.
+  const windowRecRef = useRef<MediaRecorder | null>(null);
+  const windowChunksRef = useRef<Blob[]>([]);
+  const windowTimerRef = useRef<number | null>(null);
+  const windowMaxLevelRef = useRef(0);
+  const WINDOW_MS = 5000;
 
   // Persist segments + lang
   useEffect(() => {
@@ -1263,9 +1271,12 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
     stopRequestedRef.current = true;
     const r = recognitionRef.current;
     if (r) { try { r.onend = null; r.stop(); } catch {} }
+    const wr = windowRecRef.current;
+    if (wr && wr.state !== "inactive") { try { wr.onstop = null; wr.stop(); } catch {} }
     streamRef.current?.getTracks().forEach(t => t.stop());
     if (levelRafRef.current) cancelAnimationFrame(levelRafRef.current);
     if (flushTimerRef.current) window.clearInterval(flushTimerRef.current);
+    if (windowTimerRef.current) window.clearTimeout(windowTimerRef.current);
     if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
       try { audioCtxRef.current.close(); } catch {}
     }
@@ -1303,6 +1314,70 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
     translateSegment(id, t, language);
   };
 
+  // Send a single windowed audio blob to the server for Whisper transcription.
+  const transcribeChunk = async (blob: Blob, mime: string) => {
+    if (!blob || blob.size < 2000) return; // skip tiny / empty chunks
+    const fd = new FormData();
+    const ext = mime.includes("webm") ? "webm" : mime.includes("mp4") ? "mp4" : mime.includes("ogg") ? "ogg" : "webm";
+    fd.append("audio", blob, `chunk.${ext}`);
+    try {
+      const res = await fetch(`${VC_BASE}/transcribe`, { method: "POST", body: fd });
+      if (!res.ok) {
+        let detail = "";
+        try { const j = await res.json(); detail = j?.error || ""; } catch {}
+        console.warn("[LiveTranscript] /transcribe failed:", res.status, detail);
+        setHint(`Transcription error: HTTP ${res.status}${detail ? ` — ${String(detail).slice(0, 80)}` : ""}`);
+        return;
+      }
+      const j = await res.json();
+      const text = (j.transcript || "").trim();
+      if (text) commitSegment(text);
+    } catch (e: any) {
+      console.warn("[LiveTranscript] /transcribe network error:", e);
+      setHint(`Transcription network error: ${e?.message || "offline?"}`);
+    }
+  };
+
+  // Start a single 5-second recording window. On stop, the chunk is sent for transcription
+  // and a fresh window is started automatically (until the user clicks Stop).
+  const startTranscriptionWindow = (stream: MediaStream, mime: string) => {
+    if (stopRequestedRef.current) return;
+    let wr: MediaRecorder;
+    try {
+      wr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    } catch (e: any) {
+      console.warn("[LiveTranscript] window recorder failed:", e);
+      return;
+    }
+    windowRecRef.current = wr;
+    windowChunksRef.current = [];
+    windowMaxLevelRef.current = 0;
+    wr.ondataavailable = (e) => { if (e.data && e.data.size > 0) windowChunksRef.current.push(e.data); };
+    wr.onstop = () => {
+      const parts = windowChunksRef.current;
+      windowChunksRef.current = [];
+      const peak = windowMaxLevelRef.current;
+      windowMaxLevelRef.current = 0;
+      if (parts.length > 0 && peak > 0.02) {
+        const blob = new Blob(parts, { type: mime || "audio/webm" });
+        transcribeChunk(blob, mime || "audio/webm");
+      }
+      // Schedule next window
+      if (!stopRequestedRef.current) {
+        windowTimerRef.current = window.setTimeout(() => {
+          if (!stopRequestedRef.current) startTranscriptionWindow(stream, mime);
+        }, 30);
+      }
+    };
+    try { wr.start(); } catch (e) { console.warn("[LiveTranscript] window start failed:", e); return; }
+    // Stop this window after WINDOW_MS to flush a complete blob.
+    windowTimerRef.current = window.setTimeout(() => {
+      if (windowRecRef.current === wr && wr.state === "recording") {
+        try { wr.stop(); } catch {}
+      }
+    }, WINDOW_MS);
+  };
+
   const start = async () => {
     setError(null);
     setHint(null);
@@ -1313,12 +1388,6 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
     audioBlobRef.current = null;
     stopRequestedRef.current = false;
     restartAttemptsRef.current = 0;
-
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) {
-      setError("Live speech recognition is not supported in this browser. Please use Chrome or Edge on a desktop.");
-      return;
-    }
 
     let stream: MediaStream;
     try {
@@ -1331,7 +1400,7 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
     }
     streamRef.current = stream;
 
-    // Start recorder
+    // Start continuous "save" recorder (used for the Save button at the end of the session).
     const mime = pickAudioMime();
     mimeRef.current = mime || "audio/webm";
     try {
@@ -1346,7 +1415,7 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
       return;
     }
 
-    // Set up live audio analyser for waveform + level meter
+    // Set up live audio analyser for waveform + level meter.
     try {
       const Ctor = (window as any).AudioContext || (window as any).webkitAudioContext;
       const ac: AudioContext = new Ctor();
@@ -1370,122 +1439,19 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
         const rms = Math.sqrt(sumSq / buf.length);
         setAudioLevel(rms);
         if (rms > 0.04) lastHeardRef.current = Date.now();
+        if (rms > windowMaxLevelRef.current) windowMaxLevelRef.current = rms;
         levelRafRef.current = requestAnimationFrame(tick);
       };
       tick();
     } catch (e) {
-      // Audio analyser failure shouldn't block recording — just no waveform animation.
       console.warn("[LiveTranscript] AudioContext failed:", e);
     }
 
-    // Silence-flush: if interim text has been sitting around with no updates for ~2.5s,
-    // commit it as a segment so transcripts + translations actually appear even when the
-    // browser's SpeechRecognition is slow to fire `isFinal`.
-    if (flushTimerRef.current) window.clearInterval(flushTimerRef.current);
-    flushTimerRef.current = window.setInterval(() => {
-      if (!interimRef.current) return;
-      const idle = Date.now() - interimAtRef.current;
-      if (idle > 2500) {
-        const text = interimRef.current;
-        interimRef.current = "";
-        interimAtRef.current = 0;
-        setInterim("");
-        commitSegment(text);
-      }
-    }, 600);
-
-    // Start recognition
-    try {
-      const r = new SR();
-      r.continuous = true;
-      r.interimResults = true;
-      r.lang = language;
-      r.onstart = () => {
-        console.log("[LiveTranscript] SpeechRecognition started, lang=", language);
-        setHint("Listening… start speaking.");
-      };
-      r.onaudiostart = () => console.log("[LiveTranscript] audio capture started");
-      r.onspeechstart = () => console.log("[LiveTranscript] speech detected");
-      r.onspeechend = () => console.log("[LiveTranscript] speech ended");
-      r.onresult = (ev: any) => {
-        console.log("[LiveTranscript] onresult", ev.resultIndex, "→", ev.results?.length);
-        let interimText = "";
-        for (let i = ev.resultIndex; i < ev.results.length; i++) {
-          const result = ev.results[i];
-          const txt = (result[0]?.transcript || "").trim();
-          if (!txt) continue;
-          if (result.isFinal) {
-            commitSegment(txt);
-            interimRef.current = "";
-            interimAtRef.current = 0;
-          } else {
-            interimText += txt + " ";
-          }
-        }
-        const trimmed = interimText.trim();
-        if (trimmed) {
-          interimRef.current = trimmed;
-          interimAtRef.current = Date.now();
-        }
-        setInterim(trimmed);
-      };
-      r.onerror = (e: any) => {
-        const code = e?.error || "unknown";
-        const msg = e?.message || "";
-        console.warn("[LiveTranscript] SR error:", code, msg, e);
-        if (code === "not-allowed" || code === "service-not-allowed") {
-          setError(
-            "Microphone permission denied. If the app is running inside the Replit canvas/preview, open it in a new browser tab — the embedded preview iframe blocks the speech recognition service. Otherwise, click the mic icon in the address bar and allow access.",
-          );
-          stopRequestedRef.current = true;
-        } else if (code === "audio-capture") {
-          setError("No microphone detected. Plug one in and try again.");
-          stopRequestedRef.current = true;
-        } else if (code === "network") {
-          setHint("Network blip — speech service reconnecting…");
-        } else if (code === "no-speech") {
-          setHint("Listening… speak a little louder or move closer to the mic.");
-        } else if (code === "language-not-supported") {
-          setError(`Language "${language}" is not supported by this browser's speech engine. Try switching the language picker (e.g. to English (India) or English (US)).`);
-          stopRequestedRef.current = true;
-        } else if (code === "aborted") {
-          // benign — happens during stop / restart
-        } else {
-          setError(`Speech recognition error: ${code}${msg ? ` — ${msg}` : ""}. Open the app in a real Chrome/Edge browser tab (not inside the Replit preview iframe) and reload.`);
-        }
-      };
-      r.onend = () => {
-        // Flush any pending interim before restarting
-        if (interimRef.current) {
-          const text = interimRef.current;
-          interimRef.current = "";
-          interimAtRef.current = 0;
-          setInterim("");
-          commitSegment(text);
-        }
-        if (stopRequestedRef.current) return;
-        // Auto-restart with a small backoff if we're hitting errors repeatedly
-        restartAttemptsRef.current += 1;
-        const delay = Math.min(500, restartAttemptsRef.current * 60);
-        window.setTimeout(() => {
-          if (stopRequestedRef.current) return;
-          try {
-            r.start();
-            // Reset attempt counter once we successfully restart
-            window.setTimeout(() => { restartAttemptsRef.current = 0; }, 1500);
-          } catch {
-            // start() throws if already started — ignore
-          }
-        }, delay);
-      };
-      r.start();
-      recognitionRef.current = r;
-      setRecording(true);
-    } catch (e: any) {
-      setError(`Speech recognition failed: ${e?.message || e}`);
-      mediaRecRef.current?.stop();
-      stream.getTracks().forEach(t => t.stop());
-    }
+    // Kick off the rolling transcription windows. Each window is independently sent
+    // to the server, so this works inside iframes and in any browser.
+    setRecording(true);
+    setHint("Listening… speak now. Transcript appears every few seconds.");
+    startTranscriptionWindow(stream, mime || "audio/webm");
   };
 
   const stop = async () => {
@@ -1503,6 +1469,7 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
 
     if (flushTimerRef.current) { window.clearInterval(flushTimerRef.current); flushTimerRef.current = null; }
     if (levelRafRef.current) { cancelAnimationFrame(levelRafRef.current); levelRafRef.current = null; }
+    if (windowTimerRef.current) { window.clearTimeout(windowTimerRef.current); windowTimerRef.current = null; }
     setAudioLevel(0);
     setAnalyserNode(null);
     analyserRef.current = null;
@@ -1510,6 +1477,21 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
       try { await audioCtxRef.current.close(); } catch {}
     }
     audioCtxRef.current = null;
+
+    // Stop the windowed transcription recorder & flush any final chunk for transcription.
+    const wr = windowRecRef.current;
+    if (wr && wr.state !== "inactive") {
+      await new Promise<void>(res => {
+        const prevOnStop = wr.onstop;
+        wr.onstop = (ev) => {
+          try { if (prevOnStop) (prevOnStop as any).call(wr, ev); } catch {}
+          res();
+        };
+        try { wr.stop(); } catch { res(); }
+      });
+    }
+    windowRecRef.current = null;
+    windowChunksRef.current = [];
 
     const r = recognitionRef.current;
     if (r) { try { r.onend = null; r.stop(); } catch {} recognitionRef.current = null; }
@@ -1629,28 +1611,6 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
           <Trash2 className="w-3 h-3" />
         </button>
       </div>
-
-      {/* Iframe warning — Web Speech API does not work inside cross-origin iframes (e.g. Replit canvas preview). */}
-      {(() => {
-        let inIframe = false;
-        try { inIframe = window.self !== window.top; } catch { inIframe = true; }
-        if (!inIframe) return null;
-        const directUrl = `${window.location.origin}${window.location.pathname}${window.location.search}${window.location.hash}`;
-        return (
-          <div className="text-[10px] text-amber-800 bg-amber-50 border-b border-amber-200 px-3 py-1.5 flex items-center gap-2">
-            <span className="font-semibold">Live transcription is blocked inside embedded previews.</span>
-            <span className="hidden md:inline text-amber-700">Mic recording works, but Chrome won't return transcript text.</span>
-            <a
-              href={directUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="ml-auto px-2 py-0.5 rounded bg-amber-600 hover:bg-amber-700 text-white font-bold whitespace-nowrap"
-            >
-              Open in new tab →
-            </a>
-          </div>
-        );
-      })()}
 
       {error && <div className="text-[10px] text-rose-700 bg-rose-50 border-b border-rose-200 px-3 py-1.5 font-semibold">{error}</div>}
       {!error && hint && recording && (
