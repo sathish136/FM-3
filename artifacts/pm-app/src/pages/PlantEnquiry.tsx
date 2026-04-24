@@ -1630,6 +1630,28 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
         </button>
       </div>
 
+      {/* Iframe warning — Web Speech API does not work inside cross-origin iframes (e.g. Replit canvas preview). */}
+      {(() => {
+        let inIframe = false;
+        try { inIframe = window.self !== window.top; } catch { inIframe = true; }
+        if (!inIframe) return null;
+        const directUrl = `${window.location.origin}${window.location.pathname}${window.location.search}${window.location.hash}`;
+        return (
+          <div className="text-[10px] text-amber-800 bg-amber-50 border-b border-amber-200 px-3 py-1.5 flex items-center gap-2">
+            <span className="font-semibold">Live transcription is blocked inside embedded previews.</span>
+            <span className="hidden md:inline text-amber-700">Mic recording works, but Chrome won't return transcript text.</span>
+            <a
+              href={directUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-auto px-2 py-0.5 rounded bg-amber-600 hover:bg-amber-700 text-white font-bold whitespace-nowrap"
+            >
+              Open in new tab →
+            </a>
+          </div>
+        );
+      })()}
+
       {error && <div className="text-[10px] text-rose-700 bg-rose-50 border-b border-rose-200 px-3 py-1.5 font-semibold">{error}</div>}
       {!error && hint && recording && (
         <div className="text-[10px] text-amber-700 bg-amber-50 border-b border-amber-200 px-3 py-1">{hint}</div>
