@@ -44,12 +44,17 @@ export function setupDeepgramWS(httpServer: Server) {
     const sampleRate = u.searchParams.get("sampleRate") || "48000";
 
     // Pick the best Deepgram model for the requested language.
-    //   - nova-3 supports `multi` (real multilingual code-switching: en/es/fr/de/hi/it/ja/nl/pt/ru)
-    //     and is more accurate overall, so we prefer it whenever the caller asks for a language
-    //     nova-3 actually covers.
-    //   - For everything else (e.g. Tamil `ta`, Bengali `bn`) we fall back to nova-2, which has
-    //     wider language coverage for streaming.
-    const NOVA3_LANGS = new Set(["multi", "en", "en-US", "en-IN", "en-GB", "es", "fr", "de", "hi", "it", "ja", "nl", "pt", "ru"]);
+    //   - nova-3 is currently limited to English variants and `multi` (multilingual
+    //     code-switching for en/es/fr/de/hi/it/ja/nl/pt/ru). It's the only model
+    //     that supports `multi`, so anything we can't pin to a specific model rides
+    //     through here.
+    //   - nova-2 has the widest single-language coverage (en variants, hi, es, fr,
+    //     de, it, ja, ko, nl, pt, ru, zh, etc.), so we use it for those.
+    //
+    // Languages with NO Deepgram streaming support (Tamil, Telugu, Kannada,
+    // Malayalam, Marathi, Gujarati, Bengali, Punjabi) should be routed by the
+    // client as `multi` so this code path picks nova-3 and the connection succeeds.
+    const NOVA3_LANGS = new Set(["multi", "en", "en-US"]);
     const model = NOVA3_LANGS.has(lang) ? "nova-3" : "nova-2";
 
     // Build Deepgram listen URL — nova-3 (or nova-2 fallback) with smart formatting.

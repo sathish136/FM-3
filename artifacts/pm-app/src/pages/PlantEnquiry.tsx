@@ -27,23 +27,27 @@ function buildDeepgramWsUrl(uiLangCode: string): string {
   return `${proto}//${window.location.host}/api/deepgram-ws?lang=${encodeURIComponent(dgLang)}`;
 }
 
-// Map our UI language codes (e.g. "ta-IN") to the codes Deepgram expects for its
-// streaming Listen API. Anything we don't have a precise mapping for falls back to
-// "multi" so nova-3's multilingual auto-detect can take a shot at it.
+// Map our UI language codes (e.g. "ta-IN") to the codes Deepgram actually accepts
+// for streaming. Anything Deepgram doesn't have a streaming model for (Tamil,
+// Telugu, Kannada, Malayalam, Marathi, Gujarati, Bengali, Punjabi) is routed
+// through `multi`, which is the only path that won't crash with HTTP 400. The
+// translator we run after Deepgram still produces an English version per segment.
 function mapUiLangToDeepgram(uiCode: string): string {
   switch (uiCode) {
     case "en-IN": return "en-IN";
     case "en-US": return "en-US";
     case "hi-IN": return "hi";
-    case "ta-IN": return "ta";
-    case "te-IN": return "multi";
-    case "kn-IN": return "multi";
-    case "ml-IN": return "multi";
-    case "mr-IN": return "multi";
-    case "gu-IN": return "multi";
-    case "bn-IN": return "bn";
-    case "pa-IN": return "multi";
-    default:      return "multi";
+    // South-Indian + Bengali / Punjabi — no dedicated Deepgram streaming model.
+    case "ta-IN":
+    case "te-IN":
+    case "kn-IN":
+    case "ml-IN":
+    case "mr-IN":
+    case "gu-IN":
+    case "bn-IN":
+    case "pa-IN":
+    default:
+      return "multi";
   }
 }
 // Send a small audio frame to Deepgram every 250ms so interim transcripts stream in
