@@ -160,18 +160,40 @@ export function setupWhisperWS(httpServer: Server) {
 
         // 1) Transcribe in the spoken language. We use whisper-1 explicitly: it
         //    has the broadest language coverage of OpenAI's STT models and
-        //    accepts an explicit `language` hint.
+        //    accepts an explicit `language` hint. verbose_json gives us per-
+        //    segment confidence (no_speech_prob, avg_logprob) which is the
+        //    most reliable way to detect Whisper hallucinations.
         const transcribeOpts: any = {
           model: "whisper-1",
           file: audioFile,
-          response_format: "json",
+          response_format: "verbose_json",
+          temperature: 0,
         };
         if (whisperLang) transcribeOpts.language = whisperLang;
 
-        const tr = await getOpenAI().audio.transcriptions.create(transcribeOpts);
+        const tr: any = await getOpenAI().audio.transcriptions.create(transcribeOpts);
         const original = (tr.text || "").trim();
 
-        // Skip Whisper hallucinations on silent / noise-only segments.
+        // Confidence-based filter: drop segments Whisper itself thinks were
+        // mostly silence, or where its acoustic confidence is very low. This
+        // catches the long, plausible-looking Tamil hallucinations (e.g.
+        // "எப்போது கிளம்பலாம்?", "வாழ்த்துகள்") that pass the regex filter.
+        const segs: any[] = Array.isArray(tr.segments) ? tr.segments : [];
+        if (segs.length > 0) {
+          const avgNoSpeech = segs.reduce((a, s) => a + (s.no_speech_prob ?? 0), 0) / segs.length;
+          const avgLogProb  = segs.reduce((a, s) => a + (s.avg_logprob   ?? 0), 0) / segs.length;
+          const maxComp     = segs.reduce((a, s) => Math.max(a, s.compression_ratio ?? 0), 0);
+          if (avgNoSpeech > 0.55 || avgLogProb < -0.9 || maxComp > 2.4) {
+            console.log(
+              `[Whisper WS] dropped low-confidence seg=${id}: "${original}" ` +
+              `noSpeech=${avgNoSpeech.toFixed(2)} logProb=${avgLogProb.toFixed(2)} comp=${maxComp.toFixed(2)}`
+            );
+            try { clientWs.send(JSON.stringify({ type: "segment", id, original: "", translation: "", skipped: true })); } catch {}
+            return;
+          }
+        }
+
+        // Skip well-known Whisper hallucinations on silent / noise-only segments.
         if (isLikelyHallucination(original)) {
           console.log(`[Whisper WS] dropped hallucination seg=${id}: "${original}"`);
           try { clientWs.send(JSON.stringify({ type: "segment", id, original: "", translation: "", skipped: true })); } catch {}

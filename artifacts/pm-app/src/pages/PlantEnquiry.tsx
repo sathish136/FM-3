@@ -1121,21 +1121,15 @@ function LiveWaveform({ analyser, level, active }: { analyser: AnalyserNode | nu
       const h = canvas.height;
       ctx.clearRect(0, 0, w, h);
 
-      const grad = ctx.createLinearGradient(0, 0, w, 0);
-      grad.addColorStop(0, "rgba(244, 63, 94, 0.04)");
-      grad.addColorStop(0.5, "rgba(168, 85, 247, 0.06)");
-      grad.addColorStop(1, "rgba(59, 130, 246, 0.04)");
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, w, h);
-
-      ctx.strokeStyle = "rgba(148, 163, 184, 0.25)";
+      // Subtle baseline guide.
+      ctx.strokeStyle = "rgba(15, 23, 42, 0.06)";
       ctx.lineWidth = 1 * dpr;
       ctx.beginPath();
       ctx.moveTo(0, h / 2);
       ctx.lineTo(w, h / 2);
       ctx.stroke();
 
-      const gap = 2 * dpr;
+      const gap = 3 * dpr;
       const barW = (w - gap * (BAR_COUNT - 1)) / BAR_COUNT;
       const cy = h / 2;
       const maxAmp = h / 2 - 4 * dpr;
@@ -1155,18 +1149,21 @@ function LiveWaveform({ analyser, level, active }: { analyser: AnalyserNode | nu
           amp = (sum / Math.max(1, end - start)) / 255;
           amp = Math.pow(amp, 0.7);
         } else {
-          amp = active ? 0.05 + Math.abs(Math.sin(phase + i * 0.35)) * 0.08 : 0.02;
+          amp = active ? 0.04 + Math.abs(Math.sin(phase + i * 0.35)) * 0.06 : 0.015;
         }
         const barH = Math.max(2 * dpr, amp * maxAmp);
         const x = i * (barW + gap);
-        const hue = 350 - (i / BAR_COUNT) * 50;
-        const lightness = 55 + amp * 15;
+        // Cool indigo→sky palette on a light background.
+        const hueBase = 220;
+        const hue = hueBase + (i / BAR_COUNT) * 30;
+        const sat = active ? 80 : 25;
+        const light = active ? (54 - amp * 8) : 78;
         const g = ctx.createLinearGradient(0, cy - barH, 0, cy + barH);
-        g.addColorStop(0, `hsla(${hue}, 90%, ${lightness}%, 0.95)`);
-        g.addColorStop(0.5, `hsla(${hue + 20}, 85%, ${lightness + 5}%, 1)`);
-        g.addColorStop(1, `hsla(${hue}, 90%, ${lightness}%, 0.95)`);
+        g.addColorStop(0,   `hsla(${hue}, ${sat}%, ${light}%, 0.95)`);
+        g.addColorStop(0.5, `hsla(${hue + 10}, ${sat}%, ${light + 6}%, 1)`);
+        g.addColorStop(1,   `hsla(${hue}, ${sat}%, ${light}%, 0.95)`);
         ctx.fillStyle = g;
-        const r = barW / 2;
+        const r = Math.min(barW / 2, 3 * dpr);
         ctx.beginPath();
         ctx.moveTo(x + r, cy - barH);
         ctx.arcTo(x + barW, cy - barH, x + barW, cy + barH, r);
@@ -1190,11 +1187,11 @@ function LiveWaveform({ analyser, level, active }: { analyser: AnalyserNode | nu
   const pct = Math.min(100, Math.round(level * 140));
 
   return (
-    <div className="relative w-full h-14 bg-gradient-to-br from-slate-900 via-rose-950/40 to-slate-900 border-b border-rose-200/40 overflow-hidden">
+    <div className="relative w-full h-14 bg-gradient-to-br from-slate-50 via-white to-indigo-50/60 border-b border-slate-200/80 overflow-hidden">
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
       <div className="absolute top-1 right-2 flex items-center gap-1.5 z-10">
-        <div className="text-[8px] font-bold uppercase tracking-wider text-white/60">mic</div>
-        <div className="w-16 h-1.5 rounded-full bg-white/10 overflow-hidden">
+        <div className="text-[8px] font-bold uppercase tracking-wider text-slate-400">mic</div>
+        <div className="w-16 h-1.5 rounded-full bg-slate-200/70 overflow-hidden">
           <div
             className="h-full transition-[width] duration-75"
             style={{
@@ -1268,13 +1265,18 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
   const segTimerRef = useRef<number | null>(null);
   const segStreamRef = useRef<MediaStream | null>(null);
   const segMimeRef = useRef<string>("audio/webm");
-  // Voice-activity detection: true if the analyser saw real speech energy at
-  // any point during the *current* segment. Resets when each segment starts.
-  // We use this to skip shipping silent/noise-only blobs to Whisper, which
-  // otherwise hallucinates greetings ("Hello!", "வணக்கம்!", "Thanks for
-  // watching") on near-silent audio.
-  const segHadVoiceRef = useRef(false);
-  const VOICE_RMS_THRESHOLD = 0.05;
+  // Voice-activity detection: count analyser frames where the mic energy
+  // crossed the speech threshold during the *current* segment. We require a
+  // sustained run of voice (not a single spike) before we'll send the segment
+  // to Whisper — otherwise Whisper invents greetings ("Hello!", "வணக்கம்!",
+  // "Thanks for watching") and even full plausible-sounding sentences over
+  // background noise / breathing.
+  const segVoiceFramesRef = useRef(0);
+  const VOICE_RMS_THRESHOLD = 0.07;
+  // ≈8 frames at 60fps ≈ 130ms of cumulative real speech inside a 4s segment.
+  // Empirically this is just enough to keep short words but reject coughs,
+  // keyboard taps and steady ambient noise.
+  const MIN_VOICE_FRAMES = 8;
 
   // Persist segments + lang
   useEffect(() => {
@@ -1386,23 +1388,25 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
     }
     segRecorderRef.current = mr;
     segChunksRef.current = [];
-    // Reset voice-activity flag at the start of every segment.
-    segHadVoiceRef.current = false;
+    // Reset voice-activity counter at the start of every segment.
+    segVoiceFramesRef.current = 0;
 
     mr.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) segChunksRef.current.push(e.data);
     };
     mr.onstop = async () => {
       const chunks = segChunksRef.current;
-      const hadVoice = segHadVoiceRef.current;
+      const voiceFrames = segVoiceFramesRef.current;
       segChunksRef.current = [];
       const blob = chunks.length > 0 ? new Blob(chunks, { type: mime }) : null;
       // Roll over to the next segment first — keeps coverage gap small.
       if (!stopRequestedRef.current) startSegmentRecorder();
-      // Only ship segments that actually contained speech energy. Drops the
-      // silent / background-noise blobs that cause Whisper to hallucinate
-      // greetings or repeat the previous phrase.
-      if (!hadVoice) return;
+      // Only ship segments with sustained speech energy. Drops silent blobs
+      // and ambient-noise blobs that make Whisper hallucinate full sentences.
+      if (voiceFrames < MIN_VOICE_FRAMES) {
+        console.log(`[LiveTranscript] skip silent segment (voiceFrames=${voiceFrames})`);
+        return;
+      }
       if (blob && blob.size > 1500 && ws.readyState === WebSocket.OPEN) {
         try { ws.send(await blob.arrayBuffer()); }
         catch (err) { console.warn("[LiveTranscript] WS send error:", err); }
@@ -1562,8 +1566,8 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
         const rms = Math.sqrt(sumSq / buf.length);
         setAudioLevel(rms);
         if (rms > 0.04) lastHeardRef.current = Date.now();
-        // Voice-activity flag for the rotating Whisper segment recorder.
-        if (rms > VOICE_RMS_THRESHOLD) segHadVoiceRef.current = true;
+        // Voice-activity counter for the rotating Whisper segment recorder.
+        if (rms > VOICE_RMS_THRESHOLD) segVoiceFramesRef.current += 1;
         levelRafRef.current = requestAnimationFrame(tick);
       };
       tick();
