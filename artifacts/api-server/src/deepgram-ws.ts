@@ -22,6 +22,7 @@ export function setupDeepgramWS(httpServer: Server) {
     if (!req.url) return;
     const u = new URL(req.url, "http://x");
     if (u.pathname === "/api/deepgram-ws") {
+      console.log("[Deepgram WS] upgrade received from", req.socket.remoteAddress, "ua=", String(req.headers["user-agent"] || "").slice(0, 60));
       wss.handleUpgrade(req, socket, head, (ws) => {
         wss.emit("connection", ws, req);
       });
@@ -29,6 +30,7 @@ export function setupDeepgramWS(httpServer: Server) {
   });
 
   wss.on("connection", (clientWs: WebSocket, req) => {
+    console.log("[Deepgram WS] client connected, opening upstream to Deepgram…");
     const apiKey = process.env.DEEPGRAM_API_KEY;
     if (!apiKey) {
       clientWs.send(JSON.stringify({ type: "error", message: "DEEPGRAM_API_KEY not configured" }));
