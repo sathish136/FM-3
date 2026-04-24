@@ -24,10 +24,6 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "artifacts/step-viewer: web"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "artifacts/api-server: API Server"
 
 [[workflows.workflow.tasks]]
@@ -37,18 +33,6 @@ args = "artifacts/mockup-sandbox: Component Preview Server"
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "artifacts/pm-app: web"
-
-[[workflows.workflow]]
-name = "artifacts/step-viewer: web"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "webview"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "PORT=23117 BASE_PATH=/ pnpm --filter @workspace/step-viewer run dev"
-waitForPort = 23117
 
 [[workflows.workflow]]
 name = "artifacts/api-server: API Server"
