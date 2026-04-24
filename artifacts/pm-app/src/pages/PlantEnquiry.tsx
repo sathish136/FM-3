@@ -1651,6 +1651,7 @@ export default function PlantEnquiry() {
   const setInlet = (k: string, v: string) => setForm((f) => ({ ...f, inlet: { ...f.inlet, [k]: v } }));
 
   const fillFromCard = (c: VCard) => {
+    console.log("[VC scan] fillFromCard called with:", c);
     setForm((f) => ({
       ...f,
       industry_name: c.company || f.industry_name,
