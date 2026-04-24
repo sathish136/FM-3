@@ -9,7 +9,7 @@ import {
   ClipboardList, Sparkles, Layers, ScanLine, NotebookPen, Plus,
   Trash2, GripVertical, ListChecks, FileText, Navigation, ExternalLink,
   Loader2, Crosshair, Eye, FileCheck2, UserCheck, BadgeCheck, MessageCircle,
-  Trophy, XCircle, Filter,
+  Trophy, XCircle, Filter, Mic, Square, Languages,
 } from "lucide-react";
 
 const VC_BASE = "/api";
@@ -179,6 +179,8 @@ function newId() {
   return `pe_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 const MINUTES_KEY = "plant-enquiry-minutes";
+const LIVE_TRANSCRIPT_KEY = "plant-enquiry-live-transcript";
+const LIVE_LANG_KEY = "plant-enquiry-live-lang";
 
 /* ── UI atoms ─────────────────────────────────────────────────────────── */
 function SectionCard({
@@ -823,6 +825,378 @@ function MapPicker({
 }
 
 /* ── Meeting minutes panel ─────────────────────────────────────────────── */
+/* ── Live transcript + auto-translate panel ───────────────────────────── */
+type Segment = { id: string; t: string; original: string; translation?: string };
+
+const SUPPORTED_LANGS: Array<{ code: string; label: string }> = [
+  { code: "en-IN", label: "English (India)" },
+  { code: "ta-IN", label: "Tamil" },
+  { code: "hi-IN", label: "Hindi" },
+  { code: "te-IN", label: "Telugu" },
+  { code: "kn-IN", label: "Kannada" },
+  { code: "ml-IN", label: "Malayalam" },
+  { code: "mr-IN", label: "Marathi" },
+  { code: "gu-IN", label: "Gujarati" },
+  { code: "bn-IN", label: "Bengali" },
+  { code: "pa-IN", label: "Punjabi" },
+  { code: "en-US", label: "English (US)" },
+];
+
+function pickAudioMime(): string {
+  const opts = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/ogg;codecs=opus",
+    "audio/ogg",
+    "audio/mp4",
+  ];
+  for (const m of opts) {
+    try { if ((window as any).MediaRecorder?.isTypeSupported?.(m)) return m; } catch {}
+  }
+  return "";
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function LiveTranscriptPanel({ industry }: { industry: string }) {
+  const [language, setLanguage] = useState<string>(() => {
+    try { return localStorage.getItem(LIVE_LANG_KEY) || "en-IN"; } catch { return "en-IN"; }
+  });
+  const [recording, setRecording] = useState(false);
+  const [interim, setInterim] = useState("");
+  const [segments, setSegments] = useState<Segment[]>(() => {
+    try {
+      const s = localStorage.getItem(LIVE_TRANSCRIPT_KEY);
+      if (s) {
+        const parsed = JSON.parse(s);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const recognitionRef = useRef<any>(null);
+  const mediaRecRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const audioBlobRef = useRef<Blob | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const mimeRef = useRef<string>("audio/webm");
+  const stopRequestedRef = useRef(false);
+  const originalEndRef = useRef<HTMLDivElement>(null);
+  const englishEndRef = useRef<HTMLDivElement>(null);
+
+  // Persist segments + lang
+  useEffect(() => {
+    try { localStorage.setItem(LIVE_TRANSCRIPT_KEY, JSON.stringify(segments)); } catch {}
+  }, [segments]);
+  useEffect(() => {
+    try { localStorage.setItem(LIVE_LANG_KEY, language); } catch {}
+  }, [language]);
+
+  // Auto-scroll
+  useEffect(() => {
+    originalEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    englishEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [segments, interim]);
+
+  // Cleanup on unmount
+  useEffect(() => () => {
+    stopRequestedRef.current = true;
+    const r = recognitionRef.current;
+    if (r) { try { r.onend = null; r.stop(); } catch {} }
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const translateSegment = async (id: string, text: string, sourceLang: string) => {
+    if (!text.trim()) return;
+    try {
+      const res = await fetch(`${VC_BASE}/translate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, sourceLang, targetLang: "English" }),
+      });
+      if (!res.ok) throw new Error(`Translate failed (${res.status})`);
+      const j = await res.json();
+      setSegments(prev => prev.map(s => s.id === id ? { ...s, translation: (j.translation || "").trim() } : s));
+    } catch (e: any) {
+      setSegments(prev => prev.map(s => s.id === id ? { ...s, translation: `(translation failed: ${e?.message || "error"})` } : s));
+    }
+  };
+
+  const start = async () => {
+    setError(null);
+    setInterim("");
+    if (audioUrl) { URL.revokeObjectURL(audioUrl); setAudioUrl(null); }
+    audioBlobRef.current = null;
+    stopRequestedRef.current = false;
+
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) {
+      setError("Live speech recognition is not supported in this browser. Please use Chrome or Edge.");
+      return;
+    }
+
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e: any) {
+      setError(e?.message || "Could not access the microphone. Please allow microphone access.");
+      return;
+    }
+    streamRef.current = stream;
+
+    // Start recorder
+    const mime = pickAudioMime();
+    mimeRef.current = mime || "audio/webm";
+    try {
+      const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      mediaRecRef.current = mr;
+      chunksRef.current = [];
+      mr.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunksRef.current.push(e.data); };
+      mr.start(1000);
+    } catch (e: any) {
+      setError(`Recording unsupported: ${e?.message || e}`);
+      stream.getTracks().forEach(t => t.stop());
+      return;
+    }
+
+    // Start recognition
+    try {
+      const r = new SR();
+      r.continuous = true;
+      r.interimResults = true;
+      r.lang = language;
+      r.onresult = (ev: any) => {
+        let interimText = "";
+        for (let i = ev.resultIndex; i < ev.results.length; i++) {
+          const result = ev.results[i];
+          const txt = (result[0]?.transcript || "").trim();
+          if (!txt) continue;
+          if (result.isFinal) {
+            const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+            const seg: Segment = { id, t: new Date().toLocaleTimeString(), original: txt };
+            setSegments(prev => [...prev, seg]);
+            translateSegment(id, txt, language);
+          } else {
+            interimText += txt + " ";
+          }
+        }
+        setInterim(interimText.trim());
+      };
+      r.onerror = (e: any) => {
+        if (e?.error === "not-allowed" || e?.error === "service-not-allowed") {
+          setError("Microphone permission denied for speech recognition.");
+        }
+      };
+      r.onend = () => {
+        // Auto-restart unless the user stopped
+        if (!stopRequestedRef.current) {
+          try { r.start(); } catch {}
+        }
+      };
+      r.start();
+      recognitionRef.current = r;
+      setRecording(true);
+    } catch (e: any) {
+      setError(`Speech recognition failed: ${e?.message || e}`);
+      mediaRecRef.current?.stop();
+      stream.getTracks().forEach(t => t.stop());
+    }
+  };
+
+  const stop = async () => {
+    stopRequestedRef.current = true;
+    setRecording(false);
+    setInterim("");
+
+    const r = recognitionRef.current;
+    if (r) { try { r.onend = null; r.stop(); } catch {} recognitionRef.current = null; }
+
+    const mr = mediaRecRef.current;
+    if (mr && mr.state !== "inactive") {
+      await new Promise<void>(res => {
+        mr.onstop = () => res();
+        try { mr.stop(); } catch { res(); }
+      });
+    }
+    mediaRecRef.current = null;
+
+    if (chunksRef.current.length > 0) {
+      const blob = new Blob(chunksRef.current, { type: mimeRef.current });
+      audioBlobRef.current = blob;
+      setAudioUrl(URL.createObjectURL(blob));
+    }
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+  };
+
+  const clearAll = () => {
+    if (recording) return;
+    if (!confirm("Clear transcript and recorded audio?")) return;
+    setSegments([]);
+    setInterim("");
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+    setAudioUrl(null);
+    audioBlobRef.current = null;
+    chunksRef.current = [];
+  };
+
+  const saveAll = () => {
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const safeName = (industry || "session").replace(/[^\w-]+/g, "_").slice(0, 60);
+    const base = `enquiry-${safeName}-${stamp}`;
+    const langLabel = SUPPORTED_LANGS.find(l => l.code === language)?.label || language;
+
+    if (audioBlobRef.current) {
+      const ext = mimeRef.current.includes("ogg") ? "ogg"
+        : mimeRef.current.includes("mp4") ? "m4a"
+        : "webm";
+      downloadBlob(audioBlobRef.current, `${base}.${ext}`);
+    }
+
+    const header = `Industry: ${industry || "(unset)"}\nDate: ${new Date().toLocaleString()}\nLanguage: ${langLabel}\n\n`;
+
+    const original = header + segments.map(s => `[${s.t}] ${s.original}`).join("\n");
+    downloadBlob(new Blob([original], { type: "text/plain;charset=utf-8" }), `${base}-original.txt`);
+
+    const english = header + segments.map(s => `[${s.t}] ${s.translation ?? "(translating…)"}`).join("\n");
+    downloadBlob(new Blob([english], { type: "text/plain;charset=utf-8" }), `${base}-english.txt`);
+
+    // Also persist each segment to the speech_translations table for cross-device reference
+    segments.forEach(s => {
+      fetch(`${VC_BASE}/speech-translations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          original: s.original,
+          translation: s.translation || "",
+          sourceLang: language,
+          sourceLangLabel: langLabel,
+          recordedAt: s.t,
+        }),
+      }).catch(() => {});
+    });
+  };
+
+  const langLabel = SUPPORTED_LANGS.find(l => l.code === language)?.label || language;
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col h-full overflow-hidden">
+      {/* Header */}
+      <div className="px-3 py-2 border-b border-gray-200 bg-gray-50 flex items-center gap-2 flex-wrap">
+        <Mic className={cn("w-3.5 h-3.5", recording ? "text-rose-600 animate-pulse" : "text-gray-600")} />
+        <div className="flex-1 min-w-0">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-700 flex items-center gap-1.5">
+            Live Transcript
+            {recording && <span className="inline-flex items-center gap-1 px-1.5 py-px rounded-full bg-rose-50 text-rose-700 text-[8px] font-bold border border-rose-200"><span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse" /> REC</span>}
+          </div>
+          <div className="text-[9px] text-gray-500 truncate">{recording ? `Listening in ${langLabel} — translating to English…` : "Speak in any language — see English transcript live"}</div>
+        </div>
+        <select
+          value={language}
+          onChange={e => setLanguage(e.target.value)}
+          disabled={recording}
+          title="Spoken language"
+          className="text-[10px] px-1.5 py-1 rounded border border-gray-200 bg-white disabled:opacity-50"
+        >
+          {SUPPORTED_LANGS.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
+        </select>
+        {!recording ? (
+          <button onClick={start} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold shadow-sm">
+            <Mic className="w-3 h-3" /> Start
+          </button>
+        ) : (
+          <button onClick={stop} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-gray-900 hover:bg-black text-white text-[10px] font-bold">
+            <Square className="w-3 h-3" /> Stop
+          </button>
+        )}
+        <button
+          onClick={saveAll}
+          disabled={segments.length === 0 && !audioBlobRef.current}
+          title="Save audio + original transcript + English transcript"
+          className="inline-flex items-center gap-1 px-2 py-1 rounded border border-slate-200 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 text-slate-600 text-[10px] font-semibold transition disabled:opacity-40"
+        >
+          <Download className="w-3 h-3" /> Save
+        </button>
+        <button
+          onClick={clearAll}
+          disabled={recording || (segments.length === 0 && !audioBlobRef.current)}
+          title="Clear transcript & audio"
+          className="p-1 rounded hover:bg-white border border-transparent hover:border-gray-200 text-gray-600 disabled:opacity-30"
+        >
+          <Trash2 className="w-3 h-3" />
+        </button>
+      </div>
+
+      {error && <div className="text-[10px] text-rose-700 bg-rose-50 border-b border-rose-200 px-3 py-1">{error}</div>}
+
+      {/* Two columns: original | english */}
+      <div className="flex-1 grid grid-cols-2 min-h-0 overflow-hidden">
+        <div className="flex flex-col min-h-0 border-r border-gray-100">
+          <div className="px-3 py-1 border-b border-gray-100 bg-gray-50/60 text-[9px] font-bold uppercase tracking-wider text-gray-500">
+            Original ({langLabel})
+          </div>
+          <div className="flex-1 overflow-auto p-2 text-[11px] leading-snug space-y-1 custom-scrollbar">
+            {segments.map(s => (
+              <div key={s.id}>
+                <span className="text-gray-400 text-[9px] tabular-nums mr-1">{s.t}</span>
+                <span className="text-gray-800">{s.original}</span>
+              </div>
+            ))}
+            {interim && <div className="text-gray-400 italic">{interim}</div>}
+            {segments.length === 0 && !interim && (
+              <div className="text-gray-400 text-center py-8 text-[10px] px-4">
+                Press <span className="font-bold text-rose-600">Start</span> and begin speaking. Words appear here in real time.
+              </div>
+            )}
+            <div ref={originalEndRef} />
+          </div>
+        </div>
+        <div className="flex flex-col min-h-0">
+          <div className="px-3 py-1 border-b border-gray-100 bg-gray-50/60 text-[9px] font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1">
+            <Languages className="w-3 h-3" /> English Translation
+          </div>
+          <div className="flex-1 overflow-auto p-2 text-[11px] leading-snug space-y-1 custom-scrollbar">
+            {segments.map(s => (
+              <div key={s.id}>
+                <span className="text-gray-400 text-[9px] tabular-nums mr-1">{s.t}</span>
+                {s.translation
+                  ? <span className="text-gray-800">{s.translation}</span>
+                  : <span className="text-gray-400 italic">translating…</span>}
+              </div>
+            ))}
+            {segments.length === 0 && (
+              <div className="text-gray-400 text-center py-8 text-[10px] px-4">
+                English translation appears here as you speak.
+              </div>
+            )}
+            <div ref={englishEndRef} />
+          </div>
+        </div>
+      </div>
+
+      {audioUrl && (
+        <div className="border-t border-gray-100 px-3 py-2 bg-gray-50/40 flex items-center gap-2">
+          <span className="text-[9px] font-bold uppercase tracking-wider text-gray-500 shrink-0">Recording</span>
+          <audio src={audioUrl} controls className="h-7 flex-1" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MeetingMinutesPanel({ industry }: { industry: string }) {
   const [points, setPoints] = useState<MinutePoint[]>(() => {
     try { const s = localStorage.getItem(MINUTES_KEY); if (s) return JSON.parse(s); } catch {}
@@ -2103,9 +2477,14 @@ export default function PlantEnquiry() {
             </div>
           </div>
 
-          {/* RIGHT — Meeting minutes (full height) */}
-          <div className="min-h-0 overflow-hidden">
-            <MeetingMinutesPanel industry={form.industry_name} />
+          {/* RIGHT — Manual notes + Live auto-transcribed conversation */}
+          <div className="min-h-0 overflow-hidden grid grid-cols-1 xl:grid-cols-2 gap-3">
+            <div className="min-h-0 overflow-hidden">
+              <MeetingMinutesPanel industry={form.industry_name} />
+            </div>
+            <div className="min-h-0 overflow-hidden">
+              <LiveTranscriptPanel industry={form.industry_name} />
+            </div>
           </div>
         </div>
       </div>
