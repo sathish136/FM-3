@@ -182,18 +182,19 @@ Rules:
     if (backImage) userContent.push({ type: "image_url", image_url: { url: backImage } });
 
     const completion = await getOpenAI().chat.completions.create({
-      model: "gpt-5-nano",
+      model: "gpt-4o-mini",
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: "You return only valid JSON for visiting-card extraction." },
         { role: "user", content: userContent as any },
       ],
-      max_completion_tokens: 1200,
+      max_tokens: 1200,
     });
 
     const txt = completion.choices[0]?.message?.content?.trim() || "{}";
     let parsed: any = {};
     try { parsed = JSON.parse(txt); } catch { parsed = { rawText: txt }; }
+    console.log("[/visiting-cards/scan] raw:", txt);
     console.log("[/visiting-cards/scan] parsed:", JSON.stringify(parsed));
     res.json({ data: parsed });
   } catch (e: any) {
