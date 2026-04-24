@@ -193,6 +193,55 @@ function isWrongScript(text: string, uiLang: string): boolean {
   return foreignCount / Math.max(1, allowedCount + foreignCount) > 0.3;
 }
 
+// Per-language Whisper "initial_prompt". Whisper transcribes each 4-second
+// audio chunk in isolation, so it lacks the conversational context that makes
+// short utterances like "கேக்குதா?" recognizable. Feeding it a small block of
+// representative everyday phrases in the target language dramatically improves
+// accuracy on short, casual speech — Whisper biases its decoding toward
+// vocabulary and spelling patterns that appear in the prompt.
+//
+// Keep prompts conversational and natural — NOT a glossary. The prompt MUST
+// be in the target language's native script.
+const WHISPER_PROMPTS: Record<string, string> = {
+  ta:
+    "வணக்கம். கேக்குதா? சரியா கேக்குதா? சத்தம் வருதா? " +
+    "ஹலோ, என்ன பண்றீங்க? எப்படி இருக்கீங்க? சொல்லுங்க சார். " +
+    "புரிஞ்சுதா? கொஞ்சம் பேசுங்க. ஆமா, இல்ல, சரி, ஓகே, தேங்க்ஸ். " +
+    "பிளான்ட் என்க்வயரி, தண்ணீர் சுத்திகரிப்பு, தொழிற்சாலை.",
+  hi:
+    "नमस्ते। सुनाई दे रहा है? आवाज़ आ रही है? ठीक है? " +
+    "हैलो, कैसे हैं आप? क्या कर रहे हैं? बताइए सर। " +
+    "समझ में आया? थोड़ा बोलिए। हाँ, नहीं, ठीक है, ओके, धन्यवाद।",
+  en:
+    "Hello, can you hear me? Is the sound clear? Yes, no, okay, thanks. " +
+    "How are you doing? What's the plan? Please go ahead, sir. " +
+    "Plant enquiry, water treatment, effluent capacity, industrial.",
+  te:
+    "నమస్కారం. వినిపిస్తోందా? బాగా వినిపిస్తోందా? " +
+    "హలో, ఎలా ఉన్నారు? ఏం చేస్తున్నారు? చెప్పండి సర్. అవును, లేదు, సరే.",
+  kn:
+    "ನಮಸ್ಕಾರ. ಕೇಳುತ್ತಿದೆಯಾ? ಸರಿಯಾಗಿ ಕೇಳುತ್ತಿದೆಯಾ? " +
+    "ಹಲೋ, ಹೇಗಿದ್ದೀರಿ? ಏನು ಮಾಡುತ್ತಿದ್ದೀರಿ? ಹೇಳಿ ಸರ್. ಹೌದು, ಇಲ್ಲ, ಸರಿ.",
+  ml:
+    "നമസ്കാരം. കേൾക്കുന്നുണ്ടോ? വ്യക്തമായി കേൾക്കുന്നുണ്ടോ? " +
+    "ഹലോ, എങ്ങനെയുണ്ട്? എന്താണ് ചെയ്യുന്നത്? പറയൂ സർ. അതെ, ഇല്ല, ശരി.",
+  bn:
+    "নমস্কার। শুনতে পাচ্ছেন? ঠিকমতো শোনা যাচ্ছে? " +
+    "হ্যালো, কেমন আছেন? কী করছেন? বলুন স্যার। হ্যাঁ, না, ঠিক আছে।",
+  mr:
+    "नमस्कार. ऐकू येतंय का? नीट ऐकू येतंय का? " +
+    "हॅलो, कसे आहात? काय करत आहात? सांगा सर. हो, नाही, ठीक आहे.",
+  gu:
+    "નમસ્તે. સંભળાય છે? બરાબર સંભળાય છે? " +
+    "હેલો, કેમ છો? શું કરો છો? કહો સાહેબ. હા, ના, બરાબર, ઓકે.",
+  pa:
+    "ਸਤ ਸ੍ਰੀ ਅਕਾਲ। ਸੁਣਾਈ ਦੇ ਰਿਹਾ ਹੈ? ਠੀਕ ਆ? " +
+    "ਹੈਲੋ, ਕਿਵੇਂ ਹੋ? ਕੀ ਕਰ ਰਹੇ ਹੋ? ਦੱਸੋ ਸਰ। ਹਾਂ, ਨਹੀਂ, ਠੀਕ ਹੈ।",
+  ur:
+    "السلام علیکم۔ سنائی دے رہا ہے؟ ٹھیک ہے؟ " +
+    "ہیلو، کیسے ہیں آپ؟ کیا کر رہے ہیں؟ بتائیں سر۔ ہاں، نہیں، ٹھیک ہے۔",
+};
+
 // Friendly language name we feed to GPT for the translation prompt.
 const LANG_NAME: Record<string, string> = {
   auto: "the spoken language",
@@ -309,6 +358,12 @@ export function setupWhisperWS(httpServer: Server) {
           temperature: 0,
         };
         if (whisperLang) transcribeOpts.language = whisperLang;
+        // Prime Whisper with conversational vocabulary in the chosen language —
+        // this is the single biggest accuracy boost for short, casual phrases
+        // like "கேக்குதா?" / "सुनाई दे रहा है?" that lack their own context.
+        const promptKey = whisperLang || uiLang;
+        const initialPrompt = WHISPER_PROMPTS[promptKey];
+        if (initialPrompt) transcribeOpts.prompt = initialPrompt;
 
         const tr: any = await getOpenAI().audio.transcriptions.create(transcribeOpts);
         const original = (tr.text || "").trim();
