@@ -16,43 +16,20 @@ import "leaflet/dist/leaflet.css";
 
 const VC_BASE = "/api";
 
-// Build the Deepgram-proxy WebSocket URL on the same origin (http→ws, https→wss).
-// We pass the user's actual selected language so Deepgram uses the correct acoustic
-// model. `multi` triggers nova-3 multilingual auto-detection (Tamil, Hindi, English,
-// Spanish, French, etc.). A specific code like `ta` / `hi` / `en-IN` pins the model
-// to that language for higher accuracy.
-function buildDeepgramWsUrl(uiLangCode: string): string {
+// Realtime transcription is powered by:
+//   browser MediaRecorder → /api/whisper-ws (WebSocket)
+//                         → OpenAI Whisper (transcribe in spoken language)
+//                         → GPT-4o-mini (translate to English)
+// We rotate MediaRecorder every WHISPER_SEGMENT_MS so each segment is a complete,
+// self-decodable WebM/Opus blob. Whisper covers Tamil, Telugu, Kannada, Malayalam,
+// Marathi, Gujarati, Bengali, Punjabi, Hindi and English at production quality.
+function buildWhisperWsUrl(uiLangCode: string, mime: string): string {
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const dgLang = mapUiLangToDeepgram(uiLangCode);
-  return `${proto}//${window.location.host}/api/deepgram-ws?lang=${encodeURIComponent(dgLang)}`;
+  const params = new URLSearchParams({ lang: uiLangCode, mime });
+  return `${proto}//${window.location.host}/api/whisper-ws?${params.toString()}`;
 }
 
-// Map our UI language codes (e.g. "ta-IN") to the codes Deepgram actually accepts
-// for streaming. Anything Deepgram doesn't have a streaming model for (Tamil,
-// Telugu, Kannada, Malayalam, Marathi, Gujarati, Bengali, Punjabi) is routed
-// through `multi`, which is the only path that won't crash with HTTP 400. The
-// translator we run after Deepgram still produces an English version per segment.
-function mapUiLangToDeepgram(uiCode: string): string {
-  switch (uiCode) {
-    case "en-IN": return "en-IN";
-    case "en-US": return "en-US";
-    case "hi-IN": return "hi";
-    // South-Indian + Bengali / Punjabi — no dedicated Deepgram streaming model.
-    case "ta-IN":
-    case "te-IN":
-    case "kn-IN":
-    case "ml-IN":
-    case "mr-IN":
-    case "gu-IN":
-    case "bn-IN":
-    case "pa-IN":
-    default:
-      return "multi";
-  }
-}
-// Send a small audio frame to Deepgram every 250ms so interim transcripts stream in
-// (sub-second latency, word-by-word).
-const DG_TIMESLICE_MS = 250;
+const WHISPER_SEGMENT_MS = 4000;
 
 type VCard = {
   id: number;
@@ -1281,12 +1258,16 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
   const flushTimerRef = useRef<number | null>(null);
   const lastHeardRef = useRef(0);
   const restartAttemptsRef = useRef(0);
-  // Realtime Deepgram streaming refs — separate from the continuous "save" recorder.
-  // A second MediaRecorder (250ms timeslice) shares the same MediaStream and pipes
-  // tiny WebM/Opus frames over a WebSocket so transcripts arrive sub-second, word-by-word.
+  // Realtime Whisper streaming refs — separate from the continuous "save" recorder.
+  // We rotate a dedicated MediaRecorder every WHISPER_SEGMENT_MS so each segment is
+  // a complete, self-decodable WebM/Opus blob that Whisper can transcribe.
   const wsRef = useRef<WebSocket | null>(null);
   const wsReadyRef = useRef(false);
-  const dgRecorderRef = useRef<MediaRecorder | null>(null);
+  const segRecorderRef = useRef<MediaRecorder | null>(null);
+  const segChunksRef = useRef<Blob[]>([]);
+  const segTimerRef = useRef<number | null>(null);
+  const segStreamRef = useRef<MediaStream | null>(null);
+  const segMimeRef = useRef<string>("audio/webm");
 
   // Persist segments + lang
   useEffect(() => {
@@ -1307,7 +1288,7 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
     stopRequestedRef.current = true;
     const r = recognitionRef.current;
     if (r) { try { r.onend = null; r.stop(); } catch {} }
-    teardownDeepgram();
+    teardownWhisper();
     streamRef.current?.getTracks().forEach(t => t.stop());
     if (levelRafRef.current) cancelAnimationFrame(levelRafRef.current);
     if (flushTimerRef.current) window.clearInterval(flushTimerRef.current);
@@ -1348,14 +1329,24 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
     translateSegment(id, t, language);
   };
 
-  // Tear down the Deepgram WebSocket + its dedicated MediaRecorder.
-  const teardownDeepgram = () => {
+  // Tear down the Whisper WebSocket + its rotating MediaRecorder.
+  const teardownWhisper = () => {
+    if (segTimerRef.current) {
+      window.clearTimeout(segTimerRef.current);
+      segTimerRef.current = null;
+    }
     try {
-      if (dgRecorderRef.current && dgRecorderRef.current.state !== "inactive") {
-        dgRecorderRef.current.stop();
+      const mr = segRecorderRef.current;
+      if (mr && mr.state !== "inactive") {
+        // Detach handlers so the rotation doesn't auto-restart on stop.
+        mr.ondataavailable = null as any;
+        mr.onstop = null as any;
+        mr.stop();
       }
     } catch {}
-    dgRecorderRef.current = null;
+    segRecorderRef.current = null;
+    segChunksRef.current = [];
+    segStreamRef.current = null;
     try {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         try { wsRef.current.send(JSON.stringify({ type: "stop" })); } catch {}
@@ -1366,11 +1357,65 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
     wsReadyRef.current = false;
   };
 
-  // Open the proxy WebSocket and start a 250ms-timeslice MediaRecorder. Audio frames
-  // stream to Deepgram → we receive interim + final transcripts in real time.
-  const startDeepgramStreaming = (stream: MediaStream, mime: string) => {
-    const wsUrl = buildDeepgramWsUrl(language);
-    console.log("[LiveTranscript] Deepgram connecting to", wsUrl);
+  // Start one segment of recording. When the timer fires (or stop() is called),
+  // the segment's onstop handler ships the complete blob and immediately starts
+  // the next segment, giving continuous coverage with ~tens-of-ms gaps.
+  const startSegmentRecorder = () => {
+    if (stopRequestedRef.current) return;
+    const stream = segStreamRef.current;
+    const ws = wsRef.current;
+    if (!stream || !ws) return;
+
+    const mime = segMimeRef.current;
+    let mr: MediaRecorder;
+    try {
+      mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    } catch (err: any) {
+      try { mr = new MediaRecorder(stream); } catch (e2: any) {
+        console.error("[LiveTranscript] segment MediaRecorder failed:", e2);
+        setError(`Realtime recorder unsupported: ${e2?.message || e2}`);
+        return;
+      }
+    }
+    segRecorderRef.current = mr;
+    segChunksRef.current = [];
+
+    mr.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) segChunksRef.current.push(e.data);
+    };
+    mr.onstop = async () => {
+      const chunks = segChunksRef.current;
+      segChunksRef.current = [];
+      const blob = chunks.length > 0 ? new Blob(chunks, { type: mime }) : null;
+      // Roll over to the next segment first — keeps coverage gap small.
+      if (!stopRequestedRef.current) startSegmentRecorder();
+      if (blob && blob.size > 1500 && ws.readyState === WebSocket.OPEN) {
+        try { ws.send(await blob.arrayBuffer()); }
+        catch (err) { console.warn("[LiveTranscript] WS send error:", err); }
+      }
+    };
+    mr.onerror = (ev: any) => {
+      console.error("[LiveTranscript] segment recorder error:", ev?.error || ev);
+    };
+
+    try { mr.start(); }
+    catch (err: any) {
+      console.error("[LiveTranscript] segment recorder.start failed:", err);
+      setError(`Recorder start failed: ${err?.message || err}`);
+      return;
+    }
+    segTimerRef.current = window.setTimeout(() => {
+      const cur = segRecorderRef.current;
+      if (cur && cur.state !== "inactive") {
+        try { cur.stop(); } catch {}
+      }
+    }, WHISPER_SEGMENT_MS);
+  };
+
+  // Open the WebSocket to the Whisper proxy and kick off the rotating recorder.
+  const startWhisperStreaming = (stream: MediaStream, mime: string) => {
+    const wsUrl = buildWhisperWsUrl(language, mime);
+    console.log("[LiveTranscript] Whisper connecting to", wsUrl);
     let ws: WebSocket;
     try {
       ws = new WebSocket(wsUrl);
@@ -1382,36 +1427,11 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
     ws.binaryType = "arraybuffer";
     wsRef.current = ws;
     wsReadyRef.current = false;
+    segStreamRef.current = stream;
+    segMimeRef.current = mime || "audio/webm";
 
     ws.onopen = () => {
-      console.log("[LiveTranscript] Deepgram WS open, starting 250ms recorder");
-      let mr: MediaRecorder;
-      try {
-        mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
-      } catch (err: any) {
-        try { mr = new MediaRecorder(stream); } catch (e2: any) {
-          console.error("[LiveTranscript] DG MediaRecorder failed:", e2);
-          setError(`Realtime recorder unsupported: ${e2?.message || e2}`);
-          return;
-        }
-      }
-      dgRecorderRef.current = mr;
-      mr.ondataavailable = async (e) => {
-        if (!e.data || e.data.size === 0) return;
-        if (ws.readyState !== WebSocket.OPEN) return;
-        try { ws.send(await e.data.arrayBuffer()); } catch (err) {
-          console.warn("[LiveTranscript] DG send error:", err);
-        }
-      };
-      mr.onerror = (ev: any) => {
-        console.error("[LiveTranscript] DG recorder error:", ev?.error || ev);
-        setError(`Recorder error: ${ev?.error?.message || "unknown"}`);
-      };
-      try { mr.start(DG_TIMESLICE_MS); }
-      catch (err: any) {
-        console.error("[LiveTranscript] DG recorder.start failed:", err);
-        setError(`Recorder start failed: ${err?.message || err}`);
-      }
+      console.log("[LiveTranscript] Whisper WS open");
     };
 
     ws.onmessage = (ev) => {
@@ -1423,62 +1443,43 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
         if (msg.type === "ready") {
           wsReadyRef.current = true;
           setHint(null);
-          console.log("[LiveTranscript] Deepgram ready");
+          console.log("[LiveTranscript] Whisper ready, lang =", msg.whisperLang);
+          // Start the rotating recorder once the server is ready to receive blobs.
+          startSegmentRecorder();
           return;
         }
         if (msg.type === "error") {
-          console.error("[LiveTranscript] Deepgram error:", msg.message);
+          console.error("[LiveTranscript] Whisper error:", msg.message);
           setError(`Transcription service: ${msg.message}`);
           return;
         }
-
-        // Deepgram "Results" frame — interim + final hypotheses
-        if (msg.type === "Results") {
-          const alt = msg.channel?.alternatives?.[0];
-          const transcript: string = (alt?.transcript || "").trim();
-          if (!transcript) return;
-
-          if (msg.is_final) {
-            // speech_final = end of an utterance → commit a segment + auto-translate
-            if (msg.speech_final) {
-              interimRef.current = "";
-              interimAtRef.current = 0;
-              setInterim("");
-              commitSegment(transcript);
-            } else {
-              // Stable interim while we wait for the utterance to end
-              interimRef.current = transcript;
-              interimAtRef.current = Date.now();
-              setInterim(transcript);
-            }
-          } else {
-            // Live interim — updates several times per second
-            interimRef.current = transcript;
-            interimAtRef.current = Date.now();
-            setInterim(transcript);
-          }
+        if (msg.type === "segment") {
+          // Server delivered a transcript for one audio chunk.
+          if (msg.skipped || !msg.original) return;
+          const id = `w${msg.id}`;
+          setSegments(prev => [
+            ...prev,
+            { id, t: new Date().toLocaleTimeString(), original: msg.original },
+          ]);
           return;
         }
-
-        // UtteranceEnd frame — flush whatever interim we still have
-        if (msg.type === "UtteranceEnd") {
-          const text = interimRef.current.trim();
-          if (text) {
-            interimRef.current = "";
-            interimAtRef.current = 0;
-            setInterim("");
-            commitSegment(text);
-          }
+        if (msg.type === "translation") {
+          // English translation arrived for an earlier segment.
+          const id = `w${msg.id}`;
+          setSegments(prev => prev.map(s =>
+            s.id === id ? { ...s, translation: msg.translation || "(empty translation)" } : s
+          ));
+          return;
         }
       } catch {}
     };
 
     ws.onerror = (ev) => {
-      console.error("[LiveTranscript] Deepgram WS error event", ev);
+      console.error("[LiveTranscript] Whisper WS error event", ev);
       setError("Live transcription socket error — check console for details.");
     };
     ws.onclose = (ev) => {
-      console.log("[LiveTranscript] Deepgram WS closed", ev.code, ev.reason);
+      console.log("[LiveTranscript] Whisper WS closed", ev.code, ev.reason);
       wsReadyRef.current = false;
       if (!stopRequestedRef.current && !ev.wasClean) {
         setHint(`Connection closed (code ${ev.code}${ev.reason ? `: ${ev.reason}` : ""}).`);
@@ -1554,11 +1555,12 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
       console.warn("[LiveTranscript] AudioContext failed:", e);
     }
 
-    // Stream audio to the server's Deepgram proxy for true realtime transcription
-    // (sub-second, multilingual, works inside iframes and any browser with mic access).
+    // Stream audio to the server's Whisper proxy for realtime transcription +
+    // English translation (multilingual, works inside iframes and any browser
+    // with mic access).
     setRecording(true);
     setHint("Connecting to live transcription…");
-    startDeepgramStreaming(stream, mime || "audio/webm");
+    startWhisperStreaming(stream, mime || "audio/webm");
   };
 
   const stop = async () => {
@@ -1584,8 +1586,8 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
     }
     audioCtxRef.current = null;
 
-    // Close the realtime Deepgram stream + its dedicated MediaRecorder.
-    teardownDeepgram();
+    // Close the realtime Whisper stream + its rotating MediaRecorder.
+    teardownWhisper();
 
     const r = recognitionRef.current;
     if (r) { try { r.onend = null; r.stop(); } catch {} recognitionRef.current = null; }

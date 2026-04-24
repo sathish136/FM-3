@@ -4,6 +4,7 @@ import app from "./app";
 import { setupTranscribeWS } from "./transcribe-ws";
 import { setupChatWS } from "./chat-ws";
 import { setupDeepgramWS } from "./deepgram-ws";
+import { setupWhisperWS } from "./whisper-ws";
 import { warmupDeptCallLogs } from "./routes/dept-call-logs";
 
 // Prevent unhandled errors (e.g., IMAP socket timeouts) from crashing the server
@@ -30,6 +31,7 @@ const httpServer = createServer(app);
 setupTranscribeWS(httpServer);
 setupChatWS(httpServer);
 setupDeepgramWS(httpServer);
+setupWhisperWS(httpServer);
 
 httpServer.listen(port, () => {
   console.log(`Server listening on port ${port}`);
