@@ -93,7 +93,7 @@ const CAT_META: Record<CardCategory, { label: string; color: string; bg: string;
 };
 
 // ─── Auto-detect camera modal: captures a single card image ────────────────
-function AutoCaptureModal({ onComplete, onClose }: { onComplete: (image: string) => void; onClose: () => void; }) {
+export function AutoCaptureModal({ onComplete, onClose }: { onComplete: (image: string) => void; onClose: () => void; }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const sampleRef = useRef<HTMLCanvasElement | null>(null);

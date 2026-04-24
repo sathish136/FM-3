@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Layout } from "@/components/Layout";
 import { cn } from "@/lib/utils";
+import { AutoCaptureModal } from "@/pages/VCCardScanner";
 import {
   Factory, User, Phone, Mail, Building2, MapPin, Globe2, Hash,
   Droplets, Beaker, ThermometerSun, FlaskConical, Recycle, Search,
@@ -481,34 +482,43 @@ function VCScanCard({ onApply }: { onApply: (c: VCard) => void }) {
       <ContactPicker open={pickerOpen} onClose={() => setPickerOpen(false)} onPick={onApply} />
 
       {scannerOpen && (
-        <div
-          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-3"
-          onClick={() => setScannerOpen(false)}
-        >
-          <div
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[88vh] flex flex-col overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 bg-gradient-to-r from-indigo-50 to-violet-50 shrink-0">
-              <ScanLine className="w-4 h-4 text-indigo-600" />
-              <span className="font-bold text-sm text-indigo-900">VC Card Scanner</span>
-              <span className="text-[10px] text-gray-500 ml-1">— scan here, then close to pick from Saved</span>
-              <button
-                onClick={() => setScannerOpen(false)}
-                className="ml-auto p-1 rounded-md hover:bg-white text-gray-500"
-                title="Close"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <iframe
-              src="/pm-app/vc-card-scanner"
-              title="VC Card Scanner"
-              className="flex-1 w-full border-0"
-              allow="camera; microphone"
-            />
-          </div>
-        </div>
+        <AutoCaptureModal
+          onClose={() => setScannerOpen(false)}
+          onComplete={async (dataUrl) => {
+            setScannerOpen(false);
+            setError(null);
+            setPreview(dataUrl);
+            setScanning(true);
+            try {
+              const blob = await (await fetch(dataUrl)).blob();
+              const file = new File([blob], `card-${Date.now()}.jpg`, { type: blob.type || "image/jpeg" });
+              const fd = new FormData();
+              fd.append("frontImage", file);
+              const r = await fetch(`${VC_BASE}/visiting-cards/scan`, { method: "POST", body: fd });
+              if (!r.ok) throw new Error(`Scan failed (${r.status})`);
+              const j = await r.json();
+              const data = j?.data || j || {};
+              const card: VCard = {
+                id: 0,
+                name: data.name ?? null,
+                designation: data.designation ?? null,
+                company: data.company ?? null,
+                email: data.email ?? null,
+                phones: data.phones ?? null,
+                address: data.address ?? null,
+                city: data.city ?? null,
+                country: data.country ?? null,
+              };
+              setLastCard(card);
+              setRawJson(JSON.stringify(data, null, 2));
+              onApply(card);
+            } catch (e: any) {
+              setError(e?.message || "Failed to scan card");
+            } finally {
+              setScanning(false);
+            }
+          }}
+        />
       )}
     </>
   );
