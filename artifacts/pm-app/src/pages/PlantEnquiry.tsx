@@ -1050,7 +1050,25 @@ function MapPicker({
 
 /* ── Meeting minutes panel ─────────────────────────────────────────────── */
 /* ── Live transcript + auto-translate panel ───────────────────────────── */
-type Segment = { id: string; t: string; original: string; translation?: string };
+type Segment = { id: string; t: string; original: string; translation?: string; speaker?: number };
+
+// Tiny inline pill to label which speaker said a given segment. Color-coded so
+// alternating speakers are easy to follow at a glance.
+function SpeakerBadge({ n }: { n: number }) {
+  const palette = n === 1
+    ? "bg-indigo-100 text-indigo-700 ring-indigo-200"
+    : "bg-emerald-100 text-emerald-700 ring-emerald-200";
+  return (
+    <span
+      className={cn(
+        "inline-block mr-1.5 px-1.5 py-px rounded text-[8px] font-bold uppercase tracking-wider align-middle ring-1",
+        palette,
+      )}
+    >
+      S{n}
+    </span>
+  );
+}
 
 const SUPPORTED_LANGS: Array<{ code: string; label: string }> = [
   { code: "en-IN", label: "English (India)" },
@@ -1272,11 +1290,26 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
   // "Thanks for watching") and even full plausible-sounding sentences over
   // background noise / breathing.
   const segVoiceFramesRef = useRef(0);
-  const VOICE_RMS_THRESHOLD = 0.07;
-  // ≈8 frames at 60fps ≈ 130ms of cumulative real speech inside a 4s segment.
-  // Empirically this is just enough to keep short words but reject coughs,
-  // keyboard taps and steady ambient noise.
-  const MIN_VOICE_FRAMES = 8;
+  const VOICE_RMS_THRESHOLD = 0.045;
+  // ≈4 frames at 60fps ≈ 65ms of cumulative real speech inside a 4s segment.
+  // Loose enough to keep short words / softer speakers, strict enough to
+  // reject ambient hum + isolated taps.
+  const MIN_VOICE_FRAMES = 4;
+  // Pitch tracking for speaker diarization: average voiced-frame pitch within
+  // the current segment.
+  const segPitchSumRef = useRef(0);
+  const segPitchCountRef = useRef(0);
+  // Two adaptive cluster centroids (Hz). Each new segment is assigned to the
+  // closer one; if neither exists or the gap is wide, a new speaker is created.
+  const speakerCentroidsRef = useRef<number[]>([]);
+  // Map from server segment id -> assigned speaker number (1 or 2).
+  const segmentSpeakerRef = useRef<Map<number, number>>(new Map());
+
+  // Countdown shown after the user presses Start so they know roughly when
+  // the first transcript will land (segment buffer + Whisper round trip).
+  const [readyCountdown, setReadyCountdown] = useState<number | null>(null);
+  const countdownTimerRef = useRef<number | null>(null);
+  const firstSegmentSeenRef = useRef(false);
 
   // Persist segments + lang
   useEffect(() => {
@@ -1338,8 +1371,70 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
     translateSegment(id, t, language);
   };
 
+  // Show a "first transcript in N seconds" countdown so the user understands
+  // the latency between starting and seeing words. ~5s covers the segment
+  // buffer (4s) plus the Whisper round trip (~1s).
+  const READY_COUNTDOWN_SECS = 5;
+  const startReadyCountdown = () => {
+    if (countdownTimerRef.current) window.clearInterval(countdownTimerRef.current);
+    setReadyCountdown(READY_COUNTDOWN_SECS);
+    countdownTimerRef.current = window.setInterval(() => {
+      setReadyCountdown(prev => {
+        if (prev === null) return null;
+        if (prev <= 1) {
+          if (countdownTimerRef.current) {
+            window.clearInterval(countdownTimerRef.current);
+            countdownTimerRef.current = null;
+          }
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+  const stopReadyCountdown = () => {
+    if (countdownTimerRef.current) {
+      window.clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+    setReadyCountdown(null);
+  };
+
+  // Assign the incoming pitch to one of (up to two) speaker clusters. Returns
+  // 1 or 2; returns 0 when we don't yet have a usable pitch reading. Cluster
+  // centroids drift toward each new sample (running mean) so the system
+  // adapts as voices vary mid-conversation.
+  const SPEAKER_GAP_HZ = 35;
+  const assignSpeaker = (pitchHz: number): number => {
+    if (!pitchHz || pitchHz < 60 || pitchHz > 400) {
+      // Unreliable pitch reading — don't tag this segment.
+      return 0;
+    }
+    const centroids = speakerCentroidsRef.current;
+    if (centroids.length === 0) {
+      centroids.push(pitchHz);
+      return 1;
+    }
+    if (centroids.length === 1) {
+      // Only create a 2nd speaker if pitch is clearly different from the 1st.
+      if (Math.abs(pitchHz - centroids[0]) < SPEAKER_GAP_HZ) {
+        centroids[0] = centroids[0] * 0.85 + pitchHz * 0.15;
+        return 1;
+      }
+      centroids.push(pitchHz);
+      return 2;
+    }
+    // Two centroids exist — pick the closer one and update it (running mean).
+    const d0 = Math.abs(pitchHz - centroids[0]);
+    const d1 = Math.abs(pitchHz - centroids[1]);
+    const idx = d0 <= d1 ? 0 : 1;
+    centroids[idx] = centroids[idx] * 0.85 + pitchHz * 0.15;
+    return idx + 1;
+  };
+
   // Tear down the Whisper WebSocket + its rotating MediaRecorder.
   const teardownWhisper = () => {
+    stopReadyCountdown();
     if (segTimerRef.current) {
       window.clearTimeout(segTimerRef.current);
       segTimerRef.current = null;
@@ -1388,8 +1483,10 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
     }
     segRecorderRef.current = mr;
     segChunksRef.current = [];
-    // Reset voice-activity counter at the start of every segment.
+    // Reset per-segment voice + pitch counters.
     segVoiceFramesRef.current = 0;
+    segPitchSumRef.current = 0;
+    segPitchCountRef.current = 0;
 
     mr.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) segChunksRef.current.push(e.data);
@@ -1397,6 +1494,8 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
     mr.onstop = async () => {
       const chunks = segChunksRef.current;
       const voiceFrames = segVoiceFramesRef.current;
+      const pitchSum = segPitchSumRef.current;
+      const pitchCount = segPitchCountRef.current;
       segChunksRef.current = [];
       const blob = chunks.length > 0 ? new Blob(chunks, { type: mime }) : null;
       // Roll over to the next segment first — keeps coverage gap small.
@@ -1408,7 +1507,13 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
         return;
       }
       if (blob && blob.size > 1500 && ws.readyState === WebSocket.OPEN) {
-        try { ws.send(await blob.arrayBuffer()); }
+        try {
+          // Send pitch metadata first so the server can echo it back with
+          // the segment id once Whisper finishes transcribing.
+          const avgPitch = pitchCount > 0 ? pitchSum / pitchCount : 0;
+          ws.send(JSON.stringify({ type: "meta", pitchHz: avgPitch }));
+          ws.send(await blob.arrayBuffer());
+        }
         catch (err) { console.warn("[LiveTranscript] WS send error:", err); }
       }
     };
@@ -1464,6 +1569,9 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
           console.log("[LiveTranscript] Whisper ready, lang =", msg.whisperLang);
           // Start the rotating recorder once the server is ready to receive blobs.
           startSegmentRecorder();
+          // Kick off the "first transcript in N seconds" countdown.
+          firstSegmentSeenRef.current = false;
+          startReadyCountdown();
           return;
         }
         if (msg.type === "error") {
@@ -1474,10 +1582,17 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
         if (msg.type === "segment") {
           // Server delivered a transcript for one audio chunk.
           if (msg.skipped || !msg.original) return;
+          // First real transcript landed — clear the countdown banner.
+          if (!firstSegmentSeenRef.current) {
+            firstSegmentSeenRef.current = true;
+            stopReadyCountdown();
+          }
           const id = `w${msg.id}`;
+          const speaker = assignSpeaker(typeof msg.pitchHz === "number" ? msg.pitchHz : 0);
+          if (speaker) segmentSpeakerRef.current.set(msg.id, speaker);
           setSegments(prev => [
             ...prev,
-            { id, t: new Date().toLocaleTimeString(), original: msg.original },
+            { id, t: new Date().toLocaleTimeString(), original: msg.original, speaker },
           ]);
           return;
         }
@@ -1515,6 +1630,11 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
     audioBlobRef.current = null;
     stopRequestedRef.current = false;
     restartAttemptsRef.current = 0;
+    // Reset speaker diarization state for a fresh recording session.
+    speakerCentroidsRef.current = [];
+    segmentSpeakerRef.current = new Map();
+    firstSegmentSeenRef.current = false;
+    stopReadyCountdown();
 
     let stream: MediaStream;
     try {
@@ -1556,6 +1676,15 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
       setAnalyserNode(an);
 
       const buf = new Uint8Array(an.fftSize);
+      // FFT-domain buffer for pitch estimation (used only when there's voice).
+      const freqBuf = new Uint8Array(an.frequencyBinCount);
+      const sampleRate = ac.sampleRate;
+      const binHz = sampleRate / an.fftSize;
+      // Voice fundamental falls roughly between 80 Hz (low male) and 350 Hz
+      // (high female / child). Search the dominant bin in this band.
+      const minBin = Math.max(1, Math.floor(80 / binHz));
+      const maxBin = Math.min(an.frequencyBinCount - 1, Math.ceil(350 / binHz));
+
       const tick = () => {
         an.getByteTimeDomainData(buf);
         let sumSq = 0;
@@ -1566,8 +1695,23 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
         const rms = Math.sqrt(sumSq / buf.length);
         setAudioLevel(rms);
         if (rms > 0.04) lastHeardRef.current = Date.now();
-        // Voice-activity counter for the rotating Whisper segment recorder.
-        if (rms > VOICE_RMS_THRESHOLD) segVoiceFramesRef.current += 1;
+        // Voice-activity counter + pitch sampling for the rotating recorder.
+        if (rms > VOICE_RMS_THRESHOLD) {
+          segVoiceFramesRef.current += 1;
+          // Estimate this frame's pitch by picking the strongest FFT bin in
+          // the vocal band — coarse but enough to separate two distinct
+          // voices (typical male ~110 Hz vs female ~210 Hz).
+          an.getByteFrequencyData(freqBuf);
+          let peakBin = minBin;
+          let peakAmp = 0;
+          for (let k = minBin; k <= maxBin; k++) {
+            if (freqBuf[k] > peakAmp) { peakAmp = freqBuf[k]; peakBin = k; }
+          }
+          if (peakAmp > 60) {
+            segPitchSumRef.current += peakBin * binHz;
+            segPitchCountRef.current += 1;
+          }
+        }
         levelRafRef.current = requestAnimationFrame(tick);
       };
       tick();
@@ -1736,6 +1880,18 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
       {/* Live waveform — always visible so user sees that the mic is listening */}
       <LiveWaveform analyser={analyserNode} level={audioLevel} active={recording} />
 
+      {/* Countdown banner — visible only between Start and the first transcript */}
+      {readyCountdown !== null && (
+        <div className="px-3 py-1.5 bg-gradient-to-r from-indigo-50 via-sky-50 to-indigo-50 border-b border-indigo-200/70 flex items-center gap-2 text-[10px]">
+          <span className="relative inline-flex items-center justify-center w-5 h-5 rounded-full bg-indigo-600 text-white font-bold tabular-nums shadow-sm">
+            {readyCountdown}
+            <span className="absolute inset-0 rounded-full ring-2 ring-indigo-400/60 animate-ping" />
+          </span>
+          <span className="text-indigo-900 font-semibold">Get ready —</span>
+          <span className="text-indigo-700">first transcript will appear in about {readyCountdown}s. Keep speaking naturally.</span>
+        </div>
+      )}
+
       {/* Two columns: original | english */}
       <div className="flex-1 grid grid-cols-2 min-h-0 overflow-hidden">
         <div className="flex flex-col min-h-0 border-r border-gray-100">
@@ -1751,6 +1907,7 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
             {segments.map(s => (
               <div key={s.id}>
                 <span className="text-gray-400 text-[9px] tabular-nums mr-1">{s.t}</span>
+                {s.speaker ? <SpeakerBadge n={s.speaker} /> : null}
                 <span className="text-gray-800">{s.original}</span>
               </div>
             ))}
@@ -1782,6 +1939,7 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
             {segments.map(s => (
               <div key={s.id}>
                 <span className="text-gray-400 text-[9px] tabular-nums mr-1">{s.t}</span>
+                {s.speaker ? <SpeakerBadge n={s.speaker} /> : null}
                 {s.translation
                   ? <span className={cn(
                       s.translation.startsWith("(translation failed")

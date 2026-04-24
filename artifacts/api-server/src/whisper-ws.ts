@@ -127,20 +127,29 @@ export function setupWhisperWS(httpServer: Server) {
     // outputs (another Whisper-on-silence failure mode where the model just
     // echoes the previous segment).
     let lastAccepted = "";
+    // Pitch (Hz) of the most recent meta frame — attached to the next audio
+    // blob and round-tripped to the client for speaker diarization.
+    let pendingPitchHz = 0;
 
     console.log(`[Whisper WS] client connected lang=${uiLang} whisper=${whisperLang ?? "auto"} mime=${mime}`);
     try { clientWs.send(JSON.stringify({ type: "ready", lang: uiLang, whisperLang: whisperLang ?? "auto" })); } catch {}
 
     clientWs.on("message", async (data, isBinary) => {
-      // Control frames are JSON text — used to update the audio mime mid-session.
+      // Control frames are JSON text — used to update the audio mime mid-session
+      // and to attach pitch metadata to the next audio blob.
       if (!isBinary) {
         try {
           const msg = JSON.parse(data.toString());
-          if (msg?.type === "meta" && typeof msg.mime === "string") mime = msg.mime;
+          if (msg?.type === "meta") {
+            if (typeof msg.mime === "string") mime = msg.mime;
+            if (typeof msg.pitchHz === "number") pendingPitchHz = msg.pitchHz;
+          }
           if (msg?.type === "stop") { try { clientWs.close(); } catch {} }
         } catch {}
         return;
       }
+      const pitchForThisBlob = pendingPitchHz;
+      pendingPitchHz = 0;
 
       const buf = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
       // Ignore implausibly small blobs — almost certainly silence/noise that
@@ -183,7 +192,10 @@ export function setupWhisperWS(httpServer: Server) {
           const avgNoSpeech = segs.reduce((a, s) => a + (s.no_speech_prob ?? 0), 0) / segs.length;
           const avgLogProb  = segs.reduce((a, s) => a + (s.avg_logprob   ?? 0), 0) / segs.length;
           const maxComp     = segs.reduce((a, s) => Math.max(a, s.compression_ratio ?? 0), 0);
-          if (avgNoSpeech > 0.55 || avgLogProb < -0.9 || maxComp > 2.4) {
+          // Loose thresholds: only drop the *clearly* hallucinated segments.
+          // Real speech in noisy environments routinely has avg_logprob around
+          // -0.7 to -1.0, so we keep that and only drop very low confidence.
+          if (avgNoSpeech > 0.75 || avgLogProb < -1.4 || maxComp > 2.6) {
             console.log(
               `[Whisper WS] dropped low-confidence seg=${id}: "${original}" ` +
               `noSpeech=${avgNoSpeech.toFixed(2)} logProb=${avgLogProb.toFixed(2)} comp=${maxComp.toFixed(2)}`
@@ -208,8 +220,12 @@ export function setupWhisperWS(httpServer: Server) {
         lastAccepted = original;
 
         // Send the original immediately so the user sees their words ASAP.
+        // pitchHz is round-tripped so the client can do speaker diarization.
         try {
-          clientWs.send(JSON.stringify({ type: "segment", id, original, translation: null }));
+          clientWs.send(JSON.stringify({
+            type: "segment", id, original, translation: null,
+            pitchHz: pitchForThisBlob,
+          }));
         } catch {}
 
         // 2) Translate to English with GPT-4o-mini in a separate round trip.
