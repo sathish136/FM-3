@@ -1237,9 +1237,16 @@ export default function PlantEnquiry() {
   };
 
   useEffect(() => {
-    const t = setTimeout(() => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(form)); } catch {} }, 400);
+    if (!autoSaveOn) return;
+    if (view !== "form") return;
+    const t = setTimeout(() => {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(form)); } catch {}
+      setAutoSavedFlag(true);
+      const clear = setTimeout(() => setAutoSavedFlag(false), 1500);
+      return () => clearTimeout(clear);
+    }, 500);
     return () => clearTimeout(t);
-  }, [form]);
+  }, [form, autoSaveOn, view]);
 
   useEffect(() => {
     if (!exportMenuOpen) return;
@@ -1318,20 +1325,6 @@ export default function PlantEnquiry() {
     document.addEventListener("mousedown", onDoc); document.addEventListener("keydown", onKey);
     return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onKey); };
   }, [sendLeadOpen]);
-
-  // Auto-save: persist to saved-list every 5s of idle when form has minimum content
-  useEffect(() => {
-    if (!autoSaveOn) return;
-    if (view !== "form") return;
-    const minimumOk = !!(form.industry_name?.trim() || form.contact_person?.trim() || form.mobile_no?.trim() || form.email?.trim());
-    if (!minimumOk) return;
-    const t = setTimeout(() => {
-      handleSaveRef.current?.();
-      setAutoSavedFlag(true);
-      setTimeout(() => setAutoSavedFlag(false), 1500);
-    }, 5000);
-    return () => clearTimeout(t);
-  }, [form, autoSaveOn, view]);
 
   useEffect(() => {
     try { localStorage.setItem("plant-enquiry-autosave", autoSaveOn ? "1" : "0"); } catch {}
@@ -1644,7 +1637,7 @@ export default function PlantEnquiry() {
               role="switch"
               aria-checked={autoSaveOn}
               onClick={() => setAutoSaveOn((v) => !v)}
-              title={autoSaveOn ? "Auto-save ON — saves every 5s" : "Auto-save OFF"}
+              title={autoSaveOn ? "Auto-save ON — draft saved on every change" : "Auto-save OFF"}
               className={cn(
                 "relative inline-flex h-4 w-7 items-center rounded-full transition shrink-0",
                 autoSaveOn ? "bg-[#0a2463]" : "bg-slate-300"
@@ -1661,7 +1654,7 @@ export default function PlantEnquiry() {
                 "text-[9px] font-semibold tabular-nums transition-colors",
                 autoSavedFlag ? "text-emerald-600" : "text-slate-400"
               )}>
-                {autoSaveOn ? (autoSavedFlag ? "✓ Saved" : (savedAt ? `Last ${savedAt}` : "Waiting…")) : "Off"}
+                {autoSaveOn ? (autoSavedFlag ? "✓ Draft saved" : (savedAt ? `Saved ${savedAt}` : "Ready")) : "Off"}
               </div>
             </div>
           </div>
