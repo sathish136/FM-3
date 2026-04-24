@@ -83,7 +83,9 @@ timeoutMs = 20000
 [userenv.shared]
 ERPNEXT_URL = "https://erp.wttint.com"
 ERPNEXT_API_KEY = "bcbc298244f56a7"
-ERPNEXT_API_SECRET = "31031acb9f6655e"
+ERPNEXT_API_SECRET = "38d8166fd50f0ba"
+AI_INTEGRATIONS_OPENAI_BASE_URL = "https://api.openai.com/v1"
+PORT = "3000"
 
 [nix]
 channel = "stable-25_05"
