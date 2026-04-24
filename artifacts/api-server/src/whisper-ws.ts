@@ -31,24 +31,25 @@ function getOpenAI(): OpenAI {
   return _openai;
 }
 
-// UI codes → Whisper ISO 639-1 language hints. Whisper supports all of these
-// at production-grade quality, including Tamil/Telugu/Kannada/Malayalam etc.
+// UI codes → Whisper ISO 639-1 language hints. The UI now sends bare ISO codes
+// for international languages (e.g. "en", "ta", "fr", "ja"). "auto" and any
+// unknown code fall through to Whisper's built-in auto-detection.
+const WHISPER_LANGS = new Set([
+  "en","ta","hi","ar","bn","zh","nl","fr","de","el","he","id","it",
+  "ja","ko","ms","fa","pl","pt","ru","es","sv","th","tr","uk","ur","vi",
+  // Filipino isn't in Whisper's list — fall back to Tagalog ("tl") below.
+  "tl",
+]);
 function mapToWhisperLang(uiCode: string): string | undefined {
-  switch (uiCode) {
-    case "en-IN":
-    case "en-US": return "en";
-    case "hi-IN": return "hi";
-    case "ta-IN": return "ta";
-    case "te-IN": return "te";
-    case "kn-IN": return "kn";
-    case "ml-IN": return "ml";
-    case "mr-IN": return "mr";
-    case "gu-IN": return "gu";
-    case "bn-IN": return "bn";
-    case "pa-IN": return "pa";
-    case "auto":  return undefined; // let Whisper auto-detect
-    default:      return undefined;
+  if (!uiCode || uiCode === "auto") return undefined;
+  // Filipino → Tagalog (closest Whisper-supported variant).
+  if (uiCode === "fil") return "tl";
+  // Backward-compat for old hyphenated codes if any cached client still sends them.
+  if (uiCode.includes("-")) {
+    const base = uiCode.split("-")[0].toLowerCase();
+    return WHISPER_LANGS.has(base) ? base : undefined;
   }
+  return WHISPER_LANGS.has(uiCode) ? uiCode : undefined;
 }
 
 // Whisper is famous for inventing greetings, captions and "Thanks for watching"
@@ -82,18 +83,35 @@ function isLikelyHallucination(text: string): boolean {
 
 // Friendly language name we feed to GPT for the translation prompt.
 const LANG_NAME: Record<string, string> = {
-  "en-IN": "English",
-  "en-US": "English",
-  "hi-IN": "Hindi",
-  "ta-IN": "Tamil",
-  "te-IN": "Telugu",
-  "kn-IN": "Kannada",
-  "ml-IN": "Malayalam",
-  "mr-IN": "Marathi",
-  "gu-IN": "Gujarati",
-  "bn-IN": "Bengali",
-  "pa-IN": "Punjabi",
-  auto:    "the spoken language",
+  auto: "the spoken language",
+  en:   "English",
+  ta:   "Tamil",
+  hi:   "Hindi",
+  ar:   "Arabic",
+  bn:   "Bengali",
+  zh:   "Chinese (Mandarin)",
+  nl:   "Dutch",
+  fil:  "Filipino",
+  fr:   "French",
+  de:   "German",
+  el:   "Greek",
+  he:   "Hebrew",
+  id:   "Indonesian",
+  it:   "Italian",
+  ja:   "Japanese",
+  ko:   "Korean",
+  ms:   "Malay",
+  fa:   "Persian",
+  pl:   "Polish",
+  pt:   "Portuguese",
+  ru:   "Russian",
+  es:   "Spanish",
+  sv:   "Swedish",
+  th:   "Thai",
+  tr:   "Turkish",
+  uk:   "Ukrainian",
+  ur:   "Urdu",
+  vi:   "Vietnamese",
 };
 
 export function setupWhisperWS(httpServer: Server) {

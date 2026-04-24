@@ -1071,17 +1071,37 @@ function SpeakerBadge({ n }: { n: number }) {
 }
 
 const SUPPORTED_LANGS: Array<{ code: string; label: string }> = [
-  { code: "en-IN", label: "English (India)" },
-  { code: "ta-IN", label: "Tamil" },
-  { code: "hi-IN", label: "Hindi" },
-  { code: "te-IN", label: "Telugu" },
-  { code: "kn-IN", label: "Kannada" },
-  { code: "ml-IN", label: "Malayalam" },
-  { code: "mr-IN", label: "Marathi" },
-  { code: "gu-IN", label: "Gujarati" },
-  { code: "bn-IN", label: "Bengali" },
-  { code: "pa-IN", label: "Punjabi" },
-  { code: "en-US", label: "English (US)" },
+  { code: "auto",  label: "Auto-detect" },
+  // Core trio the user always wants on top.
+  { code: "en",    label: "English" },
+  { code: "ta",    label: "Tamil" },
+  { code: "hi",    label: "Hindi" },
+  // Major international languages — alphabetical by label.
+  { code: "ar",    label: "Arabic" },
+  { code: "bn",    label: "Bengali" },
+  { code: "zh",    label: "Chinese (Mandarin)" },
+  { code: "nl",    label: "Dutch" },
+  { code: "fil",   label: "Filipino" },
+  { code: "fr",    label: "French" },
+  { code: "de",    label: "German" },
+  { code: "el",    label: "Greek" },
+  { code: "he",    label: "Hebrew" },
+  { code: "id",    label: "Indonesian" },
+  { code: "it",    label: "Italian" },
+  { code: "ja",    label: "Japanese" },
+  { code: "ko",    label: "Korean" },
+  { code: "ms",    label: "Malay" },
+  { code: "fa",    label: "Persian" },
+  { code: "pl",    label: "Polish" },
+  { code: "pt",    label: "Portuguese" },
+  { code: "ru",    label: "Russian" },
+  { code: "es",    label: "Spanish" },
+  { code: "sv",    label: "Swedish" },
+  { code: "th",    label: "Thai" },
+  { code: "tr",    label: "Turkish" },
+  { code: "uk",    label: "Ukrainian" },
+  { code: "ur",    label: "Urdu" },
+  { code: "vi",    label: "Vietnamese" },
 ];
 
 function pickAudioMime(): string {
@@ -1236,7 +1256,16 @@ function LiveWaveform({ analyser, level, active }: { analyser: AnalyserNode | nu
 
 function LiveTranscriptPanel({ industry }: { industry: string }) {
   const [language, setLanguage] = useState<string>(() => {
-    try { return localStorage.getItem(LIVE_LANG_KEY) || "en-IN"; } catch { return "en-IN"; }
+    try {
+      const saved = localStorage.getItem(LIVE_LANG_KEY);
+      if (!saved) return "auto";
+      // Migrate any old hyphenated codes (e.g. "en-IN", "ta-IN") to the new
+      // bare ISO codes used by the international list.
+      if (SUPPORTED_LANGS.some(l => l.code === saved)) return saved;
+      const base = saved.split("-")[0].toLowerCase();
+      if (SUPPORTED_LANGS.some(l => l.code === base)) return base;
+      return "auto";
+    } catch { return "auto"; }
   });
   const [recording, setRecording] = useState(false);
   const [interim, setInterim] = useState("");
