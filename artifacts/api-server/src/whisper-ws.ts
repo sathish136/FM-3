@@ -51,6 +51,35 @@ function mapToWhisperLang(uiCode: string): string | undefined {
   }
 }
 
+// Whisper is famous for inventing greetings, captions and "Thanks for watching"
+// out of silence or background noise. Drop anything that looks like one of
+// these stock hallucinations rather than displaying it as a real transcript.
+const HALLUCINATION_PATTERNS: RegExp[] = [
+  // English captioner / YouTube boilerplate
+  /^thanks? (for|to) watch(ing)?[!.\s]*$/i,
+  /^thank you( for watching)?[!.\s]*$/i,
+  /^please (subscribe|like and subscribe)[!.\s]*$/i,
+  /^subtitles? (by|done by|provided by) .+$/i,
+  /^(captions|subtitles?) by .+$/i,
+  /^transcribed by .+$/i,
+  /^\[?(music|applause|silence|laughter)\]?[!.\s]*$/i,
+  /^you$/i,
+  // Tamil hallucination — bare "வணக்கம்" (Hello) with optional punctuation
+  /^வணக்கம்[!.\s]*$/,
+  // Hindi/Devanagari bare greeting
+  /^नमस्ते[!.\s]*$/,
+  /^नमस्कार[!.\s]*$/,
+  // Pure punctuation / dots
+  /^[\.\s\-…।!?]+$/,
+];
+
+function isLikelyHallucination(text: string): boolean {
+  const t = text.trim();
+  if (!t) return true;
+  if (t.length < 3) return true;
+  return HALLUCINATION_PATTERNS.some((re) => re.test(t));
+}
+
 // Friendly language name we feed to GPT for the translation prompt.
 const LANG_NAME: Record<string, string> = {
   "en-IN": "English",
@@ -94,6 +123,10 @@ export function setupWhisperWS(httpServer: Server) {
     const langLabel = LANG_NAME[uiLang] || uiLang;
     let mime = u.searchParams.get("mime") || "audio/webm";
     let seq = 0;
+    // Track the last accepted transcript so we can suppress duplicate back-to-back
+    // outputs (another Whisper-on-silence failure mode where the model just
+    // echoes the previous segment).
+    let lastAccepted = "";
 
     console.log(`[Whisper WS] client connected lang=${uiLang} whisper=${whisperLang ?? "auto"} mime=${mime}`);
     try { clientWs.send(JSON.stringify({ type: "ready", lang: uiLang, whisperLang: whisperLang ?? "auto" })); } catch {}
@@ -138,11 +171,19 @@ export function setupWhisperWS(httpServer: Server) {
         const tr = await getOpenAI().audio.transcriptions.create(transcribeOpts);
         const original = (tr.text || "").trim();
 
-        // Whisper sometimes returns empty / placeholder text for silence.
-        if (!original || /^[\.\s\-…]+$/.test(original)) {
+        // Skip Whisper hallucinations on silent / noise-only segments.
+        if (isLikelyHallucination(original)) {
+          console.log(`[Whisper WS] dropped hallucination seg=${id}: "${original}"`);
           try { clientWs.send(JSON.stringify({ type: "segment", id, original: "", translation: "", skipped: true })); } catch {}
           return;
         }
+        // Suppress identical back-to-back outputs (Whisper echoing itself).
+        if (original === lastAccepted) {
+          console.log(`[Whisper WS] dropped duplicate seg=${id}: "${original}"`);
+          try { clientWs.send(JSON.stringify({ type: "segment", id, original: "", translation: "", skipped: true })); } catch {}
+          return;
+        }
+        lastAccepted = original;
 
         // Send the original immediately so the user sees their words ASAP.
         try {

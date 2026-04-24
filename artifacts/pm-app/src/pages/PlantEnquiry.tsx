@@ -1268,6 +1268,13 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
   const segTimerRef = useRef<number | null>(null);
   const segStreamRef = useRef<MediaStream | null>(null);
   const segMimeRef = useRef<string>("audio/webm");
+  // Voice-activity detection: true if the analyser saw real speech energy at
+  // any point during the *current* segment. Resets when each segment starts.
+  // We use this to skip shipping silent/noise-only blobs to Whisper, which
+  // otherwise hallucinates greetings ("Hello!", "வணக்கம்!", "Thanks for
+  // watching") on near-silent audio.
+  const segHadVoiceRef = useRef(false);
+  const VOICE_RMS_THRESHOLD = 0.05;
 
   // Persist segments + lang
   useEffect(() => {
@@ -1379,16 +1386,23 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
     }
     segRecorderRef.current = mr;
     segChunksRef.current = [];
+    // Reset voice-activity flag at the start of every segment.
+    segHadVoiceRef.current = false;
 
     mr.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) segChunksRef.current.push(e.data);
     };
     mr.onstop = async () => {
       const chunks = segChunksRef.current;
+      const hadVoice = segHadVoiceRef.current;
       segChunksRef.current = [];
       const blob = chunks.length > 0 ? new Blob(chunks, { type: mime }) : null;
       // Roll over to the next segment first — keeps coverage gap small.
       if (!stopRequestedRef.current) startSegmentRecorder();
+      // Only ship segments that actually contained speech energy. Drops the
+      // silent / background-noise blobs that cause Whisper to hallucinate
+      // greetings or repeat the previous phrase.
+      if (!hadVoice) return;
       if (blob && blob.size > 1500 && ws.readyState === WebSocket.OPEN) {
         try { ws.send(await blob.arrayBuffer()); }
         catch (err) { console.warn("[LiveTranscript] WS send error:", err); }
@@ -1548,6 +1562,8 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
         const rms = Math.sqrt(sumSq / buf.length);
         setAudioLevel(rms);
         if (rms > 0.04) lastHeardRef.current = Date.now();
+        // Voice-activity flag for the rotating Whisper segment recorder.
+        if (rms > VOICE_RMS_THRESHOLD) segHadVoiceRef.current = true;
         levelRafRef.current = requestAnimationFrame(tick);
       };
       tick();
