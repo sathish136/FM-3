@@ -1076,6 +1076,134 @@ function downloadBlob(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function LiveWaveform({ analyser, level, active }: { analyser: AnalyserNode | null; level: number; active: boolean }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+
+    const fit = () => {
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      canvas.width = Math.max(1, Math.floor(w * dpr));
+      canvas.height = Math.max(1, Math.floor(h * dpr));
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(canvas);
+
+    const BAR_COUNT = 56;
+    const fft = analyser ? new Uint8Array(analyser.frequencyBinCount) : null;
+    let phase = 0;
+
+    const draw = () => {
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      const grad = ctx.createLinearGradient(0, 0, w, 0);
+      grad.addColorStop(0, "rgba(244, 63, 94, 0.04)");
+      grad.addColorStop(0.5, "rgba(168, 85, 247, 0.06)");
+      grad.addColorStop(1, "rgba(59, 130, 246, 0.04)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.strokeStyle = "rgba(148, 163, 184, 0.25)";
+      ctx.lineWidth = 1 * dpr;
+      ctx.beginPath();
+      ctx.moveTo(0, h / 2);
+      ctx.lineTo(w, h / 2);
+      ctx.stroke();
+
+      const gap = 2 * dpr;
+      const barW = (w - gap * (BAR_COUNT - 1)) / BAR_COUNT;
+      const cy = h / 2;
+      const maxAmp = h / 2 - 4 * dpr;
+
+      if (analyser && fft) {
+        analyser.getByteFrequencyData(fft);
+      }
+      phase += 0.08;
+
+      for (let i = 0; i < BAR_COUNT; i++) {
+        let amp: number;
+        if (analyser && fft) {
+          const start = Math.floor((i / BAR_COUNT) * (fft.length * 0.55));
+          const end = Math.max(start + 1, Math.floor(((i + 1) / BAR_COUNT) * (fft.length * 0.55)));
+          let sum = 0;
+          for (let k = start; k < end; k++) sum += fft[k];
+          amp = (sum / Math.max(1, end - start)) / 255;
+          amp = Math.pow(amp, 0.7);
+        } else {
+          amp = active ? 0.05 + Math.abs(Math.sin(phase + i * 0.35)) * 0.08 : 0.02;
+        }
+        const barH = Math.max(2 * dpr, amp * maxAmp);
+        const x = i * (barW + gap);
+        const hue = 350 - (i / BAR_COUNT) * 50;
+        const lightness = 55 + amp * 15;
+        const g = ctx.createLinearGradient(0, cy - barH, 0, cy + barH);
+        g.addColorStop(0, `hsla(${hue}, 90%, ${lightness}%, 0.95)`);
+        g.addColorStop(0.5, `hsla(${hue + 20}, 85%, ${lightness + 5}%, 1)`);
+        g.addColorStop(1, `hsla(${hue}, 90%, ${lightness}%, 0.95)`);
+        ctx.fillStyle = g;
+        const r = barW / 2;
+        ctx.beginPath();
+        ctx.moveTo(x + r, cy - barH);
+        ctx.arcTo(x + barW, cy - barH, x + barW, cy + barH, r);
+        ctx.arcTo(x + barW, cy + barH, x, cy + barH, r);
+        ctx.arcTo(x, cy + barH, x, cy - barH, r);
+        ctx.arcTo(x, cy - barH, x + barW, cy - barH, r);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      rafRef.current = requestAnimationFrame(draw);
+    };
+    rafRef.current = requestAnimationFrame(draw);
+
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      ro.disconnect();
+    };
+  }, [analyser, active]);
+
+  const pct = Math.min(100, Math.round(level * 140));
+
+  return (
+    <div className="relative w-full h-14 bg-gradient-to-br from-slate-900 via-rose-950/40 to-slate-900 border-b border-rose-200/40 overflow-hidden">
+      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
+      <div className="absolute top-1 right-2 flex items-center gap-1.5 z-10">
+        <div className="text-[8px] font-bold uppercase tracking-wider text-white/60">mic</div>
+        <div className="w-16 h-1.5 rounded-full bg-white/10 overflow-hidden">
+          <div
+            className="h-full transition-[width] duration-75"
+            style={{
+              width: `${pct}%`,
+              background: pct > 70 ? "linear-gradient(90deg,#f43f5e,#fbbf24)" : "linear-gradient(90deg,#22c55e,#84cc16)",
+            }}
+          />
+        </div>
+        <div
+          className={cn(
+            "w-2 h-2 rounded-full",
+            active && level > 0.04 ? "bg-emerald-400 shadow-[0_0_8px_#34d399]" : "bg-white/20"
+          )}
+        />
+      </div>
+      {!active && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="text-[10px] text-white/50 font-medium tracking-wide uppercase">Press Start to begin listening</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LiveTranscriptPanel({ industry }: { industry: string }) {
   const [language, setLanguage] = useState<string>(() => {
     try { return localStorage.getItem(LIVE_LANG_KEY) || "en-IN"; } catch { return "en-IN"; }
@@ -1094,6 +1222,9 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
   });
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [hint, setHint] = useState<string | null>(null);
 
   const recognitionRef = useRef<any>(null);
   const mediaRecRef = useRef<MediaRecorder | null>(null);
@@ -1104,6 +1235,14 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
   const stopRequestedRef = useRef(false);
   const originalEndRef = useRef<HTMLDivElement>(null);
   const englishEndRef = useRef<HTMLDivElement>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const levelRafRef = useRef<number | null>(null);
+  const interimRef = useRef("");
+  const interimAtRef = useRef(0);
+  const flushTimerRef = useRef<number | null>(null);
+  const lastHeardRef = useRef(0);
+  const restartAttemptsRef = useRef(0);
 
   // Persist segments + lang
   useEffect(() => {
@@ -1125,6 +1264,11 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
     const r = recognitionRef.current;
     if (r) { try { r.onend = null; r.stop(); } catch {} }
     streamRef.current?.getTracks().forEach(t => t.stop());
+    if (levelRafRef.current) cancelAnimationFrame(levelRafRef.current);
+    if (flushTimerRef.current) window.clearInterval(flushTimerRef.current);
+    if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
+      try { audioCtxRef.current.close(); } catch {}
+    }
     if (audioUrl) URL.revokeObjectURL(audioUrl);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1136,30 +1280,51 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, sourceLang, targetLang: "English" }),
       });
-      if (!res.ok) throw new Error(`Translate failed (${res.status})`);
+      if (!res.ok) {
+        let detail = "";
+        try { const j = await res.json(); detail = j?.error || ""; } catch {}
+        throw new Error(`HTTP ${res.status}${detail ? ` — ${String(detail).slice(0, 80)}` : ""}`);
+      }
       const j = await res.json();
-      setSegments(prev => prev.map(s => s.id === id ? { ...s, translation: (j.translation || "").trim() } : s));
+      const translated = (j.translation || "").trim();
+      setSegments(prev => prev.map(s => s.id === id ? { ...s, translation: translated || "(empty translation)" } : s));
     } catch (e: any) {
       setSegments(prev => prev.map(s => s.id === id ? { ...s, translation: `(translation failed: ${e?.message || "error"})` } : s));
     }
   };
 
+  // Commit a chunk of recognised speech as a final segment + kick off translation.
+  const commitSegment = (text: string) => {
+    const t = text.trim();
+    if (!t) return;
+    const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const seg: Segment = { id, t: new Date().toLocaleTimeString(), original: t };
+    setSegments(prev => [...prev, seg]);
+    translateSegment(id, t, language);
+  };
+
   const start = async () => {
     setError(null);
+    setHint(null);
     setInterim("");
+    interimRef.current = "";
+    interimAtRef.current = 0;
     if (audioUrl) { URL.revokeObjectURL(audioUrl); setAudioUrl(null); }
     audioBlobRef.current = null;
     stopRequestedRef.current = false;
+    restartAttemptsRef.current = 0;
 
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) {
-      setError("Live speech recognition is not supported in this browser. Please use Chrome or Edge.");
+      setError("Live speech recognition is not supported in this browser. Please use Chrome or Edge on a desktop.");
       return;
     }
 
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
     } catch (e: any) {
       setError(e?.message || "Could not access the microphone. Please allow microphone access.");
       return;
@@ -1181,6 +1346,54 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
       return;
     }
 
+    // Set up live audio analyser for waveform + level meter
+    try {
+      const Ctor = (window as any).AudioContext || (window as any).webkitAudioContext;
+      const ac: AudioContext = new Ctor();
+      audioCtxRef.current = ac;
+      const src = ac.createMediaStreamSource(stream);
+      const an = ac.createAnalyser();
+      an.fftSize = 1024;
+      an.smoothingTimeConstant = 0.75;
+      src.connect(an);
+      analyserRef.current = an;
+      setAnalyserNode(an);
+
+      const buf = new Uint8Array(an.fftSize);
+      const tick = () => {
+        an.getByteTimeDomainData(buf);
+        let sumSq = 0;
+        for (let i = 0; i < buf.length; i++) {
+          const v = (buf[i] - 128) / 128;
+          sumSq += v * v;
+        }
+        const rms = Math.sqrt(sumSq / buf.length);
+        setAudioLevel(rms);
+        if (rms > 0.04) lastHeardRef.current = Date.now();
+        levelRafRef.current = requestAnimationFrame(tick);
+      };
+      tick();
+    } catch (e) {
+      // Audio analyser failure shouldn't block recording — just no waveform animation.
+      console.warn("[LiveTranscript] AudioContext failed:", e);
+    }
+
+    // Silence-flush: if interim text has been sitting around with no updates for ~2.5s,
+    // commit it as a segment so transcripts + translations actually appear even when the
+    // browser's SpeechRecognition is slow to fire `isFinal`.
+    if (flushTimerRef.current) window.clearInterval(flushTimerRef.current);
+    flushTimerRef.current = window.setInterval(() => {
+      if (!interimRef.current) return;
+      const idle = Date.now() - interimAtRef.current;
+      if (idle > 2500) {
+        const text = interimRef.current;
+        interimRef.current = "";
+        interimAtRef.current = 0;
+        setInterim("");
+        commitSegment(text);
+      }
+    }, 600);
+
     // Start recognition
     try {
       const r = new SR();
@@ -1194,26 +1407,57 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
           const txt = (result[0]?.transcript || "").trim();
           if (!txt) continue;
           if (result.isFinal) {
-            const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-            const seg: Segment = { id, t: new Date().toLocaleTimeString(), original: txt };
-            setSegments(prev => [...prev, seg]);
-            translateSegment(id, txt, language);
+            commitSegment(txt);
+            interimRef.current = "";
+            interimAtRef.current = 0;
           } else {
             interimText += txt + " ";
           }
         }
-        setInterim(interimText.trim());
+        const trimmed = interimText.trim();
+        if (trimmed) {
+          interimRef.current = trimmed;
+          interimAtRef.current = Date.now();
+        }
+        setInterim(trimmed);
       };
       r.onerror = (e: any) => {
-        if (e?.error === "not-allowed" || e?.error === "service-not-allowed") {
-          setError("Microphone permission denied for speech recognition.");
+        const code = e?.error;
+        if (code === "not-allowed" || code === "service-not-allowed") {
+          setError("Microphone permission denied. Click the camera/mic icon in the address bar and allow access.");
+          stopRequestedRef.current = true;
+        } else if (code === "audio-capture") {
+          setError("No microphone detected. Plug one in and try again.");
+          stopRequestedRef.current = true;
+        } else if (code === "network") {
+          setHint("Network blip — speech service reconnecting…");
+        } else if (code === "no-speech") {
+          setHint("Listening… speak a little louder or move closer to the mic.");
         }
       };
       r.onend = () => {
-        // Auto-restart unless the user stopped
-        if (!stopRequestedRef.current) {
-          try { r.start(); } catch {}
+        // Flush any pending interim before restarting
+        if (interimRef.current) {
+          const text = interimRef.current;
+          interimRef.current = "";
+          interimAtRef.current = 0;
+          setInterim("");
+          commitSegment(text);
         }
+        if (stopRequestedRef.current) return;
+        // Auto-restart with a small backoff if we're hitting errors repeatedly
+        restartAttemptsRef.current += 1;
+        const delay = Math.min(500, restartAttemptsRef.current * 60);
+        window.setTimeout(() => {
+          if (stopRequestedRef.current) return;
+          try {
+            r.start();
+            // Reset attempt counter once we successfully restart
+            window.setTimeout(() => { restartAttemptsRef.current = 0; }, 1500);
+          } catch {
+            // start() throws if already started — ignore
+          }
+        }, delay);
       };
       r.start();
       recognitionRef.current = r;
@@ -1228,7 +1472,25 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
   const stop = async () => {
     stopRequestedRef.current = true;
     setRecording(false);
+
+    // Flush any final interim text before tearing down
+    if (interimRef.current) {
+      const text = interimRef.current;
+      interimRef.current = "";
+      interimAtRef.current = 0;
+      commitSegment(text);
+    }
     setInterim("");
+
+    if (flushTimerRef.current) { window.clearInterval(flushTimerRef.current); flushTimerRef.current = null; }
+    if (levelRafRef.current) { cancelAnimationFrame(levelRafRef.current); levelRafRef.current = null; }
+    setAudioLevel(0);
+    setAnalyserNode(null);
+    analyserRef.current = null;
+    if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
+      try { await audioCtxRef.current.close(); } catch {}
+    }
+    audioCtxRef.current = null;
 
     const r = recognitionRef.current;
     if (r) { try { r.onend = null; r.stop(); } catch {} recognitionRef.current = null; }
@@ -1349,13 +1611,24 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
         </button>
       </div>
 
-      {error && <div className="text-[10px] text-rose-700 bg-rose-50 border-b border-rose-200 px-3 py-1">{error}</div>}
+      {error && <div className="text-[10px] text-rose-700 bg-rose-50 border-b border-rose-200 px-3 py-1.5 font-semibold">{error}</div>}
+      {!error && hint && recording && (
+        <div className="text-[10px] text-amber-700 bg-amber-50 border-b border-amber-200 px-3 py-1">{hint}</div>
+      )}
+
+      {/* Live waveform — always visible so user sees that the mic is listening */}
+      <LiveWaveform analyser={analyserNode} level={audioLevel} active={recording} />
 
       {/* Two columns: original | english */}
       <div className="flex-1 grid grid-cols-2 min-h-0 overflow-hidden">
         <div className="flex flex-col min-h-0 border-r border-gray-100">
-          <div className="px-3 py-1 border-b border-gray-100 bg-gray-50/60 text-[9px] font-bold uppercase tracking-wider text-gray-500">
-            Original ({langLabel})
+          <div className="px-3 py-1 border-b border-gray-100 bg-gray-50/60 text-[9px] font-bold uppercase tracking-wider text-gray-500 flex items-center justify-between">
+            <span>Original ({langLabel})</span>
+            {recording && (
+              <span className="text-[8px] font-bold text-rose-600 tabular-nums">
+                {segments.length} {segments.length === 1 ? "line" : "lines"}
+              </span>
+            )}
           </div>
           <div className="flex-1 overflow-auto p-2 text-[11px] leading-snug space-y-1 custom-scrollbar">
             {segments.map(s => (
@@ -1364,7 +1637,12 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
                 <span className="text-gray-800">{s.original}</span>
               </div>
             ))}
-            {interim && <div className="text-gray-400 italic">{interim}</div>}
+            {interim && (
+              <div className="flex items-start gap-1.5">
+                <span className="inline-block w-1.5 h-1.5 mt-1.5 rounded-full bg-rose-500 animate-pulse shrink-0" />
+                <span className="text-gray-500 italic">{interim}<span className="text-rose-400">…</span></span>
+              </div>
+            )}
             {segments.length === 0 && !interim && (
               <div className="text-gray-400 text-center py-8 text-[10px] px-4">
                 Press <span className="font-bold text-rose-600">Start</span> and begin speaking. Words appear here in real time.
@@ -1374,16 +1652,31 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
           </div>
         </div>
         <div className="flex flex-col min-h-0">
-          <div className="px-3 py-1 border-b border-gray-100 bg-gray-50/60 text-[9px] font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1">
-            <Languages className="w-3 h-3" /> English Translation
+          <div className="px-3 py-1 border-b border-gray-100 bg-gray-50/60 text-[9px] font-bold uppercase tracking-wider text-gray-500 flex items-center justify-between">
+            <span className="flex items-center gap-1"><Languages className="w-3 h-3" /> English Translation</span>
+            {recording && segments.some(s => !s.translation) && (
+              <span className="text-[8px] font-bold text-blue-600 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                translating
+              </span>
+            )}
           </div>
           <div className="flex-1 overflow-auto p-2 text-[11px] leading-snug space-y-1 custom-scrollbar">
             {segments.map(s => (
               <div key={s.id}>
                 <span className="text-gray-400 text-[9px] tabular-nums mr-1">{s.t}</span>
                 {s.translation
-                  ? <span className="text-gray-800">{s.translation}</span>
-                  : <span className="text-gray-400 italic">translating…</span>}
+                  ? <span className={cn(
+                      s.translation.startsWith("(translation failed")
+                        ? "text-rose-600"
+                        : s.translation === "(empty translation)"
+                          ? "text-amber-600 italic"
+                          : "text-gray-800"
+                    )}>{s.translation}</span>
+                  : <span className="inline-flex items-center gap-1 text-blue-500 italic">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                      translating…
+                    </span>}
               </div>
             ))}
             {segments.length === 0 && (
