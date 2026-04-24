@@ -194,6 +194,7 @@ Rules:
     const txt = completion.choices[0]?.message?.content?.trim() || "{}";
     let parsed: any = {};
     try { parsed = JSON.parse(txt); } catch { parsed = { rawText: txt }; }
+    console.log("[/visiting-cards/scan] parsed:", JSON.stringify(parsed));
     res.json({ data: parsed });
   } catch (e: any) {
     console.error("POST /visiting-cards/scan error:", e);
