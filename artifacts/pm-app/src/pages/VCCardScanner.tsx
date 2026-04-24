@@ -525,8 +525,30 @@ export default function VCCardScanner() {
         category: (data.category as CardCategory) || "lead",
       };
       setExtracted(next);
-      setAutoStatus("Review the details below, then tap Save.");
       playBeep();
+
+      // Auto-save the card right after scan
+      setAutoStatus("Saving card…");
+      setSaving(true);
+      try {
+        const payload = {
+          ...next, frontImage: img, backImage: null,
+          source: "scan", createdBy: user?.email || null,
+        };
+        const sr = await fetch(`${BASE}/visiting-cards`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!sr.ok) throw new Error(`Save failed (${sr.status})`);
+        setAutoStatus("Card saved.");
+        setImage(null);
+        setExtracted(null);
+        fetchCards();
+      } catch (saveErr) {
+        setAutoStatus("Scan succeeded but save failed: " + (saveErr as any)?.message);
+      } finally {
+        setSaving(false);
+      }
     } catch (e) {
       setAutoStatus("");
       setExtracted({ category: "lead" });

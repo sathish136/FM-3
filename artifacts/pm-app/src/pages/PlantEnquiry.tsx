@@ -376,6 +376,7 @@ function VCScanCard({ onApply }: { onApply: (c: VCard) => void }) {
       });
       if (!r.ok) throw new Error(`Scan failed (${r.status})`);
       const j = await r.json();
+      console.log("[VC scan] response:", j);
       const data = j?.data || j || {};
       const card: VCard = {
         id: 0,
