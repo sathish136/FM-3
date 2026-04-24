@@ -449,44 +449,6 @@ function VCScanCard({ onApply }: { onApply: (c: VCard) => void }) {
         )}
         {error && <div className="mt-2 text-[10px] text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1">{error}</div>}
 
-        {lastCard && !scanning && (
-          <div className="mt-2 grid grid-cols-1 md:grid-cols-[1fr_1fr] gap-2">
-            {/* Parsed fields list */}
-            <div className="bg-white border border-gray-200 rounded">
-              <div className="px-2 py-1 border-b border-gray-100 flex items-center justify-between bg-gray-50">
-                <span className="text-[9px] font-semibold uppercase tracking-wider text-gray-600 flex items-center gap-1"><Sparkles className="w-3 h-3" /> AI Extracted</span>
-                <button title="Re-apply to form" onClick={() => onApply(lastCard)} className="text-[9px] font-semibold text-indigo-600 hover:text-indigo-800">Re-apply →</button>
-              </div>
-              <div className="max-h-32 overflow-auto px-2 py-1.5 text-[10px] text-gray-700 leading-relaxed space-y-0.5">
-                {[
-                  ["Name", lastCard.name],
-                  ["Designation", lastCard.designation],
-                  ["Company", lastCard.company],
-                  ["Email", lastCard.email],
-                  ["Phones", lastCard.phones],
-                  ["Address", lastCard.address],
-                  ["City", lastCard.city],
-                  ["Country", lastCard.country],
-                ].map(([k, v]) => v ? (
-                  <div key={k as string} className="flex gap-2">
-                    <span className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider w-16 shrink-0 pt-px">{k}</span>
-                    <span className="flex-1 break-words">{v as string}</span>
-                  </div>
-                ) : null)}
-              </div>
-            </div>
-            {/* Raw JSON */}
-            <div className="bg-white border border-gray-200 rounded">
-              <div className="px-2 py-1 border-b border-gray-100 flex items-center justify-between bg-gray-50">
-                <span className="text-[9px] font-semibold uppercase tracking-wider text-gray-600 flex items-center gap-1"><FileText className="w-3 h-3" /> Raw Output</span>
-                {rawJson && (
-                  <button title="Copy" onClick={() => { navigator.clipboard?.writeText(rawJson); }} className="text-[9px] font-semibold text-indigo-600 hover:text-indigo-800">Copy</button>
-                )}
-              </div>
-              <pre className="max-h-32 overflow-auto px-2 py-1.5 text-[9.5px] text-gray-600 leading-snug font-mono whitespace-pre-wrap break-words">{rawJson || ""}</pre>
-            </div>
-          </div>
-        )}
       </div>
 
       <ContactPicker open={pickerOpen} onClose={() => setPickerOpen(false)} onPick={onApply} />
