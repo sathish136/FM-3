@@ -13,7 +13,10 @@ import { URL } from "url";
 // interim + final transcripts in true realtime (sub-second latency).
 
 export function setupDeepgramWS(httpServer: Server) {
-  const wss = new WebSocketServer({ noServer: true });
+  // Disable permessage-deflate: when this socket is double-proxied (Replit edge →
+  // Vite dev proxy → here), compression negotiation gets mangled and the browser
+  // sees "Invalid frame header" with abnormal close code 1006. Plain frames just work.
+  const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
 
   httpServer.on("upgrade", (req: IncomingMessage, socket, head) => {
     if (!req.url) return;
