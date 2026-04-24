@@ -401,14 +401,15 @@ function VCScanCard({ onApply }: { onApply: (c: VCard) => void }) {
           >
             <ScanLine className="w-3 h-3" /> {scanning ? "Scanning…" : "Upload"}
           </button>
-          <button
-            type="button"
-            onClick={() => { const i = document.createElement("input"); i.type = "file"; i.accept = "image/*"; (i as any).capture = "environment"; i.onchange = (e: any) => handleFiles(e.target.files); i.click(); }}
-            disabled={scanning}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded border border-gray-200 hover:border-gray-400 hover:bg-gray-50 text-[10px] font-semibold text-gray-700 transition disabled:opacity-50"
+          <a
+            href="/pm-app/vc-card-scanner"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open VC Card Scanner in a new tab"
+            className="inline-flex items-center gap-1 px-2 py-1 rounded border border-gray-200 hover:border-gray-400 hover:bg-gray-50 text-[10px] font-semibold text-gray-700 transition"
           >
-            <Sparkles className="w-3 h-3" /> Camera
-          </button>
+            <Sparkles className="w-3 h-3" /> Scan Card
+          </a>
           <button
             type="button"
             onClick={() => setPickerOpen(true)}
