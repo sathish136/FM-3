@@ -43,20 +43,26 @@ export function setupDeepgramWS(httpServer: Server) {
     const encoding = u.searchParams.get("encoding") || "opus"; // "opus" (webm) or "linear16"
     const sampleRate = u.searchParams.get("sampleRate") || "48000";
 
-    // Build Deepgram listen URL — nova-2 supports multilingual streaming + smart formatting.
+    // Pick the best Deepgram model for the requested language.
+    //   - nova-3 supports `multi` (real multilingual code-switching: en/es/fr/de/hi/it/ja/nl/pt/ru)
+    //     and is more accurate overall, so we prefer it whenever the caller asks for a language
+    //     nova-3 actually covers.
+    //   - For everything else (e.g. Tamil `ta`, Bengali `bn`) we fall back to nova-2, which has
+    //     wider language coverage for streaming.
+    const NOVA3_LANGS = new Set(["multi", "en", "en-US", "en-IN", "en-GB", "es", "fr", "de", "hi", "it", "ja", "nl", "pt", "ru"]);
+    const model = NOVA3_LANGS.has(lang) ? "nova-3" : "nova-2";
+
+    // Build Deepgram listen URL — nova-3 (or nova-2 fallback) with smart formatting.
     const dgUrl = new URL("wss://api.deepgram.com/v1/listen");
-    dgUrl.searchParams.set("model", "nova-2");
-    if (lang === "multi") {
-      dgUrl.searchParams.set("language", "multi");
-    } else {
-      dgUrl.searchParams.set("language", lang);
-    }
+    dgUrl.searchParams.set("model", model);
+    dgUrl.searchParams.set("language", lang);
     dgUrl.searchParams.set("smart_format", "true");
     dgUrl.searchParams.set("interim_results", "true");
     dgUrl.searchParams.set("punctuate", "true");
     dgUrl.searchParams.set("endpointing", "300");
     dgUrl.searchParams.set("utterance_end_ms", "1000");
     dgUrl.searchParams.set("vad_events", "true");
+    console.log(`[Deepgram WS] upstream lang=${lang} model=${model}`);
     if (encoding === "linear16") {
       dgUrl.searchParams.set("encoding", "linear16");
       dgUrl.searchParams.set("sample_rate", sampleRate);

@@ -17,11 +17,34 @@ import "leaflet/dist/leaflet.css";
 const VC_BASE = "/api";
 
 // Build the Deepgram-proxy WebSocket URL on the same origin (http→ws, https→wss).
-// `lang=multi` enables Deepgram nova-2 multilingual mode — auto-detects Tamil, Hindi,
-// Spanish, French, Mandarin, etc., perfect for international travel conversations.
-function buildDeepgramWsUrl(): string {
+// We pass the user's actual selected language so Deepgram uses the correct acoustic
+// model. `multi` triggers nova-3 multilingual auto-detection (Tamil, Hindi, English,
+// Spanish, French, etc.). A specific code like `ta` / `hi` / `en-IN` pins the model
+// to that language for higher accuracy.
+function buildDeepgramWsUrl(uiLangCode: string): string {
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${window.location.host}/api/deepgram-ws?lang=multi`;
+  const dgLang = mapUiLangToDeepgram(uiLangCode);
+  return `${proto}//${window.location.host}/api/deepgram-ws?lang=${encodeURIComponent(dgLang)}`;
+}
+
+// Map our UI language codes (e.g. "ta-IN") to the codes Deepgram expects for its
+// streaming Listen API. Anything we don't have a precise mapping for falls back to
+// "multi" so nova-3's multilingual auto-detect can take a shot at it.
+function mapUiLangToDeepgram(uiCode: string): string {
+  switch (uiCode) {
+    case "en-IN": return "en-IN";
+    case "en-US": return "en-US";
+    case "hi-IN": return "hi";
+    case "ta-IN": return "ta";
+    case "te-IN": return "multi";
+    case "kn-IN": return "multi";
+    case "ml-IN": return "multi";
+    case "mr-IN": return "multi";
+    case "gu-IN": return "multi";
+    case "bn-IN": return "bn";
+    case "pa-IN": return "multi";
+    default:      return "multi";
+  }
 }
 // Send a small audio frame to Deepgram every 250ms so interim transcripts stream in
 // (sub-second latency, word-by-word).
@@ -1342,7 +1365,7 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
   // Open the proxy WebSocket and start a 250ms-timeslice MediaRecorder. Audio frames
   // stream to Deepgram → we receive interim + final transcripts in real time.
   const startDeepgramStreaming = (stream: MediaStream, mime: string) => {
-    const wsUrl = buildDeepgramWsUrl();
+    const wsUrl = buildDeepgramWsUrl(language);
     console.log("[LiveTranscript] Deepgram connecting to", wsUrl);
     let ws: WebSocket;
     try {
@@ -1395,6 +1418,7 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
 
         if (msg.type === "ready") {
           wsReadyRef.current = true;
+          setHint(null);
           console.log("[LiveTranscript] Deepgram ready");
           return;
         }
@@ -1640,7 +1664,7 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
             Live Transcript
             {recording && <span className="inline-flex items-center gap-1 px-1.5 py-px rounded-full bg-rose-50 text-rose-700 text-[8px] font-bold border border-rose-200"><span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse" /> REC</span>}
           </div>
-          <div className="text-[9px] text-gray-500 truncate">{recording ? `Listening in ${langLabel} — translating to English…` : "Speak in any language — see English transcript live"}</div>
+          <div className="text-[9px] text-gray-500 truncate">{recording ? `Listening in ${langLabel} — original on left, English translation on right` : "Pick a language → press Start. Original + English appear live as you speak."}</div>
         </div>
         <select
           value={language}
