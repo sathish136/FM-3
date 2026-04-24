@@ -62,13 +62,12 @@ waitForPort = 8081
 name = "artifacts/pm-app: web"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "console"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "PORT=5173 BASE_PATH=/pm-app/ pnpm --filter @workspace/pm-app run dev"
-waitForPort = 5173
-
-[workflows.workflow.metadata]
-outputType = "webview"
+args = "PORT=23704 BASE_PATH=/pm-app/ pnpm --filter @workspace/pm-app run dev"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
