@@ -1400,7 +1400,15 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
       r.continuous = true;
       r.interimResults = true;
       r.lang = language;
+      r.onstart = () => {
+        console.log("[LiveTranscript] SpeechRecognition started, lang=", language);
+        setHint("Listening… start speaking.");
+      };
+      r.onaudiostart = () => console.log("[LiveTranscript] audio capture started");
+      r.onspeechstart = () => console.log("[LiveTranscript] speech detected");
+      r.onspeechend = () => console.log("[LiveTranscript] speech ended");
       r.onresult = (ev: any) => {
+        console.log("[LiveTranscript] onresult", ev.resultIndex, "→", ev.results?.length);
         let interimText = "";
         for (let i = ev.resultIndex; i < ev.results.length; i++) {
           const result = ev.results[i];
@@ -1422,9 +1430,13 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
         setInterim(trimmed);
       };
       r.onerror = (e: any) => {
-        const code = e?.error;
+        const code = e?.error || "unknown";
+        const msg = e?.message || "";
+        console.warn("[LiveTranscript] SR error:", code, msg, e);
         if (code === "not-allowed" || code === "service-not-allowed") {
-          setError("Microphone permission denied. Click the camera/mic icon in the address bar and allow access.");
+          setError(
+            "Microphone permission denied. If the app is running inside the Replit canvas/preview, open it in a new browser tab — the embedded preview iframe blocks the speech recognition service. Otherwise, click the mic icon in the address bar and allow access.",
+          );
           stopRequestedRef.current = true;
         } else if (code === "audio-capture") {
           setError("No microphone detected. Plug one in and try again.");
@@ -1433,6 +1445,13 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
           setHint("Network blip — speech service reconnecting…");
         } else if (code === "no-speech") {
           setHint("Listening… speak a little louder or move closer to the mic.");
+        } else if (code === "language-not-supported") {
+          setError(`Language "${language}" is not supported by this browser's speech engine. Try switching the language picker (e.g. to English (India) or English (US)).`);
+          stopRequestedRef.current = true;
+        } else if (code === "aborted") {
+          // benign — happens during stop / restart
+        } else {
+          setError(`Speech recognition error: ${code}${msg ? ` — ${msg}` : ""}. Open the app in a real Chrome/Edge browser tab (not inside the Replit preview iframe) and reload.`);
         }
       };
       r.onend = () => {
