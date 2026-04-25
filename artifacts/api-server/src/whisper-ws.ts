@@ -67,6 +67,16 @@ const HALLUCINATION_PATTERNS: RegExp[] = [
   /^you$/i,
   // Tamil hallucination — bare "வணக்கம்" (Hello) with optional punctuation
   /^வணக்கம்[!.\s]*$/,
+  // Tamil hallucination — doubled "வணக்கம் வணக்கம்" (hello hello),
+  // observed repeatedly in real session logs (2026-04-25) on near-silent
+  // Tamil audio. Whisper's most common stock fabrication for soft Indic
+  // input that doesn't match a real word.
+  /^வணக்கம்\s+வணக்கம்[!.\s]*$/,
+  // Tamil hallucination — the "அவர்களுக்(கு|கும்) தெரியவில்லை…" family
+  // ("they don't know" / "don't they know?"), produced by Whisper for
+  // soft / quiet Tamil speech. Matches the bare phrase with optional
+  // sentence-final markers (ஆ ே ோ யா யே ! ? .).
+  /^அவர்களுக்(கு|கும்)த்?\s*தெரியவில்லை[யோே]*[!.\s?]*$/,
   // Hindi/Devanagari bare greeting
   /^नमस्ते[!.\s]*$/,
   /^नमस्कார[!.\s]*$/,

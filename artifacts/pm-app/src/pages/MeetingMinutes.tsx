@@ -1446,9 +1446,9 @@ function LiveSpeechMinutesView({
   // Server-side rails (no_speech_prob, avg_logprob, wrong-script, dedupe,
   // hallucination regex, compression-ratio) still catch fabricated text, so
   // being permissive here just means real speech actually reaches Whisper.
-  const VOICE_RMS_FLOOR = 0.012;
-  const VOICE_RMS_MARGIN = 0.008;
-  const MIN_VOICE_FRAMES = 5;
+  const VOICE_RMS_FLOOR = 0.015;
+  const VOICE_RMS_MARGIN = 0.012;
+  const MIN_VOICE_FRAMES = 8;
 
   const idCounterRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
