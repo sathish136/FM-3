@@ -1436,15 +1436,19 @@ function LiveSpeechMinutesView({
   const levelRafRef = useRef<number | null>(null);
   const segVoiceFramesRef = useRef(0);
   const noiseFloorRef = useRef(0.01);
-  // Looser VAD gate (tuned 2026-04-25 from real Tamil session logs where the
-  // user spoke clearly but voiceFrames topped out at 10/24, killing every
-  // segment client-side before it could reach Whisper). Soft / Indic / laptop-
-  // mic speech rarely clears 0.05 RMS even mid-sentence. The server still has
-  // a no_speech / log_prob / wrong-script / hallucination gauntlet, so being
-  // permissive here just means real speech reaches Whisper.
-  const VOICE_RMS_FLOOR = 0.025;
-  const VOICE_RMS_MARGIN = 0.02;
-  const MIN_VOICE_FRAMES = 14;
+  // Looser VAD gate (re-tuned 2026-04-25 — second pass — after live Customer
+  // Meeting session logs showed the user speaking clearly but every segment
+  // being dropped client-side with voiceFrames maxing out at 13/14 (skip
+  // silent segment voiceFrames=13, 9, 7, 5, 1, 0). The previous threshold of
+  // 14 was just barely above what real speech could produce on a laptop mic
+  // with rAF-throttled measurements. Soft / Indic / quiet-room speech rarely
+  // clears even 0.025 RMS, so we drop the floor and slash the frame minimum.
+  // Server-side rails (no_speech_prob, avg_logprob, wrong-script, dedupe,
+  // hallucination regex, compression-ratio) still catch fabricated text, so
+  // being permissive here just means real speech actually reaches Whisper.
+  const VOICE_RMS_FLOOR = 0.012;
+  const VOICE_RMS_MARGIN = 0.008;
+  const MIN_VOICE_FRAMES = 5;
 
   const idCounterRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
