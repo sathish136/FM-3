@@ -1586,6 +1586,43 @@ function LiveSpeechMinutesView({
   // makes Chromium's MediaRecorder.start() throw "There was an error starting
   // the MediaRecorder" — observed after long meetings with lots of silence.
   // A fresh cloned track per segment avoids that drift.
+  // Track consecutive recorder.start() failures so we can re-acquire the mic
+  // stream as a recovery path. Chromium occasionally puts a long-lived audio
+  // track into a state where every cloned MediaRecorder.start() throws — the
+  // only fix is a fresh getUserMedia call.
+  const segStartFailuresRef = useRef(0);
+  const reacquireMicAndRestart = async () => {
+    if (stopRequestedRef.current || isPausedRef.current) return;
+    try {
+      // Stop the dead stream first so the OS releases the mic before we ask
+      // for it again.
+      const old = streamRef.current;
+      if (old) { try { old.getTracks().forEach((t) => t.stop()); } catch {} }
+      streamRef.current = null;
+
+      const fresh = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+      streamRef.current = fresh;
+      segStartFailuresRef.current = 0;
+      setRecError(null);
+      // Rebuild the analyser on the fresh stream so the level meter and VAD
+      // keep working. Tear down the previous one first to avoid leaks.
+      if (levelRafRef.current) { cancelAnimationFrame(levelRafRef.current); levelRafRef.current = null; }
+      analyserRef.current = null;
+      if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
+        try { audioCtxRef.current.close(); } catch {}
+      }
+      audioCtxRef.current = null;
+      startAudioAnalyser(fresh);
+      // Kick off a fresh segment recorder on the new stream.
+      setTimeout(() => { startSegmentRecorder(); }, 50);
+    } catch (e: any) {
+      console.error("[Whisper MM] mic re-acquire failed:", e);
+      setRecError(`Microphone unavailable: ${e?.name || ""} ${e?.message || e}`.trim());
+    }
+  };
+
   const startSegmentRecorder = () => {
     if (stopRequestedRef.current || isPausedRef.current) return;
     const baseStream = streamRef.current;
@@ -1654,11 +1691,32 @@ function LiveSpeechMinutesView({
       console.error("[Whisper MM] segment recorder error:", ev?.error || ev);
     };
 
-    try { mr.start(); }
+    try {
+      mr.start();
+      // Successful start — reset the failure counter so a single transient
+      // glitch much later doesn't trigger an unnecessary mic re-acquire.
+      segStartFailuresRef.current = 0;
+    }
     catch (err: any) {
       console.error("[Whisper MM] segment recorder.start failed:", err);
-      setRecError(`Recorder start failed: ${err?.message || err}`);
       releaseSegStream();
+      segRecorderRef.current = null;
+      segStartFailuresRef.current += 1;
+      // First couple of failures: just retry on a fresh cloned track after a
+      // short delay. Often a 50ms breather is enough for Chromium to release
+      // whatever resource it was holding onto.
+      if (segStartFailuresRef.current <= 2) {
+        setTimeout(() => {
+          if (!stopRequestedRef.current && !isPausedRef.current) startSegmentRecorder();
+        }, 150);
+        return;
+      }
+      // Persistent failure (3+ in a row): the underlying mic stream itself
+      // has gone bad. Re-acquire from getUserMedia. We surface a soft status
+      // message — but do NOT fall through to the hard "Recorder start failed"
+      // banner unless re-acquire also fails.
+      console.warn("[Whisper MM] re-acquiring mic stream after repeated start failures");
+      void reacquireMicAndRestart();
       return;
     }
     segTimerRef.current = window.setTimeout(() => {
@@ -1745,12 +1803,25 @@ function LiveSpeechMinutesView({
       const Ctor = (window as any).AudioContext || (window as any).webkitAudioContext;
       const ac: AudioContext = new Ctor();
       audioCtxRef.current = ac;
+      // Chromium frequently creates the AudioContext in "suspended" state on
+      // initial user gesture, especially after HMR reloads. A suspended
+      // context produces ZERO audio data — the analyser sees pure silence,
+      // VAD frames stay at 0, and every segment is dropped client-side.
+      // Resume explicitly (and after the audio graph is built, in case the
+      // browser re-suspends it on tab-blur).
+      if (ac.state === "suspended") {
+        ac.resume().catch((err) => console.warn("[Whisper MM] AudioContext resume failed:", err));
+      }
       const src = ac.createMediaStreamSource(stream);
       const an = ac.createAnalyser();
       an.fftSize = 1024;
       an.smoothingTimeConstant = 0.75;
       src.connect(an);
       analyserRef.current = an;
+      // Belt-and-braces: resume again now that the graph is connected.
+      if (ac.state === "suspended") {
+        ac.resume().catch(() => {});
+      }
       const buf = new Uint8Array(an.fftSize);
 
       const tick = () => {
