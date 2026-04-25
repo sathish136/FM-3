@@ -1435,10 +1435,16 @@ function LiveSpeechMinutesView({
   const analyserRef = useRef<AnalyserNode | null>(null);
   const levelRafRef = useRef<number | null>(null);
   const segVoiceFramesRef = useRef(0);
-  const noiseFloorRef = useRef(0.02);
-  const VOICE_RMS_FLOOR = 0.05;
-  const VOICE_RMS_MARGIN = 0.04;
-  const MIN_VOICE_FRAMES = 24;
+  const noiseFloorRef = useRef(0.01);
+  // Looser VAD gate (tuned 2026-04-25 from real Tamil session logs where the
+  // user spoke clearly but voiceFrames topped out at 10/24, killing every
+  // segment client-side before it could reach Whisper). Soft / Indic / laptop-
+  // mic speech rarely clears 0.05 RMS even mid-sentence. The server still has
+  // a no_speech / log_prob / wrong-script / hallucination gauntlet, so being
+  // permissive here just means real speech reaches Whisper.
+  const VOICE_RMS_FLOOR = 0.025;
+  const VOICE_RMS_MARGIN = 0.02;
+  const MIN_VOICE_FRAMES = 8;
 
   const idCounterRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);

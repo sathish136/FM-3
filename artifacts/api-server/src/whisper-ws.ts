@@ -382,10 +382,15 @@ export function setupWhisperWS(httpServer: Server) {
           // invented words for ambient noise" failure mode the user reported.
           // Real, clearly-spoken speech: no_speech_prob < 0.3, avg_logprob > -0.7.
           // Anything weaker than the bounds below is overwhelmingly hallucination.
+          // Tuned 2026-04-25: previously we used 0.55 / -1.0 which silently
+          // killed quiet but real Tamil/Indic speech (no_speech_prob lands
+          // around 0.55–0.65 on legitimate soft sentences from a laptop mic).
+          // The other rails — wrong-script filter, hallucination regex, and
+          // maxNoSpeech 0.85 — still catch the obvious garbage outputs.
           if (
-            avgNoSpeech > 0.55 ||   // average frame confidence: "this is silence"
+            avgNoSpeech > 0.65 ||   // average frame confidence: "this is silence"
             maxNoSpeech > 0.85 ||   // any single very-confident silence frame
-            avgLogProb  < -1.0 ||   // overall acoustic confidence too low
+            avgLogProb  < -1.2 ||   // overall acoustic confidence too low
             maxComp     > 2.4       // repetitive/looped output (classic hallucination)
           ) {
             console.log(

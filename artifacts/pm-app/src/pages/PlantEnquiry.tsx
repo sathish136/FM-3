@@ -1323,20 +1323,23 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
   // Absolute floor — anything below this is treated as silence regardless of
   // the adaptive noise floor (prevents the threshold from collapsing in a
   // dead-quiet room, which would let mic self-noise trigger detection).
-  const VOICE_RMS_FLOOR = 0.05;
+  // Tuned 2026-04-25 from real Tamil session logs: laptop mic + soft Indic
+  // speech rarely clears 0.05 RMS even mid-sentence, so the old value made
+  // every segment look silent. The server's no_speech_prob / log_prob /
+  // wrong-script gauntlet still rejects whatever isn't actually speech.
+  const VOICE_RMS_FLOOR = 0.025;
   // Adaptive noise floor: a slowly-tracking estimate of the current ambient
   // RMS. Real speech must exceed this by VOICE_RMS_MARGIN to count as voiced.
   // This lets the gate stay tight in a quiet office and loosen automatically
   // in a noisy van/site without the user changing anything.
-  const noiseFloorRef = useRef(0.02);
-  const VOICE_RMS_MARGIN = 0.04;
-  // Require ~400ms of cumulative real speech inside the 4s segment before we
-  // ship it to Whisper. At ~60fps that's ≈24 analyser frames. This is loose
-  // enough to keep short single words ("சரி", "yes", "ok") but strict enough
-  // to reject coughs, keyboard taps, door slams, fan ramps, and breaths —
-  // every one of which used to slip through the old 65ms gate and made
-  // Whisper invent a sentence.
-  const MIN_VOICE_FRAMES = 24;
+  const noiseFloorRef = useRef(0.01);
+  const VOICE_RMS_MARGIN = 0.02;
+  // Require ~130ms of cumulative real speech inside the 4s segment before we
+  // ship it to Whisper. At ~60fps that's ≈8 analyser frames. Loose enough
+  // to keep one-syllable Indic words ("ஆமா", "சரி", "हाँ") and quiet/distant
+  // speakers; the server's confidence + script + hallucination filters still
+  // catch coughs, taps, fan ramps, and breaths that slip through.
+  const MIN_VOICE_FRAMES = 8;
   // Pitch tracking for speaker diarization: average voiced-frame pitch within
   // the current segment.
   const segPitchSumRef = useRef(0);
