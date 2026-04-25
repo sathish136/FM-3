@@ -1288,6 +1288,28 @@ function buildDeepgramWsUrl(): string {
   return `${proto}//${window.location.host}/api/deepgram-ws?lang=multi`;
 }
 
+// ─── Whisper realtime pipeline (Customer Meeting tab) ───────────────────────
+// We rotate a MediaRecorder every WHISPER_SEGMENT_MS so each chunk is a
+// self-decodable WebM/Opus blob, ship it to /api/whisper-ws, and append the
+// returned transcript to the meeting timeline. Same approach used by the
+// Plant Enquiry page — keeps Tamil / Indic accuracy + hallucination filtering
+// consistent across the app.
+const WHISPER_SEGMENT_MS = 4000;
+
+function buildWhisperWsUrl(uiLangCode: string, mime: string): string {
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const params = new URLSearchParams({ lang: uiLangCode, mime });
+  return `${proto}//${window.location.host}/api/whisper-ws?${params.toString()}`;
+}
+
+// SPEECH_LANGS uses BCP-47 codes like "ta-IN" but the Whisper server keys its
+// per-language prompt + script-mismatch tables on bare ISO ("ta", "hi"). Strip
+// the region suffix so all server-side accuracy filters apply.
+function toWhisperLang(uiLang: string): string {
+  if (!uiLang || uiLang === "auto") return "auto";
+  return uiLang.split("-")[0].toLowerCase();
+}
+
 function CameraCaptureModal({ onCapture, onClose }: { onCapture: (dataUrl: string) => void; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -1386,13 +1408,36 @@ function LiveSpeechMinutesView({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
 
-  // Deepgram realtime streaming refs
+  // ─── Whisper realtime streaming refs ───────────────────────────────────
+  // streamRef holds the original mic stream (we keep it alive for the whole
+  // session). segStreamRef is a CLONE of its audio tracks dedicated to the
+  // rotating segment recorder — running two MediaRecorders against the same
+  // raw mic stream is unreliable in Chromium, so each recorder gets its own
+  // isolated MediaStream backed by the same physical mic.
   const streamRef = useRef<MediaStream | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
+  const segStreamRef = useRef<MediaStream | null>(null);
+  const segRecorderRef = useRef<MediaRecorder | null>(null);
+  const segChunksRef = useRef<Blob[]>([]);
+  const segTimerRef = useRef<number | null>(null);
+  const segMimeRef = useRef<string>("audio/webm");
   const wsRef = useRef<WebSocket | null>(null);
   const wsReadyRef = useRef(false);
   const isRecordingRef = useRef(false);
   const isPausedRef = useRef(false);
+  const stopRequestedRef = useRef(false);
+
+  // Audio analyser + voice-activity detection. Same gate as Plant Enquiry:
+  // only ship a segment to Whisper if it contains sustained real speech
+  // (≥ ~400ms across the 4s window, above an ADAPTIVE noise floor). This is
+  // what stops Whisper from inventing words for fan hum, breaths, and taps.
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const levelRafRef = useRef<number | null>(null);
+  const segVoiceFramesRef = useRef(0);
+  const noiseFloorRef = useRef(0.02);
+  const VOICE_RMS_FLOOR = 0.05;
+  const VOICE_RMS_MARGIN = 0.04;
+  const MIN_VOICE_FRAMES = 24;
 
   const idCounterRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -1455,10 +1500,49 @@ function LiveSpeechMinutesView({
     if (!detected.isEnglish) translateBlock(id, text, detected.lang);
   };
 
-  // ─── Deepgram realtime streaming ──────────────────────────────────────────
+  // ─── Whisper realtime streaming ──────────────────────────────────────────
+  // Tear down the rotating segment recorder + analyser + WebSocket. Stops
+  // the cloned segment stream but leaves the original mic stream for the
+  // caller (stopRecording) to release, so this is safe to call from pause too.
   const teardownStream = () => {
-    try { recorderRef.current?.state !== "inactive" && recorderRef.current?.stop(); } catch {}
-    recorderRef.current = null;
+    stopRequestedRef.current = true;
+    if (segTimerRef.current) {
+      window.clearTimeout(segTimerRef.current);
+      segTimerRef.current = null;
+    }
+    try {
+      const mr = segRecorderRef.current;
+      if (mr && mr.state !== "inactive") {
+        // Detach handlers so the rotation can't auto-restart on stop.
+        mr.ondataavailable = null as any;
+        mr.onstop = null as any;
+        mr.stop();
+      }
+    } catch {}
+    segRecorderRef.current = null;
+    segChunksRef.current = [];
+
+    // Stop the cloned audio tracks (segment recorder's private stream).
+    try {
+      const segStream = segStreamRef.current;
+      if (segStream && segStream !== streamRef.current) {
+        segStream.getTracks().forEach((t) => { try { t.stop(); } catch {} });
+      }
+    } catch {}
+    segStreamRef.current = null;
+
+    // Tear down the analyser + audio context.
+    if (levelRafRef.current) {
+      cancelAnimationFrame(levelRafRef.current);
+      levelRafRef.current = null;
+    }
+    analyserRef.current = null;
+    if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
+      try { audioCtxRef.current.close(); } catch {}
+    }
+    audioCtxRef.current = null;
+
+    // Close the WS gracefully.
     try {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         try { wsRef.current.send(JSON.stringify({ type: "stop" })); } catch {}
@@ -1467,22 +1551,125 @@ function LiveSpeechMinutesView({
     } catch {}
     wsRef.current = null;
     wsReadyRef.current = false;
+
+    // Release the original mic stream (the segment-stream clone is already
+    // stopped above). Caller may have set streamRef.current = null already.
     if (streamRef.current) {
       try { streamRef.current.getTracks().forEach(t => t.stop()); } catch {}
       streamRef.current = null;
     }
   };
 
-  // Open the proxy WebSocket and start the recorder. Audio frames are sent every
-  // DG_TIMESLICE_MS (250ms) so Deepgram can return interim transcripts in real time.
-  const startStreaming = (stream: MediaStream) => {
-    const wsUrl = buildDeepgramWsUrl();
-    console.log("[Deepgram] connecting to", wsUrl);
+  // Start ONE audio segment. When the timer fires (or stop() is called) the
+  // segment's onstop handler ships the complete blob and schedules the next
+  // segment on the next event-loop tick — synchronously recursing inside
+  // onstop causes Chromium to fail subsequent start() calls after a few
+  // rotations.
+  //
+  // We clone the audio tracks PER SEGMENT (not once per session). Recycling
+  // the same MediaStream across many MediaRecorder lifecycles eventually
+  // makes Chromium's MediaRecorder.start() throw "There was an error starting
+  // the MediaRecorder" — observed after long meetings with lots of silence.
+  // A fresh cloned track per segment avoids that drift.
+  const startSegmentRecorder = () => {
+    if (stopRequestedRef.current || isPausedRef.current) return;
+    const baseStream = streamRef.current;
+    const ws = wsRef.current;
+    if (!baseStream || !ws) return;
+
+    let segStream: MediaStream;
+    try {
+      segStream = new MediaStream(baseStream.getAudioTracks().map((t) => t.clone()));
+    } catch (err) {
+      console.warn("[Whisper MM] per-segment track.clone failed:", err);
+      segStream = baseStream;
+    }
+    segStreamRef.current = segStream;
+    const releaseSegStream = () => {
+      if (segStream !== baseStream) {
+        try { segStream.getTracks().forEach((t) => { try { t.stop(); } catch {} }); } catch {}
+      }
+    };
+
+    const mime = segMimeRef.current;
+    let mr: MediaRecorder;
+    try {
+      mr = mime ? new MediaRecorder(segStream, { mimeType: mime }) : new MediaRecorder(segStream);
+    } catch (err: any) {
+      try { mr = new MediaRecorder(segStream); } catch (e2: any) {
+        console.error("[Whisper MM] segment MediaRecorder failed:", e2);
+        setRecError(`Realtime recorder unsupported: ${e2?.message || e2}`);
+        releaseSegStream();
+        return;
+      }
+    }
+    segRecorderRef.current = mr;
+    segChunksRef.current = [];
+    segVoiceFramesRef.current = 0;
+
+    mr.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) segChunksRef.current.push(e.data);
+    };
+    mr.onstop = async () => {
+      const chunks = segChunksRef.current;
+      const voiceFrames = segVoiceFramesRef.current;
+      segChunksRef.current = [];
+      // Release THIS segment's cloned tracks now that the blob is captured.
+      releaseSegStream();
+      const blob = chunks.length > 0 ? new Blob(chunks, { type: mime }) : null;
+      // Schedule the next segment on the next event-loop tick to give
+      // Chromium time to release this recorder's resources.
+      if (!stopRequestedRef.current && !isPausedRef.current) {
+        setTimeout(() => {
+          if (!stopRequestedRef.current && !isPausedRef.current) startSegmentRecorder();
+        }, 0);
+      }
+      // Only ship segments with sustained voice — otherwise Whisper invents
+      // words for ambient noise / silence.
+      if (voiceFrames < MIN_VOICE_FRAMES) {
+        console.log(`[Whisper MM] skip silent segment (voiceFrames=${voiceFrames})`);
+        return;
+      }
+      if (blob && blob.size > 1500 && ws.readyState === WebSocket.OPEN) {
+        try { ws.send(await blob.arrayBuffer()); }
+        catch (err) { console.warn("[Whisper MM] WS send error:", err); }
+      }
+    };
+    mr.onerror = (ev: any) => {
+      console.error("[Whisper MM] segment recorder error:", ev?.error || ev);
+    };
+
+    try { mr.start(); }
+    catch (err: any) {
+      console.error("[Whisper MM] segment recorder.start failed:", err);
+      setRecError(`Recorder start failed: ${err?.message || err}`);
+      releaseSegStream();
+      return;
+    }
+    segTimerRef.current = window.setTimeout(() => {
+      const cur = segRecorderRef.current;
+      if (cur && cur.state !== "inactive") {
+        try { cur.stop(); } catch {}
+      }
+    }, WHISPER_SEGMENT_MS);
+  };
+
+  // Open the Whisper proxy WebSocket and kick off the rotating recorder.
+  // (Audio-track cloning happens per-segment inside startSegmentRecorder, so
+  // we don't pre-clone anything here — we just remember the chosen mime.)
+  const startStreaming = (_stream: MediaStream) => {
+    const mime = pickRecorderMime() || "audio/webm";
+    segMimeRef.current = mime;
+
+    // Build & open the WebSocket.
+    const wsLang = toWhisperLang(lang);
+    const wsUrl = buildWhisperWsUrl(wsLang, mime);
+    console.log("[Whisper MM] connecting to", wsUrl);
     let ws: WebSocket;
     try {
       ws = new WebSocket(wsUrl);
     } catch (err: any) {
-      console.error("[Deepgram] WS construct failed:", err);
+      console.error("[Whisper MM] WS construct failed:", err);
       setRecError(`Cannot open WebSocket: ${err?.message || err}`);
       return;
     }
@@ -1490,99 +1677,93 @@ function LiveSpeechMinutesView({
     wsRef.current = ws;
     wsReadyRef.current = false;
 
-    ws.onopen = () => {
-      console.log("[Deepgram] WS open, starting recorder");
-      // Start MediaRecorder once the socket is open so no audio is lost.
-      const mime = pickRecorderMime();
-      let mr: MediaRecorder;
-      try {
-        mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
-      } catch (err: any) {
-        try { mr = new MediaRecorder(stream); } catch (e2: any) {
-          console.error("[Deepgram] MediaRecorder failed:", e2);
-          setRecError(`MediaRecorder unsupported: ${e2?.message || e2}`);
-          return;
-        }
-      }
-      recorderRef.current = mr;
-      mr.ondataavailable = async (e) => {
-        if (!e.data || e.data.size === 0) return;
-        if (ws.readyState !== WebSocket.OPEN) return;
-        try {
-          const buf = await e.data.arrayBuffer();
-          ws.send(buf);
-        } catch (err) {
-          console.error("[Deepgram] send error:", err);
-        }
-      };
-      mr.onerror = (ev: any) => {
-        console.error("[Deepgram] recorder error:", ev?.error || ev);
-        setRecError(`Recorder error: ${ev?.error?.message || "unknown"}`);
-      };
-      try {
-        mr.start(DG_TIMESLICE_MS);
-        console.log("[Deepgram] recorder started, mime=", mr.mimeType);
-      } catch (err: any) {
-        console.error("[Deepgram] recorder.start failed:", err);
-        setRecError(`Recorder start failed: ${err?.message || err}`);
-      }
-    };
+    ws.onopen = () => { console.log("[Whisper MM] WS open"); };
 
     ws.onmessage = (ev) => {
       try {
-        const msg = JSON.parse(typeof ev.data === "string" ? ev.data : "");
-        // Server "ready" frame
-        if (msg.type === "ready") { wsReadyRef.current = true; console.log("[Deepgram] ready"); return; }
+        const raw = typeof ev.data === "string" ? ev.data : "";
+        if (!raw) return;
+        const msg = JSON.parse(raw);
+
+        if (msg.type === "ready") {
+          wsReadyRef.current = true;
+          console.log("[Whisper MM] ready, lang =", msg.whisperLang);
+          // Start the rotating recorder once the server is ready.
+          stopRequestedRef.current = false;
+          startSegmentRecorder();
+          return;
+        }
         if (msg.type === "error") {
-          console.error("[Deepgram] error:", msg.message);
-          setRecError(`Deepgram: ${msg.message}`);
+          console.error("[Whisper MM] error:", msg.message);
+          setRecError(`Transcription service: ${msg.message}`);
           return;
         }
-
-        // Deepgram "Results" frame
-        if (msg.type === "Results") {
-          const alt = msg.channel?.alternatives?.[0];
-          const transcript: string = (alt?.transcript || "").trim();
-          if (!transcript) return;
-          const detected = detectScript(transcript);
-
-          if (msg.is_final) {
-            // Final hypothesis for this segment.
-            // speech_final = end of an utterance → commit a block.
-            if (msg.speech_final) {
-              appendSpeechChunk(transcript);
-            } else {
-              // Show as a stable interim while we wait for the utterance end.
-              setLiveText(transcript);
-              setLiveDetected({ lang: detected.lang, flag: detected.flag });
-            }
-          } else {
-            // Live interim — updates several times per second.
-            setLiveText(transcript);
-            setLiveDetected({ lang: detected.lang, flag: detected.flag });
-          }
+        if (msg.type === "segment") {
+          if (msg.skipped || !msg.original) return;
+          appendSpeechChunk(String(msg.original));
           return;
         }
-
-        // UtteranceEnd frame: flush whatever is currently shown as live text
-        if (msg.type === "UtteranceEnd") {
-          // Nothing to do — final frames already handled above.
-          return;
-        }
+        // "translation" frames are ignored here — appendSpeechChunk runs the
+        // app's own translation pipeline (with detectScript) on commit.
       } catch {}
     };
 
     ws.onerror = (ev) => {
-      console.error("[Deepgram] WS error event", ev);
-      setRecError("WebSocket error — see browser console.");
+      console.error("[Whisper MM] WS error event", ev);
+      setRecError("WebSocket error — check console.");
     };
     ws.onclose = (ev) => {
-      console.log("[Deepgram] WS closed", ev.code, ev.reason);
+      console.log("[Whisper MM] WS closed", ev.code, ev.reason);
       wsReadyRef.current = false;
-      if (isRecordingRef.current && !ev.wasClean) {
+      if (isRecordingRef.current && !ev.wasClean && !stopRequestedRef.current) {
         setRecError(`Connection closed (code ${ev.code}${ev.reason ? `: ${ev.reason}` : ""}).`);
       }
     };
+  };
+
+  // Build the live audio analyser used for the VAD gate. Each animation
+  // frame measures the current RMS, slowly tracks the ambient noise floor,
+  // and bumps the per-segment voice-frame counter when the signal clears
+  // both the absolute floor AND the (noise + margin) threshold.
+  const startAudioAnalyser = (stream: MediaStream) => {
+    try {
+      const Ctor = (window as any).AudioContext || (window as any).webkitAudioContext;
+      const ac: AudioContext = new Ctor();
+      audioCtxRef.current = ac;
+      const src = ac.createMediaStreamSource(stream);
+      const an = ac.createAnalyser();
+      an.fftSize = 1024;
+      an.smoothingTimeConstant = 0.75;
+      src.connect(an);
+      analyserRef.current = an;
+      const buf = new Uint8Array(an.fftSize);
+
+      const tick = () => {
+        an.getByteTimeDomainData(buf);
+        let sumSq = 0;
+        for (let i = 0; i < buf.length; i++) {
+          const v = (buf[i] - 128) / 128;
+          sumSq += v * v;
+        }
+        const rms = Math.sqrt(sumSq / buf.length);
+        // Adaptive ambient-noise tracking — fast adapt to rising background
+        // noise, slow leak down during sustained speech.
+        const nf = noiseFloorRef.current;
+        if (rms < nf * 1.5) {
+          noiseFloorRef.current = nf * 0.95 + rms * 0.05;
+        } else {
+          noiseFloorRef.current = nf * 0.999 + rms * 0.001;
+        }
+        const speechThreshold = Math.max(VOICE_RMS_FLOOR, noiseFloorRef.current + VOICE_RMS_MARGIN);
+        if (!isPausedRef.current && rms > speechThreshold) {
+          segVoiceFramesRef.current += 1;
+        }
+        levelRafRef.current = requestAnimationFrame(tick);
+      };
+      tick();
+    } catch (e) {
+      console.warn("[Whisper MM] AudioContext failed:", e);
+    }
   };
 
   const startRecording = async () => {
@@ -1605,11 +1786,12 @@ function LiveSpeechMinutesView({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
     } catch (e: any) {
-      console.error("[Deepgram] getUserMedia failed:", e);
+      console.error("[Whisper MM] getUserMedia failed:", e);
       setRecError(`Microphone blocked: ${e?.name || ""} ${e?.message || e}`.trim());
       return;
     }
     streamRef.current = stream;
+    stopRequestedRef.current = false;
     isRecordingRef.current = true;
     isPausedRef.current = false;
     setIsRecording(true);
@@ -1617,19 +1799,39 @@ function LiveSpeechMinutesView({
     setDuration(0);
     setLiveText("");
     setLiveDetected(null);
+    startAudioAnalyser(stream);
     startStreaming(stream);
   };
 
+  // Pause: stop the rotation + current segment but keep the WebSocket and
+  // mic stream alive so resume is instant. Resume just kicks off a fresh
+  // segment recorder.
   const pauseRecording = () => {
     isPausedRef.current = true;
     setIsPaused(true);
-    try { recorderRef.current?.state === "recording" && recorderRef.current.pause(); } catch {}
+    if (segTimerRef.current) {
+      window.clearTimeout(segTimerRef.current);
+      segTimerRef.current = null;
+    }
+    try {
+      const mr = segRecorderRef.current;
+      if (mr && mr.state !== "inactive") {
+        mr.ondataavailable = null as any;
+        mr.onstop = null as any;
+        mr.stop();
+      }
+    } catch {}
+    segRecorderRef.current = null;
+    segChunksRef.current = [];
+    segVoiceFramesRef.current = 0;
   };
 
   const resumeRecording = () => {
     isPausedRef.current = false;
     setIsPaused(false);
-    try { recorderRef.current?.state === "paused" && recorderRef.current.resume(); } catch {}
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && segStreamRef.current) {
+      startSegmentRecorder();
+    }
   };
 
   const stopRecording = () => {

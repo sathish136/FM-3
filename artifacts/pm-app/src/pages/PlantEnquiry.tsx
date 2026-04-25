@@ -1514,20 +1514,42 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
   // Start one segment of recording. When the timer fires (or stop() is called),
   // the segment's onstop handler ships the complete blob and immediately starts
   // the next segment, giving continuous coverage with ~tens-of-ms gaps.
+  //
+  // IMPORTANT: we clone the audio tracks PER SEGMENT (not once per session).
+  // Recycling the same MediaStream across many MediaRecorder lifecycles
+  // eventually causes Chromium's MediaRecorder.start() to throw "There was an
+  // error starting the MediaRecorder" (we observed it after ~10 silent
+  // rotations in production). A pristine cloned track per segment + tearing
+  // it down when the recorder stops avoids that drift entirely.
   const startSegmentRecorder = () => {
     if (stopRequestedRef.current) return;
-    const stream = segStreamRef.current;
+    const baseStream = streamRef.current;
     const ws = wsRef.current;
-    if (!stream || !ws) return;
+    if (!baseStream || !ws) return;
+
+    let segStream: MediaStream;
+    try {
+      segStream = new MediaStream(baseStream.getAudioTracks().map((t) => t.clone()));
+    } catch (err) {
+      console.warn("[LiveTranscript] per-segment track.clone failed:", err);
+      segStream = baseStream;
+    }
+    segStreamRef.current = segStream;
+    const releaseSegStream = () => {
+      if (segStream !== baseStream) {
+        try { segStream.getTracks().forEach((t) => { try { t.stop(); } catch {} }); } catch {}
+      }
+    };
 
     const mime = segMimeRef.current;
     let mr: MediaRecorder;
     try {
-      mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      mr = mime ? new MediaRecorder(segStream, { mimeType: mime }) : new MediaRecorder(segStream);
     } catch (err: any) {
-      try { mr = new MediaRecorder(stream); } catch (e2: any) {
+      try { mr = new MediaRecorder(segStream); } catch (e2: any) {
         console.error("[LiveTranscript] segment MediaRecorder failed:", e2);
         setError(`Realtime recorder unsupported: ${e2?.message || e2}`);
+        releaseSegStream();
         return;
       }
     }
@@ -1547,11 +1569,12 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
       const pitchSum = segPitchSumRef.current;
       const pitchCount = segPitchCountRef.current;
       segChunksRef.current = [];
+      // Release THIS segment's cloned tracks now that we have the blob.
+      releaseSegStream();
       const blob = chunks.length > 0 ? new Blob(chunks, { type: mime }) : null;
       // Roll over to the next segment on the next event-loop tick. Recursing
       // synchronously inside onstop doesn't give Chromium time to release the
-      // previous MediaRecorder's resources, which after a few rotations causes
-      // start() to throw "There was an error starting the MediaRecorder".
+      // previous MediaRecorder's resources.
       if (!stopRequestedRef.current) {
         setTimeout(() => { if (!stopRequestedRef.current) startSegmentRecorder(); }, 0);
       }
@@ -1580,6 +1603,7 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
     catch (err: any) {
       console.error("[LiveTranscript] segment recorder.start failed:", err);
       setError(`Recorder start failed: ${err?.message || err}`);
+      releaseSegStream();
       return;
     }
     segTimerRef.current = window.setTimeout(() => {
@@ -1605,21 +1629,11 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
     ws.binaryType = "arraybuffer";
     wsRef.current = ws;
     wsReadyRef.current = false;
-    // Clone the audio tracks into a dedicated MediaStream for the rotating
-    // segment recorder. Running TWO MediaRecorders against the SAME mic stream
-    // (the continuous "save" recorder + this rotating one) is unreliable in
-    // Chromium — after a few rotation cycles the segment recorder's start()
-    // throws "There was an error starting the MediaRecorder". Cloning the
-    // tracks gives each recorder its own isolated MediaStream backed by the
-    // same underlying mic, which Chrome handles correctly.
-    let segStream: MediaStream;
-    try {
-      segStream = new MediaStream(stream.getAudioTracks().map((t) => t.clone()));
-    } catch (err: any) {
-      console.warn("[LiveTranscript] track.clone failed, reusing original stream:", err);
-      segStream = stream;
-    }
-    segStreamRef.current = segStream;
+    // Note: we no longer clone the audio tracks here. Each call to
+    // startSegmentRecorder() now clones fresh tracks for its own segment
+    // (and stops them when that segment finishes), which fixes the slow
+    // drift that eventually broke MediaRecorder.start() across many
+    // rotations. We only remember the chosen mime here.
     segMimeRef.current = mime || "audio/webm";
 
     ws.onopen = () => {

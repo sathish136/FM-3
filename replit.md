@@ -28,6 +28,22 @@ All modules sync with ERPNext at `https://erp.wttint.com` via API key auth.
 - Scope resolved via `/api/hrms/user-scope` — "all" (HR Manager), "department" (HOD), "self" (employee)
 - All new modules respect this scope automatically
 
+## Realtime voice transcription (Whisper)
+
+Two pages share one Whisper-based pipeline:
+
+- **Plant Enquiry** (`artifacts/pm-app/src/pages/PlantEnquiry.tsx`)
+- **Customer Meeting** tab in **Meeting Minutes** (`artifacts/pm-app/src/pages/MeetingMinutes.tsx`)
+
+Both stream mic audio over a WebSocket proxy at `/api/whisper-ws` (handler in `artifacts/api-server/src/whisper-ws.ts`) using the **rotating-segment recorder** pattern:
+
+- Mic audio is captured with `getUserMedia({ echoCancellation, noiseSuppression, autoGainControl })`.
+- A new `MediaRecorder` is created **per segment** (every `WHISPER_SEGMENT_MS = 4000`ms). Each recorder gets its own freshly cloned `MediaStream` from `stream.getAudioTracks().map(t => t.clone())`. Recycling the same MediaStream across many MediaRecorder lifecycles eventually causes Chromium's `MediaRecorder.start()` to throw — per-segment cloning fixes it permanently.
+- Cloned tracks for the previous segment are released in `mr.onstop` before the next segment starts; rotation is scheduled via `setTimeout(..., 0)` instead of synchronous recursion.
+- An `AudioContext + AnalyserNode` runs an **adaptive-noise-floor VAD**. A segment is only sent to Whisper if it accumulates ≥ `MIN_VOICE_FRAMES` (24 frames ≈ 400ms) above `max(VOICE_RMS_FLOOR, noiseFloor + VOICE_RMS_MARGIN)`. This stops Whisper from hallucinating sentences for fan hum / silence.
+- The server (`whisper-ws.ts`) adds **per-language priming prompts** (`WHISPER_PROMPTS` for ta/hi/en/te/kn/ml/bn/mr/gu/pa/ur), a **wrong-script detector** (`isWrongScript()` against `LANG_SCRIPTS`), Japanese/Korean hallucination regex filters, and a confidence gate (`avgNoSpeech > 0.55 || maxNoSpeech > 0.85 || avgLogProb < -1.0 || maxComp > 2.4`).
+- Customer Meeting also keeps the meeting-specific UI (notes composer, photo capture, save to backend); transcripts arrive as `{ type: "segment", original }` frames and are appended via `appendSpeechChunk()`.
+
 ## Email Feature (Gmail)
 - Email page at `/email` — inbox, sent, compose, reply, forward
 - Backend: `artifacts/api-server/src/routes/email.ts` — nodemailer (SMTP send) + imapflow (IMAP read)
