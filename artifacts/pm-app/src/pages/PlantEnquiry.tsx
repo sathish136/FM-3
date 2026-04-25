@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Layout } from "@/components/Layout";
 import { cn } from "@/lib/utils";
 import { AutoCaptureModal } from "@/pages/VCCardScanner";
+import { MicLevelBars } from "@/components/MicLevelBars";
 import {
   Factory, User, Phone, Mail, Building2, MapPin, Globe2, Hash,
   Droplets, Beaker, ThermometerSun, FlaskConical, Recycle, Search,
@@ -1926,6 +1927,7 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
       {/* Header */}
       <div className="px-3 py-2 border-b border-gray-200 bg-gray-50 flex items-center gap-2 flex-wrap">
         <Mic className={cn("w-3.5 h-3.5", recording ? "text-rose-600 animate-pulse" : "text-gray-600")} />
+        <MicLevelBars analyserRef={analyserRef} active={recording} className="h-3.5" />
         <div className="flex-1 min-w-0">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-700 flex items-center gap-1.5">
             Live Transcript

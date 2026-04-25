@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRecording, getGlobalRec } from "@/contexts/RecordingContext";
+import { MicLevelBars } from "@/components/MicLevelBars";
 import { useListProjects } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -2017,6 +2018,7 @@ function LiveSpeechMinutesView({
               ? <><Pause className="w-3.5 h-3.5" /> Paused</>
               : <><span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse" /> Recording</>}
           </span>
+          <MicLevelBars analyserRef={analyserRef} active={isRecording && !isPaused} className="h-4" />
           <span className="text-xs font-mono font-semibold text-slate-700 tabular-nums">{fmtDur(duration)}</span>
           {liveDetected && (
             <span className="flex items-center gap-1 text-[11px] text-slate-600">
