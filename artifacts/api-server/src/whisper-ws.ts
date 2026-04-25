@@ -358,12 +358,16 @@ export function setupWhisperWS(httpServer: Server) {
           temperature: 0,
         };
         if (whisperLang) transcribeOpts.language = whisperLang;
-        // Prime Whisper with conversational vocabulary in the chosen language —
-        // this is the single biggest accuracy boost for short, casual phrases
-        // like "கேக்குதா?" / "सुनाई दे रहा है?" that lack their own context.
-        const promptKey = whisperLang || uiLang;
-        const initialPrompt = WHISPER_PROMPTS[promptKey];
-        if (initialPrompt) transcribeOpts.prompt = initialPrompt;
+        // NOTE: We deliberately do NOT pass an `initial_prompt` anymore.
+        // Whisper's behaviour on borderline-quiet audio is to "fill in" with
+        // words from the prompt, producing convincing but completely
+        // fabricated transcripts. Real Tamil sessions were returning the
+        // exact phrases from the priming text ("சொல்லுங்க", "தேங்க்ஸ்"),
+        // including for segments that were essentially silence. Dropping the
+        // prompt trades a small accuracy win on rare-vocab speech for a much
+        // bigger reduction in hallucinations on quiet/short segments.
+        // See WHISPER_PROMPTS above — kept for reference only.
+        void WHISPER_PROMPTS;
 
         const tr: any = await getOpenAI().audio.transcriptions.create(transcribeOpts);
         const original = (tr.text || "").trim();
