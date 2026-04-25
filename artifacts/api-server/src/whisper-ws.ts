@@ -375,12 +375,19 @@ export function setupWhisperWS(httpServer: Server) {
         const segs: any[] = Array.isArray(tr.segments) ? tr.segments : [];
         if (segs.length > 0) {
           const avgNoSpeech = segs.reduce((a, s) => a + (s.no_speech_prob ?? 0), 0) / segs.length;
+          const maxNoSpeech = segs.reduce((a, s) => Math.max(a, s.no_speech_prob ?? 0), 0);
           const avgLogProb  = segs.reduce((a, s) => a + (s.avg_logprob   ?? 0), 0) / segs.length;
           const maxComp     = segs.reduce((a, s) => Math.max(a, s.compression_ratio ?? 0), 0);
-          // Loose thresholds: only drop the *clearly* hallucinated segments.
-          // Real speech in noisy environments routinely has avg_logprob around
-          // -0.7 to -1.0, so we keep that and only drop very low confidence.
-          if (avgNoSpeech > 0.75 || avgLogProb < -1.4 || maxComp > 2.6) {
+          // Tightened thresholds — these specifically catch the "Whisper
+          // invented words for ambient noise" failure mode the user reported.
+          // Real, clearly-spoken speech: no_speech_prob < 0.3, avg_logprob > -0.7.
+          // Anything weaker than the bounds below is overwhelmingly hallucination.
+          if (
+            avgNoSpeech > 0.55 ||   // average frame confidence: "this is silence"
+            maxNoSpeech > 0.85 ||   // any single very-confident silence frame
+            avgLogProb  < -1.0 ||   // overall acoustic confidence too low
+            maxComp     > 2.4       // repetitive/looped output (classic hallucination)
+          ) {
             console.log(
               `[Whisper WS] dropped low-confidence seg=${id}: "${original}" ` +
               `noSpeech=${avgNoSpeech.toFixed(2)} logProb=${avgLogProb.toFixed(2)} comp=${maxComp.toFixed(2)}`

@@ -1319,11 +1319,23 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
   // "Thanks for watching") and even full plausible-sounding sentences over
   // background noise / breathing.
   const segVoiceFramesRef = useRef(0);
-  const VOICE_RMS_THRESHOLD = 0.045;
-  // ≈4 frames at 60fps ≈ 65ms of cumulative real speech inside a 4s segment.
-  // Loose enough to keep short words / softer speakers, strict enough to
-  // reject ambient hum + isolated taps.
-  const MIN_VOICE_FRAMES = 4;
+  // Absolute floor — anything below this is treated as silence regardless of
+  // the adaptive noise floor (prevents the threshold from collapsing in a
+  // dead-quiet room, which would let mic self-noise trigger detection).
+  const VOICE_RMS_FLOOR = 0.05;
+  // Adaptive noise floor: a slowly-tracking estimate of the current ambient
+  // RMS. Real speech must exceed this by VOICE_RMS_MARGIN to count as voiced.
+  // This lets the gate stay tight in a quiet office and loosen automatically
+  // in a noisy van/site without the user changing anything.
+  const noiseFloorRef = useRef(0.02);
+  const VOICE_RMS_MARGIN = 0.04;
+  // Require ~400ms of cumulative real speech inside the 4s segment before we
+  // ship it to Whisper. At ~60fps that's ≈24 analyser frames. This is loose
+  // enough to keep short single words ("சரி", "yes", "ok") but strict enough
+  // to reject coughs, keyboard taps, door slams, fan ramps, and breaths —
+  // every one of which used to slip through the old 65ms gate and made
+  // Whisper invent a sentence.
+  const MIN_VOICE_FRAMES = 24;
   // Pitch tracking for speaker diarization: average voiced-frame pitch within
   // the current segment.
   const segPitchSumRef = useRef(0);
@@ -1723,9 +1735,23 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
         }
         const rms = Math.sqrt(sumSq / buf.length);
         setAudioLevel(rms);
+        // Adaptive ambient-noise tracking: when the current frame is at or
+        // below the running noise floor, pull the floor up gently toward this
+        // sample (fast adapt to rising background noise). When the frame is
+        // clearly louder (likely speech) leak the floor down very slowly so
+        // the gate doesn't drift up during a long sentence.
+        const nf = noiseFloorRef.current;
+        if (rms < nf * 1.5) {
+          noiseFloorRef.current = nf * 0.95 + rms * 0.05;
+        } else {
+          noiseFloorRef.current = nf * 0.999 + rms * 0.001;
+        }
+        // Effective speech threshold = max(absolute floor, noise + margin).
+        // A frame must clear BOTH bars to count as real voice activity.
+        const speechThreshold = Math.max(VOICE_RMS_FLOOR, noiseFloorRef.current + VOICE_RMS_MARGIN);
         if (rms > 0.04) lastHeardRef.current = Date.now();
         // Voice-activity counter + pitch sampling for the rotating recorder.
-        if (rms > VOICE_RMS_THRESHOLD) {
+        if (rms > speechThreshold) {
           segVoiceFramesRef.current += 1;
           // Estimate this frame's pitch by picking the strongest FFT bin in
           // the vocal band — coarse but enough to separate two distinct
