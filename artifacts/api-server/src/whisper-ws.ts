@@ -388,9 +388,9 @@ export function setupWhisperWS(httpServer: Server) {
           // The other rails — wrong-script filter, hallucination regex, and
           // maxNoSpeech 0.85 — still catch the obvious garbage outputs.
           if (
-            avgNoSpeech > 0.65 ||   // average frame confidence: "this is silence"
+            avgNoSpeech > 0.55 ||   // average frame confidence: "this is silence"
             maxNoSpeech > 0.85 ||   // any single very-confident silence frame
-            avgLogProb  < -1.2 ||   // overall acoustic confidence too low
+            avgLogProb  < -1.0 ||   // overall acoustic confidence too low
             maxComp     > 2.4       // repetitive/looped output (classic hallucination)
           ) {
             console.log(

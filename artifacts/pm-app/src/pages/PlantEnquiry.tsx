@@ -1339,7 +1339,7 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
   // to keep one-syllable Indic words ("ஆமா", "சரி", "हाँ") and quiet/distant
   // speakers; the server's confidence + script + hallucination filters still
   // catch coughs, taps, fan ramps, and breaths that slip through.
-  const MIN_VOICE_FRAMES = 8;
+  const MIN_VOICE_FRAMES = 14;
   // Pitch tracking for speaker diarization: average voiced-frame pitch within
   // the current segment.
   const segPitchSumRef = useRef(0);
@@ -1413,7 +1413,10 @@ function LiveTranscriptPanel({ industry }: { industry: string }) {
     const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const seg: Segment = { id, t: new Date().toLocaleTimeString(), original: t };
     setSegments(prev => [...prev, seg]);
-    translateSegment(id, t, language);
+    // Only auto-translate when the user picked "Auto Detect". An explicit
+    // language pick (Tamil, Hindi, etc.) means they want the original ONLY —
+    // no English translation appended. Per user request 2026-04-25.
+    if (language === "auto") translateSegment(id, t, language);
   };
 
   // Show a "first transcript in N seconds" countdown so the user understands

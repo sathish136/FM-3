@@ -1444,7 +1444,7 @@ function LiveSpeechMinutesView({
   // permissive here just means real speech reaches Whisper.
   const VOICE_RMS_FLOOR = 0.025;
   const VOICE_RMS_MARGIN = 0.02;
-  const MIN_VOICE_FRAMES = 8;
+  const MIN_VOICE_FRAMES = 14;
 
   const idCounterRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -1504,7 +1504,11 @@ function LiveSpeechMinutesView({
     setBlocks(prev => [...prev, block]);
     setLiveText("");
     setLiveDetected({ lang: detected.lang, flag: detected.flag });
-    if (!detected.isEnglish) translateBlock(id, text, detected.lang);
+    // Only auto-translate when the user picked "Auto Detect". If they
+    // explicitly chose a language (Tamil, Hindi, etc.) they want the original
+    // transcript ONLY — no English translation cluttering the timeline.
+    // Per user request 2026-04-25.
+    if (lang === "auto" && !detected.isEnglish) translateBlock(id, text, detected.lang);
   };
 
   // ─── Whisper realtime streaming ──────────────────────────────────────────
