@@ -732,7 +732,7 @@ export default function SiteDbAnalytics() {
                         }`}
                       >
                         <Sparkles className="w-3.5 h-3.5" />
-                        Plant View
+                        Observation Report
                         <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
                           viewMode === "plant" ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-500"
                         }`}>
