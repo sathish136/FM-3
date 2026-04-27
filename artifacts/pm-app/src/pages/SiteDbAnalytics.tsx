@@ -15,6 +15,8 @@ import {
 import jsPDF from "jspdf";
 import * as XLSX from "xlsx";
 import { useDbLabels } from "@/lib/dbLabels";
+import PlantDashboard from "./SiteDbAnalyze/PlantDashboard";
+import { detectPlantSchema } from "./SiteDbAnalyze/plantSchemas";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -188,6 +190,9 @@ export default function SiteDbAnalytics() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagSearch, setTagSearch] = useState("");
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+
+  // ── view mode
+  const [viewMode, setViewMode] = useState<"plant" | "advanced">("plant");
 
   // ── analytics data
   const [series, setSeries] = useState<any[]>([]);
@@ -402,6 +407,21 @@ export default function SiteDbAnalytics() {
   useEffect(() => { loadHeatmap(); }, [heatTag, fromDate.getTime(), toDate.getTime()]);
   useEffect(() => { loadCorrelation(); }, [selectedTags.join(","), fromDate.getTime(), toDate.getTime()]);
   useEffect(() => { loadAnomalies(); }, [anomTag, anomSigma, fromDate.getTime(), toDate.getTime()]);
+
+  // ─── plant schema (auto-detected from tag names)
+  const plantSchema = useMemo(() => {
+    if (!profile) return null;
+    return detectPlantSchema(profile.tags.map(t => t.name));
+  }, [profile]);
+
+  // when a new table is loaded, default to plant view if we recognized any skids
+  useEffect(() => {
+    if (plantSchema && plantSchema.skids.length > 0) {
+      setViewMode("plant");
+    } else if (plantSchema) {
+      setViewMode("advanced");
+    }
+  }, [plantSchema?.skids.length, db, tbl?.name]);
 
   // ─── filter & group tags
   const groupedTags = useMemo(() => {
@@ -698,6 +718,57 @@ export default function SiteDbAnalytics() {
                 hint="This table has no datetime column, so time-series analysis isn't possible. Use the standard DB Viewer instead to inspect rows."
               />
             ) : profile ? (
+              <>
+                {/* ── View tabs (only show plant tab if recognized) ── */}
+                {plantSchema && (
+                  <div className="px-5 pt-4 flex items-center gap-1 border-b border-slate-200 bg-white">
+                    {plantSchema.skids.length > 0 && (
+                      <button
+                        onClick={() => setViewMode("plant")}
+                        className={`px-4 py-2 text-xs font-bold uppercase tracking-wide border-b-2 transition flex items-center gap-1.5 ${
+                          viewMode === "plant"
+                            ? "border-indigo-600 text-indigo-700"
+                            : "border-transparent text-slate-500 hover:text-slate-800"
+                        }`}
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Plant View
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
+                          viewMode === "plant" ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-500"
+                        }`}>
+                          {plantSchema.typeLabel}
+                        </span>
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setViewMode("advanced")}
+                      className={`px-4 py-2 text-xs font-bold uppercase tracking-wide border-b-2 transition flex items-center gap-1.5 ${
+                        viewMode === "advanced"
+                          ? "border-indigo-600 text-indigo-700"
+                          : "border-transparent text-slate-500 hover:text-slate-800"
+                      }`}
+                    >
+                      <BarChart3 className="w-3.5 h-3.5" />
+                      Advanced Analytics
+                    </button>
+                  </div>
+                )}
+
+                {viewMode === "plant" && plantSchema && plantSchema.skids.length > 0 ? (
+                  <PlantDashboard
+                    base={BASE}
+                    db={db}
+                    dbLabel={displayDb(db)}
+                    schema={tbl!.schema}
+                    table={tbl!.name}
+                    timeCol={profile.timeCol!}
+                    plant={plantSchema}
+                    fromDate={fromDate}
+                    toDate={toDate}
+                    bucket={bucket}
+                    agg={agg}
+                  />
+                ) : (
               <div className="p-5 space-y-5">
                 {/* ── Time + bucket controls ── */}
                 <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
@@ -1092,6 +1163,8 @@ export default function SiteDbAnalytics() {
                   ) : <EmptyChart text={`No points beyond ${anomSigma}σ`} />}
                 </ChartCard>
               </div>
+                )}
+              </>
             ) : null}
           </div>
         </main>
