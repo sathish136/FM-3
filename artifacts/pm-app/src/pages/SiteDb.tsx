@@ -425,6 +425,19 @@ export default function SiteDb() {
                   <span className="font-semibold text-slate-800">
                     {selectedTable.schema}.{selectedTable.name}
                   </span>
+                  <a
+                    href={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/site-db/analyze`}
+                    onClick={() => {
+                      try {
+                        sessionStorage.setItem("siteDbAnalyze:db", selectedDb);
+                        sessionStorage.setItem("siteDbAnalyze:schema", selectedTable.schema);
+                        sessionStorage.setItem("siteDbAnalyze:table", selectedTable.name);
+                      } catch {}
+                    }}
+                    className="ml-2 flex items-center gap-1 px-2 py-1 text-[11px] bg-violet-100 hover:bg-violet-200 text-violet-700 rounded-md font-semibold"
+                  >
+                    🧠 Analyze →
+                  </a>
                 </>
               )}
             </div>

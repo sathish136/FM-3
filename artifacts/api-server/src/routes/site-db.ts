@@ -8,7 +8,7 @@ const SYSTEM_DBS = new Set([
   "ReportServer", "ReportServerTempDB",
 ]);
 
-function buildConfig(database?: string): sql.config {
+export function buildConfig(database?: string): sql.config {
   const host = process.env.SITE_DB_HOST;
   const user = process.env.SITE_DB_USER;
   const password = process.env.SITE_DB_PASSWORD;
@@ -44,7 +44,7 @@ function buildConfig(database?: string): sql.config {
 
 const poolCache = new Map<string, sql.ConnectionPool>();
 
-async function getPool(database?: string): Promise<sql.ConnectionPool> {
+export async function getPool(database?: string): Promise<sql.ConnectionPool> {
   const key = database || "__default__";
   let pool = poolCache.get(key);
   if (pool && pool.connected) return pool;
@@ -59,7 +59,7 @@ async function getPool(database?: string): Promise<sql.ConnectionPool> {
   return pool;
 }
 
-function safeIdent(name: string): string {
+export function safeIdent(name: string): string {
   // Allow only [A-Za-z0-9_] then wrap in brackets
   if (!/^[A-Za-z0-9_]+$/.test(name)) {
     throw new Error(`Invalid identifier: ${name}`);

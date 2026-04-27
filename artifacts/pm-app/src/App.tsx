@@ -75,6 +75,7 @@ import EmpAgent from "@/pages/EmpAgent";
 import SalesDashboard from "@/pages/SalesDashboard";
 import PlantEnquiry from "@/pages/PlantEnquiry";
 import SiteDb from "@/pages/SiteDb";
+import SiteDbAnalytics from "@/pages/SiteDbAnalytics";
 import { SlideshowProvider } from "@/contexts/SlideshowContext";
 import { RecordingProvider } from "@/contexts/RecordingContext";
 
@@ -237,6 +238,7 @@ function ProtectedRoutes() {
       <Route path="/sales" component={SalesDashboard} />
       <Route path="/plant-enquiry" component={PlantEnquiry} />
       <Route path="/site-db" component={SiteDb} />
+      <Route path="/site-db/analyze" component={SiteDbAnalytics} />
       <Route component={NotFound} />
     </Switch>
   );

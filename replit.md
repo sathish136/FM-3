@@ -33,6 +33,47 @@ Identifiers are validated `^[A-Za-z0-9_]+$` and bracket-quoted before interpolat
 
 Nav location: **Monitoring → Site DB Viewer**.
 
+## Plant Analytics (`/site-db/analyze`)
+
+Deep water-treatment SCADA analytics on top of the Site DB module. Auto-detects the time column + numeric "tags" of any selected table, and produces detailed reports.
+
+### Backend (`artifacts/api-server/src/routes/site-db-analytics.ts`)
+Reuses `getPool` / `safeIdent` from `site-db.ts`.
+
+| Endpoint | Description |
+|---|---|
+| `GET /api/site-db/analytics/profile?db=&schema=&table=` | Detects time col, lists numeric tags grouped by name prefix, returns total rows + date range + sample interval |
+| `POST /api/site-db/analytics/series` `{ db, schema, table, timeCol, tags[], from, to, bucket, agg }` | Time-bucketed aggregation (1m/5m/15m/30m/1h/6h/1d, avg/min/max/sum) up to 5000 buckets |
+| `POST /api/site-db/analytics/stats` `{ ..., tags[] }` | Per-tag count, nulls, zeros, min, max, avg, std, p25, p50, p75, p95, p99, first, last (uses `PERCENTILE_CONT`) |
+| `POST /api/site-db/analytics/distribution` `{ ..., tag, bins }` | Histogram (configurable bin count) |
+| `POST /api/site-db/analytics/heatmap` `{ ..., tag }` | Avg by `weekday × hour-of-day` |
+| `POST /api/site-db/analytics/correlation` `{ ..., tags[] }` | Pearson correlation matrix on a 5000-row sample |
+| `POST /api/site-db/analytics/anomalies` `{ ..., tag, sigma }` | Top 500 points with `|z| ≥ sigma` |
+| `POST /api/site-db/analytics/uptime` `{ ..., tag, threshold }` | Running % when tag > threshold |
+
+All identifiers (db/schema/table/tag/timeCol) are validated `^[A-Za-z0-9_]+$` and bracket-quoted; date params are passed via `mssql` parameterized inputs.
+
+### Frontend (`artifacts/pm-app/src/pages/SiteDbAnalytics.tsx`)
+- **Sidebar**: pick database → searchable table list
+- **Time controls**: presets (1h / 6h / 24h / 7d / 30d / 90d / all) or custom range, bucket size, aggregation
+- **Tag picker**: prefix-grouped (auto-detected `stg1_*`, `bp1_*`, `ro_feed_*`, etc.), search, multi-select with colored chips, click-to-toggle
+- **KPI strip**: tags selected, date range, sample interval, bucket count
+- **Charts**:
+  - Multi-line time-series (Recharts) with smart axis formatting
+  - Statistical summary table with percentiles + null/zero counts
+  - **Auto-narrative AI insights** per tag (variability, ranges, anomaly hints, plus domain-specific commentary for RO recovery / DP / TDS / pH)
+  - Histogram of values per tag
+  - Hour-of-day × weekday heatmap (7×24 with color gradient)
+  - Pearson correlation matrix (red/blue heatmap)
+  - Anomaly table (z-score) with adjustable sigma threshold
+- **Smart unit guesser**: tags ending in `*_freq → Hz`, `*_pt/dp → bar`, `*_lt → %`, `*_flow/_fm → m³/h`, `tds → ppm`, `cond → µS/cm`, `*_totalizer → m³`, `reco → %`
+- **Exports**: full Excel workbook (Time Series + Statistics + Anomalies sheets), and a multi-page **PDF report** (jspdf) containing dataset overview, per-tag stats, narrative insights, and anomaly list
+
+### Cross-link
+The Site DB Viewer header has an **🧠 Analyze →** button next to the selected table that hands the (db, schema, table) over via `sessionStorage` and opens the analytics page pre-loaded.
+
+Nav location: **Monitoring → Plant Analytics**.
+
 ## HRMS Modules (ERPNext)
 
 All modules sync with ERPNext at `https://erp.wttint.com` via API key auth.
