@@ -55,6 +55,48 @@ function numericTags(cols: ColMeta[]): ColMeta[] {
   return cols.filter(c => NUMERIC_TYPES.has(c.dataType));
 }
 
+const TEXT_TYPES = new Set(["varchar", "nvarchar", "char", "nchar", "text", "ntext"]);
+
+// Some SCADA systems store live numeric readings as varchar. Sample the top rows
+// of those columns and treat any column whose values are mostly numeric as a tag.
+async function detectNumericStringTags(
+  db: string, schema: string, table: string, cols: ColMeta[],
+): Promise<ColMeta[]> {
+  const candidates = cols.filter(c => TEXT_TYPES.has(c.dataType));
+  if (!candidates.length) return [];
+
+  const pool = await getPool(db);
+  // Pull a sample of recent rows once and test all candidate columns from it.
+  const selectList = candidates.map(c => safeIdent(c.name)).join(", ");
+  let sample: any[] = [];
+  try {
+    const r = await pool.request().query(
+      `SELECT TOP 50 ${selectList} FROM ${safeIdent(schema)}.${safeIdent(table)}`,
+    );
+    sample = r.recordset || [];
+  } catch {
+    return [];
+  }
+  if (!sample.length) return [];
+
+  const numericLike: ColMeta[] = [];
+  for (const c of candidates) {
+    let total = 0, ok = 0;
+    for (const row of sample) {
+      const v = row[c.name];
+      if (v == null || v === "") continue;
+      total++;
+      const s = String(v).trim();
+      // accept numbers like "1.23", "-0.5", "42", "3.4e-5"
+      if (/^-?\d+(\.\d+)?(e[+-]?\d+)?$/i.test(s)) ok++;
+    }
+    if (total >= 3 && ok / total >= 0.8) {
+      numericLike.push({ name: c.name, dataType: c.dataType });
+    }
+  }
+  return numericLike;
+}
+
 function bucketExpr(timeCol: string, bucket: string): string {
   const t = safeIdent(timeCol);
   switch (bucket) {
@@ -320,7 +362,11 @@ router.get("/site-db/analytics/profile", async (req, res) => {
     const pool = await getPool(db);
     const cols = await loadColumns(db, schema, table);
     const timeCol = pickTimeCol(cols);
-    const tags = numericTags(cols);
+    const numericCols = numericTags(cols);
+    const stringNumericCols = await detectNumericStringTags(db, schema, table, cols);
+    // Preserve original column order; merge numeric + numeric-string columns.
+    const tagSet = new Set([...numericCols, ...stringNumericCols].map(c => c.name));
+    const tags = cols.filter(c => tagSet.has(c.name));
 
     let dateRange: any = null;
     let totalRows = 0;
