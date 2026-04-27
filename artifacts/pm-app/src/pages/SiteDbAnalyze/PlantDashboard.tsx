@@ -186,27 +186,37 @@ export default function PlantDashboard({
     let cancel = false;
     (async () => {
       setLoading(true); setErr(null);
-      try {
-        const [ops, daily, prevDaily, yoyDaily, runHrs, unmap] = await Promise.all([
-          fetchSeriesIn(opsTags, PERIOD_BUCKET_OPS[period], "avg", periodRange.from, periodRange.to),
-          fetchSeriesIn(dailyTags, "1d", "max", periodRange.from, periodRange.to),
-          fetchSeriesIn(dailyTags, "1d", "max", prevRange.from, prevRange.to),
-          fetchSeriesIn(dailyTags, "1d", "max", yoyRange.from, yoyRange.to),
-          fetchStats(runHoursTags, periodRange.from, periodRange.to),
-          fetchStats(unmappedTags, periodRange.from, periodRange.to),
-        ]);
-        if (cancel) return;
-        setOpsRows(ops);
-        setDailyRows(daily);
-        setPrevDailyRows(prevDaily);
-        setYoyDailyRows(yoyDaily);
-        setRunHoursStats(runHrs);
-        setUnmappedStats(unmap);
-      } catch (e: any) {
-        if (!cancel) setErr(e.message || "Failed to load report data");
-      } finally {
-        if (!cancel) setLoading(false);
+      const settled = await Promise.allSettled([
+        fetchSeriesIn(opsTags, PERIOD_BUCKET_OPS[period], "avg", periodRange.from, periodRange.to),
+        fetchSeriesIn(dailyTags, "1d", "max", periodRange.from, periodRange.to),
+        fetchSeriesIn(dailyTags, "1d", "max", prevRange.from, prevRange.to),
+        fetchSeriesIn(dailyTags, "1d", "max", yoyRange.from, yoyRange.to),
+        fetchStats(runHoursTags, periodRange.from, periodRange.to),
+        fetchStats(unmappedTags, periodRange.from, periodRange.to),
+      ]);
+      if (cancel) return;
+      const pickArr = (i: number): SeriesRow[] => {
+        const r = settled[i];
+        return r.status === "fulfilled" && Array.isArray(r.value) ? (r.value as SeriesRow[]) : [];
+      };
+      const pickObj = (i: number): Record<string, any> => {
+        const r = settled[i];
+        return r.status === "fulfilled" && r.value && typeof r.value === "object" ? (r.value as Record<string, any>) : {};
+      };
+      setOpsRows(pickArr(0));
+      setDailyRows(pickArr(1));
+      setPrevDailyRows(pickArr(2));
+      setYoyDailyRows(pickArr(3));
+      setRunHoursStats(pickObj(4));
+      setUnmappedStats(pickObj(5));
+
+      // Surface an error only if EVERY fetch failed; otherwise show a soft warning per-section
+      const failures = settled.filter(s => s.status === "rejected").length;
+      if (failures === settled.length) {
+        const first = settled.find(s => s.status === "rejected") as PromiseRejectedResult | undefined;
+        setErr(first?.reason?.message || "Failed to load report data");
       }
+      setLoading(false);
     })();
     return () => { cancel = true; };
   }, [period, opsTags, dailyTags, runHoursTags, unmappedTags, periodRange, prevRange, yoyRange, fetchSeriesIn, fetchStats]);

@@ -40,6 +40,22 @@ async function loadColumns(db: string, schema: string, table: string): Promise<C
   }));
 }
 
+// 60s TTL cache of "columns that actually exist in this table" — case-insensitive set
+const COL_CACHE_TTL_MS = 60_000;
+const colCache = new Map<string, { at: number; names: Set<string> }>();
+async function loadColumnSet(db: string, schema: string, table: string): Promise<Set<string>> {
+  const key = `${db}::${schema}::${table}`;
+  const hit = colCache.get(key);
+  if (hit && Date.now() - hit.at < COL_CACHE_TTL_MS) return hit.names;
+  const cols = await loadColumns(db, schema, table);
+  const names = new Set(cols.map(c => c.name.toLowerCase()));
+  colCache.set(key, { at: Date.now(), names });
+  return names;
+}
+function filterExistingTags(tagList: string[], colSet: Set<string>): string[] {
+  return tagList.filter(t => colSet.has(t.toLowerCase()));
+}
+
 function pickTimeCol(cols: ColMeta[]): ColMeta | null {
   const dateCols = cols.filter(c => DATE_TYPES.has(c.dataType));
   if (!dateCols.length) return null;
@@ -426,8 +442,13 @@ router.post("/site-db/analytics/series", async (req, res) => {
     if (!db || !table || !timeCol) return res.status(400).json({ error: "db, table, timeCol required" });
     if (!Array.isArray(tags) || !tags.length) return res.status(400).json({ error: "tags required" });
 
-    const tagList = tags.filter((t: any) => typeof t === "string" && /^[A-Za-z0-9_]+$/.test(t));
-    if (!tagList.length) return res.status(400).json({ error: "no valid tags" });
+    const rawList = tags.filter((t: any) => typeof t === "string" && /^[A-Za-z0-9_]+$/.test(t));
+    if (!rawList.length) return res.status(400).json({ error: "no valid tags" });
+
+    // Drop any tag the table doesn't actually have, so a stale schema can't break the query
+    const colSet = await loadColumnSet(db, schema, table);
+    const tagList = filterExistingTags(rawList, colSet);
+    if (!tagList.length) return res.json({ rows: [], bucket, agg, tags: [], skipped: rawList });
 
     const fromD = ensureDate(from, new Date(Date.now() - 7 * 24 * 3600 * 1000));
     const toD = ensureDate(to, new Date());
@@ -461,10 +482,15 @@ router.post("/site-db/analytics/stats", async (req, res) => {
   try {
     const { db, schema = "dbo", table, timeCol, tags = [], from, to } = req.body || {};
     if (!db || !table) return res.status(400).json({ error: "db, table required" });
-    const tagList = (Array.isArray(tags) ? tags : []).filter((t: any) =>
+    const rawList = (Array.isArray(tags) ? tags : []).filter((t: any) =>
       typeof t === "string" && /^[A-Za-z0-9_]+$/.test(t),
     );
-    if (!tagList.length) return res.status(400).json({ error: "tags required" });
+    if (!rawList.length) return res.status(400).json({ error: "tags required" });
+
+    // Drop any tag the table doesn't actually have
+    const colSet = await loadColumnSet(db, schema, table);
+    const tagList = filterExistingTags(rawList, colSet);
+    if (!tagList.length) return res.json({ stats: {}, skipped: rawList });
 
     const fromD = ensureDate(from, new Date(Date.now() - 7 * 24 * 3600 * 1000));
     const toD = ensureDate(to, new Date());
