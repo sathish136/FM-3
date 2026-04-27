@@ -70,6 +70,21 @@ All identifiers (db/schema/table/tag/timeCol) are validated `^[A-Za-z0-9_]+$` an
 - **Smart unit guesser**: tags ending in `*_freq → Hz`, `*_pt/dp → bar`, `*_lt → %`, `*_flow/_fm → m³/h`, `tds → ppm`, `cond → µS/cm`, `*_totalizer → m³`, `reco → %`
 - **Exports**: full Excel workbook (Time Series + Statistics + Anomalies sheets), and a multi-page **PDF report** (jspdf) containing dataset overview, per-tag stats, narrative insights, and anomaly list
 
+### All Sites Health Dashboard
+When the user lands on **/site-db/analyze** (or clicks **All Sites** in the header), they see a live cross-plant overview *before* picking any specific table:
+- **Top hero strip**: total plants, healthy / warning / critical counts
+- **Filter bar**: All / Critical / Warnings / Healthy + search by plant name or label
+- **Per-plant card** (status-colored border): friendly label + raw db name, status badge, alert count
+  - For each top-N process table inside that plant, shows a row with:
+    - Status dot (green/amber/red) + table name
+    - Last reading age (e.g. "live now", "12m ago", "6d ago") with Wi-Fi/no-signal icon
+    - Up to 6 KPI chips (Recovery, Product TDS, pH, ΔP, Day Total, Flow, Power, Level, Freq) colored by their own threshold rules
+    - Bullet list of human-readable alerts ("pH = 3.27 is critical", "No data for 6d — link/PLC may be down")
+    - Hover-reveal **Analyze →** button to drill in
+  - Footer **Open plant details →** opens the first table in deep analytics
+- Backed by `GET /api/site-db/analytics/overview?refresh=1`, server-side cached for 3 min, parallelised across all visible DBs (~60s cold, instant warm)
+- Status rules: data > 6 h old = critical (PLC/link likely down), > 1 h = warn; KPI thresholds: Recovery `<50% | >95%` warn, TDS `>500` warn / `>1000` critical, pH out of `6–9` warn / out of `5.5–9.5` critical, ΔP `>2.5 bar` warn / `>4 bar` critical, Level `<5%` critical / `<15% or >95%` warn
+
 ### Cross-link
 The Site DB Viewer header has an **🧠 Analyze →** button next to the selected table that hands the (db, schema, table) over via `sessionStorage` and opens the analytics page pre-loaded.
 

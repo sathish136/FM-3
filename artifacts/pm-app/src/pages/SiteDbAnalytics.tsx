@@ -5,6 +5,7 @@ import {
   AlertTriangle, Download, FileText, Activity, BarChart3, Layers,
   TrendingUp, Sparkles, Filter, X, Check, Clock, Gauge, Droplets,
   Wind, Zap, Beaker, Search, ChevronDown, FileDown, Printer, Pencil,
+  CheckCircle2, XCircle, ShieldAlert, Wifi, WifiOff, ChevronUp,
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
@@ -648,6 +649,15 @@ export default function SiteDbAnalytics() {
           {/* Header */}
           <div className="px-6 py-3 border-b border-slate-200 bg-white flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-2 text-sm">
+              {tbl && (
+                <button
+                  onClick={() => setTbl(null)}
+                  className="px-2 py-1 rounded-md text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-1"
+                  title="Back to all-sites dashboard"
+                >
+                  <BarChart3 className="w-3 h-3" /> All Sites
+                </button>
+              )}
               <Database className="w-4 h-4 text-indigo-500" />
               <span className="font-semibold text-slate-800">
                 {db ? displayDb(db) : "—"}
@@ -689,10 +699,12 @@ export default function SiteDbAnalytics() {
           {/* Body */}
           <div className="flex-1 overflow-auto" ref={reportRef}>
             {!tbl ? (
-              <EmptyState
-                icon={<BarChart3 className="w-14 h-14 text-slate-300" />}
-                title="Select a plant database & table"
-                hint="Pick a database (e.g. kanchan, bhilwara, Brine, laxmi_vishal) and a process table (RO/MBR/MF/Bio etc.) from the left to begin deep analytics."
+              <SitesOverview
+                displayDb={displayDb}
+                onSelect={(selDb, selSchema, selTable) => {
+                  setDb(selDb);
+                  setTbl({ schema: selSchema, name: selTable });
+                }}
               />
             ) : loadingProfile ? (
               <div className="flex items-center justify-center h-full text-slate-400">
@@ -1122,6 +1134,337 @@ function EmptyState({ icon, title, hint }: { icon: React.ReactNode; title: strin
     </div>
   );
 }
+
+// ─── All Sites Live Health Dashboard ────────────────────────────
+type OverviewKpi = { tag: string; label: string; unit: string; value: number | null; status: "ok" | "warn" | "critical" };
+type OverviewTable = {
+  schema: string; table: string; rowCount: number; timeCol: string | null;
+  lastUpdate: string | null; ageMin: number | null;
+  status: "ok" | "warn" | "critical"; alerts: string[]; kpis: OverviewKpi[];
+};
+type OverviewPlant = { db: string; status: "ok" | "warn" | "critical"; tables: OverviewTable[]; error?: string };
+type OverviewData = {
+  generatedAt: string;
+  totals: { ok: number; warn: number; critical: number };
+  plants: OverviewPlant[];
+  cached?: boolean;
+  ageSec?: number;
+};
+
+function fmtAge(min: number | null): string {
+  if (min == null) return "no data";
+  if (min < 1) return "live now";
+  if (min < 60) return `${min}m ago`;
+  if (min < 1440) return `${Math.round(min / 60)}h ago`;
+  const d = Math.round(min / 1440);
+  return `${d}d ago`;
+}
+
+function fmtKpi(v: number | null): string {
+  if (v == null || isNaN(v)) return "—";
+  if (Math.abs(v) >= 1000) return v.toFixed(0);
+  if (Math.abs(v) >= 10) return v.toFixed(1);
+  return v.toFixed(2);
+}
+
+function statusClasses(s: "ok" | "warn" | "critical") {
+  if (s === "critical") return { bg: "bg-rose-50", border: "border-rose-300", text: "text-rose-700", dot: "bg-rose-500", chip: "bg-rose-100 text-rose-700 border-rose-200", ring: "ring-rose-300" };
+  if (s === "warn")     return { bg: "bg-amber-50", border: "border-amber-300", text: "text-amber-700", dot: "bg-amber-500", chip: "bg-amber-100 text-amber-700 border-amber-200", ring: "ring-amber-300" };
+  return { bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-700", dot: "bg-emerald-500", chip: "bg-emerald-100 text-emerald-700 border-emerald-200", ring: "ring-emerald-200" };
+}
+
+function SitesOverview({
+  onSelect, displayDb,
+}: {
+  onSelect: (db: string, schema: string, table: string) => void;
+  displayDb: (n: string) => string;
+}) {
+  const [data, setData] = useState<OverviewData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [filter, setFilter] = useState<"all" | "critical" | "warn" | "ok">("all");
+  const [search, setSearch] = useState("");
+
+  const load = async (force = false) => {
+    setLoading(true); setErr(null);
+    try {
+      const r = await fetch(`${BASE}/api/site-db/analytics/overview${force ? "?refresh=1" : ""}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = await r.json();
+      setData(j);
+    } catch (e: any) {
+      setErr(e.message || "Failed to load overview");
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { load(false); }, []);
+
+  const filteredPlants = useMemo(() => {
+    if (!data) return [];
+    const q = search.trim().toLowerCase();
+    return data.plants.filter(p => {
+      if (filter !== "all" && p.status !== filter) return false;
+      if (q) {
+        const label = displayDb(p.db).toLowerCase();
+        if (!label.includes(q) && !p.db.toLowerCase().includes(q)) return false;
+      }
+      return true;
+    });
+  }, [data, filter, search, displayDb]);
+
+  if (loading && !data) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-slate-500 p-10">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+        <div className="mt-3 text-sm font-medium">Scanning all plants for live readings…</div>
+        <div className="mt-1 text-xs text-slate-400">First load can take ~1 min while we ping every site. Subsequent loads are instant (cached 3 min).</div>
+      </div>
+    );
+  }
+
+  if (err) {
+    return (
+      <div className="m-6 p-4 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-sm flex items-start gap-2">
+        <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+        <div>
+          <div className="font-semibold">Overview failed</div>
+          <code className="break-all">{err}</code>
+          <button onClick={() => load(true)} className="mt-2 px-3 py-1 rounded bg-white border border-rose-300 text-xs">Retry</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) return null;
+  const t = data.totals;
+
+  return (
+    <div className="p-5 space-y-4">
+      {/* ── Top hero strip ── */}
+      <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-700 rounded-2xl text-white p-5 shadow-lg">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <div className="flex items-center gap-2 text-indigo-200 text-xs uppercase tracking-wider font-semibold">
+              <Activity className="w-3.5 h-3.5" /> Live Plant Health
+            </div>
+            <h1 className="text-2xl font-bold mt-1">All Sites Dashboard</h1>
+            <p className="text-indigo-100 text-sm mt-1">
+              Live status across {data.plants.length} plants — KPIs from the most recent SCADA reading per process table.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-indigo-200">
+              {data.cached
+                ? `cached · ${data.ageSec ?? 0}s ago`
+                : `updated ${new Date(data.generatedAt).toLocaleTimeString()}`}
+            </span>
+            <button
+              onClick={() => load(true)}
+              disabled={loading}
+              className="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 border border-white/20 text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
+            </button>
+          </div>
+        </div>
+
+        {/* totals tiles */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
+          <div className="bg-white/10 border border-white/20 rounded-xl p-3 backdrop-blur">
+            <div className="text-[10px] uppercase text-indigo-100 font-bold">Plants</div>
+            <div className="text-2xl font-extrabold mt-0.5">{data.plants.length}</div>
+          </div>
+          <div className="bg-emerald-500/30 border border-emerald-300/40 rounded-xl p-3 backdrop-blur">
+            <div className="text-[10px] uppercase text-emerald-50 font-bold flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Healthy</div>
+            <div className="text-2xl font-extrabold mt-0.5">{t.ok}</div>
+          </div>
+          <div className="bg-amber-500/30 border border-amber-300/40 rounded-xl p-3 backdrop-blur">
+            <div className="text-[10px] uppercase text-amber-50 font-bold flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Warnings</div>
+            <div className="text-2xl font-extrabold mt-0.5">{t.warn}</div>
+          </div>
+          <div className="bg-rose-500/30 border border-rose-300/40 rounded-xl p-3 backdrop-blur">
+            <div className="text-[10px] uppercase text-rose-50 font-bold flex items-center gap-1"><ShieldAlert className="w-3 h-3" /> Critical</div>
+            <div className="text-2xl font-extrabold mt-0.5">{t.critical}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Filter / search bar ── */}
+      <div className="bg-white border border-slate-200 rounded-xl p-3 flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-1">
+          {(["all", "critical", "warn", "ok"] as const).map(f => {
+            const active = filter === f;
+            const lbl = f === "all" ? "All" : f === "critical" ? "Critical" : f === "warn" ? "Warnings" : "Healthy";
+            const count = f === "all" ? data.plants.length : data.plants.filter(p => p.status === f).length;
+            return (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+                  active
+                    ? f === "critical" ? "bg-rose-600 text-white border-rose-600"
+                    : f === "warn"     ? "bg-amber-500 text-white border-amber-500"
+                    : f === "ok"       ? "bg-emerald-600 text-white border-emerald-600"
+                    : "bg-indigo-600 text-white border-indigo-600"
+                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                {lbl} <span className={active ? "opacity-80" : "text-slate-400"}>({count})</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex-1 min-w-[200px] relative">
+          <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search plant…"
+            className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-200"
+          />
+        </div>
+      </div>
+
+      {/* ── Plant cards grid ── */}
+      {filteredPlants.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-xl p-10 text-center text-slate-500 text-sm">
+          No plants match this filter.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-4">
+          {filteredPlants.map(p => <PlantCard key={p.db} plant={p} displayDb={displayDb} onSelect={onSelect} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PlantCard({
+  plant, displayDb, onSelect,
+}: {
+  plant: OverviewPlant;
+  displayDb: (n: string) => string;
+  onSelect: (db: string, schema: string, table: string) => void;
+}) {
+  const sc = statusClasses(plant.status);
+  const label = displayDb(plant.db);
+  const hasLabel = label !== plant.db;
+  const totalAlerts = plant.tables.reduce((s, t) => s + t.alerts.length, 0);
+
+  return (
+    <div className={`bg-white rounded-xl border-2 ${sc.border} overflow-hidden flex flex-col`}>
+      {/* header */}
+      <div className={`px-4 py-3 ${sc.bg} border-b ${sc.border} flex items-center justify-between gap-3`}>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`w-2.5 h-2.5 rounded-full ${sc.dot} ${plant.status === "critical" ? "animate-pulse" : ""}`} />
+            <h3 className="font-bold text-slate-800 truncate">{label}</h3>
+            {hasLabel && <span className="text-[10px] text-slate-400 font-mono">({plant.db})</span>}
+          </div>
+          <div className="text-[11px] text-slate-500 mt-0.5">
+            {plant.tables.length} process table{plant.tables.length === 1 ? "" : "s"}
+            {totalAlerts > 0 && <> · <span className={sc.text + " font-semibold"}>{totalAlerts} alert{totalAlerts === 1 ? "" : "s"}</span></>}
+          </div>
+        </div>
+        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${sc.chip}`}>
+          {plant.status}
+        </span>
+      </div>
+
+      {/* body */}
+      <div className="divide-y divide-slate-100">
+        {plant.tables.length === 0 ? (
+          <div className="p-4 text-xs text-slate-500 italic">
+            {plant.error
+              ? <>Connection error: <code className="text-rose-600">{plant.error}</code></>
+              : "No time-series tables detected for this plant."}
+          </div>
+        ) : (
+          plant.tables.map(tab => {
+            const tsc = statusClasses(tab.status);
+            return (
+              <div key={tab.schema + "." + tab.table} className="p-3 hover:bg-slate-50 group">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${tsc.dot}`} />
+                      <span className="text-sm font-semibold text-slate-800 truncate font-mono">{tab.table}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-500">
+                      {tab.ageMin == null || tab.ageMin > 360
+                        ? <WifiOff className="w-3 h-3 text-rose-500" />
+                        : <Wifi className="w-3 h-3 text-emerald-500" />}
+                      <span className={tab.status === "critical" ? "text-rose-600 font-semibold" : tab.status === "warn" ? "text-amber-600 font-semibold" : ""}>
+                        {fmtAge(tab.ageMin)}
+                      </span>
+                      <span className="text-slate-300">·</span>
+                      <span>{tab.rowCount.toLocaleString()} rows</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => onSelect(plant.db, tab.schema, tab.table)}
+                    className="px-2 py-1 rounded text-[10px] font-semibold bg-indigo-600 text-white hover:bg-indigo-700 opacity-0 group-hover:opacity-100 transition flex items-center gap-1 shrink-0"
+                  >
+                    Analyze <ChevronRight className="w-3 h-3" />
+                  </button>
+                </div>
+
+                {/* KPI chips */}
+                {tab.kpis.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {tab.kpis.map((k, i) => {
+                      const kc = statusClasses(k.status);
+                      return (
+                        <span
+                          key={i}
+                          title={`${k.tag}${k.unit ? " (" + k.unit + ")" : ""}`}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium border ${kc.chip}`}
+                        >
+                          <span className="opacity-70">{k.label}</span>
+                          <span className="font-bold">{fmtKpi(k.value)}{k.unit && <span className="opacity-60 ml-0.5">{k.unit}</span>}</span>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Alerts */}
+                {tab.alerts.length > 0 && (
+                  <ul className="mt-2 space-y-0.5">
+                    {tab.alerts.slice(0, 3).map((a, i) => (
+                      <li key={i} className={`text-[10px] flex items-start gap-1 ${tab.status === "critical" ? "text-rose-700" : "text-amber-700"}`}>
+                        <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
+                        <span>{a}</span>
+                      </li>
+                    ))}
+                    {tab.alerts.length > 3 && (
+                      <li className="text-[10px] text-slate-400 italic">+{tab.alerts.length - 3} more…</li>
+                    )}
+                  </ul>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* footer "open plant" */}
+      {plant.tables.length > 0 && (
+        <button
+          onClick={() => {
+            const first = plant.tables[0];
+            onSelect(plant.db, first.schema, first.table);
+          }}
+          className={`w-full px-4 py-2 text-xs font-semibold ${sc.text} ${sc.bg} hover:brightness-95 border-t ${sc.border} flex items-center justify-center gap-1`}
+        >
+          Open plant details <ChevronRight className="w-3 h-3" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function EmptyChart({ text }: { text: string }) {
   return <div className="h-40 flex items-center justify-center text-slate-400 text-xs">{text}</div>;
 }
