@@ -4,7 +4,7 @@ import {
   Database, Table2, ChevronRight, RefreshCw, Calendar, Loader2,
   AlertTriangle, Download, FileText, Activity, BarChart3, Layers,
   TrendingUp, Sparkles, Filter, X, Check, Clock, Gauge, Droplets,
-  Wind, Zap, Beaker, Search, ChevronDown, FileDown, Printer,
+  Wind, Zap, Beaker, Search, ChevronDown, FileDown, Printer, Pencil,
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import jsPDF from "jspdf";
 import * as XLSX from "xlsx";
+import { useDbLabels } from "@/lib/dbLabels";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -166,6 +167,9 @@ export default function SiteDbAnalytics() {
   // ── selection
   const [databases, setDatabases] = useState<Db[]>([]);
   const [db, setDb] = useState<string>("");
+  const { setLabel: setDbLabelFn, display: displayDb } = useDbLabels();
+  const [editingDbLabel, setEditingDbLabel] = useState(false);
+  const [dbLabelInput, setDbLabelInput] = useState("");
   const [tables, setTables] = useState<Tbl[]>([]);
   const [tbl, setTbl] = useState<{ schema: string; name: string } | null>(null);
   const [tableSearch, setTableSearch] = useState("");
@@ -533,17 +537,67 @@ export default function SiteDbAnalytics() {
 
           {/* DB picker */}
           <div className="p-3 border-b border-slate-200">
-            <label className="text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1 block">Database</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Plant Database</label>
+              {db && !editingDbLabel && (
+                <button
+                  onClick={() => {
+                    setEditingDbLabel(true);
+                    const cur = displayDb(db);
+                    setDbLabelInput(cur === db ? "" : cur);
+                  }}
+                  className="flex items-center gap-1 text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold"
+                  title="Rename / give friendly label"
+                >
+                  <Pencil className="w-2.5 h-2.5" />
+                  Label
+                </button>
+              )}
+            </div>
             <select
               value={db}
               onChange={e => setDb(e.target.value)}
               className="w-full text-xs border border-slate-200 rounded-md px-2 py-2 bg-white focus:outline-none focus:border-indigo-400"
             >
               <option value="">— Select plant database —</option>
-              {databases.map(d => (
-                <option key={d.name} value={d.name}>{d.name}</option>
-              ))}
+              {databases.map(d => {
+                const label = displayDb(d.name);
+                return (
+                  <option key={d.name} value={d.name}>
+                    {label === d.name ? d.name : `${label}  (${d.name})`}
+                  </option>
+                );
+              })}
             </select>
+            {editingDbLabel && db && (
+              <div className="mt-2 flex items-center gap-1">
+                <input
+                  autoFocus
+                  value={dbLabelInput}
+                  onChange={e => setDbLabelInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") { setDbLabelFn(db, dbLabelInput); setEditingDbLabel(false); }
+                    if (e.key === "Escape") setEditingDbLabel(false);
+                  }}
+                  placeholder={`Friendly name for "${db}"`}
+                  className="flex-1 px-2 py-1 text-xs border border-indigo-300 rounded focus:outline-none focus:border-indigo-500"
+                />
+                <button
+                  onClick={() => { setDbLabelFn(db, dbLabelInput); setEditingDbLabel(false); }}
+                  className="p-1 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200"
+                  title="Save"
+                >
+                  <Check className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={() => setEditingDbLabel(false)}
+                  className="p-1 bg-slate-100 text-slate-600 rounded hover:bg-slate-200"
+                  title="Cancel"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Table list */}
@@ -595,7 +649,12 @@ export default function SiteDbAnalytics() {
           <div className="px-6 py-3 border-b border-slate-200 bg-white flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-2 text-sm">
               <Database className="w-4 h-4 text-indigo-500" />
-              <span className="font-semibold text-slate-800">{db || "—"}</span>
+              <span className="font-semibold text-slate-800">
+                {db ? displayDb(db) : "—"}
+                {db && displayDb(db) !== db && (
+                  <span className="ml-1 text-[10px] font-normal text-slate-400">({db})</span>
+                )}
+              </span>
               {tbl && (
                 <>
                   <ChevronRight className="w-3 h-3 text-slate-400" />

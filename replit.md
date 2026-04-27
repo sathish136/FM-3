@@ -10,7 +10,7 @@ Uses `mssql` (tedious) with a per-database connection-pool cache.
 | Endpoint | Description |
 |---|---|
 | `GET /api/site-db/health` | Connection test + server version/edition |
-| `GET /api/site-db/databases?includeSystem=` | List all DBs with size / state / owner |
+| `GET /api/site-db/databases?includeSystem=` | List all DBs with size / state / owner. Always hides operational DBs (`Brine_scada`, `Report_data`, `Server_Uptime`) — case-insensitive — to keep the team focused on plant data. |
 | `GET /api/site-db/tables?db=` | Tables in a DB with row counts + size |
 | `GET /api/site-db/views?db=` | Views in a DB |
 | `GET /api/site-db/columns?db=&schema=&table=` | Column metadata (type, nullability, PK) |
@@ -21,8 +21,9 @@ Uses `mssql` (tedious) with a per-database connection-pool cache.
 Identifiers are validated `^[A-Za-z0-9_]+$` and bracket-quoted before interpolation; user values use `mssql` parameterized inputs.
 
 ### Frontend (`artifacts/pm-app/src/pages/SiteDb.tsx`)
-- **Left sidebar**: server health card → databases list (search, system-DB toggle, size badges) → tables list (search, schema-prefixed, row + size badges)
+- **Left sidebar**: server health card → databases list (search, system-DB toggle, size badges, ✏️ inline rename → friendly label) → tables list (search, schema-prefixed, row + size badges)
 - **Tabs**: Data (paginated grid, sort, search, Excel export) · Schema (column type/length/nullable/PK) · Query (read-only SQL editor, Cmd/Ctrl+Enter to run, export results) · Analytics (Recharts bar charts: top by rows, top by size, storage pie)
+- **Friendly DB labels**: hover any database in the sidebar and click the pencil icon to assign a custom label (e.g. rename `lb_tex` → "Laxmi Bhilwara Textiles"). Stored in `localStorage` under `siteDb:labels`, so it persists per-browser and is shared between the SQL Viewer and Plant Analytics pages via the `useDbLabels` hook in `src/lib/dbLabels.ts`. The breadcrumb shows the friendly label with the real DB name in parentheses.
 
 ### Required Secrets
 - `SITE_DB_HOST` — `mssql.wttindia.com`
@@ -71,6 +72,9 @@ All identifiers (db/schema/table/tag/timeCol) are validated `^[A-Za-z0-9_]+$` an
 
 ### Cross-link
 The Site DB Viewer header has an **🧠 Analyze →** button next to the selected table that hands the (db, schema, table) over via `sessionStorage` and opens the analytics page pre-loaded.
+
+### Friendly Labels
+The Plant Analytics page also exposes a "Label" pencil next to the database picker — same `useDbLabels` hook + `localStorage` store as the SQL Viewer, so renaming a database in either place updates both pages immediately (and across tabs).
 
 Nav location: **Monitoring → Plant Analytics**.
 

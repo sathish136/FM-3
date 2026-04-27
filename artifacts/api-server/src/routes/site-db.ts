@@ -8,6 +8,17 @@ const SYSTEM_DBS = new Set([
   "ReportServer", "ReportServerTempDB",
 ]);
 
+// Always-hidden user databases (operational / non-plant data the team doesn't want exposed).
+// Compared case-insensitively because SQL Server identifiers are case-insensitive.
+const HIDDEN_DBS = new Set([
+  "brine_scada",
+  "report_data",
+  "server_uptime",
+]);
+function isHiddenDb(name: string): boolean {
+  return HIDDEN_DBS.has((name || "").toLowerCase());
+}
+
 export function buildConfig(database?: string): sql.config {
   const host = process.env.SITE_DB_HOST;
   const user = process.env.SITE_DB_USER;
@@ -131,9 +142,10 @@ router.get("/site-db/databases", async (req, res) => {
       GROUP BY d.name, d.database_id, d.create_date, d.state_desc, d.collation_name, d.owner_sid
       ORDER BY d.name ASC
     `);
-    const rows = (r.recordset || []).filter((x: any) =>
-      includeSystem ? true : !SYSTEM_DBS.has(x.name),
-    );
+    const rows = (r.recordset || []).filter((x: any) => {
+      if (isHiddenDb(x.name)) return false;
+      return includeSystem ? true : !SYSTEM_DBS.has(x.name);
+    });
     return res.json({ databases: rows });
   } catch (e: any) {
     return res.status(502).json({ error: e.message });
