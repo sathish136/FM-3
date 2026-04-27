@@ -36,6 +36,7 @@ import callLogsRouter from "./call-logs";
 import deptCallLogsRouter from "./dept-call-logs";
 import visitingCardsRouter from "./visiting-cards";
 import salesDashboardRouter from "./sales-dashboard";
+import siteDbRouter from "./site-db";
 
 const router: IRouter = Router();
 
@@ -76,5 +77,6 @@ router.use(callLogsRouter);
 router.use(deptCallLogsRouter);
 router.use(visitingCardsRouter);
 router.use(salesDashboardRouter);
+router.use(siteDbRouter);
 
 export default router;

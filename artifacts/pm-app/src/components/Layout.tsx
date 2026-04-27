@@ -5,7 +5,7 @@ import {
   LogOut, ChevronDown, ChevronRight as ChevronRightIcon, Menu, MoreHorizontal,
   MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp, ListChecks, ClipboardList, Truck, Building2, Package,
   Play, Square, Phone, ShieldOff, Loader2, Languages, Globe,
-  ScanLine, Factory,
+  ScanLine, Factory, Database,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -307,6 +307,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     items: [
       { path: "/plant-overview", label: "Plant Overview", icon: Activity, color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
       { path: "/site-data", label: "Site Data", icon: Activity, color: "text-cyan-400", bgColor: "bg-cyan-500/15" },
+      { path: "/site-db", label: "Site DB Viewer", icon: Database, color: "text-indigo-400", bgColor: "bg-indigo-500/15" },
       { path: "/cctv", label: "CCTV", icon: MonitorPlay, color: "text-sky-400", bgColor: "bg-sky-500/15" },
     ],
   },
@@ -389,6 +390,7 @@ const PATH_TO_MODULE: Record<string, string> = {
   "/hrms/daily-reporting":  "hrms-daily-reporting",
   "/plant-overview":        "plant-overview",
   "/site-data":             "site-data",
+  "/site-db":               "site-db",
   "/cctv":                  "cctv",
   "/mis-report":            "mis-report",
   "/payment-tracker":       "payment-tracker",

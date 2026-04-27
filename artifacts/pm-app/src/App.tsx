@@ -74,6 +74,7 @@ import VCCardScanner from "@/pages/VCCardScanner";
 import EmpAgent from "@/pages/EmpAgent";
 import SalesDashboard from "@/pages/SalesDashboard";
 import PlantEnquiry from "@/pages/PlantEnquiry";
+import SiteDb from "@/pages/SiteDb";
 import { SlideshowProvider } from "@/contexts/SlideshowContext";
 import { RecordingProvider } from "@/contexts/RecordingContext";
 
@@ -235,6 +236,7 @@ function ProtectedRoutes() {
       <Route path="/sales-dashboard" component={SalesDashboard} />
       <Route path="/sales" component={SalesDashboard} />
       <Route path="/plant-enquiry" component={PlantEnquiry} />
+      <Route path="/site-db" component={SiteDb} />
       <Route component={NotFound} />
     </Switch>
   );

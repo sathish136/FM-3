@@ -1,5 +1,38 @@
 # Workspace
 
+## Site DB Viewer (`/site-db`)
+
+Visual database explorer for the on-prem **MSSQL** server (`mssql.wttindia.com`). Supports browsing **multiple databases** — pick from a sidebar, drill into any table, run ad-hoc SELECT queries, and view aggregate analytics.
+
+### Backend (`artifacts/api-server/src/routes/site-db.ts`)
+Uses `mssql` (tedious) with a per-database connection-pool cache.
+
+| Endpoint | Description |
+|---|---|
+| `GET /api/site-db/health` | Connection test + server version/edition |
+| `GET /api/site-db/databases?includeSystem=` | List all DBs with size / state / owner |
+| `GET /api/site-db/tables?db=` | Tables in a DB with row counts + size |
+| `GET /api/site-db/views?db=` | Views in a DB |
+| `GET /api/site-db/columns?db=&schema=&table=` | Column metadata (type, nullability, PK) |
+| `GET /api/site-db/data?db=&schema=&table=&page=&limit=&search=&sort=&dir=` | Paginated rows with text-column search & sort |
+| `POST /api/site-db/query` `{ db, sql, limit }` | Run **read-only SELECT only** (banned: insert/update/delete/drop/exec/etc.) |
+| `GET /api/site-db/stats?db=` | Top tables by rows / size for analytics charts |
+
+Identifiers are validated `^[A-Za-z0-9_]+$` and bracket-quoted before interpolation; user values use `mssql` parameterized inputs.
+
+### Frontend (`artifacts/pm-app/src/pages/SiteDb.tsx`)
+- **Left sidebar**: server health card → databases list (search, system-DB toggle, size badges) → tables list (search, schema-prefixed, row + size badges)
+- **Tabs**: Data (paginated grid, sort, search, Excel export) · Schema (column type/length/nullable/PK) · Query (read-only SQL editor, Cmd/Ctrl+Enter to run, export results) · Analytics (Recharts bar charts: top by rows, top by size, storage pie)
+
+### Required Secrets
+- `SITE_DB_HOST` — `mssql.wttindia.com`
+- `SITE_DB_USER` — `sa`
+- `SITE_DB_PASSWORD`
+- `SITE_DB_PORT` — `1433` (optional, defaults to 1433)
+- `SITE_DB_DATABASE` — optional default DB; the UI lets users pick from all DBs
+
+Nav location: **Monitoring → Site DB Viewer**.
+
 ## HRMS Modules (ERPNext)
 
 All modules sync with ERPNext at `https://erp.wttint.com` via API key auth.
