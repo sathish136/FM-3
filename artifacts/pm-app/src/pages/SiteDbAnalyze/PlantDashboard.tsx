@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import {
-  Activity, Droplets, Gauge, AlertTriangle, CheckCircle2,
+  Activity, Gauge, AlertTriangle, CheckCircle2,
   Layers, Clock, Loader2, TrendingUp, TrendingDown, FileText,
-  Beaker, Waves, Factory, ShieldAlert, Lightbulb, ArrowRight,
-  Calendar, Download,
+  Beaker, ShieldAlert, Lightbulb, ArrowRight,
+  Calendar, Download, History, Zap, Tags, Grid3x3, Recycle,
 } from "lucide-react";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -102,6 +102,10 @@ export default function PlantDashboard({
   const [period, setPeriod] = useState<Period>("7d");
   const [opsRows, setOpsRows] = useState<SeriesRow[]>([]);
   const [dailyRows, setDailyRows] = useState<SeriesRow[]>([]);
+  const [prevDailyRows, setPrevDailyRows] = useState<SeriesRow[]>([]);
+  const [yoyDailyRows, setYoyDailyRows] = useState<SeriesRow[]>([]);
+  const [runHoursStats, setRunHoursStats] = useState<Record<string, any>>({});
+  const [unmappedStats, setUnmappedStats] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -110,6 +114,26 @@ export default function PlantDashboard({
     const from = new Date(to.getTime() - PERIOD_HOURS[period] * 3600 * 1000);
     return { from, to };
   }, [period]);
+
+  const prevRange = useMemo(() => {
+    const to = new Date(periodRange.from.getTime());
+    const from = new Date(to.getTime() - PERIOD_HOURS[period] * 3600 * 1000);
+    return { from, to };
+  }, [periodRange, period]);
+
+  const yoyRange = useMemo(() => {
+    const shift = (d: Date) => { const x = new Date(d); x.setFullYear(x.getFullYear() - 1); return x; };
+    return { from: shift(periodRange.from), to: shift(periodRange.to) };
+  }, [periodRange]);
+
+  const runHoursTags = useMemo(
+    () => plant.skids.map(s => s.runHours).filter(Boolean) as string[],
+    [plant],
+  );
+  const unmappedTags = useMemo(
+    () => (plant.unmapped || []).slice(0, 30),
+    [plant],
+  );
 
   const opsTags = useMemo(() => {
     const set = new Set<string>();
@@ -130,32 +154,54 @@ export default function PlantDashboard({
     return [...set];
   }, [plant]);
 
-  const fetchSeries = useCallback(async (tags: string[], bucket: string, agg: string) => {
+  const fetchSeriesIn = useCallback(async (tags: string[], bucket: string, agg: string, from: Date, to: Date) => {
     if (!tags.length) return [];
     const r = await fetch(`${base}/api/site-db/analytics/series`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         db, schema, table, timeCol, tags, bucket, agg,
-        from: periodRange.from.toISOString(), to: periodRange.to.toISOString(),
+        from: from.toISOString(), to: to.toISOString(),
       }),
     });
     if (!r.ok) throw new Error(`series ${r.status}`);
     const j = await r.json();
     return Array.isArray(j.rows) ? j.rows : [];
-  }, [base, db, schema, table, timeCol, periodRange]);
+  }, [base, db, schema, table, timeCol]);
+
+  const fetchStats = useCallback(async (tags: string[], from: Date, to: Date) => {
+    if (!tags.length) return {};
+    const r = await fetch(`${base}/api/site-db/analytics/stats`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        db, schema, table, timeCol, tags,
+        from: from.toISOString(), to: to.toISOString(),
+      }),
+    });
+    if (!r.ok) throw new Error(`stats ${r.status}`);
+    const j = await r.json();
+    return j.stats || {};
+  }, [base, db, schema, table, timeCol]);
 
   useEffect(() => {
     let cancel = false;
     (async () => {
       setLoading(true); setErr(null);
       try {
-        const [ops, daily] = await Promise.all([
-          fetchSeries(opsTags, PERIOD_BUCKET_OPS[period], "avg"),
-          fetchSeries(dailyTags, "1d", "max"), // totalizers reset daily, max per day
+        const [ops, daily, prevDaily, yoyDaily, runHrs, unmap] = await Promise.all([
+          fetchSeriesIn(opsTags, PERIOD_BUCKET_OPS[period], "avg", periodRange.from, periodRange.to),
+          fetchSeriesIn(dailyTags, "1d", "max", periodRange.from, periodRange.to),
+          fetchSeriesIn(dailyTags, "1d", "max", prevRange.from, prevRange.to),
+          fetchSeriesIn(dailyTags, "1d", "max", yoyRange.from, yoyRange.to),
+          fetchStats(runHoursTags, periodRange.from, periodRange.to),
+          fetchStats(unmappedTags, periodRange.from, periodRange.to),
         ]);
         if (cancel) return;
         setOpsRows(ops);
         setDailyRows(daily);
+        setPrevDailyRows(prevDaily);
+        setYoyDailyRows(yoyDaily);
+        setRunHoursStats(runHrs);
+        setUnmappedStats(unmap);
       } catch (e: any) {
         if (!cancel) setErr(e.message || "Failed to load report data");
       } finally {
@@ -163,7 +209,7 @@ export default function PlantDashboard({
       }
     })();
     return () => { cancel = true; };
-  }, [period, opsTags, dailyTags, fetchSeries]);
+  }, [period, opsTags, dailyTags, runHoursTags, unmappedTags, periodRange, prevRange, yoyRange, fetchSeriesIn, fetchStats]);
 
   // ── derive insights ────────────────────────────────────────────────
   const insights = useMemo(() => buildInsights(plant, opsRows, dailyRows, period), [plant, opsRows, dailyRows, period]);
@@ -218,12 +264,23 @@ export default function PlantDashboard({
         {!loading && !err && (
           <>
             <ExecutiveSummary insights={insights} period={period} />
+            <HistoricalComparisonSection
+              plant={plant}
+              period={period}
+              currentDaily={dailyRows}
+              prevDaily={prevDailyRows}
+              yoyDaily={yoyDailyRows}
+            />
             <ProductionSection insights={insights} dailyRows={dailyRows} plant={plant} />
             <MembraneHealthSection insights={insights} opsRows={opsRows} plant={plant} />
             <SkidBalancingSection insights={insights} plant={plant} />
+            <OperationalUptimeSection plant={plant} runHoursStats={runHoursStats} period={period} />
+            <BackwashActivitySection plant={plant} dailyRows={dailyRows} />
             <FeedQualitySection insights={insights} opsRows={opsRows} plant={plant} />
+            <ProductionHeatmapSection plant={plant} opsRows={opsRows} period={period} />
             <AnomaliesSection insights={insights} />
             <DetailedMetricsTable insights={insights} plant={plant} />
+            <UncategorisedTagsSection unmappedTags={unmappedTags} stats={unmappedStats} />
             <Recommendations insights={insights} />
           </>
         )}
@@ -987,6 +1044,408 @@ function Recommendations({ insights }: { insights: Insights }) {
             </div>
           </div>
         ))}
+      </div>
+    </SectionCard>
+  );
+}
+
+// ── Historical comparison ──────────────────────────────────────────────
+function sumDaily(rows: SeriesRow[], plant: PlantSchema): number {
+  let total = 0;
+  rows.forEach(r => {
+    plant.skids.forEach(s => {
+      if (s.totalizerDay) {
+        const v = num(r[s.totalizerDay]);
+        if (v != null) total += v;
+      }
+    });
+  });
+  return total;
+}
+
+function HistoricalComparisonSection({
+  plant, period, currentDaily, prevDaily, yoyDaily,
+}: {
+  plant: PlantSchema; period: Period;
+  currentDaily: SeriesRow[]; prevDaily: SeriesRow[]; yoyDaily: SeriesRow[];
+}) {
+  const cur = sumDaily(currentDaily, plant);
+  const prev = sumDaily(prevDaily, plant);
+  const yoy = sumDaily(yoyDaily, plant);
+  const dPrev = prev > 0 ? ((cur - prev) / prev) * 100 : null;
+  const dYoY = yoy > 0 ? ((cur - yoy) / yoy) * 100 : null;
+
+  // Build aligned chart: index by day-offset (0 = first day of period)
+  const buildSeries = (rows: SeriesRow[]) =>
+    rows.map((r, i) => ({
+      idx: i,
+      v: plant.skids.reduce((a, s) => a + (s.totalizerDay ? num(r[s.totalizerDay]) ?? 0 : 0), 0),
+    }));
+  const curS = buildSeries(currentDaily);
+  const prevS = buildSeries(prevDaily);
+  const yoyS = buildSeries(yoyDaily);
+  const maxLen = Math.max(curS.length, prevS.length, yoyS.length);
+  const chart = Array.from({ length: maxLen }, (_, i) => ({
+    day: `D${i + 1}`,
+    Current: curS[i]?.v ?? null,
+    Previous: prevS[i]?.v ?? null,
+    "Year ago": yoyS[i]?.v ?? null,
+  }));
+
+  const deltaTone = (d: number | null) =>
+    d == null ? "default" : d >= 0 ? "good" : d <= -5 ? "bad" : "warn";
+  const fmtDelta = (d: number | null) =>
+    d == null ? "—" : `${d > 0 ? "+" : ""}${d.toFixed(1)}%`;
+
+  return (
+    <SectionCard
+      icon={History}
+      title="Historical Comparison"
+      subtitle={`${PERIOD_LABEL[period]} vs previous period and year-ago window`}
+      accent="indigo"
+    >
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+        <StatBox label={`Current (${PERIOD_LABEL[period]})`} value={fmtInt(cur)} unit="m³" />
+        <StatBox
+          label="Previous Period"
+          value={fmtInt(prev)}
+          unit="m³"
+          sub={`Δ ${fmtDelta(dPrev)}`}
+          tone={deltaTone(dPrev)}
+        />
+        <StatBox
+          label="Same Period Last Year"
+          value={fmtInt(yoy)}
+          unit="m³"
+          sub={`Δ ${fmtDelta(dYoY)}`}
+          tone={deltaTone(dYoY)}
+        />
+      </div>
+
+      {chart.some(c => c.Current || c.Previous || c["Year ago"]) ? (
+        <div className="h-72">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chart} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#64748b" }} />
+              <YAxis tick={{ fontSize: 11, fill: "#64748b" }} />
+              <RTooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Line type="monotone" dataKey="Current" stroke="#6366f1" strokeWidth={2.5} dot={false} connectNulls />
+              <Line type="monotone" dataKey="Previous" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls />
+              <Line type="monotone" dataKey="Year ago" stroke="#f59e0b" strokeWidth={2} strokeDasharray="2 4" dot={false} connectNulls />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      ) : (
+        <div className="text-center py-12 text-sm text-slate-400">No historical data available for comparison</div>
+      )}
+    </SectionCard>
+  );
+}
+
+// ── Operational uptime / downtime ───────────────────────────────────────
+function OperationalUptimeSection({
+  plant, runHoursStats, period,
+}: { plant: PlantSchema; runHoursStats: Record<string, any>; period: Period }) {
+  const periodHours = PERIOD_HOURS[period];
+
+  const rows = plant.skids.map((s, i) => {
+    const st = s.runHours ? runHoursStats[s.runHours] : null;
+    const first = num(st?.first);
+    const last = num(st?.last);
+    const ran = first != null && last != null ? Math.max(0, last - first) : null;
+    const util = ran != null ? Math.min(100, (ran / periodHours) * 100) : null;
+    const down = ran != null ? Math.max(0, periodHours - ran) : null;
+    return { skid: s, color: SKID_COLORS[i % SKID_COLORS.length], first, last, ran, util, down };
+  });
+
+  const anyData = rows.some(r => r.ran != null);
+
+  return (
+    <SectionCard
+      icon={Clock}
+      title="Skid Operating Hours & Utilisation"
+      subtitle={`Run-hours and downtime computed from cumulative timer columns over ${PERIOD_LABEL[period].toLowerCase()}`}
+      accent="sky"
+    >
+      {!anyData ? (
+        <div className="text-sm text-slate-400 text-center py-8">No run-hour columns detected on this table</div>
+      ) : (
+        <>
+          <div className="space-y-3 mb-5">
+            {rows.map(r => (
+              <div key={r.skid.id}>
+                <div className="flex items-center justify-between text-xs mb-1.5">
+                  <span className="font-semibold text-slate-700 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full" style={{ background: r.color }} />
+                    {r.skid.name}
+                  </span>
+                  <span className="text-slate-500">
+                    <span className="font-bold text-slate-900">{fmt(r.ran, 1)} h</span> ran ·
+                    <span className="ml-1.5">{fmt(r.down, 1)} h down</span> ·
+                    {r.util != null && <span className="ml-1.5 font-bold text-slate-900">{r.util.toFixed(1)}% utilisation</span>}
+                  </span>
+                </div>
+                <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden flex">
+                  <div className="h-full" style={{ width: `${r.util ?? 0}%`, background: r.color }} />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="overflow-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-[10px] uppercase tracking-wider text-slate-500 border-b border-slate-200">
+                  <th className="px-3 py-2 font-bold">Skid</th>
+                  <th className="px-3 py-2 font-bold">Run-hour Tag</th>
+                  <th className="px-3 py-2 font-bold text-right">Period Start</th>
+                  <th className="px-3 py-2 font-bold text-right">Period End</th>
+                  <th className="px-3 py-2 font-bold text-right">Hours Run</th>
+                  <th className="px-3 py-2 font-bold text-right">Hours Down</th>
+                  <th className="px-3 py-2 font-bold text-right">Utilisation</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(r => (
+                  <tr key={r.skid.id} className="border-b border-slate-50">
+                    <td className="px-3 py-2 font-semibold text-slate-900">{r.skid.name}</td>
+                    <td className="px-3 py-2 text-slate-500 font-mono text-[11px]">{r.skid.runHours || "—"}</td>
+                    <td className="px-3 py-2 text-right text-slate-600">{fmt(r.first, 1)}</td>
+                    <td className="px-3 py-2 text-right text-slate-600">{fmt(r.last, 1)}</td>
+                    <td className="px-3 py-2 text-right font-bold text-slate-900">{fmt(r.ran, 1)}</td>
+                    <td className="px-3 py-2 text-right text-slate-600">{fmt(r.down, 1)}</td>
+                    <td className={`px-3 py-2 text-right font-bold ${
+                      r.util == null ? "text-slate-400" : r.util >= 80 ? "text-emerald-700" : r.util >= 50 ? "text-amber-700" : "text-rose-700"
+                    }`}>{r.util != null ? `${r.util.toFixed(1)}%` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </SectionCard>
+  );
+}
+
+// ── Backwash activity log ───────────────────────────────────────────────
+function BackwashActivitySection({ plant, dailyRows }: { plant: PlantSchema; dailyRows: SeriesRow[] }) {
+  const hasBw = plant.skids.some(s => s.bwTotalizerDay);
+  if (!hasBw) return null;
+
+  const chartData = dailyRows.map(r => {
+    const o: any = { date: fmtDate(r.bucket as string) };
+    plant.skids.forEach(s => {
+      if (s.bwTotalizerDay) o[s.name] = num(r[s.bwTotalizerDay]);
+    });
+    return o;
+  });
+
+  const totalsBySkid = plant.skids.map((s, i) => {
+    const vals = dailyRows.map(r => num(r[s.bwTotalizerDay || ""])).filter(v => v != null) as number[];
+    const total = vals.reduce((a, b) => a + b, 0);
+    const avg = vals.length ? total / vals.length : 0;
+    const peakIdx = vals.length ? vals.indexOf(Math.max(...vals)) : -1;
+    const peakDay = peakIdx >= 0 ? dailyRows[peakIdx]?.bucket : null;
+    return { skid: s, color: SKID_COLORS[i % SKID_COLORS.length], total, avg, peak: peakIdx >= 0 ? vals[peakIdx] : null, peakDay };
+  });
+
+  return (
+    <SectionCard
+      icon={Recycle}
+      title="Backwash Activity"
+      subtitle="Daily backwash volume per skid (from BW totalizer columns)"
+      accent="sky"
+    >
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+        {totalsBySkid.map(t => (
+          <div key={t.skid.id} className="rounded-xl border border-slate-200 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full" style={{ background: t.color }} />
+                {t.skid.name}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <div className="text-slate-500">Total BW</div>
+                <div className="text-base font-bold text-slate-900">{fmtInt(t.total)} <span className="text-[10px] text-slate-400">m³</span></div>
+              </div>
+              <div>
+                <div className="text-slate-500">Daily Avg</div>
+                <div className="text-base font-bold text-slate-900">{fmt(t.avg, 1)}</div>
+              </div>
+              <div className="col-span-2 pt-2 border-t border-slate-100 text-[11px] text-slate-500">
+                {t.peakDay ? <>Peak: <strong className="text-slate-700">{fmtInt(t.peak)} m³</strong> on {fmtDate(t.peakDay as string)}</> : "No peak data"}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {chartData.length > 0 && (
+        <div className="h-56">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#64748b" }} />
+              <YAxis tick={{ fontSize: 11, fill: "#64748b" }} />
+              <RTooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              {plant.skids.map((s, i) => (
+                s.bwTotalizerDay ? (
+                  <Bar key={s.id} dataKey={s.name} stackId="bw" fill={SKID_COLORS[i % SKID_COLORS.length]} radius={i === plant.skids.length - 1 ? [4, 4, 0, 0] : 0} />
+                ) : null
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
+// ── Production heat-map (day × hour) ────────────────────────────────────
+function ProductionHeatmapSection({
+  plant, opsRows, period,
+}: { plant: PlantSchema; opsRows: SeriesRow[]; period: Period }) {
+  if (period === "24h") return null; // not enough rows for a meaningful grid
+
+  // Aggregate flows into (date, hour) cells
+  type Cell = { date: string; hour: number; v: number; n: number };
+  const map: Record<string, Cell> = {};
+  opsRows.forEach(r => {
+    const t = new Date(r.bucket as string);
+    if (isNaN(+t)) return;
+    const dKey = t.toISOString().slice(0, 10);
+    const hr = t.getHours();
+    const key = `${dKey}|${hr}`;
+    let total = 0, has = false;
+    plant.skids.forEach(s => {
+      if (s.flow) {
+        const v = num(r[s.flow]);
+        if (v != null) { total += v; has = true; }
+      }
+    });
+    if (!has) return;
+    const c = map[key] || (map[key] = { date: dKey, hour: hr, v: 0, n: 0 });
+    c.v += total;
+    c.n += 1;
+  });
+  const cells = Object.values(map).map(c => ({ ...c, v: c.v / c.n }));
+  if (!cells.length) return null;
+
+  const dates = [...new Set(cells.map(c => c.date))].sort();
+  const max = Math.max(...cells.map(c => c.v));
+  const cellMap: Record<string, number> = {};
+  cells.forEach(c => { cellMap[`${c.date}|${c.hour}`] = c.v; });
+
+  // color scale (white -> indigo)
+  const colorFor = (v: number | undefined) => {
+    if (v == null) return "#f8fafc";
+    const t = Math.min(1, v / max);
+    // mix white -> #6366f1
+    const r = Math.round(255 + (99 - 255) * t);
+    const g = Math.round(255 + (102 - 255) * t);
+    const b = Math.round(255 + (241 - 255) * t);
+    return `rgb(${r},${g},${b})`;
+  };
+
+  return (
+    <SectionCard
+      icon={Grid3x3}
+      title="Production Intensity Heat-map"
+      subtitle="Total skid flow by day and hour-of-day. Darker = higher throughput."
+      accent="indigo"
+    >
+      <div className="overflow-auto">
+        <table className="text-[10px] border-separate border-spacing-0.5">
+          <thead>
+            <tr>
+              <th className="text-left text-slate-500 font-semibold pr-2"></th>
+              {Array.from({ length: 24 }, (_, h) => (
+                <th key={h} className="w-6 text-center text-slate-400 font-semibold">{h}</th>
+              ))}
+              <th className="text-left text-slate-500 font-semibold pl-2">Avg</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dates.map(d => {
+              const dayVals = Array.from({ length: 24 }, (_, h) => cellMap[`${d}|${h}`]);
+              const dayAvg = avg(dayVals.map(v => v ?? null));
+              return (
+                <tr key={d}>
+                  <td className="text-slate-600 font-semibold pr-2 whitespace-nowrap">{fmtDate(d)}</td>
+                  {dayVals.map((v, h) => (
+                    <td
+                      key={h}
+                      className="w-6 h-5 rounded"
+                      title={`${fmtDate(d)} ${h}:00 — ${v != null ? fmt(v, 2) + " m³/h" : "no data"}`}
+                      style={{ background: colorFor(v) }}
+                    />
+                  ))}
+                  <td className="text-slate-700 font-bold pl-2 whitespace-nowrap">{fmt(dayAvg, 1)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex items-center justify-end gap-2 mt-4 text-[10px] text-slate-500">
+        <span>0</span>
+        <div className="h-2 w-32 rounded-full" style={{ background: "linear-gradient(to right, #f8fafc, #6366f1)" }} />
+        <span>{fmt(max, 1)} m³/h</span>
+      </div>
+    </SectionCard>
+  );
+}
+
+// ── Uncategorised tags ──────────────────────────────────────────────────
+function UncategorisedTagsSection({
+  unmappedTags, stats,
+}: { unmappedTags: string[]; stats: Record<string, any> }) {
+  if (!unmappedTags.length) return null;
+  return (
+    <SectionCard
+      icon={Tags}
+      title="Uncategorised Numeric Tags"
+      subtitle={`${unmappedTags.length} additional tag${unmappedTags.length === 1 ? "" : "s"} not mapped to plant role — period statistics shown below`}
+      accent="slate"
+    >
+      <div className="overflow-auto max-h-96">
+        <table className="w-full text-xs">
+          <thead className="sticky top-0 bg-white">
+            <tr className="text-left text-[10px] uppercase tracking-wider text-slate-500 border-b border-slate-200">
+              <th className="px-3 py-2 font-bold">Tag</th>
+              <th className="px-3 py-2 font-bold text-right">Last</th>
+              <th className="px-3 py-2 font-bold text-right">Avg</th>
+              <th className="px-3 py-2 font-bold text-right">Min</th>
+              <th className="px-3 py-2 font-bold text-right">Max</th>
+              <th className="px-3 py-2 font-bold text-right">P95</th>
+              <th className="px-3 py-2 font-bold text-right">Std</th>
+              <th className="px-3 py-2 font-bold text-right">Samples</th>
+            </tr>
+          </thead>
+          <tbody>
+            {unmappedTags.map(t => {
+              const s = stats[t] || {};
+              return (
+                <tr key={t} className="border-b border-slate-50 hover:bg-slate-50/50">
+                  <td className="px-3 py-2 font-mono text-[11px] text-slate-700">{t}</td>
+                  <td className="px-3 py-2 text-right font-semibold text-slate-900">{fmt(s.last, 2)}</td>
+                  <td className="px-3 py-2 text-right text-slate-700">{fmt(s.avg, 2)}</td>
+                  <td className="px-3 py-2 text-right text-slate-500">{fmt(s.min, 2)}</td>
+                  <td className="px-3 py-2 text-right text-slate-500">{fmt(s.max, 2)}</td>
+                  <td className="px-3 py-2 text-right text-slate-500">{fmt(s.p95, 2)}</td>
+                  <td className="px-3 py-2 text-right text-slate-500">{fmt(s.std, 2)}</td>
+                  <td className="px-3 py-2 text-right text-slate-500">{fmtInt(s.count)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </SectionCard>
   );
