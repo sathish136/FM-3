@@ -173,7 +173,6 @@ export default function SiteDbAnalytics() {
   const [dbLabelInput, setDbLabelInput] = useState("");
   const [tables, setTables] = useState<Tbl[]>([]);
   const [tbl, setTbl] = useState<{ schema: string; name: string } | null>(null);
-  const [tableSearch, setTableSearch] = useState("");
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -404,12 +403,6 @@ export default function SiteDbAnalytics() {
   useEffect(() => { loadCorrelation(); }, [selectedTags.join(","), fromDate.getTime(), toDate.getTime()]);
   useEffect(() => { loadAnomalies(); }, [anomTag, anomSigma, fromDate.getTime(), toDate.getTime()]);
 
-  // ─── filter table list
-  const filteredTables = useMemo(
-    () => tables.filter(t => `${t.schema}.${t.name}`.toLowerCase().includes(tableSearch.toLowerCase())),
-    [tables, tableSearch],
-  );
-
   // ─── filter & group tags
   const groupedTags = useMemo(() => {
     if (!profile) return [];
@@ -519,59 +512,106 @@ export default function SiteDbAnalytics() {
   }
 
   // ─── render ───
+  const dbOptions: ComboOption[] = useMemo(
+    () => databases.map(d => {
+      const label = displayDb(d.name);
+      return {
+        value: d.name,
+        label: label === d.name ? d.name : label,
+        sub: label === d.name ? `${d.sizeMB} MB` : `${d.name} · ${d.sizeMB} MB`,
+      };
+    }),
+    [databases, displayDb],
+  );
+
+  const tableOptions: ComboOption[] = useMemo(
+    () => tables.map(t => ({
+      value: `${t.schema}.${t.name}`,
+      label: t.name,
+      sub: `${t.schema} · ${fmtInt(t.rowCount)} rows · ${t.sizeMB} MB`,
+    })),
+    [tables],
+  );
+
   return (
     <Layout>
-      <div className="flex h-[calc(100vh-64px)] bg-slate-50">
-        {/* ── Sidebar ── */}
-        <aside className="w-72 border-r border-slate-200 bg-white flex flex-col">
-          <div className="p-4 border-b border-slate-200 bg-gradient-to-br from-indigo-50 to-violet-50">
-            <div className="flex items-center gap-2">
-              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center">
+      <div className="flex flex-col h-[calc(100vh-64px)] bg-slate-50">
+        {/* ── Top header ── */}
+        <header className="bg-white border-b border-slate-200">
+          <div className="px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
+            {/* Brand */}
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center shadow-sm shrink-0">
                 <Sparkles className="w-5 h-5 text-white" />
               </div>
-              <div>
-                <div className="font-bold text-slate-800">Water Plant Analytics</div>
-                <div className="text-[10px] text-slate-500">SCADA time-series intelligence</div>
+              <div className="min-w-0">
+                <div className="font-bold text-slate-800 leading-tight">Water Plant Analytics</div>
+                <div className="text-[11px] text-slate-500">SCADA time-series intelligence</div>
               </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={exportExcel}
+                disabled={!series.length}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg font-semibold disabled:opacity-40 border border-emerald-200"
+              >
+                <Download className="w-3.5 h-3.5" /> Excel
+              </button>
+              <button
+                onClick={exportPdf}
+                disabled={!profile || !selectedTags.length}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg font-semibold disabled:opacity-40 border border-rose-200"
+              >
+                <FileDown className="w-3.5 h-3.5" /> PDF Report
+              </button>
             </div>
           </div>
 
-          {/* DB picker */}
-          <div className="p-3 border-b border-slate-200">
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Plant Database</label>
-              {db && !editingDbLabel && (
-                <button
-                  onClick={() => {
-                    setEditingDbLabel(true);
-                    const cur = displayDb(db);
-                    setDbLabelInput(cur === db ? "" : cur);
-                  }}
-                  className="flex items-center gap-1 text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold"
-                  title="Rename / give friendly label"
-                >
-                  <Pencil className="w-2.5 h-2.5" />
-                  Label
-                </button>
-              )}
-            </div>
-            <select
-              value={db}
-              onChange={e => setDb(e.target.value)}
-              className="w-full text-xs border border-slate-200 rounded-md px-2 py-2 bg-white focus:outline-none focus:border-indigo-400"
+          {/* Breadcrumb / pickers row */}
+          <div className="px-6 pb-3 flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => { setTbl(null); }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
+                !tbl
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+              }`}
             >
-              <option value="">— Select plant database —</option>
-              {databases.map(d => {
-                const label = displayDb(d.name);
-                return (
-                  <option key={d.name} value={d.name}>
-                    {label === d.name ? d.name : `${label}  (${d.name})`}
-                  </option>
-                );
-              })}
-            </select>
+              <BarChart3 className="w-3.5 h-3.5" /> All Sites
+            </button>
+
+            <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
+
+            {/* Database combobox */}
+            <Combobox
+              icon={<Database className="w-4 h-4 text-indigo-500" />}
+              placeholder="Select plant database…"
+              value={db}
+              options={dbOptions}
+              onChange={(v) => setDb(v)}
+              widthClass="min-w-[240px]"
+              emptyHint="No databases available"
+            />
+
+            {/* Rename label action */}
+            {db && !editingDbLabel && (
+              <button
+                onClick={() => {
+                  setEditingDbLabel(true);
+                  const cur = displayDb(db);
+                  setDbLabelInput(cur === db ? "" : cur);
+                }}
+                className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-semibold text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-200"
+                title="Rename / give friendly label"
+              >
+                <Pencil className="w-3 h-3" />
+                Rename
+              </button>
+            )}
             {editingDbLabel && db && (
-              <div className="mt-2 flex items-center gap-1">
+              <div className="flex items-center gap-1">
                 <input
                   autoFocus
                   value={dbLabelInput}
@@ -581,120 +621,56 @@ export default function SiteDbAnalytics() {
                     if (e.key === "Escape") setEditingDbLabel(false);
                   }}
                   placeholder={`Friendly name for "${db}"`}
-                  className="flex-1 px-2 py-1 text-xs border border-indigo-300 rounded focus:outline-none focus:border-indigo-500"
+                  className="px-2 py-1.5 text-xs border border-indigo-300 rounded-lg focus:outline-none focus:border-indigo-500 w-56"
                 />
                 <button
                   onClick={() => { setDbLabelFn(db, dbLabelInput); setEditingDbLabel(false); }}
-                  className="p-1 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200"
+                  className="p-1.5 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200"
                   title="Save"
                 >
-                  <Check className="w-3 h-3" />
+                  <Check className="w-3.5 h-3.5" />
                 </button>
                 <button
                   onClick={() => setEditingDbLabel(false)}
-                  className="p-1 bg-slate-100 text-slate-600 rounded hover:bg-slate-200"
+                  className="p-1.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200"
                   title="Cancel"
                 >
-                  <X className="w-3 h-3" />
+                  <X className="w-3.5 h-3.5" />
                 </button>
               </div>
             )}
-          </div>
 
-          {/* Table list */}
-          <div className="flex-1 flex flex-col min-h-0 p-3">
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                Tables {db && `(${filteredTables.length})`}
-              </label>
-            </div>
-            <div className="relative mb-2">
-              <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                value={tableSearch}
-                onChange={e => setTableSearch(e.target.value)}
-                placeholder="Search…"
-                disabled={!db}
-                className="w-full pl-7 pr-2 py-1.5 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-indigo-400 disabled:bg-slate-50"
-              />
-            </div>
-            <div className="flex-1 overflow-y-auto -mx-3 px-3 space-y-0.5">
-              {!db && <div className="text-[11px] text-slate-400 py-6 text-center">Pick a database</div>}
-              {filteredTables.map(t => {
-                const isSel = tbl?.schema === t.schema && tbl?.name === t.name;
-                return (
-                  <button
-                    key={`${t.schema}.${t.name}`}
-                    onClick={() => setTbl({ schema: t.schema, name: t.name })}
-                    className={`w-full flex flex-col px-2 py-2 rounded-md text-left transition-colors ${
-                      isSel ? "bg-violet-100 text-violet-700" : "hover:bg-slate-100 text-slate-700"
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <Table2 className="w-3.5 h-3.5 shrink-0 text-violet-500" />
-                      <span className="text-xs font-medium truncate">{t.name}</span>
-                    </div>
-                    <div className="text-[10px] text-slate-500 pl-5">
-                      {fmtInt(t.rowCount)} rows · {t.sizeMB} MB
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+            {/* Table combobox (only when db chosen) */}
+            {db && (
+              <>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
+                <Combobox
+                  icon={<Table2 className="w-4 h-4 text-violet-500" />}
+                  placeholder={tables.length ? "Choose a table…" : "Loading tables…"}
+                  value={tbl ? `${tbl.schema}.${tbl.name}` : ""}
+                  options={tableOptions}
+                  onChange={(v) => {
+                    const found = tables.find(t => `${t.schema}.${t.name}` === v);
+                    if (found) setTbl({ schema: found.schema, name: found.name });
+                  }}
+                  widthClass="min-w-[240px]"
+                  emptyHint={tables.length ? "No tables match" : "No tables in this database"}
+                  disabled={!tables.length}
+                />
+              </>
+            )}
+
+            {profile && tbl && (
+              <span className="ml-auto text-[11px] text-slate-500 flex items-center gap-1">
+                {fmtInt(profile.totalRows)} rows · {profile.tags.length} tags · time col:{" "}
+                <code className="text-indigo-600">{profile.timeCol || "—"}</code>
+              </span>
+            )}
           </div>
-        </aside>
+        </header>
 
         {/* ── Main ── */}
         <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          {/* Header */}
-          <div className="px-6 py-3 border-b border-slate-200 bg-white flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-2 text-sm">
-              {tbl && (
-                <button
-                  onClick={() => setTbl(null)}
-                  className="px-2 py-1 rounded-md text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-1"
-                  title="Back to all-sites dashboard"
-                >
-                  <BarChart3 className="w-3 h-3" /> All Sites
-                </button>
-              )}
-              <Database className="w-4 h-4 text-indigo-500" />
-              <span className="font-semibold text-slate-800">
-                {db ? displayDb(db) : "—"}
-                {db && displayDb(db) !== db && (
-                  <span className="ml-1 text-[10px] font-normal text-slate-400">({db})</span>
-                )}
-              </span>
-              {tbl && (
-                <>
-                  <ChevronRight className="w-3 h-3 text-slate-400" />
-                  <Table2 className="w-4 h-4 text-violet-500" />
-                  <span className="font-semibold text-slate-800">{tbl.schema}.{tbl.name}</span>
-                </>
-              )}
-              {profile && (
-                <span className="text-[10px] text-slate-500 ml-3">
-                  {fmtInt(profile.totalRows)} total rows · {profile.tags.length} tags · time col: <code className="text-indigo-600">{profile.timeCol || "—"}</code>
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={exportExcel}
-                disabled={!series.length}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-md font-semibold disabled:opacity-50"
-              >
-                <Download className="w-3 h-3" /> Excel
-              </button>
-              <button
-                onClick={exportPdf}
-                disabled={!profile || !selectedTags.length}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-md font-semibold disabled:opacity-50"
-              >
-                <FileDown className="w-3 h-3" /> PDF Report
-              </button>
-            </div>
-          </div>
 
           {/* Body */}
           <div className="flex-1 overflow-auto" ref={reportRef}>
@@ -1125,6 +1101,126 @@ export default function SiteDbAnalytics() {
 }
 
 // ─── helper components ───
+type ComboOption = { value: string; label: string; sub?: string };
+
+function Combobox({
+  value, options, onChange, placeholder, icon, widthClass = "min-w-[220px]",
+  emptyHint = "No options", disabled = false,
+}: {
+  value: string;
+  options: ComboOption[];
+  onChange: (v: string) => void;
+  placeholder: string;
+  icon?: React.ReactNode;
+  widthClass?: string;
+  emptyHint?: string;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery("");
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setOpen(false); setQuery(""); }
+    };
+    document.addEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (open) setTimeout(() => inputRef.current?.focus(), 30);
+  }, [open]);
+
+  const selected = options.find(o => o.value === value);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter(o =>
+      o.label.toLowerCase().includes(q) || (o.sub || "").toLowerCase().includes(q),
+    );
+  }, [options, query]);
+
+  return (
+    <div ref={wrapRef} className={`relative ${widthClass}`}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen(o => !o)}
+        className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition ${
+          disabled
+            ? "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
+            : open
+              ? "bg-white border-indigo-400 ring-2 ring-indigo-100 text-slate-800"
+              : "bg-white border-slate-200 hover:border-slate-300 text-slate-800 shadow-sm"
+        }`}
+      >
+        {icon}
+        <span className={`flex-1 text-left truncate ${selected ? "" : "text-slate-400 font-normal"}`}>
+          {selected ? selected.label : placeholder}
+        </span>
+        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1.5 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+          <div className="p-2 border-b border-slate-100">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                ref={inputRef}
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Search…"
+                className="w-full pl-8 pr-2 py-1.5 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-indigo-400"
+              />
+            </div>
+          </div>
+          <div className="max-h-72 overflow-y-auto py-1">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-6 text-center text-xs text-slate-400">{emptyHint}</div>
+            ) : filtered.map(o => {
+              const isSel = o.value === value;
+              return (
+                <button
+                  key={o.value}
+                  onClick={() => { onChange(o.value); setOpen(false); setQuery(""); }}
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-indigo-50 transition ${
+                    isSel ? "bg-indigo-50" : ""
+                  }`}
+                >
+                  <Check className={`w-3.5 h-3.5 shrink-0 ${isSel ? "text-indigo-600" : "text-transparent"}`} />
+                  <div className="min-w-0 flex-1">
+                    <div className={`truncate font-semibold ${isSel ? "text-indigo-700" : "text-slate-800"}`}>
+                      {o.label}
+                    </div>
+                    {o.sub && (
+                      <div className="truncate text-[10px] text-slate-500">{o.sub}</div>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EmptyState({ icon, title, hint }: { icon: React.ReactNode; title: string; hint: string }) {
   return (
     <div className="h-full flex flex-col items-center justify-center text-center p-6">
