@@ -1,0 +1,62 @@
+{
+  "expo": {
+    "name": "FlowMatriX CRM",
+    "slug": "flowmatrix",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "flowmatrix",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.wtt.flowmatrix.crm",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.wtt.flowmatrix.crm",
+      "adaptiveIcon": {
+        "backgroundColor": "#1a3fbd"
+      },
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.VIBRATE",
+        "android.permission.RECEIVE_BOOT_COMPLETED"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "spa"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow FlowMatriX CRM to access your location to tag plant enquiry sites."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#1a3fbd",
+          "sounds": []
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f5b5a369-d877-49b6-a6d3-9d21e5105dad"
+      }
+    },
+    "owner": "itwtt"
+  }
+}
