@@ -313,9 +313,10 @@ router.get("/sales-dashboard/customer_details", async (_req, res) => {
 });
 
 // 10. OPEN LEADS
-router.get("/sales-dashboard/open_leads", async (_req, res) => {
+router.get("/sales-dashboard/open_leads", async (req, res) => {
+  const agentEmail = String(req.query.agent_email ?? "").trim().toLowerCase();
   const msg = await callErp("wtt_module.customization.custom.rfq.get_open_leads");
-  const rows = (msg.data ?? []).map((lead: Row) => ({
+  let rows = (msg.data ?? []).map((lead: Row) => ({
     name: lead.name ?? "",
     company_name: lead.company_name ?? "",
     email_id: lead.email_id ?? "",
@@ -337,7 +338,38 @@ router.get("/sales-dashboard/open_leads", async (_req, res) => {
     contact_person: lead.contact_person ?? lead.poc ?? lead.lead_name ?? "",
     website: lead.website ?? "",
   }));
-  res.json(ok(msg.total_count ?? 0, rows));
+
+  // If an agent_email is provided, filter to only their assigned leads
+  if (agentEmail) {
+    try {
+      const { sql } = await import("drizzle-orm");
+      const { db } = await import("@workspace/db");
+      let assignedIds: string[] = [];
+
+      // Check erp_agents table first (new agent system — erp_name based)
+      const erpAgentRows = await db.execute(
+        sql`SELECT lead_ids FROM erp_agents WHERE LOWER(erp_name) = ${agentEmail} OR LOWER(agent_login_id) = ${agentEmail}`
+      );
+      if (erpAgentRows.rows.length > 0) {
+        try { assignedIds = JSON.parse(String(erpAgentRows.rows[0].lead_ids ?? "[]")); } catch { assignedIds = []; }
+      } else {
+        // Fallback: legacy agent_lead_assignments table
+        const legacyRows = await db.execute(
+          sql`SELECT lead_ids FROM agent_lead_assignments WHERE agent_email = ${agentEmail}`
+        );
+        if (legacyRows.rows.length > 0) {
+          try { assignedIds = JSON.parse(String(legacyRows.rows[0].lead_ids ?? "[]")); } catch { assignedIds = []; }
+        }
+      }
+
+      const idSet = new Set(assignedIds.map((id: string) => id.toLowerCase()));
+      rows = rows.filter((r) => idSet.has(String(r.name ?? "").toLowerCase()));
+    } catch (e) {
+      console.error("Agent lead filter error:", e);
+    }
+  }
+
+  res.json(ok(rows.length, rows));
 });
 
 // ── PER-LEAD DETAIL ENDPOINTS ─────────────────────────────────────────

@@ -1,7 +1,7 @@
 import { useState, useEffect, type ReactNode } from "react";
 import { Layout } from "@/components/Layout";
 import {
-  RefreshCw, Eye, CheckCircle2, Clock,
+  FileText, RefreshCw, Eye, CheckCircle2, Clock,
   Search, Download, Loader2, Building2, MapPin, Mail,
   Phone, User, Droplets, Layers, SlidersHorizontal,
   X, ExternalLink, AlertCircle,
@@ -68,14 +68,18 @@ function DetailPanel({ proposal, onClose, onStatusChange }: {
   onStatusChange: (id: number, status: Status) => void;
 }) {
   const [updating, setUpdating] = useState(false);
-  const [downloadingPdf, setDownloadingPdf] = useState(false);
-  const [pdfError, setPdfError] = useState<string | null>(null);
+  const [downloadingDocx, setDownloadingDocx] = useState(false);
+  const [docxError, setDocxError] = useState<string | null>(null);
 
-  const downloadPdf = async () => {
-    setDownloadingPdf(true);
-    setPdfError(null);
+  const openPdf = () => {
+    window.open(`/pm-app/proposal-pdf?id=${proposal.id}`, "_blank");
+  };
+
+  const downloadDocx = async () => {
+    setDownloadingDocx(true);
+    setDocxError(null);
     try {
-      const res = await fetch(`${API}/proposals/${proposal.id}/generate-pdf`);
+      const res = await fetch(`${API}/proposals/${proposal.id}/generate-docx`);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err?.error || `Server error ${res.status}`);
@@ -85,15 +89,15 @@ function DetailPanel({ proposal, onClose, onStatusChange }: {
       const a = document.createElement("a");
       a.href = url;
       const safe = proposal.company_name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
-      a.download = `Proposal_${safe}_${proposal.proposal_no}.pdf`;
+      a.download = `Proposal_${safe}_${proposal.proposal_no}.docx`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
     } catch (e: any) {
-      setPdfError(e?.message || "Download failed");
+      setDocxError(e?.message || "Download failed");
     } finally {
-      setDownloadingPdf(false);
+      setDownloadingDocx(false);
     }
   };
 
@@ -206,19 +210,27 @@ function DetailPanel({ proposal, onClose, onStatusChange }: {
         {/* Actions */}
         <div className="sticky bottom-0 px-5 py-4 border-t border-gray-100 bg-white space-y-2">
           <button
-            onClick={downloadPdf}
-            disabled={downloadingPdf}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition disabled:opacity-60"
+            onClick={openPdf}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition"
           >
-            {downloadingPdf
+            <FileText className="w-4 h-4" />
+            Generate &amp; View Proposal PDF
+            <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+          </button>
+          <button
+            onClick={downloadDocx}
+            disabled={downloadingDocx}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 shadow-sm transition disabled:opacity-60"
+          >
+            {downloadingDocx
               ? <Loader2 className="w-4 h-4 animate-spin" />
               : <Download className="w-4 h-4" />}
-            {downloadingPdf ? "Generating PDF…" : "Download Proposal PDF"}
+            Download DOCX from Template
           </button>
-          {pdfError && (
+          {docxError && (
             <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700">
               <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-              {pdfError}
+              {docxError}
             </div>
           )}
         </div>

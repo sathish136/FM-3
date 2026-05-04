@@ -5,7 +5,7 @@ import {
   LogOut, ChevronDown, ChevronRight as ChevronRightIcon, Menu, MoreHorizontal,
   MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp, ListChecks, ClipboardList, Truck, Building2, Package,
   Play, Square, Phone, ShieldOff, Loader2, Languages, Globe,
-  ScanLine, Factory, Database,
+  ScanLine, Factory, Database, UserCheck,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -302,6 +302,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { path: "/hrms/team-performance",  label: "Team Dashboard",  icon: Activity,      color: "text-pink-400",    bgColor: "bg-pink-500/15" },
       { path: "/hrms/task-summary",      label: "Task Summary",    icon: ListChecks,    color: "text-lime-400",    bgColor: "bg-lime-500/15" },
       { path: "/hrms/daily-reporting",   label: "Daily Reporting", icon: ClipboardList, color: "text-orange-400",  bgColor: "bg-orange-500/15" },
+      { path: "/hrms/work-monitor",      label: "Work Monitor",    icon: Clock,         color: "text-blue-400",    bgColor: "bg-blue-500/15" },
     ],
   },
   {
@@ -324,7 +325,8 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     label: "Admin",
     items: [
       { path: "/payment-tracker", label: "Bill & Recharge", icon: Receipt,  color: "text-indigo-400", bgColor: "bg-indigo-500/15" },
-      { path: "/user-management", label: "User Management", icon: Users,    color: "text-red-400",    bgColor: "bg-red-500/15" },
+      { path: "/user-management",   label: "User Management",   icon: Users,      color: "text-red-400",    bgColor: "bg-red-500/15" },
+      { path: "/agent-management",  label: "Agent Management",  icon: UserCheck,  color: "text-violet-400", bgColor: "bg-violet-500/15" },
       { path: "/settings",        label: "Settings",        icon: Settings, color: "text-slate-400",  bgColor: "bg-slate-500/15" },
       { path: "/email-settings",  label: "Email Settings",  icon: MailOpen, color: "text-sky-400",    bgColor: "bg-sky-500/15" },
     ],
@@ -397,6 +399,7 @@ const PATH_TO_MODULE: Record<string, string> = {
   "/hrms/team-performance": "hrms-team-performance",
   "/hrms/task-summary":     "hrms-task-summary",
   "/hrms/daily-reporting":  "hrms-daily-reporting",
+  "/hrms/work-monitor":     "hrms-work-monitor",
   "/plant-overview":        "plant-overview",
   "/site-data":             "site-data",
   "/site-db":               "site-db",
@@ -405,6 +408,7 @@ const PATH_TO_MODULE: Record<string, string> = {
   "/mis-report":            "mis-report",
   "/payment-tracker":       "payment-tracker",
   "/user-management":       "user-management",
+  "/agent-management":      "agent-management",
   "/settings":              "settings",
   "/email-settings":        "email-settings",
 };
@@ -838,6 +842,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   const [moduleRoles, setModuleRoles] = useState<Record<string, string> | null>(null);
   const [permLoading, setPermLoading] = useState(true);
   const isAdmin = user ? ADMIN_EMAILS.includes(user.email.toLowerCase()) : false;
+  const isAgent = (user?.isAgent === true) && !isAdmin;
   const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
   const rec = useRecording();
   const fmtDur = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
@@ -880,22 +885,46 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
       .finally(() => setPermLoading(false));
   }, [user?.email, isAdmin]);
 
+  const AGENT_ALLOWED_PATHS = [
+    "/", "/marketing", "/leads", "/proposal-library",
+    "/vc-card-scanner", "/plant-enquiry", "/campaigns",
+    "/profile", "/settings",
+    "/sales-dashboard/lead",
+    "/ip-call-logs/marketing",
+    "/ip-call-logs",
+  ];
+
   function isPathAllowed(path: string): boolean {
     if (isAdmin) return true;
-    if (permLoading) return false; // Still loading — block to prevent flicker
-    if (moduleRoles === null) return true; // Fetch failed gracefully — allow
+    if (isAgent) {
+      return AGENT_ALLOWED_PATHS.some(p => path === p || path.startsWith(p + "/"));
+    }
+    if (permLoading) return false;
+    if (moduleRoles === null) return true;
     const key = PATH_TO_MODULE[path];
-    if (!key) return true; // Unmapped internal routes always allowed
+    if (!key) return true;
     const role = moduleRoles[key];
-    // Undefined means the module is not in saved roles — deny by default (whitelist approach)
     if (role === undefined) return false;
     return role === "read" || role === "write";
   }
 
-  const visibleNavGroups = navGroups.map(group => ({
-    ...group,
-    items: group.items.filter(item => isPathAllowed(item.path)),
-  })).filter(group => group.items.length > 0);
+  const visibleNavGroups = (() => {
+    if (isAgent) {
+      const AGENT_HIDDEN = ["/sales-dashboard", "/marketing", "/vc-card-scanner", "/campaigns"];
+      const mktGroup = navGroups.find(g => g.label === "Marketing & CRM");
+      const filteredMkt = mktGroup
+        ? { ...mktGroup, items: mktGroup.items.filter(i => !AGENT_HIDDEN.includes(i.path)) }
+        : null;
+      return [
+        { label: "Main", items: [{ path: "/", label: "Dashboard", icon: LayoutDashboard, color: "text-sky-400", bgColor: "bg-sky-500/15" }] },
+        ...(filteredMkt ? [filteredMkt] : []),
+      ];
+    }
+    return navGroups.map(group => ({
+      ...group,
+      items: group.items.filter(item => isPathAllowed(item.path)),
+    })).filter(group => group.items.length > 0);
+  })();
 
   const visibleAllNavItems = visibleNavGroups.flatMap(g => g.items).filter(
     (item, idx, arr) => arr.findIndex(x => x.path === item.path) === idx

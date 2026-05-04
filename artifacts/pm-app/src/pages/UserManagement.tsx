@@ -4,6 +4,7 @@ import {
   RefreshCw, ChevronRight, Loader2, Lock, Unlock, Eye, Pencil, Ban,
   KeyRound, SunMedium, Moon, Monitor, LayoutDashboard, PanelLeftClose, Layers, Copy, LayoutGrid, FolderOpen,
   Tag, Plus, Trash2, Edit2, X, Check, ChevronDown, Wand2, ChevronLeft, ArrowRight,
+  UserCheck, MapPin, Building2, PhoneCall,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -341,6 +342,326 @@ const WIZARD_STEPS = [
   { id: 3, label: "Projects & Drawings", icon: <FolderOpen className="w-3.5 h-3.5" /> },
   { id: 4, label: "Preferences",         icon: <SunMedium className="w-3.5 h-3.5" /> },
 ];
+
+// ── Lead Assignment View ──────────────────────────────────────────────────────
+interface AgentLead {
+  name: string; company_name: string; country: string; state: string; city: string;
+  contact_person: string; lead_owner: string; lead_status: string; next_follow_up: string;
+}
+
+function LeadAssignmentView({ erpUsers }: { erpUsers: ErpUser[] }) {
+  const { toast } = useToast();
+  const [agentSearch, setAgentSearch] = useState("");
+  const [selectedAgent, setSelectedAgent] = useState<ErpUser | null>(null);
+  const [agentStatuses, setAgentStatuses] = useState<Record<string, boolean>>({});
+  const [assignedLeads, setAssignedLeads] = useState<string[]>([]);
+  const [allLeads, setAllLeads] = useState<AgentLead[]>([]);
+  const [leadSearch, setLeadSearch] = useState("");
+  const [loadingLeads, setLoadingLeads] = useState(false);
+  const [loadingStatuses, setLoadingStatuses] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [togglingAgent, setTogglingAgent] = useState<string | null>(null);
+
+  // Load agent statuses on mount
+  useEffect(() => {
+    setLoadingStatuses(true);
+    fetch(`${BASE}/api/agents/all-with-status`)
+      .then(r => r.ok ? r.json() : [])
+      .then((rows: any[]) => {
+        const map: Record<string, boolean> = {};
+        rows.forEach(r => { map[r.email] = r.is_agent === true || r.is_agent === "true" || r.is_agent === "t"; });
+        setAgentStatuses(map);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingStatuses(false));
+  }, []);
+
+  // Load all ERP leads on mount
+  useEffect(() => {
+    setLoadingLeads(true);
+    fetch(`${BASE}/api/sales-dashboard/open_leads`)
+      .then(r => r.ok ? r.json() : { data: [] })
+      .then(d => setAllLeads(d.data ?? []))
+      .catch(() => {})
+      .finally(() => setLoadingLeads(false));
+  }, []);
+
+  // Load agent's assigned leads when agent selected
+  useEffect(() => {
+    if (!selectedAgent) { setAssignedLeads([]); return; }
+    fetch(`${BASE}/api/agents/${encodeURIComponent(selectedAgent.email)}/leads`)
+      .then(r => r.ok ? r.json() : { lead_ids: [] })
+      .then(d => setAssignedLeads(d.lead_ids ?? []))
+      .catch(() => setAssignedLeads([]));
+  }, [selectedAgent]);
+
+  async function toggleAgentStatus(email: string, currentVal: boolean) {
+    setTogglingAgent(email);
+    try {
+      const res = await fetch(`${BASE}/api/agents/${encodeURIComponent(email)}/is-agent`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_agent: !currentVal }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setAgentStatuses(prev => ({ ...prev, [email]: !currentVal }));
+      if (selectedAgent?.email === email && currentVal) {
+        setAssignedLeads([]);
+      }
+      toast({ title: !currentVal ? "Marked as Marketing Agent" : "Agent role removed" });
+    } catch (e) {
+      toast({ title: "Failed to update agent status", description: String(e), variant: "destructive" });
+    } finally {
+      setTogglingAgent(null);
+    }
+  }
+
+  async function saveAssignments() {
+    if (!selectedAgent) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`${BASE}/api/agents/${encodeURIComponent(selectedAgent.email)}/leads`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lead_ids: assignedLeads }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      toast({ title: `Lead assignments saved for ${selectedAgent.full_name}` });
+    } catch (e) {
+      toast({ title: "Failed to save assignments", description: String(e), variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function toggleLead(leadId: string) {
+    setAssignedLeads(prev =>
+      prev.includes(leadId) ? prev.filter(id => id !== leadId) : [...prev, leadId]
+    );
+  }
+
+  const filteredAgents = erpUsers.filter(u =>
+    (u.full_name + u.email).toLowerCase().includes(agentSearch.toLowerCase())
+  );
+
+  const filteredLeads = allLeads.filter(l => {
+    if (!leadSearch.trim()) return true;
+    const q = leadSearch.toLowerCase();
+    return (l.company_name + l.name + l.country + l.contact_person + l.city).toLowerCase().includes(q);
+  });
+
+  const isAgentSelected = selectedAgent ? (agentStatuses[selectedAgent.email] ?? false) : false;
+
+  return (
+    <div className="flex-1 flex min-h-0 overflow-hidden">
+      {/* ── Left: User list ── */}
+      <div className="w-72 shrink-0 bg-card border-r border-border flex flex-col overflow-hidden">
+        <div className="p-4 border-b border-border">
+          <p className="text-sm font-bold text-foreground">Users</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">Toggle agent & assign leads</p>
+          <div className="relative mt-2">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <input
+              value={agentSearch} onChange={e => setAgentSearch(e.target.value)}
+              placeholder="Search users…"
+              className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-border bg-muted text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+            />
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {loadingStatuses ? (
+            <div className="flex items-center justify-center h-20">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : filteredAgents.map(u => {
+            const isAgent = agentStatuses[u.email] ?? false;
+            const isSel = selectedAgent?.email === u.email;
+            const isToggling = togglingAgent === u.email;
+            return (
+              <div key={u.email} onClick={() => setSelectedAgent(u)}
+                className={`w-full flex items-center gap-3 px-4 py-3 border-b border-border/50 text-left transition-colors cursor-pointer select-none ${
+                  isSel ? "bg-accent" : "hover:bg-muted/50"
+                }`}
+              >
+                <UserAvatar user={u} size="sm" />
+                <div className="flex-1 min-w-0">
+                  <p className={`text-xs font-semibold truncate ${isSel ? "text-primary" : "text-foreground"}`}>{u.full_name}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{u.email}</p>
+                </div>
+                <button
+                  onClick={e => { e.stopPropagation(); toggleAgentStatus(u.email, isAgent); }}
+                  disabled={isToggling}
+                  title={isAgent ? "Remove agent role" : "Mark as marketing agent"}
+                  className={`shrink-0 flex items-center justify-center w-7 h-7 rounded-lg transition-colors border ${
+                    isAgent
+                      ? "bg-violet-100 border-violet-300 text-violet-700 hover:bg-violet-200"
+                      : "bg-muted border-border text-muted-foreground hover:bg-muted/80"
+                  }`}
+                >
+                  {isToggling ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserCheck className="w-3 h-3" />}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Right: Lead Assignment Panel ── */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-muted/20">
+        {!selectedAgent ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center space-y-2">
+              <UserCheck className="w-10 h-10 text-muted-foreground/30 mx-auto" />
+              <p className="text-sm font-medium text-muted-foreground">Select a user to assign leads</p>
+              <p className="text-[11px] text-muted-foreground/60">Click <UserCheck className="w-3 h-3 inline" /> to mark a user as a Marketing Agent, then assign leads to them.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col h-full overflow-hidden">
+            {/* Agent header */}
+            <div className="bg-card border-b border-border px-6 py-4 flex items-center justify-between gap-4 shrink-0">
+              <div className="flex items-center gap-3">
+                <UserAvatar user={selectedAgent} size="md" />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-bold text-foreground">{selectedAgent.full_name}</p>
+                    {isAgentSelected && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 text-[9px] font-bold uppercase">
+                        <UserCheck className="w-2.5 h-2.5" /> Marketing Agent
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">{selectedAgent.email}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Agent role</span>
+                  <button
+                    onClick={() => toggleAgentStatus(selectedAgent.email, isAgentSelected)}
+                    disabled={togglingAgent === selectedAgent.email}
+                    className={`relative inline-flex w-11 h-6 rounded-full transition-colors duration-200 shrink-0 ${isAgentSelected ? "bg-violet-500" : "bg-muted"}`}
+                  >
+                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${isAgentSelected ? "translate-x-5" : "translate-x-0"}`} />
+                  </button>
+                </div>
+                {isAgentSelected && (
+                  <button onClick={saveAssignments} disabled={saving}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold shadow-sm transition-colors disabled:opacity-60">
+                    {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                    Save Assignments ({assignedLeads.length})
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {!isAgentSelected ? (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center space-y-2 px-6">
+                  <UserCheck className="w-8 h-8 text-muted-foreground/30 mx-auto" />
+                  <p className="text-sm font-medium text-muted-foreground">This user is not a Marketing Agent</p>
+                  <p className="text-[11px] text-muted-foreground/60">Toggle the "Agent role" switch above to enable lead assignment for this user.</p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-1 min-h-0 overflow-hidden">
+                {/* Assigned leads */}
+                <div className="w-72 shrink-0 border-r border-border flex flex-col overflow-hidden bg-card">
+                  <div className="p-4 border-b border-border">
+                    <p className="text-xs font-bold text-foreground">Assigned Leads</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{assignedLeads.length} lead{assignedLeads.length !== 1 ? "s" : ""} assigned</p>
+                  </div>
+                  <div className="flex-1 overflow-y-auto">
+                    {assignedLeads.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center h-full gap-2 px-4 text-center">
+                        <p className="text-xs text-muted-foreground">No leads assigned yet</p>
+                        <p className="text-[10px] text-muted-foreground/60">Select leads from the list on the right to assign them.</p>
+                      </div>
+                    ) : assignedLeads.map(id => {
+                      const lead = allLeads.find(l => l.name === id);
+                      return (
+                        <div key={id} className="flex items-start gap-2 px-4 py-3 border-b border-border/50">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold truncate text-foreground">{lead?.company_name || id}</p>
+                            <p className="text-[10px] text-muted-foreground">{id}</p>
+                            {lead?.country && <p className="text-[10px] text-muted-foreground truncate"><MapPin className="w-2.5 h-2.5 inline mr-0.5" />{lead.city || lead.state || lead.country}</p>}
+                          </div>
+                          <button onClick={() => toggleLead(id)}
+                            className="shrink-0 w-6 h-6 flex items-center justify-center rounded-md bg-rose-100 text-rose-600 hover:bg-rose-200 transition-colors">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* All leads to pick from */}
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  <div className="p-4 border-b border-border bg-card">
+                    <p className="text-xs font-bold text-foreground">All Open Leads</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Click to assign or unassign</p>
+                    <div className="relative mt-2">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                      <input
+                        value={leadSearch} onChange={e => setLeadSearch(e.target.value)}
+                        placeholder="Search leads by company, country, contact…"
+                        className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-border bg-muted text-foreground focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto">
+                    {loadingLeads ? (
+                      <div className="flex items-center justify-center h-32">
+                        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : filteredLeads.map(lead => {
+                      const isAssigned = assignedLeads.includes(lead.name);
+                      return (
+                        <button key={lead.name} onClick={() => toggleLead(lead.name)}
+                          className={`w-full flex items-center gap-3 px-4 py-3 border-b border-border/50 text-left transition-colors ${
+                            isAssigned ? "bg-violet-50 hover:bg-violet-100" : "hover:bg-muted/50"
+                          }`}
+                        >
+                          <div className={`shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                            isAssigned ? "bg-violet-600 border-violet-600" : "border-border bg-background"
+                          }`}>
+                            {isAssigned && <Check className="w-3 h-3 text-white" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs font-semibold truncate text-foreground">{lead.company_name || lead.name}</p>
+                              <span className="text-[9px] text-muted-foreground font-mono shrink-0">{lead.name}</span>
+                            </div>
+                            <div className="flex items-center gap-3 mt-0.5">
+                              {lead.country && (
+                                <span className="text-[10px] text-muted-foreground inline-flex items-center gap-0.5">
+                                  <MapPin className="w-2.5 h-2.5" />{lead.city || lead.state || lead.country}
+                                </span>
+                              )}
+                              {lead.contact_person && (
+                                <span className="text-[10px] text-muted-foreground inline-flex items-center gap-0.5">
+                                  <PhoneCall className="w-2.5 h-2.5" />{lead.contact_person}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          {lead.lead_status && (
+                            <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">{lead.lead_status}</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export function UserManagementContent() {

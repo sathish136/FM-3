@@ -675,12 +675,19 @@ export default function IPCallLogs() {
   const [search,      setSearch]     = useState("");
 
   const isAdmin = ADMIN_EMAILS.includes(user?.email || "");
+  const isAgent = user?.isAgent === true;
 
   // ── Auth check ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (authLoading) return;
     if (!user) { navigate("/login"); return; }
     if (isAdmin) { setHasAccess(true); return; }
+    // Agents get access to marketing call logs only
+    if (isAgent) {
+      const agentOk = !urlDept || urlDept === "marketing";
+      setHasAccess(agentOk);
+      return;
+    }
     const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
     fetch(`${BASE}/api/user-modules?email=${encodeURIComponent(user.email)}`)
       .then(r => r.ok ? r.json() : null)
@@ -697,7 +704,7 @@ export default function IPCallLogs() {
         }
       })
       .catch(() => setHasAccess(false));
-  }, [user, authLoading, isAdmin, navigate, showDept, urlDept]);
+  }, [user, authLoading, isAdmin, isAgent, navigate, showDept, urlDept]);
 
   // ── Load calls ────────────────────────────────────────────────────────────
   const load = useCallback((forceRefresh = false) => {

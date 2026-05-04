@@ -6,6 +6,7 @@ export interface AuthUser {
   photo: string | null;
   username: string | null;
   designation: string | null;
+  isAgent?: boolean;
 }
 
 interface AuthContextType {
@@ -21,12 +22,12 @@ const AuthContext = createContext<AuthContextType | null>(null);
 const STORAGE_KEY = "wtt_auth_user";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-async function applyUserSettingsFromDb(email: string) {
+async function applyUserSettingsFromDb(email: string): Promise<{ isAgent?: boolean }> {
   try {
     const res = await fetch(`${BASE}/api/auth/user-settings?email=${encodeURIComponent(email)}`);
-    if (!res.ok) return;
+    if (!res.ok) return {};
     const settings = await res.json();
-    if (!settings) return;
+    if (!settings) return {};
 
     // Apply theme (light/dark/system → fm-dark-mode)
     // Only apply if user hasn't already set a personal preference this session
@@ -58,8 +59,10 @@ async function applyUserSettingsFromDb(email: string) {
       localStorage.setItem(sidebarKey, "false");
       window.dispatchEvent(new CustomEvent("fm_sidebar_change", { detail: { collapsed: false } }));
     }
+    return { isAgent: settings.isAgent === true };
   } catch {
     // Ignore errors applying DB settings — fall back to localStorage values
+    return {};
   }
 }
 
@@ -92,19 +95,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   designation = prof.designation || null;
                 }
               } catch { }
+              const settings = await applyUserSettingsFromDb(data.email || parsed.email);
               const refreshed: AuthUser = {
                 email: data.email || parsed.email,
                 full_name: data.full_name || parsed.full_name,
                 photo: proxyPhoto,
                 username: (data.username as string | null) ?? parsed.username ?? null,
                 designation,
+                isAgent: settings.isAgent ?? parsed.isAgent ?? false,
               };
               localStorage.setItem(STORAGE_KEY, JSON.stringify(refreshed));
               setUser(refreshed);
             }
           } catch { }
-          // Apply user settings from DB (theme, navbarStyle) on session restore
-          await applyUserSettingsFromDb(parsed.email);
+          if (!localStorage.getItem(STORAGE_KEY) || !JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}").email) {
+            await applyUserSettingsFromDb(parsed.email);
+          }
         }
       } catch { }
       setLoading(false);
@@ -150,16 +156,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           designation = prof.designation || null;
         }
       } catch { }
+      const dbSettings = await applyUserSettingsFromDb(data.email as string);
       const authUser: AuthUser = {
         email: (data.email as string),
         full_name: (data.full_name as string) || (data.email as string),
         photo: proxyPhoto,
         username: (data.username as string | null) ?? null,
         designation,
+        isAgent: dbSettings.isAgent ?? false,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(authUser));
       setUser(authUser);
-      await applyUserSettingsFromDb(authUser.email);
       return { twoFaRequired: false, user: authUser };
     }
 
@@ -204,16 +211,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         otpDesignation = prof.designation || null;
       }
     } catch { }
+    const otpDbSettings = await applyUserSettingsFromDb((data.email as string) || email);
     const authUser: AuthUser = {
       email: (data.email as string) || email,
       full_name: (data.full_name as string) || email,
       photo: proxyPhoto,
       username: (data.username as string | null) ?? null,
       designation: otpDesignation,
+      isAgent: otpDbSettings.isAgent ?? false,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(authUser));
     setUser(authUser);
-    await applyUserSettingsFromDb(authUser.email);
   };
 
   const logout = () => {

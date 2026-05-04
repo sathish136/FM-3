@@ -39,6 +39,9 @@ import salesDashboardRouter from "./sales-dashboard";
 import siteDbRouter from "./site-db";
 import siteDbAnalyticsRouter from "./site-db-analytics";
 import proposalsRouter from "./proposals";
+import agentsRouter from "./agents";
+import waterNewsRouter from "./water-news";
+import { mobileRouter } from "./mobile";
 
 const router: IRouter = Router();
 
@@ -82,5 +85,8 @@ router.use(salesDashboardRouter);
 router.use(siteDbRouter);
 router.use(siteDbAnalyticsRouter);
 router.use(proposalsRouter);
+router.use(agentsRouter);
+router.use("/water-news", waterNewsRouter);
+router.use(mobileRouter);
 
 export default router;
