@@ -1,7 +1,7 @@
 {
   "name": "@workspace/mobile-app",
   "version": "1.0.0",
-  "main": "expo-router/entry",
+  "main": "./index.js",
   "scripts": {
     "start": "expo start --port 8099 --clear",
     "dev": "expo start --tunnel --port 8099 --clear",
