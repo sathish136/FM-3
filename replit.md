@@ -210,6 +210,19 @@ Both stream mic audio over a WebSocket proxy at `/api/whisper-ws` (handler in `a
   - `GMAIL_APP_PASSWORD` — 16-char App Password from myaccount.google.com/apppasswords
 - Gmail IMAP: imap.gmail.com:993 (TLS); Gmail SMTP: smtp.gmail.com:587 (STARTTLS)
 
+## Infrastructure Notes
+
+### pm-app workflow restart fix (2026-05-04)
+The `artifacts/pm-app: web` workflow was stuck in a restart deadlock caused by two issues:
+1. **Port 23704 not in `[[ports]]`** — `restart_workflow` for webview artifacts checks the port via the external Replit proxy. Port 23704 had no direct external mapping so the proxy couldn't reach it before the timeout. Fixed by adding `localPort = 23704 / externalPort = 23704` to `[[ports]]` in `.replit`.
+2. **SIGTERM not reaching Vite** — pnpm runs scripts via `sh -c "..."`, and the shell was not forwarding SIGTERM to the Vite child process. The old process held port 23704 open, blocking the restart. Fixed by prefixing the vite command with `exec` in `artifacts/pm-app/package.json` so the shell is replaced in-place by Vite and signals propagate correctly.
+
+### Expo Go connectivity
+Replit's proxy is HTTPS-only; Expo Go uses `exp://` (plain HTTP) → rejected by proxy. Workaround: browser-based web testing at `https://...janeway.replit.dev:8099`. The Expo CORS guard (patched in `node_modules/.pnpm/@expo+cli.../CorsMiddleware.js`) now allows `*.replit.dev` and `*.replit.app` origins. `artifacts/mobile-app/.env` sets `EXPO_PUBLIC_API_URL` for web builds.
+
+### ERPNext checkin 500 error
+`tabEmployee Checkin.department` column missing in the upstream ERPNext schema — an upstream database schema issue, not a local bug.
+
 ## Overview
 
 pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
