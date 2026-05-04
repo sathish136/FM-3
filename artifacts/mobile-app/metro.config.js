@@ -39,6 +39,41 @@ config.server = {
         return;
       }
 
+      // Rewrite bundle URLs in EAS-format manifests from http:// to https://.
+      // Android's expo-updates OkHttp client sends plain HTTP, but Replit's
+      // external proxy only accepts TLS — so the download fails with
+      // java.io.IOException unless the URL already uses https://.
+      const accept = req.headers['accept'] || '';
+      if (accept.includes('application/expo+json')) {
+        const chunks = [];
+        const _write = res.write.bind(res);
+        const _end = res.end.bind(res);
+
+        res.write = function (chunk) {
+          if (chunk) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+          return true;
+        };
+
+        res.end = function (chunk) {
+          if (chunk) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+          let body = Buffer.concat(chunks).toString('utf8');
+          try {
+            const manifest = JSON.parse(body);
+            const toHttps = (url) => (url ? url.replace(/^http:\/\//, 'https://') : url);
+            if (manifest.launchAsset) {
+              manifest.launchAsset.url = toHttps(manifest.launchAsset.url);
+            }
+            if (Array.isArray(manifest.assets)) {
+              manifest.assets = manifest.assets.map((a) => ({ ...a, url: toHttps(a.url) }));
+            }
+            body = JSON.stringify(manifest);
+          } catch (e) {}
+          res.removeHeader('content-length');
+          res.removeHeader('transfer-encoding');
+          _end(body);
+        };
+      }
+
       middleware(req, res, next);
     };
   },
