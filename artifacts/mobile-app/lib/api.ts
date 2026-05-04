@@ -3,7 +3,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { KEYS } from './storage';
 
 async function getBase(): Promise<string> {
-  if (Platform.OS === 'web') return '';
+  if (Platform.OS === 'web') {
+    return process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') || 'http://localhost:8080';
+  }
   try {
     const stored = await AsyncStorage.getItem(KEYS.API_URL);
     if (stored) return JSON.parse(stored).replace(/\/$/, '');
