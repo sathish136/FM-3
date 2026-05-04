@@ -11,8 +11,14 @@ app.use(cors({
 app.use(express.json({ limit: "100mb" }));
 app.use(express.urlencoded({ extended: true, limit: "100mb" }));
 
-app.get("/", (_req, res) => {
-  res.redirect(302, "/pm-app/");
+app.get("/", (req, res) => {
+  const host = (req.headers["x-forwarded-host"] as string) || req.get("host") || "";
+  const proto = (req.headers["x-forwarded-proto"] as string) || req.protocol || "https";
+  if (host && !host.startsWith("localhost")) {
+    res.redirect(302, `${proto}://${host}/pm-app/`);
+  } else {
+    res.json({ status: "FlowMatriX API running", app: "/pm-app/" });
+  }
 });
 
 app.use("/api", router);
