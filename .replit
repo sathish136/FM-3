@@ -75,27 +75,6 @@ router = "path"
 PORT = "23704"
 BASE_PATH = "/pm-app/"
 
-[[workflows.workflow]]
-name = "Project"
-mode = "parallel"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "artifacts/mobile-app: Expo"
-
-[[workflows.workflow]]
-name = "artifacts/mobile-app: Expo"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN pnpm --filter @workspace/mobile-app run start"
-waitForPort = 8099
-
-[workflows.workflow.metadata]
-outputType = "console"
-
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
@@ -109,27 +88,29 @@ timeoutMs = 20000
 [userenv.shared]
 ERPNEXT_URL = "https://erp.wttint.com"
 ERPNEXT_API_KEY = "bcbc298244f56a7"
-ERPNEXT_API_SECRET = "33fe20ed2191d92"
+ERPNEXT_API_SECRET = "38d8166fd50f0ba"
 AI_INTEGRATIONS_OPENAI_BASE_URL = "https://api.openai.com/v1"
 PORT = "3000"
 
 [nix]
 channel = "stable-25_05"
 
+[[ports]]
+localPort = 8080
+externalPort = 80
 
-  [[ports]]
-  localPort = 8080
-  externalPort = 80
+[[ports]]
+localPort = 8081
+externalPort = 8081
 
-  [[ports]]
-  localPort = 8081
-  externalPort = 8081
+[[ports]]
+localPort = 22919
+externalPort = 3000
 
-  [[ports]]
-  localPort = 8099
-  externalPort = 8099
+[[ports]]
+localPort = 23117
+externalPort = 3002
 
-  [[ports]]
-  localPort = 23704
-  externalPort = 3001
-  
+[[ports]]
+localPort = 23704
+externalPort = 3001
