@@ -1,0 +1,628 @@
+import { Router } from "express";
+import PDFDocument from "pdfkit";
+import { randomUUID } from "crypto";
+
+const router = Router();
+
+const ERP_URL = process.env.ERPNEXT_URL?.replace(/\/$/, "");
+const auth = () => `token ${process.env.ERPNEXT_API_KEY}:${process.env.ERPNEXT_API_SECRET}`;
+function isConfigured() { return !!(ERP_URL && process.env.ERPNEXT_API_KEY && process.env.ERPNEXT_API_SECRET); }
+
+const ULTRAMSG_INSTANCE = "instance149987";
+const ULTRAMSG_TOKEN = "6baxh4iuxajibxez";
+const REPORT_WHATSAPP_TO = "919698109426";
+
+// ─── In-memory PDF store (TTL: 5 min) ─────────────────────────────────────────
+const pdfStore = new Map<string, { buf: Buffer; filename: string; expires: number }>();
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of pdfStore) if (v.expires < now) pdfStore.delete(k);
+}, 60_000);
+
+// ─── PDF generation ────────────────────────────────────────────────────────────
+const SKIP = new Set(["doctype","idx","docstatus","__islocal","__unsaved","owner","__last_sync_on",
+  "name","employee","employee_name","department","date","status",
+  "modified","modified_by","creation","amended_from"]);
+const CHILD_SKIP = new Set([...SKIP, "parent","parenttype","parentfield"]);
+
+function generateReportPDF(report: any): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: "A4", margin: 40, bufferPages: true });
+    const chunks: Buffer[] = [];
+    doc.on("data", (c: Buffer) => chunks.push(c));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    const dept = (report.department || "").replace(/ - WTT$/i, "");
+    const dateStr = report.date
+      ? new Date(report.date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+      : "";
+
+    // Header band
+    doc.rect(0, 0, doc.page.width, 70).fill("#1a3a5c");
+    doc.fillColor("white").fontSize(20).font("Helvetica-Bold").text("Daily Report", 40, 18);
+    doc.fontSize(10).font("Helvetica").text("FlowMatriX — WTT International", 40, 44);
+    doc.moveDown(3);
+
+    // Employee info box
+    doc.fillColor("#f0f4f8").rect(40, 80, doc.page.width - 80, 52).fill();
+    doc.fillColor("#1a3a5c").fontSize(14).font("Helvetica-Bold")
+      .text(report.employee_name || report.employee || "", 50, 90);
+    const meta: string[] = [];
+    if (dept) meta.push(dept);
+    if (dateStr) meta.push(dateStr);
+    if (report.status) meta.push(`Status: ${report.status}`);
+    doc.fillColor("#4a6080").fontSize(9).font("Helvetica").text(meta.join("   •   "), 50, 109);
+    doc.y = 148;
+
+    // Section helper
+    function section(title: string) {
+      doc.moveDown(0.6);
+      doc.fillColor("#1a3a5c").fontSize(11).font("Helvetica-Bold").text(title.toUpperCase());
+      doc.moveTo(40, doc.y + 2).lineTo(doc.page.width - 40, doc.y + 2)
+        .strokeColor("#3b82f6").lineWidth(1.2).stroke();
+      doc.moveDown(0.4);
+    }
+
+    function labelValue(label: string, value: string) {
+      const x = 40; const colW = 160;
+      doc.fontSize(9).font("Helvetica-Bold").fillColor("#334155")
+        .text(label + ":", x, doc.y, { width: colW, continued: true });
+      doc.font("Helvetica").fillColor("#1e293b")
+        .text(" " + value, { width: doc.page.width - 80 - colW });
+    }
+
+    // Scalar fields
+    const scalars = Object.entries(report).filter(
+      ([k, v]) => !SKIP.has(k) && !Array.isArray(v) && v !== null && v !== "" && v !== 0
+    );
+    if (scalars.length) {
+      section("Details");
+      scalars.forEach(([k, v]) => labelValue(k.replace(/_/g, " "), String(v)));
+    }
+
+    // Page break helper
+    function ensureSpace(needed = 40) {
+      if (doc.y + needed > doc.page.height - 50) {
+        doc.addPage();
+        doc.y = 40;
+      }
+    }
+
+    // Child tables
+    const tables = Object.entries(report).filter(
+      ([, v]) => Array.isArray(v) && (v as any[]).length > 0
+    );
+    tables.forEach(([key, rows]) => {
+      ensureSpace(60);
+      section(key.replace(/_/g, " "));
+      (rows as any[]).forEach((row: any, i: number) => {
+        const entries = Object.entries(row).filter(
+          ([k, v]) => !CHILD_SKIP.has(k) && v !== null && v !== "" && v !== 0
+        );
+        if (!entries.length) return;
+
+        // Estimate row height and ensure we have space
+        const rowHeight = 20 + entries.length * 16;
+        ensureSpace(rowHeight);
+
+        // Save y before any rendering so we can lay out the row correctly
+        const rowStartY = doc.y;
+
+        // Numbered header band
+        doc.fillColor("#e2e8f0").rect(40, rowStartY, doc.page.width - 80, 18).fill();
+        doc.fillColor("#1e3a5f").fontSize(9).font("Helvetica-Bold")
+          .text(`#${i + 1}`, 44, rowStartY + 5, { width: 25, lineBreak: false });
+
+        // All entries in two-column label: value layout
+        let entryY = rowStartY + 22;
+        entries.forEach(([k, v]) => {
+          ensureSpace(18);
+          entryY = doc.y;
+          const label = k.replace(/_/g, " ").toUpperCase();
+          const value = String(v);
+          // Label (bold, fixed width)
+          doc.fillColor("#334155").fontSize(9).font("Helvetica-Bold")
+            .text(label + ":", 52, entryY, { width: 140, lineBreak: false });
+          // Value (normal, remaining width)
+          doc.fillColor("#1e293b").font("Helvetica")
+            .text(value, 196, entryY, { width: doc.page.width - 240 });
+          // Advance manually so rows don't overlap
+          doc.y = entryY + 14;
+        });
+        doc.y += 6; // gap between rows
+      });
+    });
+
+    // Footer (always on current last page, not fixed position)
+    doc.moveDown(1);
+    const footerY = doc.page.height - 35;
+    if (doc.y < footerY - 20) doc.y = footerY - 20;
+    doc.rect(0, doc.y, doc.page.width, 40).fill("#f0f4f8");
+    doc.fillColor("#94a3b8").fontSize(8).font("Helvetica")
+      .text(`Generated by FlowMatriX  •  ${new Date().toLocaleString("en-GB")}`,
+        40, doc.y + 6, { align: "center", width: doc.page.width - 80 });
+
+    doc.end();
+  });
+}
+
+// ─── Send document via UltraMsg ────────────────────────────────────────────────
+async function sendWhatsAppDocument(to: string, docUrl: string, filename: string, caption: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const params = new URLSearchParams({ token: ULTRAMSG_TOKEN, to, document: docUrl, filename, caption, priority: "10" });
+    const res = await fetch(`https://api.ultramsg.com/${ULTRAMSG_INSTANCE}/messages/document`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params.toString(),
+    });
+    const data = await res.json() as Record<string, unknown>;
+    if (data.sent === "true" || data.sent === true) return { success: true };
+    return { success: false, error: JSON.stringify(data) };
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+}
+
+// Map Frappe docstatus integer to a human-readable label
+function mapDocStatus(docstatus: number): string {
+  if (docstatus === 1) return "Submitted";
+  if (docstatus === 2) return "Cancelled";
+  return "Draft";
+}
+
+// ─── List Daily Reports ───────────────────────────────────────────────────────
+// IMPORTANT: Frappe blocks many field names as SQL reserved keywords in get_list:
+//   "date", "status", "type", "order", "group", "key", "value", "interval" …
+// Solution: only request guaranteed-safe meta fields, use docstatus for status,
+// derive the date from the document name or creation timestamp,
+// and do all filtering server-side.
+router.get("/daily-reporting", async (req, res) => {
+  if (!isConfigured()) return res.status(503).json({ error: "ERPNext not configured" });
+
+  const { from_date, to_date, employee, department, status, limit = "30", page = "0" } = req.query as Record<string, string>;
+
+  try {
+    // Only safe Frappe meta fields that don't conflict with SQL reserved words
+    const fields = JSON.stringify([
+      "name", "employee", "employee_name", "department",
+      "docstatus", "modified", "creation",
+    ]);
+
+    // No ERPNext-side filters — all filtering done server-side to avoid keyword conflicts
+    const params = new URLSearchParams({
+      fields,
+      limit_page_length: "500",
+      limit_start: "0",
+      order_by: "creation desc",
+    });
+
+    const r = await fetch(`${ERP_URL}/api/resource/Daily Reporting?${params}`, {
+      headers: { Authorization: auth() },
+    });
+
+    if (!r.ok) {
+      const text = await r.text().catch(() => "");
+      return res.status(r.status).json({ error: `ERPNext error: ${text.slice(0, 300)}` });
+    }
+
+    const json = await r.json() as { data: any[] };
+    let rows: any[] = (json.data || []).map(row => ({
+      ...row,
+      // Derive date from document name (e.g. DR-2026-03-01) or creation timestamp
+      date: row.name?.match(/(\d{4}-\d{2}-\d{2})/)?.[1] || row.creation?.split(" ")[0] || null,
+      // Map numeric docstatus to readable label
+      status: mapDocStatus(row.docstatus),
+    }));
+
+    // Server-side filtering
+    if (from_date) rows = rows.filter(r => r.date && r.date >= from_date);
+    if (to_date)   rows = rows.filter(r => r.date && r.date <= to_date);
+    if (employee)  rows = rows.filter(r => (r.employee_name || r.employee || "").toLowerCase().includes((employee as string).toLowerCase()));
+    if (department) rows = rows.filter(r => (r.department || "").toLowerCase().includes((department as string).toLowerCase()));
+    if (status)    rows = rows.filter(r => r.status === status);
+
+    // Sort by derived date desc
+    rows.sort((a, b) => (b.date || b.creation || "").localeCompare(a.date || a.creation || ""));
+
+    // Paginate
+    const pageNum = Number(page);
+    const pageSize = Number(limit);
+    const start = pageNum * pageSize;
+    const paged = rows.slice(start, start + pageSize + 1);
+    const hasMore = paged.length > pageSize;
+
+    res.json({ reports: paged.slice(0, pageSize), hasMore, total: rows.length });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── Create New Daily Report ─────────────────────────────────────────────────
+router.post("/daily-reporting", async (req, res) => {
+  if (!isConfigured()) return res.status(503).json({ error: "ERPNext not configured" });
+
+  const { employee_name, date, activities = [] } = req.body;
+  if (!employee_name || !date) return res.status(400).json({ error: "employee_name and date are required" });
+
+  try {
+    const docData: any = {
+      doctype: "Daily Reporting",
+      employee_name,
+      date,
+    };
+
+    // Add activities as child table if provided
+    if (Array.isArray(activities) && activities.length > 0) {
+      const validRows = activities.filter(a => a.activity || a.project);
+      if (validRows.length > 0) {
+        docData.daily_reporting_detail = validRows.map((a: any) => ({
+          doctype: "Daily Reporting Detail",
+          activity: a.activity || "",
+          project: a.project || "",
+          no_of_hours: parseFloat(a.hours) || 0,
+          remarks: a.remarks || "",
+        }));
+      }
+    }
+
+    const r = await fetch(`${ERP_URL}/api/resource/Daily Reporting`, {
+      method: "POST",
+      headers: { Authorization: auth(), "Content-Type": "application/json" },
+      body: JSON.stringify(docData),
+    });
+
+    const json = await r.json() as any;
+    if (!r.ok) return res.status(r.status).json({ error: json.exception || json.message || "Failed to create" });
+
+    res.json({ name: json.data?.name, success: true });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── Serve a temporarily stored PDF ───────────────────────────────────────────
+router.get("/daily-reporting/pdf/:id", (req, res) => {
+  const entry = pdfStore.get(req.params.id);
+  if (!entry) return res.status(404).json({ error: "PDF not found or expired" });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `inline; filename="${entry.filename}"`);
+  res.send(entry.buf);
+});
+
+// ─── Send Report as PDF via WhatsApp (UltraMsg) ────────────────────────────────
+router.post("/daily-reporting/:name/send-whatsapp", async (req, res) => {
+  if (!isConfigured()) return res.status(503).json({ error: "ERPNext not configured" });
+
+  const { name } = req.params;
+  const to: string = req.body.to || REPORT_WHATSAPP_TO;
+
+  try {
+    // Fetch full document from ERPNext
+    const r = await fetch(`${ERP_URL}/api/resource/Daily Reporting/${encodeURIComponent(name)}`, {
+      headers: { Authorization: auth() },
+    });
+    if (!r.ok) return res.status(r.status).json({ error: "Report not found" });
+    const json = await r.json() as { data: any };
+    const report = json.data;
+
+    // Generate PDF
+    const pdfBuf = await generateReportPDF(report);
+    const id = randomUUID();
+    const empName = (report.employee_name || report.employee || "report").replace(/\s+/g, "_");
+    const dateTag = (report.date || new Date().toISOString().slice(0, 10)).replace(/-/g, "");
+    const filename = `DailyReport_${empName}_${dateTag}.pdf`;
+    pdfStore.set(id, { buf: pdfBuf, filename, expires: Date.now() + 5 * 60_000 });
+
+    // Build a publicly accessible URL using the Replit dev domain
+    const host = process.env.REPLIT_DEV_DOMAIN
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+      : `http://localhost:${process.env.PORT || 8080}`;
+    const pdfUrl = `${host}/api/daily-reporting/pdf/${id}`;
+
+    const dept = (report.department || "").replace(/ - WTT$/i, "");
+    const dateStr = report.date
+      ? new Date(report.date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+      : "";
+    const caption = [`Daily Report — ${report.employee_name || report.employee || ""}`,
+      dept, dateStr, `Status: ${report.status || "Draft"}`].filter(Boolean).join("  |  ");
+
+    const result = await sendWhatsAppDocument(to, pdfUrl, filename, caption);
+
+    if (result.success) {
+      res.json({ success: true, to, filename });
+    } else {
+      res.status(502).json({ success: false, error: result.error || "WhatsApp send failed" });
+    }
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── MD Reporting employees (mirrors frontend list) ───────────────────────────
+const MD_EMPLOYEES = [
+  { id: "WTT1199", name: "GOKUL R"        },
+  { id: "WTT1606", name: "GOKUL S"        },
+  { id: "WTT1278", name: "RAGHUL RAJ D"   },
+  { id: "WTT947",  name: "RAJA A"         },
+  { id: "WTT1194", name: "SATHISHKUMAR G" },
+  { id: "WTT1619", name: "SHOBANA P"      },
+  { id: "WTT1211", name: "SIVAKUMAR P"    },
+  { id: "WTT1603", name: "SIVAKUMAR M"    },
+  { id: "WTT1502", name: "VIGNESH S"      },
+];
+const MD_IDS   = new Set(MD_EMPLOYEES.map(e => e.id.toUpperCase()));
+const MD_NAMES = new Set(MD_EMPLOYEES.map(e => e.name.toUpperCase()));
+
+function matchesMdEmployee(empId: string, empName: string): boolean {
+  const id = (empId || "").toUpperCase().trim();
+  const name = (empName || "").toUpperCase().trim();
+  if (MD_IDS.has(id)) return true;
+  if (MD_NAMES.has(name)) return true;
+  return MD_EMPLOYEES.some(e => name.includes(e.name.toUpperCase()) || e.name.toUpperCase().includes(name));
+}
+
+// ─── Combined Daily Report PDF ────────────────────────────────────────────────
+function generateCombinedPDF(
+  date: string,
+  reported: Array<{ employee: string; employee_name: string; department: string; status: string; date: string; childTables?: Record<string, any[]> }>,
+  notReported: Array<{ id: string; name: string }>,
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: "A4", margin: 40, bufferPages: true });
+    const chunks: Buffer[] = [];
+    doc.on("data", (c: Buffer) => chunks.push(c));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    const dateStr = date
+      ? new Date(date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })
+      : new Date().toLocaleDateString("en-GB");
+
+    const total = MD_EMPLOYEES.length;
+    const reportedCount = reported.length;
+
+    // ── Header band ──
+    doc.rect(0, 0, doc.page.width, 75).fill("#1a3a5c");
+    doc.fillColor("white").fontSize(20).font("Helvetica-Bold")
+      .text("Daily Report Summary", 40, 16);
+    doc.fontSize(10).font("Helvetica")
+      .text(`WTT International  ·  ${dateStr}`, 40, 42);
+    doc.fontSize(9).fillColor("#93c5fd")
+      .text(`${reportedCount} of ${total} employees reported  ·  Generated ${new Date().toLocaleString("en-GB")}`, 40, 58);
+
+    doc.y = 90;
+
+    // ── Coverage bar ──
+    const barX = 40, barW = doc.page.width - 80, barH = 10;
+    doc.roundedRect(barX, doc.y, barW, barH, 5).fill("#e2e8f0");
+    const filled = reportedCount / total;
+    if (filled > 0) doc.roundedRect(barX, doc.y, barW * filled, barH, 5).fill("#22c55e");
+    doc.y += barH + 14;
+
+    function sectionHeader(title: string, color: string) {
+      doc.moveDown(0.4);
+      doc.fillColor(color).fontSize(11).font("Helvetica-Bold").text(title.toUpperCase());
+      doc.moveTo(40, doc.y + 2).lineTo(doc.page.width - 40, doc.y + 2)
+        .strokeColor(color).lineWidth(1.2).stroke();
+      doc.moveDown(0.5);
+    }
+
+    // ── Reported employees ──
+    if (reported.length > 0) {
+      sectionHeader(`Reported  (${reported.length})`, "#15803d");
+      reported.forEach((r, i) => {
+        const isSubmitted = r.status === "Submitted";
+        const rowY = doc.y;
+        // Status indicator dot
+        doc.circle(50, rowY + 7, 4).fill(isSubmitted ? "#22c55e" : "#f59e0b");
+        // Name + details
+        doc.fillColor("#1e293b").fontSize(10).font("Helvetica-Bold")
+          .text(r.employee_name || r.employee, 62, rowY, { width: 200 });
+        const dept = (r.department || "").replace(/ - WTT$/i, "");
+        if (dept) {
+          doc.fillColor("#64748b").fontSize(8.5).font("Helvetica")
+            .text(dept, 62, rowY + 13, { width: 200 });
+        }
+        // Status badge
+        const badgeColor = isSubmitted ? "#dcfce7" : "#fef3c7";
+        const badgeText = isSubmitted ? "SUBMITTED" : "DRAFT";
+        const badgeTxtColor = isSubmitted ? "#166534" : "#92400e";
+        const badgeX = doc.page.width - 140;
+        doc.roundedRect(badgeX, rowY + 2, 80, 14, 3).fill(badgeColor);
+        doc.fillColor(badgeTxtColor).fontSize(8).font("Helvetica-Bold")
+          .text(badgeText, badgeX, rowY + 5, { width: 80, align: "center" });
+
+        doc.y = rowY + (dept ? 30 : 22);
+
+        // Child table detail rows
+        if (r.childTables && Object.keys(r.childTables).length > 0) {
+          for (const tableRows of Object.values(r.childTables)) {
+            (tableRows as any[]).forEach((trow: any, rowIdx: number) => {
+              const entries = Object.entries(trow).filter(
+                ([k, v]) => !CHILD_SKIP.has(k) && v !== null && v !== "" && v !== 0
+              );
+              if (!entries.length) return;
+
+              if (doc.y + 20 > doc.page.height - 60) { doc.addPage(); doc.y = 40; }
+
+              const rowLineY = doc.y;
+              doc.fillColor("#e8f0fe").rect(60, rowLineY, doc.page.width - 100, 13).fill();
+              doc.fillColor("#1e3a5f").fontSize(8).font("Helvetica-Bold")
+                .text(`#${rowIdx + 1}`, 62, rowLineY + 2, { width: 20, lineBreak: false });
+              doc.y = rowLineY + 15;
+
+              entries.forEach(([k, v]) => {
+                if (doc.y + 14 > doc.page.height - 60) { doc.addPage(); doc.y = 40; }
+                const entryY = doc.y;
+                const label = k.replace(/_/g, " ").toUpperCase();
+                doc.fillColor("#64748b").fontSize(8).font("Helvetica-Bold")
+                  .text(label + ":", 72, entryY, { width: 110, lineBreak: false });
+                doc.fillColor("#1e293b").font("Helvetica")
+                  .text(String(v), 185, entryY, { width: doc.page.width - 225 });
+                doc.y = entryY + 12;
+              });
+              doc.y += 4;
+            });
+          }
+        }
+
+        if (i < reported.length - 1) {
+          if (doc.y + 10 > doc.page.height - 60) { doc.addPage(); doc.y = 40; }
+          doc.moveTo(62, doc.y + 2).lineTo(doc.page.width - 40, doc.y + 2).strokeColor("#f1f5f9").lineWidth(0.5).stroke();
+          doc.y += 10;
+        } else {
+          doc.y += 4;
+        }
+      });
+    }
+
+    // ── Not reported employees ──
+    if (notReported.length > 0) {
+      if (doc.y + 50 > doc.page.height - 60) { doc.addPage(); doc.y = 40; }
+      doc.moveDown(0.8);
+      sectionHeader(`Not Reported  (${notReported.length})`, "#dc2626");
+      notReported.forEach((emp, i) => {
+        if (doc.y + 35 > doc.page.height - 60) { doc.addPage(); doc.y = 40; }
+        const rowY = doc.y;
+        doc.circle(50, rowY + 7, 4).fill("#ef4444");
+        doc.fillColor("#1e293b").fontSize(10).font("Helvetica-Bold")
+          .text(emp.name, 62, rowY, { width: 200 });
+        doc.fillColor("#94a3b8").fontSize(8.5).font("Helvetica")
+          .text(emp.id, 62, rowY + 13, { width: 100 });
+        const badgeX = doc.page.width - 150;
+        doc.roundedRect(badgeX, rowY + 2, 100, 14, 3).fill("#fee2e2");
+        doc.fillColor("#991b1b").fontSize(8).font("Helvetica-Bold")
+          .text("NOT REPORTED", badgeX, rowY + 5, { width: 100, align: "center" });
+        doc.y = rowY + 30;
+        if (i < notReported.length - 1) {
+          doc.moveTo(62, doc.y - 4).lineTo(doc.page.width - 40, doc.y - 4).strokeColor("#fee2e2").lineWidth(0.5).stroke();
+        }
+      });
+    }
+
+    // ── Footer (only drawn if there is room on the current page) ──
+    const footerY = doc.page.height - 35;
+    if (doc.y < footerY - 10) {
+      doc.rect(0, footerY - 5, doc.page.width, 40).fill("#f8fafc");
+      doc.fillColor("#94a3b8").fontSize(8).font("Helvetica")
+        .text(`FlowMatriX Daily Summary  ·  WTT International  ·  ${dateStr}`,
+          40, footerY, { align: "center", width: doc.page.width - 80 });
+    }
+
+    doc.end();
+  });
+}
+
+// ─── Send Combined Daily Summary to WhatsApp ──────────────────────────────────
+router.post("/daily-reporting/send-combined", async (req, res) => {
+  if (!isConfigured()) return res.status(503).json({ error: "ERPNext not configured" });
+
+  const date: string = req.body.date || new Date().toISOString().split("T")[0];
+  const to: string = req.body.to || REPORT_WHATSAPP_TO;
+
+  try {
+    // 1. Fetch all reports for the date from ERP
+    const fields = JSON.stringify(["name","employee","employee_name","department","docstatus","modified","creation"]);
+    const params = new URLSearchParams({ fields, limit_page_length: "500", limit_start: "0", order_by: "creation desc" });
+    const r = await fetch(`${ERP_URL}/api/resource/Daily Reporting?${params}`, {
+      headers: { Authorization: auth() },
+    });
+    if (!r.ok) {
+      const text = await r.text().catch(() => "");
+      return res.status(r.status).json({ error: `ERPNext error: ${text.slice(0, 300)}` });
+    }
+    const json = await r.json() as { data: any[] };
+    let rows: any[] = (json.data || []).map(row => ({
+      ...row,
+      date: row.name?.match(/(\d{4}-\d{2}-\d{2})/)?.[1] || row.creation?.split(" ")[0] || null,
+      status: mapDocStatus(row.docstatus),
+    }));
+
+    // 2. Filter to today's date and MD employees
+    const dateRows = rows.filter(row => row.date === date && matchesMdEmployee(row.employee, row.employee_name));
+
+    // 3. Fetch full details for each reported doc — collect ALL child table arrays
+    const DETAIL_SKIP = new Set(["doctype","idx","docstatus","__islocal","__unsaved","owner",
+      "__last_sync_on","name","employee","employee_name","department","modified",
+      "modified_by","creation","amended_from"]);
+
+    const detailed = await Promise.all(dateRows.map(async row => {
+      try {
+        const dr = await fetch(`${ERP_URL}/api/resource/Daily Reporting/${encodeURIComponent(row.name)}`, {
+          headers: { Authorization: auth() },
+        });
+        if (!dr.ok) return row;
+        const dj = await dr.json() as { data: any };
+        const data = dj.data || {};
+        const childTables: Record<string, any[]> = {};
+        for (const [k, v] of Object.entries(data)) {
+          if (!DETAIL_SKIP.has(k) && Array.isArray(v) && (v as any[]).length > 0) {
+            childTables[k] = v as any[];
+          }
+        }
+        return { ...row, childTables };
+      } catch {
+        return row;
+      }
+    }));
+
+    // 4. Determine which MD employees haven't filed a report
+    const notReported = MD_EMPLOYEES.filter(emp =>
+      !detailed.some(r => matchesMdEmployee(r.employee, r.employee_name) && (
+        (r.employee || "").toUpperCase() === emp.id.toUpperCase() ||
+        (r.employee_name || "").toUpperCase().includes(emp.name.toUpperCase()) ||
+        emp.name.toUpperCase().includes((r.employee_name || "").toUpperCase())
+      ))
+    );
+
+    // 5. Generate combined PDF with full details
+    const pdfBuf = await generateCombinedPDF(date, detailed, notReported);
+    const id = randomUUID();
+    const dateTag = date.replace(/-/g, "");
+    const filename = `DailySummary_${dateTag}.pdf`;
+    pdfStore.set(id, { buf: pdfBuf, filename, expires: Date.now() + 10 * 60_000 });
+
+    // 6. Build a publicly accessible URL
+    const host = process.env.REPLIT_DEV_DOMAIN
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+      : `http://localhost:${process.env.PORT || 8080}`;
+    const pdfUrl = `${host}/api/daily-reporting/pdf/${id}`;
+
+    const dateStr = new Date(date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    const caption = `Daily Report Summary — ${dateStr}\nWTT International`;
+
+    const result = await sendWhatsAppDocument(to, pdfUrl, filename, caption);
+
+    if (result.success) {
+      res.json({ success: true, to, filename, reported: detailed.length, notReported: notReported.length });
+    } else {
+      res.status(502).json({ success: false, error: result.error || "WhatsApp send failed" });
+    }
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── Single Daily Report Detail ───────────────────────────────────────────────
+// Single document fetch uses a different Frappe endpoint that doesn't have the
+// same field-name restrictions as get_list.
+router.get("/daily-reporting/:name", async (req, res) => {
+  if (!isConfigured()) return res.status(503).json({ error: "ERPNext not configured" });
+
+  const { name } = req.params;
+  try {
+    const r = await fetch(`${ERP_URL}/api/resource/Daily Reporting/${encodeURIComponent(name)}`, {
+      headers: { Authorization: auth() },
+    });
+
+    if (!r.ok) return res.status(r.status).json({ error: "Report not found" });
+
+    const json = await r.json() as { data: any };
+    res.json({ report: json.data });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+export default router;
