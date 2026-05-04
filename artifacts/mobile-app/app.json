@@ -55,11 +55,7 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "f5b5a369-d877-49b6-a6d3-9d21e5105dad"
-      }
-    },
-    "owner": "itwtt"
+      "router": {}
+    }
   }
 }
