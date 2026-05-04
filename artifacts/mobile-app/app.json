@@ -1,6 +1,9 @@
 {
   "expo": {
     "name": "FlowMatriX CRM",
+    "updates": {
+      "enabled": false
+    },
     "slug": "flowmatrix",
     "version": "1.0.0",
     "orientation": "portrait",
