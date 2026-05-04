@@ -1,0 +1,20 @@
+import express, { type Express } from "express";
+import cors from "cors";
+import router from "./routes";
+
+const app: Express = express();
+
+app.use(cors({
+  origin: true,          // reflect any origin, including null (pywebview local HTML)
+  credentials: true,
+}));
+app.use(express.json({ limit: "100mb" }));
+app.use(express.urlencoded({ extended: true, limit: "100mb" }));
+
+app.get("/", (_req, res) => {
+  res.redirect(302, "/pm-app/");
+});
+
+app.use("/api", router);
+
+export default app;
