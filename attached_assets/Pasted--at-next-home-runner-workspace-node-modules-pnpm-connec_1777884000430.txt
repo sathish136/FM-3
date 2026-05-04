@@ -1,0 +1,14 @@
+ at next (/home/runner/workspace/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:183:5)
+    at app.handle (/home/runner/workspace/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:186:3)
+ LOG  [web] Logs will appear in the browser console
+Error: Unauthorized request from https://33aa78c4-dba3-42c7-ad8f-271380ef1d14-00-233uudbq8t82u.janeway.replit.dev:8099. This may happen because of a conflicting browser extension to intercept HTTP requests. Disable browser extensions or use incognito mode and try again.
+    at /home/runner/workspace/node_modules/.pnpm/@expo+cli@54.0.24_expo-router@6.0.23_expo@54.0.34_react-native@0.81.5_@babel+core@7.29._a5b3c719bb5ccdac93692d80fc3c093b/node_modules/@expo/cli/src/start/server/middleware/CorsMiddleware.ts:51:11
+    at call (/home/runner/workspace/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:239:7)
+    at next (/home/runner/workspace/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:183:5)
+    at /home/runner/workspace/node_modules/.pnpm/@expo+cli@54.0.24_expo-router@6.0.23_expo@54.0.34_react-native@0.81.5_@babel+core@7.29._a5b3c719bb5ccdac93692d80fc3c093b/node_modules/@expo/cli/src/start/server/middleware/ContextModuleSourceMapsMiddleware.ts:16:16
+    at call (/home/runner/workspace/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:239:7)
+    at next (/home/runner/workspace/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:183:5)
+    at middleware (/home/runner/workspace/node_modules/.pnpm/@expo+cli@54.0.24_expo-router@6.0.23_expo@54.0.34_react-native@0.81.5_@babel+core@7.29._a5b3c719bb5ccdac93692d80fc3c093b/node_modules/@expo/cli/src/start/server/middleware/ExpoMiddleware.ts:62:16)
+    at call (/home/runner/workspace/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:239:7)
+    at next (/home/runner/workspace/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:183:5)
+    at app.handle (/home/runner/workspace/node_modules/.pnpm/connect@3.7.0/node_modules/connect/index.js:186:3)
