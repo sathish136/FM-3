@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "scripts": {
-    "start": "expo start --port 8099 --https",
+    "start": "expo start --port 8099 --clear",
     "dev": "expo start --tunnel --port 8099 --clear",
     "web": "serve dist -l 5000 --no-clipboard",
     "build:web": "expo export --platform web --output-dir dist --clear",
