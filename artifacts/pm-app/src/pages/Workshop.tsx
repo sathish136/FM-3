@@ -3,7 +3,7 @@ import {
   Plus, RefreshCw, Loader2, Search, X, Printer, Trash2,
   ChevronDown, Zap, Wrench, ClipboardList, Eye,
 } from "lucide-react";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -82,8 +82,8 @@ function PrintView({ card, onClose }: { card: JobCard; onClose: () => void }) {
   const fs     = (card.summary as FitterSummary) || {};
   const sigs   = card.signatures || emptySigs();
 
-  const accentColor = isWelder ? "#c0392b" : "#1a3a6b";
-  const headerBg    = isWelder ? "#e8d5d5" : "#dce6f1";
+  const accentColor = isWelder ? "#8b2635" : "#1a3a6b";
+  const headerBg    = isWelder ? "#f0e4e7" : "#dce6f1";
 
   return (
     <div className="fixed inset-0 z-50 bg-white overflow-auto" id="print-area">
@@ -276,8 +276,8 @@ function JobCardModal({ type, onClose, onSaved }: { type: CardType; onClose: () 
   const { toast } = useToast();
   const { user } = useAuth();
   const isWelder = type === "welder";
-  const accentCls = isWelder ? "bg-red-600 hover:bg-red-700" : "bg-blue-700 hover:bg-blue-800";
-  const accentBorder = isWelder ? "border-red-500" : "border-blue-600";
+  const accentCls = isWelder ? "bg-rose-700 hover:bg-rose-800" : "bg-blue-700 hover:bg-blue-800";
+  const accentBorder = isWelder ? "border-rose-600" : "border-blue-600";
 
   const [saving, setSaving] = useState(false);
 
@@ -343,7 +343,7 @@ function JobCardModal({ type, onClose, onSaved }: { type: CardType; onClose: () 
     <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/40 overflow-y-auto py-6">
       <div className="relative w-full max-w-4xl mx-4 bg-white rounded-2xl shadow-2xl">
         {/* Modal header */}
-        <div className={cn("flex items-center justify-between px-6 py-4 rounded-t-2xl text-white", isWelder ? "bg-red-600" : "bg-blue-700")}>
+        <div className={cn("flex items-center justify-between px-6 py-4 rounded-t-2xl text-white", isWelder ? "bg-rose-800" : "bg-blue-700")}>
           <div className="flex items-center gap-3">
             {isWelder ? <Zap className="w-5 h-5" /> : <Wrench className="w-5 h-5" />}
             <h2 className="text-lg font-bold">{isWelder ? "New Welder Job Card" : "New Fitter Job Card"}</h2>
@@ -354,7 +354,7 @@ function JobCardModal({ type, onClose, onSaved }: { type: CardType; onClose: () 
         <div className="p-6 space-y-6">
           {/* ── Header info ─────────────────────────────── */}
           <section>
-            <h3 className={cn("text-xs font-bold uppercase tracking-wider mb-3 pb-1 border-b-2", isWelder ? "text-red-600 border-red-200" : "text-blue-700 border-blue-200")}>Job Card Info</h3>
+            <h3 className={cn("text-xs font-bold uppercase tracking-wider mb-3 pb-1 border-b-2", isWelder ? "text-rose-700 border-rose-200" : "text-blue-700 border-blue-200")}>Job Card Info</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div><label className="text-xs text-gray-500 mb-1 block">Card No</label><input className={inputCls} value={cardNo} onChange={e => setCardNo(e.target.value)} /></div>
               <div><label className="text-xs text-gray-500 mb-1 block">Date <span className="text-red-500">*</span></label><input type="date" className={inputCls} value={date} onChange={e => setDate(e.target.value)} /></div>
@@ -379,13 +379,13 @@ function JobCardModal({ type, onClose, onSaved }: { type: CardType; onClose: () 
 
           {/* ── Details table ────────────────────────────── */}
           <section>
-            <h3 className={cn("text-xs font-bold uppercase tracking-wider mb-3 pb-1 border-b-2", isWelder ? "text-red-600 border-red-200" : "text-blue-700 border-blue-200")}>
+            <h3 className={cn("text-xs font-bold uppercase tracking-wider mb-3 pb-1 border-b-2", isWelder ? "text-rose-700 border-rose-200" : "text-blue-700 border-blue-200")}>
               {isWelder ? "Welding Details" : "Fitter Work Details"}
             </h3>
             <div className="overflow-x-auto">
               <table className="w-full text-xs border-collapse">
                 <thead>
-                  <tr className={cn("text-white text-left", isWelder ? "bg-red-600" : "bg-blue-700")}>
+                  <tr className={cn("text-white text-left", isWelder ? "bg-rose-800" : "bg-blue-700")}>
                     <th className="px-2 py-1.5 w-8">#</th>
                     {isWelder ? (<>
                       <th className="px-2 py-1.5">Joint Type</th>
@@ -445,7 +445,7 @@ function JobCardModal({ type, onClose, onSaved }: { type: CardType; onClose: () 
 
           {/* ── Summary ──────────────────────────────────── */}
           <section>
-            <h3 className={cn("text-xs font-bold uppercase tracking-wider mb-3 pb-1 border-b-2", isWelder ? "text-red-600 border-red-200" : "text-blue-700 border-blue-200")}>Summary</h3>
+            <h3 className={cn("text-xs font-bold uppercase tracking-wider mb-3 pb-1 border-b-2", isWelder ? "text-rose-700 border-rose-200" : "text-blue-700 border-blue-200")}>Summary</h3>
             {isWelder ? (
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-xs text-gray-500 mb-1 block">Total No. of Joints</label><input className={inputCls} value={ws.total_joints} onChange={e => setWs(s => ({ ...s, total_joints: e.target.value }))} /></div>
@@ -477,7 +477,7 @@ function JobCardModal({ type, onClose, onSaved }: { type: CardType; onClose: () 
 
           {/* ── Approval / Signatures ────────────────────── */}
           <section>
-            <h3 className={cn("text-xs font-bold uppercase tracking-wider mb-3 pb-1 border-b-2", isWelder ? "text-red-600 border-red-200" : "text-blue-700 border-blue-200")}>Approval / Signatures</h3>
+            <h3 className={cn("text-xs font-bold uppercase tracking-wider mb-3 pb-1 border-b-2", isWelder ? "text-rose-700 border-rose-200" : "text-blue-700 border-blue-200")}>Approval / Signatures</h3>
             <div className="overflow-x-auto">
               <table className="w-full text-xs border-collapse">
                 <thead>
@@ -520,9 +520,13 @@ function JobCardModal({ type, onClose, onSaved }: { type: CardType; onClose: () 
 
 // ─── Main Workshop page ───────────────────────────────────────────────────────
 export default function Workshop() {
-  const [location] = useLocation();
-  const initType: CardType = location.includes("fitter") ? "fitter" : "welder";
-  const [activeTab, setActiveTab] = useState<CardType>(initType);
+  const [location, navigate] = useLocation();
+  const tabFromPath = (p: string): CardType => p.includes("fitter") ? "fitter" : "welder";
+  const [activeTab, setActiveTab] = useState<CardType>(tabFromPath(location));
+
+  useEffect(() => {
+    setActiveTab(tabFromPath(location));
+  }, [location]);
   const [cards, setCards] = useState<JobCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -564,10 +568,10 @@ export default function Workshop() {
   };
 
   const isWelder = activeTab === "welder";
-  const accentBg    = isWelder ? "bg-red-600"   : "bg-blue-700";
-  const accentLight = isWelder ? "bg-red-50"    : "bg-blue-50";
-  const accentText  = isWelder ? "text-red-600" : "text-blue-700";
-  const accentBorder= isWelder ? "border-red-500" : "border-blue-600";
+  const accentBg    = isWelder ? "bg-rose-700"   : "bg-blue-700";
+  const accentLight = isWelder ? "bg-rose-50"    : "bg-blue-50";
+  const accentText  = isWelder ? "text-rose-700" : "text-blue-700";
+  const accentBorder= isWelder ? "border-rose-600" : "border-blue-600";
 
   const stats = {
     total:     cards.length,
@@ -603,11 +607,11 @@ export default function Workshop() {
         {/* Tabs */}
         <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl w-fit">
           {(["welder", "fitter"] as CardType[]).map(t => (
-            <button key={t} onClick={() => setActiveTab(t)}
+            <button key={t} onClick={() => navigate(t === "welder" ? "/workshop/welder" : "/workshop/fitter")}
               className={cn("flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold transition-all",
                 activeTab === t ? "bg-white dark:bg-gray-700 shadow text-gray-900 dark:text-white" : "text-gray-500 hover:text-gray-700"
               )}>
-              {t === "welder" ? <Zap className="w-4 h-4 text-red-500" /> : <Wrench className="w-4 h-4 text-blue-600" />}
+              {t === "welder" ? <Zap className="w-4 h-4 text-rose-600" /> : <Wrench className="w-4 h-4 text-blue-600" />}
               {t === "welder" ? "Welder" : "Fitter"} Job Cards
             </button>
           ))}
@@ -642,7 +646,7 @@ export default function Workshop() {
         {/* Table */}
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
           <div className={cn("px-5 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2", accentLight)}>
-            {isWelder ? <Zap className="w-4 h-4 text-red-500" /> : <Wrench className="w-4 h-4 text-blue-600" />}
+            {isWelder ? <Zap className="w-4 h-4 text-rose-600" /> : <Wrench className="w-4 h-4 text-blue-600" />}
             <span className={cn("text-sm font-bold", accentText)}>{isWelder ? "Welder" : "Fitter"} Job Cards</span>
             <span className="ml-auto text-xs text-gray-400">{cards.length} records</span>
           </div>
