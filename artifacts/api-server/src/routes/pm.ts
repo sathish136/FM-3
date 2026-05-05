@@ -3409,62 +3409,6 @@ router.patch("/proposals/:id", async (req, res) => {
   }
 });
 
-<<<<<<< HEAD
-router.get("/proposals/:id/doc", async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    if (!Number.isFinite(id)) return res.status(400).json({ error: "invalid id" });
-    const r = await pool.query("SELECT * FROM proposal_requests WHERE id = $1", [id]);
-    if (r.rows.length === 0) return res.status(404).json({ error: "not found" });
-    const proposal = r.rows[0];
-
-    const { execFile } = await import("node:child_process");
-    const { promisify } = await import("node:util");
-    const { mkdtemp, rm } = await import("node:fs/promises");
-    const { readFileSync } = await import("node:fs");
-    const { fileURLToPath } = await import("node:url");
-    const { dirname } = await import("node:path");
-    const { tmpdir } = await import("node:os");
-    const execFileP = promisify(execFile);
-
-    const __dirname2 = dirname(fileURLToPath(import.meta.url));
-    const templatePath = join(__dirname2, "../assets/templete_1777720945127.doc");
-    const tmpDir = await mkdtemp(join(tmpdir(), "proposal-"));
-    const outPath = join(tmpDir, "proposal.doc");
-
-    // Format date as DD-Mon-YY
-    const d = proposal.proposal_date ? new Date(proposal.proposal_date) : new Date();
-    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-    const dd = String(d.getDate()).padStart(2, "0");
-    const mon = months[d.getMonth()];
-    const yy = String(d.getFullYear()).slice(-2);
-    const dateShort = `${dd}-${mon}-${yy}`;             // e.g. 01-May-26
-    const dateDot   = `${dd}.${mon}.${d.getFullYear()}`; // e.g. 01.May.2026
-
-    const replacements: Record<string, string> = {
-      "COMPANY NAME": String(proposal.company_name || "COMPANY NAME"),
-      "CITY":         String(proposal.city || "CITY"),
-      "BANGLADESH":   String(proposal.country || "BANGLADESH"),
-      "FLOW":         String(proposal.flow_rate || "FLOW"),
-      "01-Jan-26":    dateShort,
-      "01.Jan.2026":  dateDot,
-      "WTT-BAN-0001": String(proposal.proposal_no || "WTT-BAN-0001"),
-    };
-
-    const scriptPath = join(__dirname2, "../assets/replace_doc.py");
-    await execFileP("python3", [scriptPath, templatePath, outPath, JSON.stringify(replacements)]);
-
-    const docBuffer = readFileSync(outPath);
-    await rm(tmpDir, { recursive: true, force: true });
-
-    const safeName = String(proposal.proposal_no || "proposal").replace(/[^a-zA-Z0-9_\-]/g, "_");
-    res.setHeader("Content-Type", "application/msword");
-    res.setHeader("Content-Disposition", `attachment; filename="${safeName}.doc"`);
-    res.setHeader("Content-Length", docBuffer.length);
-    res.send(docBuffer);
-  } catch (e: any) {
-    console.error("proposal doc error:", e);
-=======
 // ─── Proposal DOCX Template Generator ────────────────────────────────────────
 
 const TEMPLATE_SEARCH_PATHS = [
@@ -3561,12 +3505,7 @@ router.get("/proposals/:id/generate-pdf", async (req, res) => {
       try { unlinkSync(tmpPdf); } catch { /* ignore */ }
     }
   } catch (e: any) {
-<<<<<<< HEAD
-    console.error("generate-docx error:", e);
->>>>>>> a793c02 (Add ability to download proposals as DOCX files)
-=======
     console.error("generate-pdf error:", e);
->>>>>>> 6cb2773 (Update proposal generation to create a single PDF download)
     res.status(500).json({ error: e?.message || String(e) });
   }
 });

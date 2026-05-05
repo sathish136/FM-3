@@ -111,32 +111,6 @@ function DetailPanel({ proposal, onClose, onStatusChange }: {
     }
   };
 
-<<<<<<< HEAD
-  const [downloading, setDownloading] = useState(false);
-
-  const downloadPdf = async () => {
-    setDownloading(true);
-    try {
-      const res = await fetch(`${API}/proposals/${proposal.id}/doc`);
-      if (!res.ok) throw new Error("Document generation failed");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${proposal.proposal_no}.doc`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      alert("Failed to generate document. Please try again.");
-    } finally {
-      setDownloading(false);
-    }
-  };
-
-=======
->>>>>>> 6cb2773 (Update proposal generation to create a single PDF download)
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="flex-1 bg-black/40" onClick={onClose} />
@@ -233,28 +207,10 @@ function DetailPanel({ proposal, onClose, onStatusChange }: {
         <div className="sticky bottom-0 px-5 py-4 border-t border-gray-100 bg-white space-y-2">
           <button
             onClick={downloadPdf}
-<<<<<<< HEAD
-            disabled={downloading}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition disabled:opacity-60"
-          >
-            {downloading ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Generating PDF…</>
-            ) : (
-              <><Download className="w-4 h-4" /> Download Proposal DOC</>
-            )}
-          </button>
-          <button
-            onClick={downloadDocx}
-            disabled={downloadingDocx}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 shadow-sm transition disabled:opacity-60"
-          >
-            {downloadingDocx
-=======
             disabled={downloadingPdf}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition disabled:opacity-60"
           >
             {downloadingPdf
->>>>>>> 6cb2773 (Update proposal generation to create a single PDF download)
               ? <Loader2 className="w-4 h-4 animate-spin" />
               : <Download className="w-4 h-4" />}
             {downloadingPdf ? "Generating PDF…" : "Download Proposal PDF"}
