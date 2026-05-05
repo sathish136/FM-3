@@ -87,6 +87,7 @@ import ProposalAdmin from "@/pages/ProposalAdmin";
 import AgentManagement from "@/pages/AgentManagement";
 import HrmsWorkMonitor from "@/pages/HrmsWorkMonitor";
 import ProposalPDFView from "@/pages/ProposalPDFView";
+import Workshop from "@/pages/Workshop";
 import { SlideshowProvider } from "@/contexts/SlideshowContext";
 import { RecordingProvider } from "@/contexts/RecordingContext";
 
@@ -264,6 +265,9 @@ function ProtectedRoutes() {
       <Route path="/site-db/analyze" component={SiteDbAnalytics} />
       <Route path="/site-db/system" component={SiteDbSystem} />
       <Route path="/proposals" component={ProposalAdmin} />
+      <Route path="/workshop" component={Workshop} />
+      <Route path="/workshop/welder" component={Workshop} />
+      <Route path="/workshop/fitter" component={Workshop} />
       <Route component={NotFound} />
     </Switch>
   );

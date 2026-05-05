@@ -306,6 +306,14 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     ],
   },
   {
+    label: "Workshop",
+    items: [
+      { path: "/workshop",          label: "Job Cards",          icon: ClipboardList, color: "text-orange-400", bgColor: "bg-orange-500/15" },
+      { path: "/workshop/welder",   label: "Welder Job Cards",   icon: Zap,           color: "text-red-400",    bgColor: "bg-red-500/15" },
+      { path: "/workshop/fitter",   label: "Fitter Job Cards",   icon: Activity,      color: "text-blue-400",   bgColor: "bg-blue-500/15" },
+    ],
+  },
+  {
     label: "Monitoring",
     items: [
       { path: "/plant-overview", label: "Plant Overview", icon: Activity, color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
@@ -404,6 +412,9 @@ const PATH_TO_MODULE: Record<string, string> = {
   "/site-data":             "site-data",
   "/site-db":               "site-db",
   "/site-db/analyze":       "site-db",
+  "/workshop":              "workshop",
+  "/workshop/welder":       "workshop",
+  "/workshop/fitter":       "workshop",
   "/cctv":                  "cctv",
   "/mis-report":            "mis-report",
   "/payment-tracker":       "payment-tracker",
