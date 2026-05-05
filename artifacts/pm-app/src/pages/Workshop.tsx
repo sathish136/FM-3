@@ -321,7 +321,7 @@ function SearchDropdown({
   );
 }
 
-function JobCardModal({ type, onClose, onSaved }: { type: CardType; onClose: () => void; onSaved: () => void }) {
+function JobCardModal({ type, onClose, onSaved }: { type: CardType; onClose: () => void; onSaved: (card?: JobCard) => void }) {
   const { toast } = useToast();
   const { user } = useAuth();
   const isWelder = type === "welder";
@@ -390,7 +390,7 @@ function JobCardModal({ type, onClose, onSaved }: { type: CardType; onClose: () 
 
   const inputCls = "w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white";
 
-  const save = async (status: "Draft" | "Submitted") => {
+  const save = async (status: "Draft" | "Submitted", andPrint = false) => {
     if (!projectName.trim() && !projectSearch.trim()) { toast({ title: "Please select a project", variant: "destructive" }); return; }
     setSaving(true);
     try {
@@ -412,8 +412,9 @@ function JobCardModal({ type, onClose, onSaved }: { type: CardType; onClose: () 
         body: JSON.stringify(payload),
       });
       if (!r.ok) throw new Error(await r.text());
+      const saved: JobCard = await r.json();
       toast({ title: `Job card ${status === "Submitted" ? "submitted" : "saved as draft"}` });
-      onSaved();
+      onSaved(andPrint ? saved : undefined);
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
     }
@@ -615,13 +616,16 @@ function JobCardModal({ type, onClose, onSaved }: { type: CardType; onClose: () 
         </div>
 
         {/* Footer actions */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl flex-wrap">
           <button onClick={onClose} className="px-4 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-100">Cancel</button>
           <button onClick={() => save("Draft")} disabled={saving} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-800 text-white text-sm">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Save Draft
           </button>
           <button onClick={() => save("Submitted")} disabled={saving} className={cn("flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm", accentCls)}>
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Submit
+          </button>
+          <button onClick={() => save("Submitted", true)} disabled={saving} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-semibold">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />} Submit & Print
           </button>
         </div>
       </div>
@@ -820,7 +824,7 @@ export default function Workshop() {
         </div>
       </div>
 
-      {showForm && <JobCardModal type={activeTab} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); load(); }} />}
+      {showForm && <JobCardModal type={activeTab} onClose={() => setShowForm(false)} onSaved={(card) => { setShowForm(false); load(); if (card) setPrintCard(card); }} />}
       {printCard && <PrintView card={printCard} onClose={() => setPrintCard(null)} />}
     </Layout>
   );
