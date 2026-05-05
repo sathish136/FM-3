@@ -1,4 +1,4 @@
-modules = ["nodejs-24", "python-3.11", "postgresql-16"]
+modules = ["nodejs-24", "postgresql-16", "python-3.11"]
 
 [[artifacts]]
 id = "artifacts/api-server"
@@ -85,7 +85,8 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "pnpm --filter @workspace/mobile-app run dev"
+args = "pnpm --filter @workspace/mobile-app run dev:native"
+waitForPort = 8099
 
 [[workflows.workflow]]
 name = "Project"
@@ -109,7 +110,7 @@ timeoutMs = 20000
 [userenv.shared]
 ERPNEXT_URL = "https://erp.wttint.com"
 ERPNEXT_API_KEY = "bcbc298244f56a7"
-ERPNEXT_API_SECRET = "67e79ddb8a38792"
+ERPNEXT_API_SECRET = "848f43aeddfa2b8"
 AI_INTEGRATIONS_OPENAI_BASE_URL = "https://api.openai.com/v1"
 PORT = "3000"
 
@@ -127,10 +128,6 @@ externalPort = 8081
 [[ports]]
 localPort = 8099
 externalPort = 8099
-
-[[ports]]
-localPort = 23117
-externalPort = 3002
 
 [[ports]]
 localPort = 23704
