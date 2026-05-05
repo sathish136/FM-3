@@ -3,7 +3,7 @@ import {
   Plus, RefreshCw, Loader2, Search, X, Printer, Trash2,
   ChevronDown, Zap, Wrench, ClipboardList, Eye,
 } from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -272,6 +272,55 @@ function PrintView({ card, onClose }: { card: JobCard; onClose: () => void }) {
 }
 
 // ─── Job Card Form Modal ──────────────────────────────────────────────────────
+// ─── Reusable searchable dropdown ────────────────────────────────────────────
+function SearchDropdown({
+  label, value, onChange, onSelect, options, loading, placeholder, required, className,
+}: {
+  label: string; value: string; onChange: (v: string) => void;
+  onSelect?: (item: { label: string; [k: string]: any }) => void;
+  options: { label: string; [k: string]: any }[]; loading?: boolean;
+  placeholder?: string; required?: boolean; className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+  const filtered = options.filter(o => o.label.toLowerCase().includes(value.toLowerCase()));
+  return (
+    <div ref={ref} className={cn("relative", className)}>
+      <label className="text-xs text-gray-500 mb-1 block">
+        {label} {required && <span className="text-rose-500">*</span>}
+      </label>
+      <div className="relative">
+        <input
+          className="w-full border border-gray-300 rounded px-2 py-1.5 pr-7 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+          value={value}
+          onChange={e => { onChange(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          placeholder={placeholder}
+        />
+        {loading
+          ? <Loader2 className="w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 animate-spin" />
+          : <ChevronDown className="w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        }
+      </div>
+      {open && filtered.length > 0 && (
+        <ul className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto text-sm">
+          {filtered.slice(0, 50).map((item, i) => (
+            <li key={i} className="px-3 py-2 hover:bg-blue-50 cursor-pointer truncate"
+              onMouseDown={e => { e.preventDefault(); onChange(item.label); onSelect?.(item); setOpen(false); }}>
+              {item.label}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function JobCardModal({ type, onClose, onSaved }: { type: CardType; onClose: () => void; onSaved: () => void }) {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -281,10 +330,42 @@ function JobCardModal({ type, onClose, onSaved }: { type: CardType; onClose: () 
 
   const [saving, setSaving] = useState(false);
 
+  // ERP data
+  const [erpProjects, setErpProjects]   = useState<{ code: string; name: string; label: string }[]>([]);
+  const [erpProjLoad, setErpProjLoad]   = useState(false);
+  const [empQuery,    setEmpQuery]      = useState("");
+  const [empOptions,  setEmpOptions]    = useState<{ id: string; name: string; label: string }[]>([]);
+  const [empLoading,  setEmpLoading]    = useState(false);
+
+  // Load projects once on open
+  useEffect(() => {
+    setErpProjLoad(true);
+    fetch(`${BASE}/api/workshop/erp-projects`)
+      .then(r => r.json())
+      .then(d => setErpProjects(d.projects ?? []))
+      .catch(() => {})
+      .finally(() => setErpProjLoad(false));
+  }, []);
+
+  // Debounced employee search
+  useEffect(() => {
+    if (!empQuery || empQuery.length < 2) { setEmpOptions([]); return; }
+    const t = setTimeout(() => {
+      setEmpLoading(true);
+      fetch(`${BASE}/api/workshop/erp-employees?q=${encodeURIComponent(empQuery)}`)
+        .then(r => r.json())
+        .then(d => setEmpOptions(d.employees ?? []))
+        .catch(() => {})
+        .finally(() => setEmpLoading(false));
+    }, 350);
+    return () => clearTimeout(t);
+  }, [empQuery]);
+
   // Header
   const [cardNo,        setCardNo]        = useState("");
   const [projectNumber, setProjectNumber] = useState("");
   const [projectName,   setProjectName]   = useState("");
+  const [projectSearch, setProjectSearch] = useState("");
   const [drawingNumber, setDrawingNumber] = useState("");
   const [workOrderNo,   setWorkOrderNo]   = useState("");
   const [locationArea,  setLocationArea]  = useState("");
@@ -310,12 +391,12 @@ function JobCardModal({ type, onClose, onSaved }: { type: CardType; onClose: () 
   const inputCls = "w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white";
 
   const save = async (status: "Draft" | "Submitted") => {
-    if (!projectName.trim()) { toast({ title: "Project name is required", variant: "destructive" }); return; }
+    if (!projectName.trim() && !projectSearch.trim()) { toast({ title: "Please select a project", variant: "destructive" }); return; }
     setSaving(true);
     try {
       const payload: JobCard = {
         card_type: type, card_no: cardNo, project_number: projectNumber,
-        project_name: projectName, drawing_number: drawingNumber,
+        project_name: projectName || projectSearch, drawing_number: drawingNumber,
         work_order_no: workOrderNo, location_area: locationArea,
         worker_name: workerName, supervisor_name: supervisorName,
         date, start_time: startTime, end_time: endTime,
@@ -360,8 +441,25 @@ function JobCardModal({ type, onClose, onSaved }: { type: CardType; onClose: () 
               <div><label className="text-xs text-gray-500 mb-1 block">Date <span className="text-red-500">*</span></label><input type="date" className={inputCls} value={date} onChange={e => setDate(e.target.value)} /></div>
               <div><label className="text-xs text-gray-500 mb-1 block">Start Time</label><input type="time" className={inputCls} value={startTime} onChange={e => setStartTime(e.target.value)} /></div>
               <div><label className="text-xs text-gray-500 mb-1 block">End Time</label><input type="time" className={inputCls} value={endTime} onChange={e => setEndTime(e.target.value)} /></div>
-              <div className="md:col-span-2"><label className="text-xs text-gray-500 mb-1 block">Project Name <span className="text-red-500">*</span></label><input className={inputCls} value={projectName} onChange={e => setProjectName(e.target.value)} /></div>
-              <div><label className="text-xs text-gray-500 mb-1 block">Project Number</label><input className={inputCls} value={projectNumber} onChange={e => setProjectNumber(e.target.value)} /></div>
+              <SearchDropdown
+                className="md:col-span-2"
+                label="Project"
+                required
+                placeholder="Search project…"
+                value={projectSearch}
+                onChange={setProjectSearch}
+                options={erpProjects}
+                loading={erpProjLoad}
+                onSelect={item => {
+                  setProjectSearch(item.label);
+                  setProjectNumber(item.code);
+                  setProjectName(item.name);
+                }}
+              />
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Project Number</label>
+                <input className={inputCls} value={projectNumber} readOnly placeholder="Auto-filled" />
+              </div>
               <div><label className="text-xs text-gray-500 mb-1 block">Drawing Number</label><input className={inputCls} value={drawingNumber} onChange={e => setDrawingNumber(e.target.value)} /></div>
               <div><label className="text-xs text-gray-500 mb-1 block">Work Order No</label><input className={inputCls} value={workOrderNo} onChange={e => setWorkOrderNo(e.target.value)} /></div>
               <div><label className="text-xs text-gray-500 mb-1 block">Location / Area</label><input className={inputCls} value={locationArea} onChange={e => setLocationArea(e.target.value)} /></div>
@@ -373,7 +471,20 @@ function JobCardModal({ type, onClose, onSaved }: { type: CardType; onClose: () 
                 </select>
               </div>
               <div className="md:col-span-2"><label className="text-xs text-gray-500 mb-1 block">Worker Name</label><input className={inputCls} value={workerName} onChange={e => setWorkerName(e.target.value)} /></div>
-              <div className="md:col-span-2"><label className="text-xs text-gray-500 mb-1 block">Supervisor Name</label><input className={inputCls} value={supervisorName} onChange={e => setSupervisorName(e.target.value)} /></div>
+              <SearchDropdown
+                className="md:col-span-2"
+                label="Supervisor Name"
+                placeholder="Type to search employee…"
+                value={empQuery || supervisorName}
+                onChange={v => { setEmpQuery(v); setSupervisorName(v); }}
+                options={empOptions}
+                loading={empLoading}
+                onSelect={item => {
+                  setSupervisorName(item.name);
+                  setEmpQuery(item.name);
+                  setEmpOptions([]);
+                }}
+              />
             </div>
           </section>
 

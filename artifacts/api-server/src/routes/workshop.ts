@@ -1,6 +1,10 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import { erpFetch } from "../lib/erp";
+
+const ERP_URL = (process.env.ERPNEXT_URL || "https://erp.wttint.com").replace(/\/$/, "");
+const ERP_AUTH = () => `token ${process.env.ERPNEXT_API_KEY || ""}:${process.env.ERPNEXT_API_SECRET || ""}`;
 
 const router = Router();
 
@@ -183,6 +187,53 @@ router.delete("/workshop/job-cards/:id", async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: String(e) });
+  }
+});
+
+// GET /api/workshop/erp-projects — projects list from ERPNext
+router.get("/workshop/erp-projects", async (_req, res) => {
+  try {
+    const data = await erpFetch("wtt_module.customization.custom.rfq.get_project");
+    const raw: string = data?.message ?? "";
+    const projects = raw.trim().split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        const parts = line.split(" - ", 2);
+        const code = parts[0].trim();
+        const name = parts[1]?.trim() ?? code;
+        return { code, name, label: `${code} - ${name}` };
+      });
+    res.json({ projects });
+  } catch (e: any) {
+    res.status(502).json({ error: e.message, projects: [] });
+  }
+});
+
+// GET /api/workshop/erp-employees?q=search — employee search from ERPNext
+router.get("/workshop/erp-employees", async (req, res) => {
+  const q = String(req.query.q || "").trim();
+  if (!q) return res.json({ employees: [] });
+  try {
+    const fields = encodeURIComponent('["name","employee_name","designation","department"]');
+    const nameFilter = encodeURIComponent(`[["employee_name","like","%${q}%"],["status","=","Active"]]`);
+    const r = await fetch(
+      `${ERP_URL}/api/resource/Employee?filters=${nameFilter}&fields=${fields}&limit=20`,
+      { headers: { Authorization: ERP_AUTH(), Accept: "application/json" } }
+    );
+    if (!r.ok) return res.json({ employees: [] });
+    const d: any = await r.json();
+    const list: any[] = d.data || [];
+    res.json({
+      employees: list.map(e => ({
+        id: e.name,
+        name: e.employee_name,
+        designation: e.designation || "",
+        department: e.department || "",
+        label: `${e.employee_name}${e.designation ? " — " + e.designation : ""}`,
+      })),
+    });
+  } catch (e: any) {
+    res.status(502).json({ error: e.message, employees: [] });
   }
 });
 
