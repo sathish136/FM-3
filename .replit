@@ -75,6 +75,27 @@ router = "path"
 PORT = "23704"
 BASE_PATH = "/pm-app/"
 
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "artifacts/mobile-app: Mobile App"
+
+[[workflows.workflow]]
+name = "artifacts/mobile-app: Mobile App"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/mobile-app run dev:native"
+waitForPort = 8099
+
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
@@ -104,8 +125,8 @@ localPort = 8081
 externalPort = 8081
 
 [[ports]]
-localPort = 22919
-externalPort = 3000
+localPort = 8099
+externalPort = 8099
 
 [[ports]]
 localPort = 23117
