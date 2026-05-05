@@ -82,6 +82,8 @@ db.execute(sql`
     summary         TEXT,
     created_at      TIMESTAMP NOT NULL DEFAULT NOW()
   );
+  ALTER TABLE mobile_expense_claims ADD COLUMN IF NOT EXISTS km_travel DECIMAL(10,2);
+  ALTER TABLE mobile_expense_claims ADD COLUMN IF NOT EXISTS attachment_base64 TEXT;
 
   CREATE TABLE IF NOT EXISTS mobile_onduty_requests (
     id              SERIAL PRIMARY KEY,
@@ -970,7 +972,7 @@ mobileRouter.get("/mobile/hrms/claims", hrmsAuth, async (req: any, res) => {
 });
 
 mobileRouter.post("/mobile/hrms/claim", hrmsAuth, async (req: any, res) => {
-  const { expense_type, claim_date, amount, description } = req.body;
+  const { expense_type, claim_date, amount, description, km_travel, attachment_base64 } = req.body;
   if (!expense_type || !claim_date || amount == null)
     return res.status(400).json({ error: "expense_type, claim_date, amount required" });
   const emp = req.hrmsUser.erp_employee_id;
@@ -988,8 +990,11 @@ mobileRouter.post("/mobile/hrms/claim", hrmsAuth, async (req: any, res) => {
   } catch (e) { erpErr = String(e); }
   try {
     await db.execute(sql`
-      INSERT INTO mobile_expense_claims (erp_employee_id, expense_type, claim_date, amount, description)
-      VALUES (${emp}, ${expense_type}, ${claim_date}, ${Number(amount)}, ${description ?? null})`);
+      INSERT INTO mobile_expense_claims
+        (erp_employee_id, expense_type, claim_date, amount, description, km_travel, attachment_base64)
+      VALUES
+        (${emp}, ${expense_type}, ${claim_date}, ${Number(amount)}, ${description ?? null},
+         ${km_travel != null ? Number(km_travel) : null}, ${attachment_base64 ?? null})`);
   } catch {}
   if (erpErr && !erpRef) return res.status(500).json({ error: erpErr });
   res.json({ ok: true, erp_ref: erpRef });

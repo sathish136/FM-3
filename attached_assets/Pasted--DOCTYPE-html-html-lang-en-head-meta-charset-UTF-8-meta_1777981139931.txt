@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Claim Request - WTT ERP</title>
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/claim_request.css') }}">
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
+    
+    <!-- Flatpickr Calendar CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+</head>
+<body>
+    <!-- Top Bar - Consistent Blue Gradient -->
+    <div class="top-bar">
+        <div class="top-bar-left">
+            <button class="back-btn" id="backBtn">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <div class="page-title">
+                <span>Claim Request</span>
+            </div>
+        </div>
+        
+        <div class="top-bar-right">
+            <!-- <button class="top-bar-btn" id="themeToggle" title="Toggle Theme">
+                <i class="fas fa-moon"></i>
+            </button> -->
+            <button class="top-bar-btn" id="refreshBtn" title="Refresh">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Selected Claim ID Banner (appears when claim selected) -->
+        <div class="selected-claim-banner" id="selectedClaimBanner" style="display: none;">
+            <div class="selected-claim-content">
+                <i class="fas fa-receipt"></i>
+                <div class="selected-claim-info">
+                    <span class="selected-label">Selected Claim ID:</span>
+                    <span class="selected-id" id="selectedClaimId"></span>
+                </div>
+                <button class="clear-selected-btn" id="clearSelectedClaim">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Form Card -->
+        <div class="form-card">
+            <h2 class="form-title">New Claim Request</h2>
+            
+            <!-- Expense Date Field -->
+            <div class="form-group">
+                <label for="expenseDate" class="form-label">
+                    <i class="fas fa-calendar-alt"></i> Expense Date
+                </label>
+                <div class="date-input-container">
+                    <input type="text" id="expenseDate" class="form-input date-picker" 
+                           placeholder="Select expense date" readonly>
+                    <i class="fas fa-calendar calendar-icon"></i>
+                </div>
+            </div>
+
+            <!-- Claim Type Dropdown -->
+            <div class="form-group">
+                <label for="claimType" class="form-label">
+                    <i class="fas fa-tag"></i> Claim Type
+                </label>
+                <div class="select-container">
+                    <select id="claimType" class="form-select">
+                        <option value="" disabled selected>- Select -</option>
+                        <option value="Food">Food</option>
+                        <option value="Travel">Travel</option>
+                        <option value="Fuel (Bike)">Fuel (Bike)</option>
+                        <option value="Fuel (Car)">Fuel (Car)</option>
+                        <option value="Medical">Medical</option>
+                        <option value="Calls">Calls</option>
+                        <option value="Others">Others</option>
+                    </select>
+                    <i class="fas fa-chevron-down select-arrow"></i>
+                </div>
+            </div>
+
+            <!-- KM Travel Field (visible only for fuel) -->
+            <div class="form-group" id="kmTravelGroup" style="display: none;">
+                <label for="kmTravel" class="form-label">
+                    <i class="fas fa-road"></i> KM Travel
+                </label>
+                <input type="number" id="kmTravel" class="form-input" 
+                       placeholder="Enter kilometers traveled">
+            </div>
+
+            <!-- Description Field -->
+            <div class="form-group">
+                <label for="description" class="form-label">
+                    <i class="fas fa-comment"></i> Description
+                </label>
+                <textarea id="description" class="form-textarea" rows="3" 
+                          placeholder="Enter description"></textarea>
+            </div>
+
+            <!-- Amount Field -->
+            <div class="form-group">
+                <label for="amount" class="form-label">
+                    <i class="fas fa-rupee-sign"></i> Amount
+                </label>
+                <div class="amount-input-container">
+                    <span class="rupee-symbol">â‚¹</span>
+                    <input type="number" id="amount" class="form-input amount-input" 
+                           placeholder="0.00">
+                </div>
+            </div>
+
+            <!-- Attachments Section -->
+            <div class="form-group">
+                <label class="form-label">
+                    <i class="fas fa-paperclip"></i> Attachments
+                </label>
+                <button class="attach-btn" id="attachBtn">
+                    <i class="fas fa-plus-circle"></i>
+                    <span id="attachBtnText">Add Attachments</span>
+                </button>
+                
+                <!-- Image Preview Grid -->
+                <div class="image-preview-grid" id="imagePreviewGrid"></div>
+            </div>
+
+            <!-- Submit Button -->
+            <button class="submit-btn" id="submitBtn">
+                <i class="fas fa-paper-plane"></i>
+                <span>APPLY CLAIM</span>
+            </button>
+        </div>
+
+        <!-- Claim Reports Section -->
+        <div class="reports-section" id="reportsSection">
+            <div class="reports-header">
+                <div class="reports-title">
+                    <i class="fas fa-receipt"></i>
+                    <span>My Claim Reports</span>
+                </div>
+                <button class="refresh-reports-btn" id="refreshReportsBtn">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
+
+            <!-- Loading State -->
+            <div class="reports-loading" id="reportsLoading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Loading your claims...</p>
+            </div>
+
+            <!-- No Data State -->
+            <div class="reports-empty" id="reportsEmpty" style="display: none;">
+                <i class="fas fa-inbox"></i>
+                <p>No claims found</p>
+            </div>
+
+            <!-- Reports List -->
+            <div class="reports-list" id="reportsList"></div>
+
+            <!-- Reports Footer -->
+            <div class="reports-footer" id="reportsFooter" style="display: none;">
+                <span class="total-count" id="totalCount">Total Claims: 0</span>
+                <span class="selected-id-footer" id="selectedIdFooter"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden File Input -->
+    <input type="file" id="fileInput" multiple accept="image/*" style="display: none;">
+
+    <!-- Flatpickr JS -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    
+    <!-- Theme Base JavaScript -->
+    <script src="{{ url_for('static', filename='js/theme-base.js') }}"></script>
+    
+    <!-- Claim Request JavaScript -->
+    <script src="{{ url_for('static', filename='js/claim_request.js') }}"></script>
+</body>
+</html>

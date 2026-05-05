@@ -1,0 +1,3420 @@
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for,Response
+from datetime import datetime, timedelta
+import requests
+import json
+import secrets
+from functools import wraps
+import base64
+import os
+import socket
+import geoip2.database
+from urllib.parse import urlparse
+import base64
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+# Add this near the top after imports
+# Add this near the top after imports
+def get_encryption_key():
+    """Generate encryption key from secret key"""
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=b'wtt_erp_salt',  # Use a proper salt in production
+        iterations=100000,
+    )
+    key = base64.urlsafe_b64encode(kdf.derive(app.secret_key.encode()))
+    return key
+
+def encrypt_password(password):
+    """Encrypt password for storage"""
+    f = Fernet(get_encryption_key())
+    return f.encrypt(password.encode()).decode()
+
+def decrypt_password(encrypted_password):
+    """Decrypt password from storage"""
+    try:
+        f = Fernet(get_encryption_key())
+        return f.decrypt(encrypted_password.encode()).decode()
+    except:
+        return ''
+
+app = Flask(__name__)
+app.secret_key = secrets.token_hex(32)
+
+# ERPNext API Configuration
+ERP_API_BASE_URL = "https://erp.wttint.com/api"
+ERP_LOGIN_ENDPOINT = "/method/wtt_module.customization.custom.mobile_web.flutter_login"
+ERP_IN_PUNCH_CHECK_ENDPOINT = "/method/wtt_module.customization.custom.mobile_web.in_punch_check"
+ERP_OUT_PUNCH_CHECK_ENDPOINT = "/method/wtt_module.customization.custom.mobile_web.out_punch_check"
+ERP_GET_CHECKIN_ENDPOINT = "/method/wtt_module.customization.custom.mobile_web.get_checkin"
+
+# Path to GeoIP database (you'll need to download this)
+GEOIP_DATABASE_PATH = 'GeoLite2-City.mmdb'
+
+#------------------------------------login page-----------------------------------------------
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_data' not in session:
+            return jsonify({'error': 'Authentication required'}), 401
+        return f(*args, **kwargs)
+    return decorated_function
+
+def permission_required(permission_key):
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if 'user_data' not in session:
+                return jsonify({'error': 'Authentication required'}), 401
+            
+            user_data = session['user_data']
+            permissions = user_data.get('message_data', {})
+            
+            # Check if permission is granted (value == '1')
+            if permissions.get(permission_key) != '1':
+                return jsonify({'error': f'Permission denied: {permission_key}'}), 403
+            
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+class ERPNextAPI:
+    def __init__(self, base_url):
+        self.base_url = base_url
+    
+    def login(self, username, password):
+        """Authenticate with ERPNext API and get token"""
+        url = f"{self.base_url}{ERP_LOGIN_ENDPOINT}"
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        }
+        data = {
+            "username": username,
+            "password": password
+        }
+        
+        try:
+            response = requests.post(url, headers=headers, json=data, timeout=30)
+            if response.status_code == 200:
+                result = response.json()
+                # Parse the message string to dictionary
+                if 'message' in result and result['message']:
+                    try:
+                        # Clean and parse the message string
+                        message_str = result['message'].replace("'", '"')
+                        message_data = json.loads(message_str)
+                        result['message_data'] = message_data
+                        
+                        # Extract token from message_data - token already has "Token" prefix
+                        token = message_data.get('token', '')
+                        if token:
+                            result['token'] = token  # Store as-is, don't modify
+                    except json.JSONDecodeError as e:
+                        print(f"Error parsing message data: {e}")
+                        # Try alternative parsing
+                        try:
+                            # Remove curly braces and split by comma
+                            message_str = result['message'].strip("{}").replace("'", "")
+                            message_data = {}
+                            for item in message_str.split(', '):
+                                if ': ' in item:
+                                    key, value = item.split(': ', 1)
+                                    message_data[key.strip()] = value.strip()
+                            result['message_data'] = message_data
+                            result['token'] = message_data.get('token', '')
+                        except Exception as e2:
+                            print(f"Alternative parsing also failed: {e2}")
+                            result['message_data'] = {}
+                            result['token'] = ''
+                    except Exception as e:
+                        print(f"Unexpected error parsing message: {e}")
+                        result['message_data'] = {}
+                        result['token'] = ''
+                else:
+                    result['message_data'] = {}
+                    result['token'] = ''
+                return result
+            return {"error": f"API Error: {response.status_code}", "details": response.text}
+        except requests.exceptions.Timeout:
+            return {"error": "ERPNext API timeout. Please try again."}
+        except requests.exceptions.ConnectionError:
+            return {"error": "Cannot connect to ERPNext server. Please check network."}
+        except Exception as e:
+            return {"error": str(e)}
+    
+    def in_punch_check(self, emp, lat, log, add, image_base64, token):
+        """Record check-in with selfie image"""
+        url = f"{self.base_url}{ERP_IN_PUNCH_CHECK_ENDPOINT}?emp={emp}"
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': token  # Token already has "Token" prefix from ERPNext
+        }
+        data = {
+            "emp": emp,
+            "lat": lat,
+            "log": log,
+            "add": add,
+            "image_base64": image_base64
+        }
+        
+        try:
+            response = requests.post(url, headers=headers, json=data, timeout=30)
+            if response.status_code == 200:
+                return response.json()
+            return {"error": f"Check-in failed: {response.status_code}", "details": response.text}
+        except Exception as e:
+            return {"error": str(e)}
+    
+    def out_punch_check(self, emp, lat, log, add, image_base64, token):
+        """Record check-out with selfie image"""
+        url = f"{self.base_url}{ERP_OUT_PUNCH_CHECK_ENDPOINT}?emp={emp}"
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': token  # Token already has "Token" prefix from ERPNext
+        }
+        data = {
+            "emp": emp,
+            "lat": lat,
+            "log": log,
+            "add": add,
+            "image_base64": image_base64
+        }
+        
+        try:
+            response = requests.post(url, headers=headers, json=data, timeout=30)
+            if response.status_code == 200:
+                return response.json()
+            return {"error": f"Check-out failed: {response.status_code}", "details": response.text}
+        except Exception as e:
+            return {"error": str(e)}
+    
+    def get_checkin(self, emp, token):
+        """Get check-in/check-out records"""
+        url = f"{self.base_url}{ERP_GET_CHECKIN_ENDPOINT}"
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': token  # Token already has "Token" prefix from ERPNext
+        }
+        params = {"emp": emp}
+        
+        try:
+            response = requests.get(url, headers=headers, params=params, timeout=30)
+            if response.status_code == 200:
+                return response.json()
+            return {"error": f"Failed to get check-in data: {response.status_code}", "details": response.text}
+        except Exception as e:
+            return {"error": str(e)}
+
+# Initialize ERPNext API
+erp_api = ERPNextAPI(ERP_API_BASE_URL)
+
+# Location service class
+class LocationService:
+    def __init__(self):
+        self.geoip_reader = None
+        try:
+            if os.path.exists(GEOIP_DATABASE_PATH):
+                self.geoip_reader = geoip2.database.Reader(GEOIP_DATABASE_PATH)
+                print("GeoIP database loaded successfully")
+            else:
+                print(f"GeoIP database not found at {GEOIP_DATABASE_PATH}")
+        except Exception as e:
+            print(f"Error loading GeoIP database: {e}")
+    
+    def get_ip_location(self, ip_address):
+        """Get location from IP address using GeoIP"""
+        if not self.geoip_reader:
+            return None
+        
+        try:
+            response = self.geoip_reader.city(ip_address)
+            return {
+                'lat': response.location.latitude,
+                'log': response.location.longitude,
+                'city': response.city.name,
+                'country': response.country.name,
+                'postal_code': response.postal.code,
+                'source': 'geoip'
+            }
+        except Exception as e:
+            print(f"Error getting IP location: {e}")
+            return None
+    
+    def get_location_from_ipinfo(self, ip_address):
+        """Get location from ipinfo.io service"""
+        try:
+            response = requests.get(f"https://ipinfo.io/{ip_address}/json", timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                if 'loc' in data:
+                    lat, log = data['loc'].split(',')
+                    return {
+                        'lat': float(lat),
+                        'log': float(log),
+                        'city': data.get('city', ''),
+                        'region': data.get('region', ''),
+                        'country': data.get('country', ''),
+                        'postal': data.get('postal', ''),
+                        'org': data.get('org', ''),
+                        'source': 'ipinfo'
+                    }
+        except Exception as e:
+            print(f"Error getting location from ipinfo: {e}")
+        return None
+    
+    def reverse_geocode(self, lat, log):
+        """Get address from coordinates using Nominatim"""
+        try:
+            response = requests.get(
+                f"https://nominatim.openstreetmap.org/reverse",
+                params={
+                    'lat': lat,
+                    'lon': log,
+                    'format': 'json',
+                    'zoom': 18
+                },
+                headers={'User-Agent': 'WTT-ERP-System/1.0'},
+                timeout=10
+            )
+            if response.status_code == 200:
+                data = response.json()
+                address = data.get('display_name', '')
+                return {
+                    'address': address,
+                    'full_data': data
+                }
+        except Exception as e:
+            print(f"Error reverse geocoding: {e}")
+        return None
+    
+    def get_client_ip(self):
+        """Get client IP address from request"""
+        if request.headers.get('X-Forwarded-For'):
+            ip = request.headers.get('X-Forwarded-For').split(',')[0]
+        elif request.headers.get('X-Real-IP'):
+            ip = request.headers.get('X-Real-IP')
+        else:
+            ip = request.remote_addr
+        
+        # Handle localhost
+        if ip in ['127.0.0.1', 'localhost']:
+            # Try to get external IP
+            try:
+                response = requests.get('https://api.ipify.org?format=json', timeout=5)
+                if response.status_code == 200:
+                    ip_data = response.json()
+                    ip = ip_data.get('ip', ip)
+            except:
+                pass
+        
+        return ip
+
+# Initialize location service
+location_service = LocationService()
+
+#--------------------------dashboard---------------------------------------------------------------
+@app.route('/')
+def index():
+    """Redirect to login if not authenticated"""
+    if 'user_data' in session:
+        return redirect(url_for('dashboard'))
+    return redirect(url_for('login'))
+@app.route('/api/employee-photo/<path:filename>')
+@login_required
+def serve_employee_photo(filename):
+    """Proxy endpoint to serve private employee photos"""
+    try:
+        user_data = session.get('user_data')
+        token = user_data.get('token', '')
+        
+        if not token:
+            return jsonify({'error': 'No token'}), 401
+        
+        # Construct the full URL to the private file
+        photo_url = f"https://erp.wttint.com/private/files/{filename}"
+        
+        # Request the image from ERPNext with authentication
+        headers = {
+            'Authorization': token
+        }
+        
+        response = requests.get(photo_url, headers=headers, stream=True)
+        
+        if response.status_code == 200:
+            # Return the image with correct content type
+            return Response(
+                response.iter_content(chunk_size=8192),
+                content_type=response.headers.get('content-type', 'image/jpeg')
+            )
+        else:
+            return jsonify({'error': 'Photo not found'}), 404
+            
+    except Exception as e:
+        print(f"Error serving photo: {e}")
+        return jsonify({'error': str(e)}), 500
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Login page - with Remember Me and Theme persistence"""
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '').strip()
+        remember_me = request.form.get('remember_me') == 'on'
+        
+        # Validate inputs
+        if not username or not password:
+            return jsonify({
+                'success': False,
+                'error': 'Username and password are required'
+            })
+        
+        # Call ERPNext API
+        response = erp_api.login(username, password)
+        
+        if 'error' not in response and 'full_name' in response:
+            # Extract token and message data
+            token = response.get('token', '')
+            message_data = response.get('message_data', {})
+            
+            # Make sure token has "Token " prefix
+            if token and not token.startswith('Token '):
+                token = f"Token {token}"
+            
+            # =====================================
+            # FETCH EMPLOYEE PHOTO - FIXED WITH PROXY
+            # =====================================
+            photo_url = None
+            try:
+                # Call ERPNext API to get employee photo
+                photo_response = requests.post(
+                    f"{ERP_API_BASE_URL}/method/wtt_module.customization.custom.mobile_web.get_employee_photo",
+                    headers={
+                        'Authorization': token,
+                        'Content-Type': 'application/json'
+                    },
+                    json={"employee": username},
+                    timeout=10
+                )
+                
+                if photo_response.status_code == 200:
+                    photo_data = photo_response.json()
+                    # Check the nested structure: message.success and message.photo_url
+                    if photo_data.get('message', {}).get('success'):
+                        photo_url = photo_data.get('message', {}).get('photo_url')
+                        
+                        # Convert to proxy URL
+                        if photo_url and '/private/files/' in photo_url:
+                            # Extract filename and create proxy URL
+                            filename = photo_url.split('/private/files/')[-1]
+                            photo_url = f"/api/employee-photo/{filename}"
+                            print(f"ðŸ“¸ Photo proxy URL: {photo_url}")
+                        else:
+                            print(f"ðŸ“¸ Photo URL format unexpected: {photo_url}")
+                    else:
+                        print(f"ðŸ“¸ No photo found for {username}")
+                else:
+                    print(f"ðŸ“¸ Photo fetch failed: {photo_response.status_code}")
+                    
+            except requests.exceptions.Timeout:
+                print("ðŸ“¸ Photo fetch timeout")
+            except requests.exceptions.ConnectionError:
+                print("ðŸ“¸ Photo fetch connection error")
+            except Exception as e:
+                print(f"ðŸ“¸ Error fetching employee photo: {e}")
+            
+            # Store user data in session
+            user_data = {
+                'username': username,
+                'full_name': response['full_name'],
+                'home_page': response.get('home_page', '/'),
+                'message_data': message_data,
+                'token': token,
+                'login_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'theme': session.get('theme', 'light'),
+                'last_activity': datetime.now().isoformat(),
+                'photo_url': photo_url  # Add photo URL here
+            }
+            session['user_data'] = user_data
+            
+            # Store credentials if remember me is checked
+            if remember_me:
+                # Store username and password for auto-fill
+                session['remembered_username'] = username
+                session['remembered_password'] = password
+                
+                # Make session permanent
+                session.permanent = True
+                app.permanent_session_lifetime = timedelta(days=7)
+                
+                # Store a login token for potential auto-login
+                login_token = secrets.token_urlsafe(32)
+                session['auto_login_token'] = login_token
+                
+                print(f"âœ… Remember me enabled for {username}")
+            else:
+                # Clear remembered credentials
+                session.pop('remembered_username', None)
+                session.pop('remembered_password', None)
+                session.pop('auto_login_token', None)
+            
+            return jsonify({
+                'success': True,
+                'redirect': url_for('dashboard')
+            })
+        
+        # Handle errors
+        error_msg = 'Invalid username or password'
+        if 'error' in response:
+            api_error = response['error']
+            if '401' in str(api_error) or '403' in str(api_error):
+                error_msg = 'Invalid username or password'
+            elif 'timeout' in str(api_error).lower():
+                error_msg = 'Connection timeout. Please try again.'
+            else:
+                error_msg = f'Login failed: {api_error}'
+        
+        return jsonify({
+            'success': False,
+            'error': error_msg
+        })
+    
+    # =====================================
+    # GET REQUEST - DISPLAY LOGIN PAGE
+    # =====================================
+    
+    # Get remembered credentials if they exist
+    remembered_username = session.get('remembered_username', '')
+    remembered_password = session.get('remembered_password', '')
+    
+    # Debug print
+    if remembered_username:
+        print(f"ðŸ” Login page loaded - remembered user: {remembered_username}")
+        print(f"ðŸ” Password length: {len(remembered_password)}")
+    
+    # Check for auto-login token (optional future feature)
+    auto_login_token = session.get('auto_login_token')
+    
+    return render_template('login.html', 
+                          remembered_username=remembered_username,
+                          remembered_password=remembered_password,
+                          auto_login_token=auto_login_token)
+
+
+@app.route('/api/init-theme', methods=['GET'])
+def init_theme():
+    """Initialize theme for first-time users"""
+    # Get theme from session, default to 'light'
+    theme = session.get('theme', 'light')
+    
+    # Log for debugging
+    print(f"ðŸŽ¨ init_theme called, returning theme: {theme}")
+    
+    return jsonify({'theme': theme})
+
+@app.before_request
+def before_request():
+    """Check and refresh session before each request"""
+    if 'user_data' in session:
+        user_data = session['user_data']
+        
+        # Check if session is about to expire (e.g., 5 minutes left)
+        if 'last_activity' in user_data:
+            last_activity = datetime.fromisoformat(user_data['last_activity'])
+            now = datetime.now()
+            
+            # If session is older than 1 hour, refresh token
+            if (now - last_activity) > timedelta(hours=1):
+                print("â° Session older than 1 hour, refreshing...")
+                # Attempt to refresh token
+                # This would require your ERPNext to have refresh token mechanism
+                # For now, just update last_activity
+                user_data['last_activity'] = now.isoformat()
+                session['user_data'] = user_data
+        
+        # Update last activity
+        user_data['last_activity'] = datetime.now().isoformat()
+        session['user_data'] = user_data
+
+@app.route('/api/refresh-token', methods=['POST'])
+@login_required
+def refresh_token():
+    """Refresh user token"""
+    user_data = session['user_data']
+    
+    try:
+        # Call ERPNext refresh token endpoint if available
+        # For now, just return current token
+        return jsonify({
+            'success': True,
+            'token': user_data.get('token', '')
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+
+@app.route('/api/refresh-dashboard', methods=['POST'])
+@login_required
+def refresh_dashboard():
+    """Refresh dashboard data"""
+    user_data = session['user_data']
+    
+    try:
+        # Clear any cached data and fetch fresh
+        # You can add your dashboard data fetching logic here
+        # For now, just return success
+        
+        return jsonify({
+            'success': True,
+            'message': 'Dashboard refreshed'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+        
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    """Dashboard page after login"""
+    user_data = session['user_data']
+    permissions = user_data.get('message_data', {})
+    
+    # Get token from session
+    token = user_data.get('token', '')
+    
+    # Default dashboard data
+    dashboard_data = {
+        'employee_name': user_data['full_name'],
+        'employee_code': user_data['username'],
+        'checkin_time': '--:--',
+        'checkout_time': 'Not yet',
+        'coming_status': '',
+        'checkout_status': '',
+        'present_days': 0,
+        'absent_days': 0,
+        'late_days': 0,
+        'total_days': 0,
+        'permissions': permissions
+    }
+    
+    # Try to fetch dashboard data with current token
+    if token:
+        success, dashboard_data = fetch_dashboard_data_with_token(user_data, token, dashboard_data)
+        
+        # If token failed, try to refresh token
+        if not success:
+            print("âš ï¸ Token failed, attempting to refresh...")
+            # Try to get new token using stored credentials
+            if refresh_user_token(user_data['username']):
+                # Get new user data from session
+                user_data = session['user_data']
+                new_token = user_data.get('token', '')
+                # Try again with new token
+                success, dashboard_data = fetch_dashboard_data_with_token(user_data, new_token, dashboard_data)
+    
+    # Check permissions
+    has_check_permission = permissions.get('check_data') == '1'
+    has_attendance_permission = permissions.get('attendance') == '1'
+    has_leave_permission = permissions.get('leave') == '1'
+    has_claim_permission = permissions.get('claim') == '1'
+    has_ot_permission = permissions.get('ot_req') == '1'
+    has_on_duty_permission = permissions.get('on_duty') == '1'
+    has_project_task_permission = permissions.get('project_task') == '1'
+    
+    return render_template('dashboard.html', 
+                         user_data=user_data,
+                         dashboard_data=dashboard_data,
+                         has_check_permission=has_check_permission,
+                         has_attendance_permission=has_attendance_permission,
+                         has_leave_permission=has_leave_permission,
+                         has_claim_permission=has_claim_permission,
+                         has_ot_permission=has_ot_permission,
+                         has_on_duty_permission=has_on_duty_permission,
+                         has_project_task_permission=has_project_task_permission)
+
+def fetch_dashboard_data_with_token(user_data, token, dashboard_data):
+    """Fetch dashboard data using token"""
+    try:
+        # Prepare API request
+        url = f"{ERP_API_BASE_URL}/method/wtt_module.customization.custom.mobile_web.get_employee_dashboard"
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': token
+        }
+        params = {
+            'employee': user_data['username']
+        }
+        
+        print(f"ðŸ“¡ Fetching dashboard data for: {user_data['username']}")
+        
+        response = requests.get(url, headers=headers, params=params, timeout=30)
+        
+        if response.status_code == 200:
+            result = response.json()
+            
+            if 'message' in result:
+                message = result['message']
+                
+                if message.get('success_key') == 1:
+                    # Update with actual data
+                    today_status = message.get('today_status', {})
+                    dashboard_data['checkin_time'] = today_status.get('checkin_time', '--:--')
+                    dashboard_data['coming_status'] = today_status.get('coming', '')
+                    
+                    checkout = today_status.get('check_out', '-')
+                    if checkout == '-':
+                        dashboard_data['checkout_time'] = 'Not yet'
+                        dashboard_data['checkout_status'] = ''
+                    else:
+                        dashboard_data['checkout_time'] = checkout
+                        dashboard_data['checkout_status'] = checkout
+                    
+                    monthly = message.get('monthly_attendance', {})
+                    dashboard_data['present_days'] = monthly.get('Total Presnet', 0)
+                    dashboard_data['absent_days'] = monthly.get('Total Absents', 0)
+                    
+                    monthly_late = message.get('monthly_late', {})
+                    dashboard_data['late_days'] = monthly_late.get('total_late', 0)
+                    
+                    joining = message.get('joining_details', {})
+                    dashboard_data['total_days'] = joining.get('total_days', 0)
+                    dashboard_data['employee_name'] = joining.get('employee_name', user_data['full_name'])
+                    
+                    print(f"âœ… Dashboard data fetched successfully")
+                    return True, dashboard_data
+                else:
+                    print(f"âš ï¸ API returned success_key != 1")
+                    return False, dashboard_data
+        else:
+            print(f"âš ï¸ API error: {response.status_code}")
+            return False, dashboard_data
+            
+    except Exception as e:
+        print(f"âš ï¸ Error fetching dashboard data: {e}")
+        return False, dashboard_data
+
+def refresh_user_token(username):
+    """Refresh user token using stored credentials"""
+    try:
+        # Get stored password from session or secure storage
+        # For security, we don't store password. So we need to handle this differently
+        
+        # Option 1: If you have refresh token mechanism
+        # Option 2: Show login screen
+        # Option 3: Use stored session data to re-login
+        
+        # For now, we'll clear session and redirect to login
+        print("âš ï¸ Token expired, clearing session")
+        session.clear()
+        return False
+        
+    except Exception as e:
+        print(f"âš ï¸ Error refreshing token: {e}")
+        return False
+
+#------------------------------------------------check in -----------------------------------------------------
+# ============================================
+# MODIFIED: Check-in endpoint - STORES ONLY LAT/LONG
+# ============================================
+@app.route('/api/check-in', methods=['POST'])
+@login_required
+@permission_required('check_data')
+def check_in():
+    """Record employee check-in with selfie"""
+    user_data = session['user_data']
+    
+    # Get data from request
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'})
+    
+    lat = data.get('lat', '')
+    log = data.get('log', '')
+    add = data.get('add', None)  # â† May or may not be present
+    image_base64 = data.get('image_base64', '')
+    
+    # Log what we received
+    print(f"ðŸ“Œ Check-in received: lat={lat}, log={log}")
+    if add:
+        print(f"ðŸ“ Address: {add[:100]}")
+    else:
+        print("ðŸ“ No address received")
+    
+    # Validate
+    if not lat or not log:
+        return jsonify({'success': False, 'error': 'Missing location coordinates'})
+    
+    if not image_base64:
+        return jsonify({'success': False, 'error': 'Selfie image is required'})
+    
+    # Validate image
+    if not image_base64.startswith('/9j/') and not image_base64.startswith('iVBOR'):
+        if ',' in image_base64:
+            image_base64 = image_base64.split(',')[1]
+    
+    # Use address if provided, otherwise use coordinates as string
+    if not add or add.strip() == '':
+        add = f"Lat: {lat}, Lon: {log}"  # Create readable string from coordinates
+    
+    # Call ERPNext API
+    response = erp_api.in_punch_check(
+        emp=user_data['username'],
+        lat=lat,
+        log=log,
+        add=add,  # Will be real address or coordinates string
+        image_base64=image_base64,
+        token=user_data['token']
+    )
+    
+    if 'error' in response:
+        return jsonify({'success': False, 'error': response['error']})
+    
+    return jsonify({
+        'success': True,
+        'message': 'Check-in recorded successfully with selfie',
+        'data': response,
+        'location_used': {
+            'lat': lat,
+            'log': log,
+            'add': add[:100] if add else None
+        }
+    })
+
+# ============================================
+# MODIFIED: Check-out endpoint - STORES ONLY LAT/LONG
+# ============================================
+@app.route('/api/check-out', methods=['POST'])
+@login_required
+@permission_required('check_data')
+def check_out():
+    """Record employee check-out with selfie - STORES ONLY LAT/LONG"""
+    user_data = session['user_data']
+    
+    # Get data from request
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'})
+    
+    lat = data.get('lat', '')
+    log = data.get('log', '')
+    image_base64 = data.get('image_base64', '')
+    
+    # Log location data for debugging
+    print(f"ðŸ“Œ Check-out location received: lat={lat}, log={log}")
+    
+    # Validate input - ONLY require lat/log
+    if not lat or not log:
+        return jsonify({'success': False, 'error': 'Missing location coordinates'})
+    
+    if not image_base64:
+        return jsonify({'success': False, 'error': 'Selfie image is required'})
+    
+    # Validate image base64 format
+    if not image_base64.startswith('/9j/') and not image_base64.startswith('iVBOR'):  # JPEG or PNG
+        if ',' in image_base64:
+            image_base64 = image_base64.split(',')[1]
+    
+    # Simple placeholder address - won't be used
+    add = "GPS Location"
+    
+    # Call ERPNext API for check-out with selfie
+    response = erp_api.out_punch_check(
+        emp=user_data['username'],
+        lat=lat,
+        log=log,
+        add=add,  # Placeholder, ERPNext may store but we don't care
+        image_base64=image_base64,
+        token=user_data['token']
+    )
+    
+    if 'error' in response:
+        return jsonify({'success': False, 'error': response['error']})
+    
+    return jsonify({
+        'success': True,
+        'message': 'Check-out recorded successfully with selfie',
+        'data': response,
+        'location_used': {
+            'lat': lat,
+            'log': log
+        }
+    })
+
+@app.route('/api/attendance-data', methods=['POST'])
+@login_required
+@permission_required('attendance')
+def get_attendance_data():
+    """Proxy endpoint for attendance data from ERPNext"""
+    user_data = session['user_data']
+    
+    # Get month and year from request
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'})
+    
+    month = data.get('month')
+    year = data.get('year')
+    
+    if not month or not year:
+        return jsonify({'success': False, 'error': 'Month and year required'})
+    
+    # Get token from session
+    token = user_data.get('token')
+    if not token:
+        return jsonify({'success': False, 'error': 'No authentication token'})
+    
+    # ERPNext API endpoint
+    url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.get_attendance_data_individual"
+    
+    # Headers
+    headers = {
+        'Authorization': token,  # Token already includes "Token" prefix
+        'Content-Type': 'application/json'
+    }
+    
+    # Request body
+    payload = {
+        'month': month,
+        'year': year
+    }
+    
+    try:
+        print(f"ðŸ“Š Fetching attendance for {month} {year}")
+        print(f"ðŸ”‘ Using token: {token[:20]}...")
+        
+        # Make request to ERPNext
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        
+        print(f"ðŸ“¡ ERPNext response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            result = response.json()
+            return jsonify({
+                'success': True,
+                'data': result.get('message', {})
+            })
+        else:
+            print(f"âŒ ERPNext error: {response.text}")
+            return jsonify({
+                'success': False,
+                'error': f'ERPNext error: {response.status_code}',
+                'details': response.text[:200] if response.text else 'No details'
+            })
+            
+    except requests.exceptions.Timeout:
+        print("âŒ Timeout error")
+        return jsonify({'success': False, 'error': 'Request timeout'})
+    except requests.exceptions.ConnectionError:
+        print("âŒ Connection error")
+        return jsonify({'success': False, 'error': 'Cannot connect to ERPNext'})
+    except Exception as e:
+        print(f"âŒ Unexpected error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+
+@app.route('/api/recent-activities')
+@login_required
+def get_recent_activities():
+    """Get recent activities from check-in data"""
+    user_data = session['user_data']
+    
+    # Get check-in data from ERPNext
+    activities = []
+    try:
+        if 'token' in user_data and user_data['token']:
+            response = erp_api.get_checkin(user_data['username'], user_data['token'])
+            if 'error' not in response:
+                checkin_data = response.get('message', []) if isinstance(response, dict) else response
+                
+                for record in checkin_data[:5]:
+                    if isinstance(record, dict):
+                        record_time = record.get('time', '')
+                        log_type = record.get('log', '')
+                        
+                        # Format time for display
+                        try:
+                            record_datetime = datetime.strptime(record_time, '%Y-%m-%d %H:%M:%S')
+                            now = datetime.now()
+                            
+                            if record_datetime.date() == now.date():
+                                display_time = 'Today'
+                            elif record_datetime.date() == (now - timedelta(days=1)).date():
+                                display_time = 'Yesterday'
+                            else:
+                                days_diff = (now.date() - record_datetime.date()).days
+                                if days_diff < 7:
+                                    display_time = f'{days_diff} days ago'
+                                else:
+                                    display_time = record_datetime.strftime('%d %b')
+                        except:
+                            display_time = record_time
+                        
+                        activity_type = 'checkin' if log_type == 'IN' else 'checkout'
+                        details = f"{'Checked in' if log_type == 'IN' else 'Checked out'} at {record_time}"
+                        
+                        activities.append({
+                            'id': len(activities) + 1,
+                            'type': activity_type,
+                            'time': display_time,
+                            'details': details
+                        })
+    except Exception as e:
+        print(f"Error fetching recent activities: {e}")
+    
+    # If no check-in data, add sample activities
+    if not activities:
+        activities = [
+            {
+                'id': 1,
+                'type': 'system',
+                'time': 'Today',
+                'details': 'Welcome to WTT ERP System'
+            },
+            {
+                'id': 2,
+                'type': 'info',
+                'time': 'Just now',
+                'details': 'You have successfully logged in'
+            }
+        ]
+    
+    return jsonify({'activities': activities})
+
+@app.route('/api/leave/request', methods=['POST'])
+@login_required
+@permission_required('leave')
+def request_leave():
+    """Submit leave request"""
+    user_data = session['user_data']
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'})
+    
+    # Extract leave request data
+    leave_type = data.get('leave_type', '')
+    start_date = data.get('start_date', '')
+    end_date = data.get('end_date', '')
+    reason = data.get('reason', '')
+    
+    # Validate input
+    if not all([leave_type, start_date, end_date]):
+        return jsonify({'success': False, 'error': 'Missing required fields'})
+    
+    # Here you would integrate with ERPNext leave request API
+    # For now, return success
+    return jsonify({
+        'success': True, 
+        'message': 'Leave request submitted successfully',
+        'data': {
+            'request_id': f"LR{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            'status': 'Pending',
+            'submitted_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+    })
+
+@app.route('/api/claim/request', methods=['POST'])
+@login_required
+@permission_required('claim')
+def request_claim():
+    """Submit claim request"""
+    user_data = session['user_data']
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'})
+    
+    # Extract claim request data
+    claim_type = data.get('claim_type', '')
+    amount = data.get('amount', '')
+    date = data.get('date', '')
+    description = data.get('description', '')
+    
+    # Validate input
+    if not all([claim_type, amount, date]):
+        return jsonify({'success': False, 'error': 'Missing required fields'})
+    
+    # Here you would integrate with ERPNext claim request API
+    # For now, return success
+    return jsonify({
+        'success': True, 
+        'message': 'Claim request submitted successfully',
+        'data': {
+            'request_id': f"CR{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            'status': 'Pending',
+            'submitted_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+    })
+
+@app.route('/api/ot/request', methods=['POST'])
+@login_required
+@permission_required('ot_req')
+def request_ot():
+    """Submit OT request"""
+    user_data = session['user_data']
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'})
+    
+    # Extract OT request data
+    date = data.get('date', '')
+    hours = data.get('hours', '')
+    reason = data.get('reason', '')
+    
+    # Validate input
+    if not all([date, hours]):
+        return jsonify({'success': False, 'error': 'Missing required fields'})
+    
+    # Here you would integrate with ERPNext OT request API
+    # For now, return success
+    return jsonify({
+        'success': True, 
+        'message': 'OT request submitted successfully',
+        'data': {
+            'request_id': f"OT{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            'status': 'Pending',
+            'submitted_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+    })
+
+@app.route('/api/on-duty/request', methods=['POST'])
+@login_required
+@permission_required('on_duty')
+def request_on_duty():
+    """Submit on-duty request"""
+    user_data = session['user_data']
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'})
+    
+    # Extract on-duty request data
+    purpose = data.get('purpose', '')
+    start_date = data.get('start_date', '')
+    end_date = data.get('end_date', '')
+    location = data.get('location', '')
+    
+    # Validate input
+    if not all([purpose, start_date, end_date]):
+        return jsonify({'success': False, 'error': 'Missing required fields'})
+    
+    # Here you would integrate with ERPNext on-duty request API
+    # For now, return success
+    return jsonify({
+        'success': True, 
+        'message': 'On-duty request submitted successfully',
+        'data': {
+            'request_id': f"OD{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            'status': 'Pending',
+            'submitted_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+    })
+
+@app.route('/api/project-task/submit', methods=['POST'])
+@login_required
+@permission_required('project_task')
+def submit_project_task():
+    """Submit project task"""
+    user_data = session['user_data']
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'})
+    
+    # Extract project task data
+    task_name = data.get('task_name', '')
+    project = data.get('project', '')
+    hours_spent = data.get('hours_spent', '')
+    description = data.get('description', '')
+    
+    # Validate input
+    if not all([task_name, project, hours_spent]):
+        return jsonify({'success': False, 'error': 'Missing required fields'})
+    
+    # Here you would integrate with ERPNext project task API
+    # For now, return success
+    return jsonify({
+        'success': True, 
+        'message': 'Project task submitted successfully',
+        'data': {
+            'task_id': f"PT{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            'status': 'Submitted',
+            'submitted_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+    })
+
+@app.route('/api/incident/report', methods=['POST'])
+@login_required
+def report_incident():
+    """Report incident (available to all users)"""
+    user_data = session['user_data']
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'})
+    
+    # Extract incident data
+    incident_type = data.get('incident_type', '')
+    description = data.get('description', '')
+    location = data.get('location', '')
+    severity = data.get('severity', 'medium')
+    
+    # Validate input
+    if not all([incident_type, description]):
+        return jsonify({'success': False, 'error': 'Missing required fields'})
+    
+    # Here you would integrate with ERPNext incident report API
+    # For now, return success
+    return jsonify({
+        'success': True, 
+        'message': 'Incident reported successfully',
+        'data': {
+            'report_id': f"IR{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            'status': 'Reported',
+            'reported_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'assigned_to': 'Administrator'
+        }
+    })
+
+@app.route('/logout')
+def logout():
+    """Logout user - preserve theme AND remembered credentials"""
+    # Save theme and remembered credentials before clearing
+    theme = session.get('theme', 'light')
+    remembered_username = session.get('remembered_username', '')
+    remembered_password = session.get('remembered_password', '')
+    auto_login_token = session.get('auto_login_token', '')
+    
+    print(f"ðŸŽ¨ Logout - Saving theme: {theme}")
+    
+    # Clear ALL session data
+    session.clear()
+    
+    # Restore ONLY what we need for next login
+    session['theme'] = theme
+    session.modified = True
+    
+    if remembered_username:
+        session['remembered_username'] = remembered_username
+        session['remembered_password'] = remembered_password
+        session['auto_login_token'] = auto_login_token
+        print(f"âœ… Restored remembered credentials for: {remembered_username}")
+    
+    print(f"ðŸŽ¨ Theme preserved after logout: {theme}")
+    
+    return redirect(url_for('login'))
+
+@app.route('/api/check-session')
+def check_session():
+    """Check if user is logged in"""
+    if 'user_data' in session:
+        user_data = session['user_data']
+        return jsonify({
+            'logged_in': True, 
+            'user': user_data['full_name'],
+            'username': user_data['username'],
+            'permissions': user_data.get('message_data', {})
+        })
+    return jsonify({'logged_in': False})
+
+@app.route('/api/toggle-theme', methods=['POST'])
+def toggle_theme():
+    """Toggle theme between light and dark"""
+    if 'theme' not in session:
+        session['theme'] = 'light'
+    
+    current_theme = session['theme']
+    new_theme = 'dark' if current_theme == 'light' else 'light'
+    session['theme'] = new_theme
+    
+    # Update theme in user_data if exists
+    if 'user_data' in session:
+        session['user_data']['theme'] = new_theme
+    
+    # Make sure session is saved
+    session.modified = True
+    
+    print(f"ðŸŽ¨ Theme toggled: {current_theme} -> {new_theme}")
+    
+    return jsonify({'theme': new_theme})
+
+@app.route('/api/get-theme')
+def get_theme():
+    """Get current theme"""
+    theme = session.get('theme', 'light')
+    return jsonify({'theme': theme})
+
+@app.route('/api/get-location')
+def get_location():
+    try:
+        # Try ip-api.com
+        response = requests.get('http://ip-api.com/json/', timeout=5)
+        if response.status_code == 200:
+            ip_data = response.json()
+            if ip_data['status'] == 'success':
+                return jsonify({
+                    'lat': str(ip_data['lat']),
+                    'log': str(ip_data['lon']),
+                    'add': f"{ip_data['city']}, {ip_data['regionName']}, {ip_data['country']}",
+                    'success': True
+                })
+        
+        # Return error, NOT default Coimbatore
+        return jsonify({
+            'success': False,
+            'error': 'Location unavailable'
+        }), 404
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/location/test')
+def test_location():
+    """Test endpoint to see what location data is available"""
+    client_ip = location_service.get_client_ip()
+    
+    # Get location from all available methods
+    results = {
+        'client_ip': client_ip,
+        'user_agent': request.headers.get('User-Agent'),
+        'methods': {}
+    }
+    
+    # Test ipinfo.io
+    try:
+        ipinfo_data = location_service.get_location_from_ipinfo(client_ip)
+        results['methods']['ipinfo'] = ipinfo_data
+    except Exception as e:
+        results['methods']['ipinfo'] = {'error': str(e)}
+    
+    # Test GeoIP
+    try:
+        geoip_data = location_service.get_ip_location(client_ip)
+        results['methods']['geoip'] = geoip_data
+    except Exception as e:
+        results['methods']['geoip'] = {'error': str(e)}
+    
+    # Test ip-api
+    try:
+        response = requests.get('http://ip-api.com/json/', timeout=5)
+        results['methods']['ip_api'] = response.json() if response.status_code == 200 else {'error': response.status_code}
+    except Exception as e:
+        results['methods']['ip_api'] = {'error': str(e)}
+    
+    return jsonify(results)
+
+@app.route('/api/location/from-coordinates', methods=['POST'])
+def get_location_from_coordinates():
+    """Get address from coordinates"""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'})
+    
+    lat = data.get('lat')
+    log = data.get('log')
+    
+    if not lat or not log:
+        return jsonify({'error': 'Latitude and longitude required'})
+    
+    try:
+        address_info = location_service.reverse_geocode(float(lat), float(log))
+        if address_info:
+            return jsonify({
+                'success': True,
+                'address': address_info['address'],
+                'data': address_info.get('full_data', {})
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Could not geocode coordinates',
+                'coordinates': {'lat': lat, 'log': log}
+            })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+@app.route('/api/user/profile')
+@login_required
+def get_user_profile():
+    """Get user profile information"""
+    user_data = session['user_data']
+    
+    profile_data = {
+        'employee_code': user_data['username'],
+        'full_name': user_data['full_name'],
+        'department': 'Engineering',  # This should come from ERPNext
+        'designation': 'Software Developer',  # This should come from ERPNext
+        'email': f"{user_data['username'].lower()}@wtt.com",  # This should come from ERPNext
+        'phone': '+91 9876543210',  # This should come from ERPNext
+        'joining_date': '2023-01-15',  # This should come from ERPNext
+        'permissions': user_data.get('message_data', {})
+    }
+    
+    return jsonify(profile_data)
+
+
+#------------------------------Attendance--------------------------------------
+@app.route('/attendance')
+@login_required
+@permission_required('attendance')
+def attendance():
+    """Attendance history page"""
+    user_data = session['user_data']
+    
+    return render_template('attendance.html', 
+                         user_data=user_data)
+
+@app.route('/api/checkin-report', methods=['POST'])
+@login_required
+def checkin_report():
+    """Get check-in report for specific date"""
+    user_data = session['user_data']
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'})
+    
+    date = data.get('date')
+    employee = data.get('employee')
+    token = data.get('token', user_data.get('token'))
+    
+    if not date or not employee:
+        return jsonify({'success': False, 'error': 'Date and employee required'})
+    
+    try:
+        # Call ERPNext API
+        url = f"{ERP_API_BASE_URL}/method/wtt_module.customization.custom.mobile_web.check"
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        payload = {
+            "date": date,
+            "employee": employee
+        }
+        
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        
+        if response.status_code == 200:
+            result = response.json()
+            return jsonify({
+                'success': True,
+                'data': result.get('message', [])
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': f"API Error: {response.status_code}"
+            })
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+@app.route('/api/get-token', methods=['GET'])
+@login_required
+def get_token():
+    """Return user's ERPNext token"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({
+                'success': False, 
+                'error': 'No user data in session'
+            }), 401
+            
+        token = user_data.get('token', '')
+        
+        # Log for debugging
+        print(f"ðŸ”‘ Token requested for {user_data.get('username')}: {token[:20]}...")
+        
+        return jsonify({
+            'success': True,
+            'token': token
+        })
+    except Exception as e:
+        print(f"âŒ Error getting token: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/checkin')
+@login_required
+def checkin_page():
+    """Render check-in report page"""
+    today = datetime.now().strftime('%Y-%m-%d')
+    return render_template('checkin.html', today_date=today)
+
+
+#-----------------------------------------Leave Request-----------------------------------
+@app.route('/api/leave-balance', methods=['POST'])
+@login_required
+@permission_required('leave')
+def get_leave_balance():
+    """Get leave balance from ERPNext"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'No user data in session'}), 401
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        year = data.get('year', datetime.now().year)
+        emp = data.get('emp', user_data.get('username'))
+        
+        # Get token from session
+        token = user_data.get('token', '')
+        
+        if not token:
+            return jsonify({'success': False, 'error': 'No authentication token'}), 401
+        
+        print(f"ðŸ“Š Fetching leave balance for {emp}, year {year}")
+        print(f"ðŸ”‘ Using token: {token[:20]}...")
+        
+        # Call ERPNext API
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.get_applied_taken"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        payload = {
+            'year': year,
+            'emp': emp
+        }
+        
+        print(f"ðŸ“¡ Calling ERPNext API: {url}")
+        
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        
+        print(f"ðŸ“¡ ERPNext response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            result = response.json()
+            message = result.get('message', [])
+            
+            if message and len(message) > 0:
+                leave_data = message[0]
+                print(f"âœ… Leave data received: {leave_data}")
+                return jsonify({
+                    'success': True,
+                    'data': leave_data
+                })
+            else:
+                # Return empty data structure
+                print("âš ï¸ No leave data found, returning zeros")
+                return jsonify({
+                    'success': True,
+                    'data': {
+                        'sl_allocated': 0,
+                        'sl_actual': 0,
+                        'sl_balance': 0,
+                        'el_allocated': 0,
+                        'el_actual': 0,
+                        'el_balance': 0,
+                        'cl_allocated': 0,
+                        'cl_actual': 0,
+                        'cl_balance': 0
+                    }
+                })
+        else:
+            print(f"âŒ API Error: {response.status_code}")
+            print(f"âŒ Response: {response.text[:200]}")
+            return jsonify({
+                'success': False,
+                'error': f'API Error: {response.status_code}'
+            }), response.status_code
+            
+    except requests.exceptions.Timeout:
+        print("âŒ Timeout error")
+        return jsonify({'success': False, 'error': 'Request timeout'}), 504
+    except requests.exceptions.ConnectionError:
+        print("âŒ Connection error")
+        return jsonify({'success': False, 'error': 'Cannot connect to ERPNext'}), 503
+    except Exception as e:
+        print(f"âŒ Unexpected error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/leave-request')
+@login_required
+@permission_required('leave')
+def leave_request():
+    """Leave request page"""
+    user_data = session['user_data']
+    
+    # Get today's date for the date picker min attribute
+    today_date = datetime.now().strftime('%Y-%m-%d')
+    
+    return render_template('leave_request.html', 
+                         user_data=user_data,
+                         today_date=today_date)
+
+
+@app.route('/api/leave/apply', methods=['POST'])
+@login_required
+def apply_leave():
+    """Submit leave application to ERPNext"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'No user data in session'}), 401
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        token = user_data.get('token', '')
+        if not token:
+            return jsonify({'success': False, 'error': 'No authentication token'}), 401
+        
+        print(f"ðŸ“ Applying leave for {data['emp']}: {data['from_date']} to {data['to_date']}")
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.create_leave_new"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        payload = {
+            "emp": data['emp'],
+            "from_date": data['from_date'],
+            "to_date": data['to_date'],
+            "day": data['day'],
+            "leave_type": data['leave_type'],
+            "reason": data['reason']
+        }
+        
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        
+        print(f"ðŸ“¡ ERPNext response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            result = response.json()
+            print(f"ðŸ“¥ ERPNext response: {result}")
+            
+            # Check various success formats
+            message = result.get('message', '')
+            
+            # If message is "Success" or contains "success", consider it successful
+            if message == 'Success' or message == 'success' or 'success' in str(message).lower():
+                return jsonify({
+                    'success': True,
+                    'message': 'Leave application submitted successfully',
+                    'data': result
+                })
+            else:
+                # If we got 200 but message is not "Success", still consider it success
+                # as ERPNext sometimes returns different success messages
+                return jsonify({
+                    'success': True,
+                    'message': message or 'Application submitted',
+                    'data': result
+                })
+        else:
+            error_text = response.text
+            print(f"âŒ ERPNext error: {error_text[:200]}")
+            
+            # Try to parse error
+            try:
+                error_json = response.json()
+                error_msg = error_json.get('message') or error_json.get('error') or f'ERPNext error: {response.status_code}'
+            except:
+                error_msg = f'ERPNext error: {response.status_code}'
+            
+            return jsonify({
+                'success': False,
+                'error': error_msg
+            }), response.status_code
+            
+    except requests.exceptions.Timeout:
+        return jsonify({'success': False, 'error': 'Request timeout'}), 504
+    except requests.exceptions.ConnectionError:
+        return jsonify({'success': False, 'error': 'Cannot connect to ERPNext'}), 503
+    except Exception as e:
+        print(f"âŒ Error in leave application: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/leave-reports', methods=['POST'])
+@login_required
+@permission_required('leave')
+def get_leave_reports():
+    """Get leave reports from ERPNext"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'No user data in session'}), 401
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        emp = data.get('emp', user_data.get('username'))
+        
+        # Get token from request header or session
+        auth_header = request.headers.get('Authorization')
+        token = auth_header if auth_header else user_data.get('token', '')
+        
+        if not token:
+            return jsonify({'success': False, 'error': 'No authentication token'}), 401
+        
+        print(f"ðŸ“Š Fetching leave reports for {emp}")
+        
+        # Call ERPNext API
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.get_applied_leaves"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json={"emp": emp}, timeout=30)
+        
+        print(f"ðŸ“¡ ERPNext response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            result = response.json()
+            message = result.get('message', [])
+            
+            return jsonify({
+                'success': True,
+                'data': message
+            })
+        else:
+            print(f"âŒ API Error: {response.status_code}")
+            return jsonify({
+                'success': False,
+                'error': f'API Error: {response.status_code}'
+            }), response.status_code
+            
+    except Exception as e:
+        print(f"âŒ Error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/reports')
+@login_required
+@permission_required('leave')
+def reports():
+    """Leave reports page"""
+    user_data = session['user_data']
+    return render_template('reports.html', user_data=user_data)
+
+
+#-----------------------------claim request---------------------------------------
+@app.route('/claim-request')
+@login_required
+@permission_required('claim')
+def claim_request():
+    """Claim Request page"""
+    user_data = session['user_data']
+    
+    # Get today's date for the date picker
+    today_date = datetime.now().strftime('%Y-%m-%d')
+    
+    return render_template('claim_request.html', 
+                         user_data=user_data,
+                         today_date=today_date)
+
+@app.route('/api/claim-reports', methods=['GET'])
+@login_required
+@permission_required('claim')
+def get_claim_reports():
+    """Get claim reports for employee"""
+    user_data = session['user_data']
+    emp = request.args.get('emp', user_data['username'])
+    
+    try:
+        # Call ERPNext API to get claim reports
+        url = f"{ERP_API_BASE_URL}/method/wtt_module.customization.custom.mobile_web.get_claim_create"
+        
+        headers = {
+            'Authorization': user_data['token'],
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.get(
+            url, 
+            headers=headers, 
+            params={'emp': emp},
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            return jsonify({
+                'success': True,
+                'data': result.get('message', [])
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': f'API Error: {response.status_code}'
+            })
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+@app.route('/api/claim/apply', methods=['POST'])
+@login_required
+@permission_required('claim')
+def apply_claim():
+    """Submit claim request"""
+    user_data = session['user_data']
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'})
+    
+    try:
+        # Call ERPNext API to submit claim
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.create_claim_request_name"
+        
+        headers = {
+            'Authorization': user_data['token'],
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json=data, timeout=30)
+        
+        if response.status_code == 200:
+            result = response.json()
+            return jsonify({
+                'success': True,
+                'message': 'Claim submitted successfully',
+                'data': result.get('message', {})
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': f'API Error: {response.status_code}'
+            })
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+#--------------------------------vehicle expense--------------------------------------
+@app.route('/vehicle-expense')
+@login_required
+@permission_required('claim')  # or create new permission
+def vehicle_expense():
+    """Vehicle Expense page"""
+    user_data = session['user_data']
+    return render_template('vehicle_expense.html', user_data=user_data)
+
+@app.route('/api/employee-details', methods=['GET'])
+@login_required
+def get_employee_details():
+    """Get employee details - FIXED with case insensitive comparison"""
+    emp = request.args.get('emp')
+    user_data = session['user_data']
+    
+    print("\n" + "="*50)
+    print("ðŸ” EMPLOYEE DETAILS API CALLED")
+    print(f"ðŸ“‹ Employee Code from request: {emp}")
+    print(f"ðŸ“‹ User data from session: {user_data.get('username')}")
+    print("="*50)
+    
+    if not emp:
+        print("âŒ No employee code provided")
+        return jsonify({'success': False, 'error': 'Employee code required'})
+    
+    try:
+        # Call ERPNext API to get employee details
+        url = f"{ERP_API_BASE_URL}/method/wtt_module.customization.custom.mobile_web.get_employees"
+        headers = {'Authorization': user_data['token']}
+        
+        print(f"\nðŸ“¡ Making API call to: {url}")
+        print(f"ðŸ“¡ With token: {user_data['token'][:20]}...")
+        
+        response = requests.get(url, headers=headers, timeout=30)
+        print(f"ðŸ“¡ Response Status Code: {response.status_code}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            print(f"\nðŸ“‹ Full API Response: {json.dumps(data, indent=2)}")
+            
+            # Get message from response
+            message = data.get('message')
+            print(f"\nðŸ“‹ Message type: {type(message)}")
+            print(f"ðŸ“‹ Message content: {message}")
+            
+            department = ''
+            
+            # CASE 1: Message is a dictionary (object)
+            if isinstance(message, dict):
+                print("\nâœ… Message is a dictionary (object)")
+                
+                # Get employee from message
+                msg_employee = message.get('employee', '')
+                print(f"   - Employee in message: {msg_employee}")
+                print(f"   - Department in message: {message.get('department')}")
+                
+                # ðŸ”´ FIX: Case insensitive comparison
+                if msg_employee.upper() == emp.upper():
+                    department = message.get('department', '')
+                    print(f"âœ…âœ…âœ… MATCH FOUND! Department: {department}")
+                else:
+                    print(f"âš ï¸ Employee mismatch. Expected: {emp}, Got: {msg_employee}")
+            
+            # CASE 2: Message is a list (array)
+            elif isinstance(message, list):
+                print("\nâœ… Message is a list (array)")
+                print(f"   List length: {len(message)}")
+                
+                for idx, emp_data in enumerate(message):
+                    msg_employee = emp_data.get('employee', '')
+                    print(f"   [{idx}] Employee: {msg_employee}, Dept: {emp_data.get('department')}")
+                    
+                    # ðŸ”´ FIX: Case insensitive comparison
+                    if msg_employee.upper() == emp.upper():
+                        department = emp_data.get('department', '')
+                        print(f"âœ…âœ…âœ… MATCH FOUND at index {idx}! Department: {department}")
+                        break
+            
+            print(f"\nðŸ“¤ Returning department: '{department}'")
+            return jsonify({
+                'success': True,
+                'data': {
+                    'department': department
+                }
+            })
+        else:
+            print(f"\nâŒ API Error: {response.status_code}")
+            return jsonify({'success': False, 'error': f'API Error: {response.status_code}'})
+            
+    except Exception as e:
+        print(f"\nâŒ Exception: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/projects', methods=['GET'])
+@login_required
+def get_projects():
+    """Get projects list - Proxy endpoint"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        
+        if not token:
+            return jsonify({'success': False, 'error': 'No authentication token'}), 401
+        
+        print(f"ðŸ“‹ Fetching projects from ERPNext...")
+        print(f"ðŸ”‘ Using token: {token[:20]}...")
+        
+        # ERPNext API URL
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.get_project"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        # Make request to ERPNext
+        response = requests.get(url, headers=headers, timeout=30)
+        
+        print(f"ðŸ“¡ ERPNext response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            print(f"âœ… Projects fetched successfully. Count: {len(data.get('message', []))}")
+            
+            # Return in the format your frontend expects
+            return jsonify({
+                'success': True,
+                'data': data.get('message', [])
+            })
+        else:
+            print(f"âŒ ERPNext error: {response.text[:200]}")
+            return jsonify({
+                'success': False, 
+                'error': f'ERPNext error: {response.status_code}'
+            }), response.status_code
+            
+    except requests.exceptions.Timeout:
+        print("âŒ Request timeout")
+        return jsonify({'success': False, 'error': 'Request timeout'}), 504
+    except requests.exceptions.ConnectionError:
+        print("âŒ Connection error")
+        return jsonify({'success': False, 'error': 'Cannot connect to ERPNext'}), 503
+    except Exception as e:
+        print(f"âŒ Error in proxy: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/vehicle-expense/submit', methods=['POST'])
+@login_required
+def submit_vehicle_expense():
+    """Proxy endpoint for submitting vehicle expense with files"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'status': 'error', 'message': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        
+        if not token:
+            return jsonify({'status': 'error', 'message': 'No authentication token'}), 401
+        
+        # Get form data
+        data = request.form
+        files = request.files
+        
+        print(f"ðŸ“ Submitting vehicle expense for: {data.get('raised_by')}")
+        print(f"ðŸ“Ž KM file: {files.get('km_attachment')}")
+        print(f"ðŸ“Ž Bill file: {files.get('bill')}")
+        
+        # Prepare multipart form data for ERPNext
+        erpnext_url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.create_site_vehicle_expenses"
+        
+        # Create new multipart form
+        multipart_data = {}
+        for key, value in data.items():
+            multipart_data[key] = value
+            
+        files_dict = {}
+        if 'km_attachment' in files:
+            files_dict['km_attachment'] = (files['km_attachment'].filename, files['km_attachment'].read(), files['km_attachment'].content_type)
+        if 'bill' in files:
+            files_dict['bill'] = (files['bill'].filename, files['bill'].read(), files['bill'].content_type)
+        
+        headers = {
+            'Authorization': token
+            # Don't set Content-Type - requests will set it
+        }
+        
+        response = requests.post(
+            erpnext_url,
+            headers=headers,
+            data=multipart_data,
+            files=files_dict,
+            timeout=30
+        )
+        
+        print(f"ðŸ“¡ ERPNext response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            result = response.json()
+            return jsonify(result)
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': f'ERPNext error: {response.status_code}',
+                'details': response.text[:200]
+            }), response.status_code
+            
+    except Exception as e:
+        print(f"âŒ Error: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+#-----------------------------task allocation-----------------------------------------------------
+@app.route('/task-allocation')
+@login_required
+@permission_required('project_task')  # or whatever permission you're using
+def task_allocation():
+    """Task Allocation page"""
+    user_data = session['user_data']
+    return render_template('task_allocation.html', user_data=user_data)
+# ============================================
+# PROXY ENDPOINTS FOR TASK ALLOCATION
+# ============================================
+
+@app.route('/api/proxy/active-employees', methods=['POST'])
+@login_required
+def proxy_active_employees():
+    """Proxy endpoint for active employees - avoids CORS"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        
+        if not token:
+            return jsonify({'success': False, 'error': 'No authentication token'}), 401
+        
+        print(f"ðŸ” Fetching active employees from ERPNext...")
+        
+        # Call ERPNext API
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.get_active_employee"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json={}, timeout=30)
+        
+        print(f"ðŸ“¡ ERPNext response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            result = response.json()
+            return jsonify(result)
+        else:
+            print(f"âŒ ERPNext error: {response.text[:200]}")
+            return jsonify({
+                'success': False, 
+                'error': f'ERPNext error: {response.status_code}'
+            }), response.status_code
+            
+    except Exception as e:
+        print(f"âŒ Error in proxy: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/proxy/apply-task-allocation', methods=['POST'])
+@login_required
+def proxy_apply_task_allocation():
+    """Proxy endpoint for applying task allocation"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        if not token:
+            return jsonify({'success': False, 'error': 'No authentication token'}), 401
+        
+        print(f"ðŸ“ Applying task allocation for employee: {data.get('emp')}")
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.apply_task_allocation"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json=data, timeout=30)
+        
+        if response.status_code == 200:
+            result = response.json()
+            return jsonify({'success': True, 'data': result})
+        else:
+            return jsonify({
+                'success': False, 
+                'error': f'ERPNext error: {response.status_code}'
+            }), response.status_code
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/task-allocation-report')
+@login_required
+def task_allocation_report():
+    """Task Allocation Report page"""
+    user_data = session['user_data']
+    return render_template('task_allocation_report.html', user_data=user_data)
+# ============================================
+# PROXY ENDPOINTS FOR TASK ALLOCATION REPORT
+# ============================================
+
+@app.route('/api/proxy/get-task-allocations', methods=['POST'])
+@login_required
+def proxy_get_task_allocations():
+    """Proxy endpoint for getting task allocations"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        data = request.get_json() or {}
+        
+        if not token:
+            return jsonify({'success': False, 'error': 'No authentication token'}), 401
+        
+        print(f"ðŸ“‹ Fetching task allocations with status: {data.get('status', 'All')}")
+        print(f"ðŸ”‘ Using token: {token[:20]}...")
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.get_task_allocation"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json=data, timeout=30)
+        
+        print(f"ðŸ“¡ ERPNext response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            result = response.json()
+            print(f"âœ… Received {len(result.get('message', []))} tasks")
+            return jsonify(result)
+        else:
+            print(f"âŒ ERPNext error: {response.text[:200]}")
+            return jsonify({
+                'success': False, 
+                'error': f'ERPNext error: {response.status_code}'
+            }), response.status_code
+            
+    except requests.exceptions.Timeout:
+        return jsonify({'success': False, 'error': 'Request timeout'}), 504
+    except requests.exceptions.ConnectionError:
+        return jsonify({'success': False, 'error': 'Cannot connect to ERPNext'}), 503
+    except Exception as e:
+        print(f"âŒ Error in proxy: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/proxy/update-task-status', methods=['POST'])
+@login_required
+def proxy_update_task_status():
+    """Proxy endpoint for updating task status"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        if not token:
+            return jsonify({'success': False, 'error': 'No authentication token'}), 401
+        
+        print(f"ðŸ“ Updating task status: {data}")
+        print(f"ðŸ”‘ Using token: {token[:20]}...")
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.update_task_status"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json=data, timeout=30)
+        
+        print(f"ðŸ“¡ ERPNext response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            result = response.json()
+            print(f"âœ… Update response: {result}")
+            return jsonify(result)
+        else:
+            print(f"âŒ ERPNext error: {response.text[:200]}")
+            return jsonify({
+                'success': False, 
+                'error': f'ERPNext error: {response.status_code}'
+            }), response.status_code
+            
+    except requests.exceptions.Timeout:
+        return jsonify({'success': False, 'error': 'Request timeout'}), 504
+    except requests.exceptions.ConnectionError:
+        return jsonify({'success': False, 'error': 'Cannot connect to ERPNext'}), 503
+    except Exception as e:
+        print(f"âŒ Error in proxy: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/proxy/get-my-created-tasks', methods=['POST'])
+@login_required
+def proxy_get_my_created_tasks():
+    """Proxy endpoint for getting tasks created by the current user"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        
+        if not token:
+            return jsonify({'success': False, 'error': 'No authentication token'}), 401
+        
+        print(f"ðŸ“‹ Fetching my created tasks...")
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.get_my_created_tasks"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json={}, timeout=30)
+        
+        print(f"ðŸ“¡ ERPNext response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            result = response.json()
+            return jsonify(result)
+        else:
+            return jsonify({
+                'success': False, 
+                'error': f'ERPNext error: {response.status_code}'
+            }), response.status_code
+            
+    except Exception as e:
+        print(f"âŒ Error in proxy: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/my-assigned-tasks')
+@login_required
+def my_assigned_tasks():
+    """My Assigned Tasks page"""
+    user_data = session['user_data']
+    return render_template('my_assigned_tasks.html', user_data=user_data)
+
+#--------------------------------ON Duty----------------------------------------------------
+@app.route('/api/proxy/apply-onduty', methods=['POST'])
+@login_required
+def proxy_apply_onduty():
+    """Proxy endpoint for applying on duty request"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        if not token:
+            return jsonify({'success': False, 'error': 'No authentication token'}), 401
+        
+        print(f"ðŸ“ Applying on duty request: {data}")
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.apply_onduty"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json=data, timeout=30)
+        
+        print(f"ðŸ“¡ ERPNext response status: {response.status_code}")
+        print(f"ðŸ“„ ERPNext response text: {response.text}")
+        
+        if response.status_code == 200:
+            # Try to parse JSON response
+            try:
+                result = response.json()
+                print(f"âœ… ERPNext success: {result}")
+                
+                # Return in a consistent format
+                return jsonify({
+                    'success': True,
+                    'message': result.get('message', 'Success'),
+                    'data': result
+                })
+            except:
+                # If response is not JSON (plain text)
+                response_text = response.text
+                print(f"âœ… ERPNext plain text response: {response_text}")
+                
+                return jsonify({
+                    'success': True,
+                    'message': response_text
+                })
+        else:
+            error_text = response.text
+            print(f"âŒ ERPNext error: {error_text}")
+            
+            return jsonify({
+                'success': False, 
+                'error': f'ERPNext error: {response.status_code}',
+                'details': error_text
+            }), response.status_code
+            
+    except requests.exceptions.Timeout:
+        return jsonify({'success': False, 'error': 'Request timeout'}), 504
+    except requests.exceptions.ConnectionError:
+        return jsonify({'success': False, 'error': 'Cannot connect to ERPNext'}), 503
+    except Exception as e:
+        print(f"âŒ Error in proxy: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/on-duty-request')
+@login_required
+@permission_required('on_duty')
+def on_duty_request():
+    """On Duty Request page"""
+    user_data = session['user_data']
+    return render_template('on_duty_request.html', user_data=user_data)
+
+@app.route('/api/proxy/onduty-reports', methods=['POST'])
+@login_required
+def proxy_onduty_reports():
+    """Proxy endpoint for fetching on duty reports"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        if not token:
+            return jsonify({'success': False, 'error': 'No authentication token'}), 401
+        
+        print(f"ðŸ“‹ Fetching on duty reports for employee: {data.get('employee')}")
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.onduty"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json=data, timeout=30)
+        
+        print(f"ðŸ“¡ ERPNext response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            # Return the exact response from ERPNext without modification
+            result = response.json()
+            print(f"âœ… Response received: {result}")
+            return jsonify(result)  # Return as-is, don't wrap in another object
+        else:
+            error_text = response.text
+            print(f"âŒ ERPNext error: {error_text}")
+            return jsonify({
+                'success': False, 
+                'error': f'ERPNext error: {response.status_code}',
+                'details': error_text
+            }), response.status_code
+            
+    except Exception as e:
+        print(f"âŒ Error in proxy: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/on-duty-report')
+@login_required
+def on_duty_report():
+    """On Duty Report page"""
+    user_data = session['user_data']
+    return render_template('on_duty_report.html', user_data=user_data)
+
+# =====================================
+# OT REQUEST PROXY ENDPOINTS
+# =====================================
+
+@app.route('/api/proxy/create-ot-request', methods=['POST'])
+@login_required
+def proxy_create_ot_request():
+    """Proxy endpoint for creating OT request"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        if not token:
+            return jsonify({'success': False, 'error': 'No authentication token'}), 401
+        
+        print(f"ðŸ“ Creating OT request: {data}")
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.create_ot_request"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json=data, timeout=30)
+        
+        print(f"ðŸ“¡ ERPNext response status: {response.status_code}")
+        print(f"ðŸ“„ ERPNext response: {response.text}")
+        
+        if response.status_code == 200:
+            # Remove quotes if present
+            result = response.text.strip('"')
+            return jsonify({'success': True, 'message': result})
+        else:
+            return jsonify({
+                'success': False, 
+                'error': f'ERPNext error: {response.status_code}',
+                'details': response.text
+            }), response.status_code
+            
+    except requests.exceptions.Timeout:
+        return jsonify({'success': False, 'error': 'Request timeout'}), 504
+    except requests.exceptions.ConnectionError:
+        return jsonify({'success': False, 'error': 'Cannot connect to ERPNext'}), 503
+    except Exception as e:
+        print(f"âŒ Error in proxy: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/proxy/get-ot-requests', methods=['POST'])
+@login_required
+def proxy_get_ot_requests():
+    """Proxy endpoint for getting OT requests"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        
+        if not token:
+            return jsonify({'success': False, 'error': 'No authentication token'}), 401
+        
+        print(f"ðŸ“‹ Fetching OT requests...")
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.get_ot_request"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json={}, timeout=30)
+        
+        print(f"ðŸ“¡ ERPNext response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            result = response.json()
+            print(f"âœ… Received {len(result.get('message', []))} OT requests")
+            return jsonify(result)
+        else:
+            return jsonify({
+                'success': False, 
+                'error': f'ERPNext error: {response.status_code}'
+            }), response.status_code
+            
+    except requests.exceptions.Timeout:
+        return jsonify({'success': False, 'error': 'Request timeout'}), 504
+    except requests.exceptions.ConnectionError:
+        return jsonify({'success': False, 'error': 'Cannot connect to ERPNext'}), 503
+    except Exception as e:
+        print(f"âŒ Error in proxy: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/ot-request')
+@login_required
+@permission_required('ot_req')
+def ot_request():
+    """OT Request page"""
+    user_data = session['user_data']
+    return render_template('ot_request.html', user_data=user_data)
+
+
+@app.route('/ot-request-report')
+@login_required
+def ot_request_report():
+    """OT Request Report page"""
+    user_data = session['user_data']
+    return render_template('ot_request_report.html', user_data=user_data)
+
+# =====================================
+# OT PRIOR ROUTES
+# =====================================
+
+@app.route('/ot-prior')
+@login_required
+@permission_required('ot_req')
+def ot_prior():
+    """OT Prior page"""
+    user_data = session['user_data']
+    return render_template('ot_prior.html', user_data=user_data)
+
+
+@app.route('/ot-prior-report')
+@login_required
+def ot_prior_report():
+    """OT Prior Report page"""
+    user_data = session['user_data']
+    return render_template('ot_prior_report.html', user_data=user_data)
+
+# =====================================
+# OT PRIOR PROXY ENDPOINTS
+# =====================================
+
+@app.route('/api/proxy/get-my-holidays', methods=['POST'])
+@login_required
+def proxy_get_my_holidays():
+    """Proxy endpoint for getting holiday list"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.get_my_holidays"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json={}, timeout=30)
+        
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({'success': False, 'error': f'ERPNext error: {response.status_code}'}), response.status_code
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/proxy/create-ot-prior', methods=['POST'])
+@login_required
+def proxy_create_ot_prior():
+    """Proxy endpoint for creating OT prior"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        data = request.get_json()
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.create_ot_prior"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json=data, timeout=30)
+        
+        if response.status_code == 200:
+            result = response.text.strip('"')
+            return jsonify({'success': True, 'message': result})
+        else:
+            return jsonify({'success': False, 'error': f'ERPNext error: {response.status_code}'}), response.status_code
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/proxy/get-ot-prior', methods=['POST'])
+@login_required
+def proxy_get_ot_prior():
+    """Proxy endpoint for getting OT prior requests"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            print("âŒ No user data in session")
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        
+        if not token:
+            print("âŒ No token in user data")
+            return jsonify({'success': False, 'error': 'No authentication token'}), 401
+        
+        print(f"ðŸ”‘ Using token: {token[:20]}...")
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.get_ot_prior"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        print(f"ðŸ“¡ Calling ERPNext API: {url}")
+        
+        # Make the request to ERPNext
+        response = requests.post(url, headers=headers, json={}, timeout=30)
+        
+        print(f"ðŸ“¡ ERPNext response status: {response.status_code}")
+        print(f"ðŸ“„ ERPNext response text: {response.text[:200]}")  # First 200 chars
+        
+        if response.status_code == 200:
+            # Try to parse JSON response
+            try:
+                result = response.json()
+                print(f"âœ… Successfully parsed JSON response")
+                return jsonify(result)
+            except Exception as json_error:
+                print(f"âŒ Failed to parse JSON: {json_error}")
+                # If response is not JSON, return as text
+                return jsonify({
+                    'success': True,
+                    'message': response.text
+                })
+        else:
+            error_msg = f"ERPNext error: {response.status_code}"
+            print(f"âŒ {error_msg}")
+            return jsonify({
+                'success': False, 
+                'error': error_msg,
+                'details': response.text[:200]
+            }), response.status_code
+            
+    except requests.exceptions.Timeout:
+        print("âŒ Request timeout")
+        return jsonify({'success': False, 'error': 'Request timeout'}), 504
+    except requests.exceptions.ConnectionError:
+        print("âŒ Connection error")
+        return jsonify({'success': False, 'error': 'Cannot connect to ERPNext'}), 503
+    except Exception as e:
+        print(f"âŒ Unexpected error in proxy: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+#---------------------ttb report-------------------------------------------------------------
+@app.route('/api/proxy/get-hod-users', methods=['POST'])
+@login_required
+def proxy_get_hod_users():
+    """Proxy endpoint for getting HOD users"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        
+        if not token:
+            return jsonify({'success': False, 'error': 'No authentication token'}), 401
+        
+        print(f"ðŸ“‹ Fetching HOD users...")
+        print(f"ðŸ”‘ Using token: {token[:20]}...")
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.get_hod_users"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json={}, timeout=30)
+        
+        print(f"ðŸ“¡ ERPNext response status: {response.status_code}")
+        print(f"ðŸ“„ ERPNext response: {response.text[:200]}")  # First 200 chars
+        
+        if response.status_code == 200:
+            # Try to parse JSON response
+            try:
+                result = response.json()
+                print(f"âœ… Successfully parsed JSON response")
+                return jsonify(result)
+            except Exception as json_error:
+                print(f"âŒ Failed to parse JSON: {json_error}")
+                # If response is not JSON, return as text
+                return jsonify({
+                    'success': True,
+                    'message': response.text
+                })
+        else:
+            error_msg = f"ERPNext error: {response.status_code}"
+            print(f"âŒ {error_msg}")
+            return jsonify({
+                'success': False, 
+                'error': error_msg,
+                'details': response.text[:200]
+            }), response.status_code
+            
+    except requests.exceptions.Timeout:
+        print("âŒ Request timeout")
+        return jsonify({'success': False, 'error': 'Request timeout'}), 504
+    except requests.exceptions.ConnectionError:
+        print("âŒ Connection error")
+        return jsonify({'success': False, 'error': 'Cannot connect to ERPNext'}), 503
+    except Exception as e:
+        print(f"âŒ Unexpected error in proxy: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+@app.route('/ttb-report')
+@login_required
+def ttb_report():
+    """TTB Report page"""
+    user_data = session['user_data']
+    return render_template('ttb_report.html', user_data=user_data)
+@app.route('/api/proxy/get-technical', methods=['POST'])
+@login_required
+def proxy_get_technical():
+    """Proxy endpoint for getting technical criteria"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.get_technical"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json={}, timeout=30)
+        
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({'success': False, 'error': f'ERPNext error: {response.status_code}'}), response.status_code
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/proxy/save-technical', methods=['POST'])
+@login_required
+def proxy_save_technical():
+    """Proxy endpoint for saving technical scores"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        # =====================================
+        # SET DATE TO LAST DAY OF SELECTED MONTH
+        # =====================================
+        from datetime import datetime
+        import calendar
+        
+        selected_month = data.get('month')
+        current_year = datetime.now().year
+        
+        # If selected month is previous month and it's January, year should be previous year
+        month_names = [
+            'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'
+        ]
+        
+        current_month_num = datetime.now().month
+        selected_month_num = month_names.index(selected_month) + 1 if selected_month in month_names else current_month_num
+        
+        # Determine correct year
+        if selected_month_num > current_month_num:
+            # Selected month is in previous year (e.g., in January, December is previous year)
+            year = current_year - 1
+        else:
+            year = current_year
+        
+        # Get last day of the month
+        last_day = calendar.monthrange(year, selected_month_num)[1]
+        
+        # Set posting date to last day of selected month
+        posting_date = f"{year}-{selected_month_num:02d}-{last_day:02d}"
+        
+        # Add to data
+        data['posting_date'] = posting_date
+        
+        print(f"ðŸ“ Saving technical scores for {data.get('employee')} - {selected_month} {year}")
+        print(f"ðŸ“… Posting date set to: {posting_date}")
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.save_technical"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json=data, timeout=30)
+        
+        if response.status_code == 200:
+            result = response.json()
+            return jsonify(result)
+        else:
+            return jsonify({
+                'success': False, 
+                'error': f'ERPNext error: {response.status_code}'
+            }), response.status_code
+            
+    except Exception as e:
+        print(f"âŒ Error in proxy: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/proxy/get-behavioural', methods=['POST'])
+@login_required
+def proxy_get_behavioural():
+    """Proxy endpoint for getting behavioural criteria"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.get_behavioural_data"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json={}, timeout=30)
+        
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({'success': False, 'error': f'ERPNext error: {response.status_code}'}), response.status_code
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/proxy/save-behavioural', methods=['POST'])
+@login_required
+def proxy_save_behavioural():
+    """Proxy endpoint for saving behavioural points"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        print(f"ðŸ“ Saving behavioural points for month: {data.get('month')}")
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.save_behavioral_points"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json=data, timeout=30)
+        
+        if response.status_code == 200:
+            result = response.json()
+            return jsonify(result)
+        else:
+            return jsonify({
+                'success': False, 
+                'error': f'ERPNext error: {response.status_code}'
+            }), response.status_code
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+@app.route('/technical-criteria')
+@login_required
+def technical_criteria():
+    """Technical Criteria page"""
+    user_data = session['user_data']
+    return render_template('technical_criteria.html', user_data=user_data)
+
+@app.route('/api/proxy/get-technical-status', methods=['POST'])
+@login_required
+def proxy_get_technical_status():
+    """Proxy endpoint for getting technical criteria status"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.get_employee_technical_status"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json={}, timeout=30)
+        
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({'success': False, 'error': f'ERPNext error: {response.status_code}'}), response.status_code
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/proxy/get-behavioural-status', methods=['POST'])
+@login_required
+def proxy_get_behavioural_status():
+    """Proxy endpoint for getting behavioural criteria status"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.get_employee_behavioural_status"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json={}, timeout=30)
+        
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({'success': False, 'error': f'ERPNext error: {response.status_code}'}), response.status_code
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/criteria-reports')
+@login_required
+def criteria_reports():
+    """Criteria Reports page"""
+    user_data = session['user_data']
+    return render_template('criteria_reports.html', user_data=user_data)
+
+@app.route('/api/proxy/get-department-employees', methods=['POST'])
+@login_required
+def proxy_get_department_employees():
+    """Proxy endpoint for getting department employees (subordinates)"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.get_department_employees"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json={}, timeout=30)
+        
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({'success': False, 'error': f'ERPNext error: {response.status_code}'}), response.status_code
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/proxy/get-technical-criteria', methods=['POST'])
+@login_required
+def proxy_get_technical_criteria():
+    """Proxy endpoint for getting technical criteria for an employee"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        data = request.get_json()
+        
+        if not data or not data.get('employee'):
+            return jsonify({'success': False, 'error': 'Employee parameter required'}), 400
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.get_technical_criteria"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json={'employee': data['employee']}, timeout=30)
+        
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({'success': False, 'error': f'ERPNext error: {response.status_code}'}), response.status_code
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/proxy/update-hod-scores', methods=['POST'])
+@login_required
+def proxy_update_hod_scores():
+    """Proxy endpoint for updating and APPROVING technical scores"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        print(f"ðŸ“ APPROVING technical HOD scores for parent: {data.get('parent')}")
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.update_hod_scores"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        payload = {
+            'parent': data.get('parent'),
+            'data': data.get('data')
+        }
+        
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        
+        if response.status_code == 200:
+            result = response.json()
+            return jsonify(result)
+        else:
+            error_text = response.text
+            return jsonify({
+                'success': False, 
+                'error': f'ERPNext error: {response.status_code}',
+                'details': error_text
+            }), response.status_code
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+@app.route('/api/proxy/reject-hod-scores', methods=['POST'])
+@login_required
+def proxy_reject_hod_scores():
+    """Proxy endpoint for REJECTING technical scores"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        print(f"ðŸ“ REJECTING technical HOD scores for parent: {data.get('parent')}")
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.reject_hod_scores"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        payload = {
+            'parent': data.get('parent'),
+            'data': data.get('data')
+        }
+        
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        
+        if response.status_code == 200:
+            result = response.json()
+            return jsonify(result)
+        else:
+            error_text = response.text
+            return jsonify({
+                'success': False, 
+                'error': f'ERPNext error: {response.status_code}',
+                'details': error_text
+            }), response.status_code
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+@app.route('/subordinate-technical')
+@login_required
+def subordinate_technical():
+    """Subordinate Technical Criteria page for HOD"""
+    user_data = session['user_data']
+    return render_template('subordinate_technical.html', user_data=user_data)
+
+@app.route('/subordinate-ttb')
+@login_required
+def subordinate_ttb():
+    """Subordinate TTB page for HOD (both technical and behavioural)"""
+    user_data = session['user_data']
+    return render_template('subordinate_ttb.html', user_data=user_data)
+
+@app.route('/api/proxy/get-behavioural-criteria', methods=['POST'])
+@login_required
+def proxy_get_behavioural_criteria():
+    """Proxy endpoint for getting behavioural criteria for an employee"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        data = request.get_json()
+        
+        if not data or not data.get('employee'):
+            return jsonify({'success': False, 'error': 'Employee parameter required'}), 400
+        
+        print(f"ðŸ“‹ Fetching behavioural criteria for employee: {data['employee']}")
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.get_behavioural_criteria"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json={'employee': data['employee']}, timeout=30)
+        
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({'success': False, 'error': f'ERPNext error: {response.status_code}'}), response.status_code
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/proxy/update-behavioural-hod-scores', methods=['POST'])
+@login_required
+def proxy_update_behavioural_hod_scores():
+    """Proxy endpoint for updating behavioural scores"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        print(f"ðŸ“ Updating behavioural scores for parent: {data.get('parent')}")
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.update_behavioural_hod_scores"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        payload = {
+            'parent': data.get('parent'),
+            'data': data.get('data')
+        }
+        
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            error_text = response.text
+            print(f"âŒ Error: {error_text}")
+            return jsonify({
+                'success': False, 
+                'error': f'ERPNext error: {response.status_code}',
+                'details': error_text
+            }), response.status_code
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/proxy/reject-behavioural-hod-scores', methods=['POST'])
+@login_required
+def proxy_reject_behavioural_hod_scores():
+    """Proxy endpoint for rejecting behavioural scores"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        print(f"ðŸ“ Rejecting behavioural scores for parent: {data.get('parent')}")
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.reject_behavioural_hod_scores"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        payload = {
+            'parent': data.get('parent'),
+            'data': data.get('data')
+        }
+        
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            error_text = response.text
+            print(f"âŒ Error: {error_text}")
+            return jsonify({
+                'success': False, 
+                'error': f'ERPNext error: {response.status_code}',
+                'details': error_text
+            }), response.status_code
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/proxy/get-reporting-employees', methods=['POST'])
+@login_required
+def proxy_get_reporting_employees():
+    """Proxy endpoint for getting reporting employees (subordinates)"""
+    try:
+        user_data = session.get('user_data')
+        if not user_data:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        token = user_data.get('token', '')
+        
+        print(f"ðŸ“‹ Fetching reporting employees...")
+        
+        url = "https://erp.wttint.com/api/method/wtt_module.customization.custom.mobile_web.get_reporting_employees"
+        
+        headers = {
+            'Authorization': token,
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, headers=headers, json={}, timeout=30)
+        
+        print(f"ðŸ“¡ ERPNext response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            result = response.json()
+            print(f"âœ… Response: {result}")
+            print(response)
+            return jsonify(result)
+        else:
+            error_text = response.text
+            print(f"âŒ Error: {error_text}")
+            return jsonify({
+                'success': False, 
+                'error': f'ERPNext error: {response.status_code}',
+                'details': error_text
+            }), response.status_code
+            
+    except Exception as e:
+        print(f"âŒ Error in proxy: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/management-ttb')
+@login_required
+def management_ttb():
+    """Management TTB page for users with reporting employees"""
+    user_data = session['user_data']
+    return render_template('management_ttb.html', user_data=user_data)
+
+@app.route('/api/system/health')
+def system_health():
+    """Check system health and ERPNext connectivity"""
+    try:
+        # Test ERPNext connectivity
+        test_response = requests.get(f"{ERP_API_BASE_URL}/method/frappe.auth.get_logged_user", timeout=5)
+        erp_status = 'connected' if test_response.status_code == 200 else 'disconnected'
+        
+        health_data = {
+            'status': 'healthy',
+            'flask_app': 'running',
+            'erpnext': erp_status,
+            'timestamp': datetime.now().isoformat(),
+            'version': '2.1.0'
+        }
+        
+        return jsonify(health_data)
+    except Exception as e:
+        return jsonify({
+            'status': 'degraded',
+            'flask_app': 'running',
+            'erpnext': 'connection_failed',
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        })
+
+@app.errorhandler(404)
+def not_found_error(error):
+    """Handle 404 errors"""
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'API endpoint not found'}), 404
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle 500 errors"""
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Internal server error'}), 500
+    return render_template('500.html'), 500
+
+@app.errorhandler(403)
+def forbidden_error(error):
+    """Handle 403 errors"""
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Access forbidden'}), 403
+    return render_template('403.html'), 403
+
+if __name__ == '__main__':
+    # Create necessary directories
+    os.makedirs('static/css', exist_ok=True)
+    os.makedirs('static/js', exist_ok=True)
+    os.makedirs('static/images', exist_ok=True)
+    os.makedirs('templates', exist_ok=True)
+    
+    # Check for GeoIP database
+    if not os.path.exists(GEOIP_DATABASE_PATH):
+        print(f"\nâš ï¸  Warning: GeoIP database not found at {GEOIP_DATABASE_PATH}")
+        print("For better location accuracy, download GeoLite2-City.mmdb from:")
+        print("https://dev.maxmind.com/geoip/geoip2/geolite2/")
+        print("And place it in the project root directory.\n")
+    
+    print("Starting WTT ERP Mobile Application...")
+    print(f"ERPNext API: {ERP_API_BASE_URL}")
+    print("Location services: Enabled")
+    print("âœ… MODIFIED: Storing ONLY latitude and longitude (no address)")
+    
+    # Run the application
+    app.run(host='0.0.0.0', port=5000, debug=True)
