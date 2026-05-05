@@ -20,7 +20,7 @@ runButton = "Project"
 [[workflows.workflow]]
 name = "artifacts/api-server: API Server"
 author = "agent"
-mode = "parallel"
+mode = "sequential"
 
 [workflows.workflow.metadata]
 outputType = "webview"
@@ -76,16 +76,8 @@ PORT = "23704"
 BASE_PATH = "/pm-app/"
 
 [[workflows.workflow]]
-name = "Project"
-mode = "parallel"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "artifacts/mobile-app: Mobile App"
-
-[[workflows.workflow]]
 name = "artifacts/mobile-app: Mobile App"
+mode = "parallel"
 author = "agent"
 
 [workflows.workflow.metadata]
@@ -93,8 +85,16 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "pnpm --filter @workspace/mobile-app run dev:native"
-waitForPort = 8099
+args = "pnpm --filter @workspace/mobile-app run dev"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "artifacts/mobile-app: Mobile App"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
