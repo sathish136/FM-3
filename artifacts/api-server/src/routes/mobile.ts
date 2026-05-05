@@ -603,18 +603,30 @@ mobileRouter.get("/mobile/hrms/profile", hrmsAuth, async (req: any, res) => {
   }
 });
 
-// GET /api/mobile/hrms/attendance  — last 30 days
+// GET /api/mobile/hrms/attendance  — supports ?month=YYYY-MM or defaults to last 30 days
 mobileRouter.get("/mobile/hrms/attendance", hrmsAuth, async (req: any, res) => {
   try {
-    const from = new Date();
-    from.setDate(from.getDate() - 30);
-    const from_date = from.toISOString().split("T")[0];
-    const to_date = new Date().toISOString().split("T")[0];
+    let from_date: string;
+    let to_date: string;
+
+    const monthParam = req.query.month as string | undefined;
+    if (monthParam && /^\d{4}-\d{2}$/.test(monthParam)) {
+      const [year, month] = monthParam.split("-").map(Number);
+      from_date = `${year}-${String(month).padStart(2, "0")}-01`;
+      const lastDay = new Date(year, month, 0).getDate();
+      to_date = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+    } else {
+      const from = new Date();
+      from.setDate(from.getDate() - 30);
+      from_date = from.toISOString().split("T")[0];
+      to_date = new Date().toISOString().split("T")[0];
+    }
+
     const records = await fetchErpNextAttendance({
       employee: req.hrmsUser.erp_employee_id,
       from_date,
       to_date,
-      limit: 60,
+      limit: 100,
     });
     res.json({ data: records });
   } catch (e) {
