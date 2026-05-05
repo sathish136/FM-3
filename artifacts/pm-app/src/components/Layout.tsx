@@ -308,7 +308,6 @@ const navGroups: { label: string; items: NavItem[] }[] = [
   {
     label: "Workshop",
     items: [
-      { path: "/workshop",          label: "Job Cards",          icon: ClipboardList, color: "text-orange-400", bgColor: "bg-orange-500/15" },
       { path: "/workshop/welder",   label: "Welder Job Cards",   icon: Zap,           color: "text-rose-500",   bgColor: "bg-rose-500/15" },
       { path: "/workshop/fitter",   label: "Fitter Job Cards",   icon: Activity,      color: "text-blue-400",   bgColor: "bg-blue-500/15" },
     ],
