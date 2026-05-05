@@ -23,7 +23,7 @@ type Key =
   | "red_hot" | "hot_lead" | "warm_lead" | "cold_lead"
   | "total_agents" | "customer_details" | "call_logs";
 
-type Theme = {
+export type Theme = {
   label: string;
   icon: React.ElementType;
   /** tailwind text color */ text: string;
@@ -782,7 +782,7 @@ function RemarksModal({ row, theme, onClose }: { row: any; theme: Theme; onClose
 }
 
 /* ── Lead Details Modal (eye-icon view) ───────────────────────────────── */
-function LeadDetailsModal({ row, theme, onClose }: { row: any; theme: Theme; onClose: () => void }) {
+export function LeadDetailsModal({ row, theme, onClose }: { row: any; theme: Theme; onClose: () => void }) {
   const fields: { label: string; value: any; icon?: React.ElementType; full?: boolean }[] = [
     { label: "Lead ID",         value: row.name,            icon: Hash },
     { label: "Status",          value: row.lead_status,     icon: Activity },

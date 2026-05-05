@@ -3436,7 +3436,7 @@ function replaceInXml(xml: string, companyName: string, city: string, flow: stri
   return out;
 }
 
-router.get("/proposals/:id/generate-pdf", async (req, res) => {
+router.get("/proposals/:id/generate-docx", async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ error: "invalid id" });
@@ -3472,40 +3472,16 @@ router.get("/proposals/:id/generate-pdf", async (req, res) => {
       }
     }
 
-    const docxBuf = zip.generate({ type: "nodebuffer", compression: "DEFLATE" });
+    const outputBuf = zip.generate({ type: "nodebuffer", compression: "DEFLATE" });
 
-    // Write filled DOCX to temp file, convert to PDF via Python script
-    const { execFile } = await import("node:child_process");
-    const { promisify } = await import("node:util");
-    const { writeFileSync: wfs, readFileSync: rfs, unlinkSync } = await import("node:fs");
-    const execFileAsync = promisify(execFile);
+    const safeCompany = companyName.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
+    const filename = `Proposal_${safeCompany}_${proposal.proposal_no}.docx`;
 
-    const tmpDocx = join(process.cwd(), `.tmp_proposal_${id}_${Date.now()}.docx`);
-    const tmpPdf  = join(process.cwd(), `.tmp_proposal_${id}_${Date.now()}.pdf`);
-
-    const SCRIPT_SEARCH = [
-      pathResolve(process.cwd(), "..", "..", "templates", "docx_to_pdf.py"),
-      "/home/runner/workspace/templates/docx_to_pdf.py",
-      pathResolve(process.cwd(), "templates", "docx_to_pdf.py"),
-    ];
-    const scriptPath = SCRIPT_SEARCH.find(existsSync) ?? null;
-    if (!scriptPath) return res.status(500).json({ error: "PDF conversion script not found on server" });
-
-    try {
-      wfs(tmpDocx, docxBuf);
-      await execFileAsync("python3", [scriptPath, tmpDocx, tmpPdf], { timeout: 30000 });
-      const pdfBuf = rfs(tmpPdf);
-      const safeCompany = companyName.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
-      const dlName = `Proposal_${safeCompany}_${proposal.proposal_no}.pdf`;
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="${dlName}"`);
-      res.send(pdfBuf);
-    } finally {
-      try { unlinkSync(tmpDocx); } catch { /* ignore */ }
-      try { unlinkSync(tmpPdf); } catch { /* ignore */ }
-    }
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(outputBuf);
   } catch (e: any) {
-    console.error("generate-pdf error:", e);
+    console.error("generate-docx error:", e);
     res.status(500).json({ error: e?.message || String(e) });
   }
 });

@@ -1,5 +1,5 @@
 import { Layout } from "@/components/Layout";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import React, { useState, useEffect, useCallback } from "react";
 import {
@@ -7,6 +7,8 @@ import {
   ThumbsUp, ThumbsDown, Bell, Star,
   Timer, Cpu, UserCheck, HeartHandshake, Activity,
   CheckCircle, XCircle, Clock, CalendarCheck,
+  Megaphone, Target, TrendingUp, MapPin,
+  Newspaper, ExternalLink, PhoneCall, ChevronRight, Droplets,
 } from "lucide-react";
 
 const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -114,6 +116,237 @@ export default function Dashboard() {
     (empData?.on_duty_request_count ?? 0) + (empData?.technical_criteria_count ?? 0) +
     (empData?.behavioural_criteria_count ?? 0);
   const isLoading = projectsLoading || empLoading;
+  const isAgent = user?.isAgent === true;
+
+  // ── Agent lead count ──────────────────────────────────────────────────────
+  const [agentLeadCount, setAgentLeadCount] = useState(0);
+  const [agentLeadLoading, setAgentLeadLoading] = useState(false);
+  const [agentLeads, setAgentLeads] = useState<{ name: string; company_name: string; country: string; lead_status: string; city: string; state: string }[]>([]);
+
+  useEffect(() => {
+    if (!isAgent || !user?.email) return;
+    setAgentLeadLoading(true);
+    // Fetch assigned lead IDs
+    fetch(`${BASE_URL}/api/agents/${encodeURIComponent(user.email)}/leads`)
+      .then(r => r.ok ? r.json() : { lead_ids: [] })
+      .then(async ({ lead_ids }: { lead_ids: string[] }) => {
+        setAgentLeadCount(lead_ids.length);
+        if (lead_ids.length === 0) { setAgentLeads([]); return; }
+        // Fetch lead details from open_leads
+        const res = await fetch(`${BASE_URL}/api/sales-dashboard/open_leads`);
+        const data = res.ok ? await res.json() : { data: [] };
+        const all: any[] = data.data ?? [];
+        const assigned = all.filter((l: any) => lead_ids.includes(l.name));
+        setAgentLeads(assigned.slice(0, 8));
+      })
+      .catch(() => {})
+      .finally(() => setAgentLeadLoading(false));
+  }, [isAgent, user?.email]);
+
+  // ── Agent water news ──────────────────────────────────────────────────────
+  const [waterNews, setWaterNews] = useState<{ title: string; url: string; source: string; published: string; snippet: string }[]>([]);
+  const [newsLoading, setNewsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isAgent) return;
+    if (agentLeadLoading) return;
+    const countries = [...new Set(agentLeads.map(l => l.country).filter(Boolean))];
+    if (countries.length === 0) return;
+    setNewsLoading(true);
+    fetch(`${BASE_URL}/api/water-news?countries=${encodeURIComponent(countries.join(","))}`)
+      .then(r => r.ok ? r.json() : { items: [] })
+      .then(d => setWaterNews(d.items ?? []))
+      .catch(() => {})
+      .finally(() => setNewsLoading(false));
+  }, [isAgent, agentLeadLoading, agentLeads]);
+
+  const [, navigate] = useLocation();
+
+  // ── Agent marketing dashboard early return ────────────────────────────────
+  if (isAgent) {
+    const agentCountries = [...new Set(agentLeads.map(l => l.country).filter(Boolean))];
+    return (
+      <Layout>
+        <div className="h-full overflow-y-auto bg-slate-50">
+          <div className="max-w-[1280px] mx-auto p-5 space-y-5">
+
+            {/* ── Header Banner ── */}
+            <div className="bg-[#1a3fbd] rounded-xl px-6 py-5 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-semibold text-blue-200 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                  <Droplets className="w-3 h-3" /> FlowMatriX · Marketing Agent Portal
+                </p>
+                <h1 className="text-2xl font-bold text-white">{greeting}, {firstName}</h1>
+                <p className="text-sm text-blue-200 mt-0.5">{dateStr}</p>
+                <span className="mt-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/10 text-white text-[11px] font-medium">
+                  <UserCheck className="w-3 h-3" /> Marketing Agent
+                </span>
+              </div>
+              <div className="text-right shrink-0 ml-6">
+                <p className="text-4xl font-bold text-white tabular-nums">{timeStr}</p>
+                <p className="text-[10px] text-blue-300 uppercase tracking-widest mt-1">{weekday}</p>
+              </div>
+            </div>
+
+            {/* ── Stat Cards ── */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                { label: "Assigned Leads", value: agentLeadLoading ? "—" : String(agentLeadCount), icon: Target,     iconBg: "bg-blue-100",   iconColor: "text-blue-700",   accent: "border-l-blue-500"  },
+                { label: "My Dashboard",   value: "Marketing",                                      icon: Megaphone,  iconBg: "bg-emerald-100", iconColor: "text-emerald-700", accent: "border-l-emerald-500", link: "/marketing"            },
+                { label: "All Leads",      value: "View All",                                       icon: TrendingUp, iconBg: "bg-amber-100",   iconColor: "text-amber-700",  accent: "border-l-amber-500",  link: "/leads"                },
+                { label: "Call Logs",      value: "Marketing",                                      icon: PhoneCall,  iconBg: "bg-rose-100",    iconColor: "text-rose-700",   accent: "border-l-rose-500",   link: "/ip-call-logs/marketing"},
+              ].map(card => {
+                const inner = (
+                  <div className={`bg-white rounded-lg border border-slate-200 border-l-4 ${card.accent} p-4 flex items-center gap-4 ${card.link ? "hover:shadow-md transition-shadow cursor-pointer" : ""}`}>
+                    <div className={`w-10 h-10 rounded-lg ${card.iconBg} flex items-center justify-center shrink-0`}>
+                      <card.icon className={`w-5 h-5 ${card.iconColor}`} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">{card.label}</p>
+                      <p className="text-[17px] font-bold text-slate-800 mt-0.5 truncate">{card.value}</p>
+                    </div>
+                  </div>
+                );
+                return card.link
+                  ? <Link key={card.label} href={card.link}>{inner}</Link>
+                  : <div key={card.label}>{inner}</div>;
+              })}
+            </div>
+
+            {/* ── Two-column: Leads + News ── */}
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5">
+
+              {/* Assigned Leads */}
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                      <Target className="w-4 h-4 text-blue-700" />
+                    </div>
+                    <div>
+                      <p className="text-[13px] font-semibold text-slate-800">My Assigned Leads</p>
+                      <p className="text-[11px] text-slate-400">{agentLeadCount} lead{agentLeadCount !== 1 ? "s" : ""} assigned to you</p>
+                    </div>
+                  </div>
+                  <Link href="/leads" className="flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:underline">
+                    View all <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </div>
+
+                {agentLeadLoading ? (
+                  <div className="p-5 space-y-2">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <div key={i} className="animate-pulse h-14 bg-slate-50 rounded-lg" />
+                    ))}
+                  </div>
+                ) : agentLeads.length === 0 ? (
+                  <div className="py-14 flex flex-col items-center text-slate-400">
+                    <Target className="w-8 h-8 mb-2 text-slate-200" />
+                    <p className="text-sm font-medium">No leads assigned yet</p>
+                    <p className="text-xs mt-1 text-slate-300">Contact your admin.</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-50">
+                    {agentLeads.map((lead, idx) => (
+                      <button
+                        key={lead.name}
+                        onClick={() => navigate(`/sales-dashboard/lead/${encodeURIComponent(lead.name)}`)}
+                        className="w-full flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 transition-colors group text-left"
+                      >
+                        <span className="w-7 h-7 rounded-full bg-slate-100 text-slate-500 text-[11px] font-bold flex items-center justify-center shrink-0">
+                          {idx + 1}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-semibold text-slate-800 truncate group-hover:text-blue-700 transition-colors">
+                            {lead.company_name || lead.name}
+                          </p>
+                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">{lead.name}</p>
+                        </div>
+                        {(lead.city || lead.state || lead.country) && (
+                          <span className="hidden sm:flex items-center gap-1 text-[11px] text-slate-400 shrink-0">
+                            <MapPin className="w-3 h-3" />{lead.city || lead.state || lead.country}
+                          </span>
+                        )}
+                        {lead.lead_status && (
+                          <span className={`text-[10px] font-medium px-2 py-0.5 rounded border shrink-0 ${
+                            lead.lead_status === "Open"        ? "bg-blue-50 text-blue-700 border-blue-200"         :
+                            lead.lead_status === "Converted"   ? "bg-emerald-50 text-emerald-700 border-emerald-200":
+                            lead.lead_status === "Opportunity" ? "bg-amber-50 text-amber-700 border-amber-200"      :
+                            "bg-slate-50 text-slate-500 border-slate-200"
+                          }`}>{lead.lead_status}</span>
+                        )}
+                        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-500 shrink-0 transition-colors" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Water Industry News */}
+              <div className="bg-white rounded-xl border border-slate-200 flex flex-col overflow-hidden" style={{ maxHeight: 460 }}>
+                <div className="px-4 py-4 border-b border-slate-100 flex items-center gap-3 shrink-0">
+                  <div className="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center shrink-0">
+                    <Droplets className="w-4 h-4 text-sky-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-semibold text-slate-800">Water Industry News</p>
+                    <p className="text-[11px] text-slate-400 truncate">
+                      {agentCountries.length > 0 ? agentCountries.join(", ") : "Global updates"}
+                    </p>
+                  </div>
+                  {newsLoading && <RefreshCw className="w-3.5 h-3.5 text-slate-400 animate-spin shrink-0" />}
+                </div>
+
+                <div className="flex-1 overflow-y-auto">
+                  {newsLoading ? (
+                    <div className="p-4 space-y-4">
+                      {Array.from({ length: 4 }).map((_, i) => (
+                        <div key={i} className="animate-pulse space-y-1.5">
+                          <div className="h-3 bg-slate-100 rounded w-full" />
+                          <div className="h-2.5 bg-slate-100 rounded w-4/5" />
+                          <div className="h-2 bg-slate-50 rounded w-2/5" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : waterNews.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-14 text-slate-400">
+                      <Newspaper className="w-8 h-8 mb-2 text-slate-200" />
+                      <p className="text-xs font-medium">No news available</p>
+                      <p className="text-[10px] mt-0.5 text-slate-300">Loads once leads are fetched</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-50">
+                      {waterNews.map((item, i) => (
+                        <a key={i} href={item.url} target="_blank" rel="noopener noreferrer"
+                          className="flex gap-3 px-4 py-3.5 hover:bg-slate-50 transition-colors group">
+                          <div className="w-1.5 rounded-sm bg-sky-400 shrink-0 mt-0.5" style={{ minHeight: 36 }} />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[12px] font-medium text-slate-700 group-hover:text-blue-700 leading-snug line-clamp-2 transition-colors">
+                              {item.title}
+                            </p>
+                            <div className="flex items-center gap-2 mt-1.5">
+                              {item.source && (
+                                <span className="text-[10px] text-slate-500 truncate max-w-[140px]">{item.source}</span>
+                              )}
+                              {item.published && (
+                                <span className="text-[10px] text-slate-400 shrink-0">{item.published}</span>
+                              )}
+                              <ExternalLink className="w-3 h-3 text-slate-300 group-hover:text-blue-400 ml-auto shrink-0 transition-colors" />
+                            </div>
+                          </div>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>

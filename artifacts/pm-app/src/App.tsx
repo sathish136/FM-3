@@ -84,6 +84,8 @@ import SiteDbAnalytics from "@/pages/SiteDbAnalytics";
 import SiteDbSystem from "@/pages/SiteDbSystem";
 import ProposalRequest from "@/pages/ProposalRequest";
 import ProposalAdmin from "@/pages/ProposalAdmin";
+import AgentManagement from "@/pages/AgentManagement";
+import HrmsWorkMonitor from "@/pages/HrmsWorkMonitor";
 import ProposalPDFView from "@/pages/ProposalPDFView";
 import { SlideshowProvider } from "@/contexts/SlideshowContext";
 import { RecordingProvider } from "@/contexts/RecordingContext";
@@ -110,6 +112,11 @@ function ProtectedRoutes() {
   useEffect(() => {
     if (!user) return;
     if (ADMIN_EMAILS.includes(user.email.toLowerCase())) {
+      setPermStatus("allowed");
+      return;
+    }
+    // Agents are verified via erp_agents table — bypass user_permissions check
+    if (user.isAgent === true) {
       setPermStatus("allowed");
       return;
     }
@@ -204,6 +211,7 @@ function ProtectedRoutes() {
       <Route path="/purchase-orders" component={PurchaseOrders} />
       <Route path="/project-insights" component={ProjectInsights} />
       <Route path="/user-management" component={UserManagement} />
+      <Route path="/agent-management" component={AgentManagement} />
       <Route path="/hrms" component={HRMS} />
       <Route path="/hrms/checkin" component={AttendanceCheckin} />
       <Route path="/hrms/leave-request" component={LeaveRequest} />
@@ -234,6 +242,7 @@ function ProtectedRoutes() {
       <Route path="/hrms/team-performance" component={TeamPerformanceDashboard} />
       <Route path="/hrms/task-summary" component={TaskSummary} />
       <Route path="/hrms/daily-reporting" component={DailyReporting} />
+      <Route path="/hrms/work-monitor" component={HrmsWorkMonitor} />
       <Route path="/logistics-dashboard" component={LogisticsDashboard} />
       <Route path="/process-proposal" component={ProcessProposalDashboard} />
       <Route path="/finance-dashboard" component={FinanceDashboard} />

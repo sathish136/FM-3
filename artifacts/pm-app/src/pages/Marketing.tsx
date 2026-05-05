@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -22,7 +23,7 @@ import { FollowupCalendar } from "@/components/FollowupCalendar";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "world-map" | "overview" | "india-map" | "lead-details" | "news" | "competitors" | "followup" | "proposal-request" | "agent-details";
+type Tab = "my-leads" | "world-map" | "overview" | "india-map" | "lead-details" | "news" | "competitors" | "followup" | "proposal-request" | "agent-details";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -1490,6 +1491,166 @@ function ProposalRequestTab() {
 
 // ── Agent Details Tab ─────────────────────────────────────────────────────────
 
+// ── My Leads Tab (for logged-in agents) ──────────────────────────────────────
+
+function MyLeadsTab({ email }: { email: string }) {
+  const { data, isLoading, refetch, isFetching } = useQuery({
+    queryKey: ["marketing-my-leads", email],
+    queryFn: async () => {
+      const r = await fetch(`/api/sales-dashboard/open_leads?agent_email=${encodeURIComponent(email)}`);
+      return r.json();
+    },
+    enabled: !!email,
+  });
+
+  const leads: any[] = data?.data ?? [];
+  const [search, setSearch] = useState("");
+  const [countryFilter, setCountryFilter] = useState("All");
+
+  const countries = useMemo(() => {
+    const set = new Set<string>();
+    leads.forEach(l => l.country && set.add(l.country));
+    return ["All", ...Array.from(set).sort()];
+  }, [leads]);
+
+  const filtered = leads.filter(l => {
+    const matchCountry = countryFilter === "All" || l.country === countryFilter;
+    if (!search.trim()) return matchCountry;
+    const q = search.toLowerCase();
+    return matchCountry && (l.company_name + l.name + l.country + l.contact_person + l.city + l.lead_status).toLowerCase().includes(q);
+  });
+
+  const STATUS_BADGE: Record<string, string> = {
+    Open:        "bg-blue-50 text-blue-700 border-blue-200",
+    Converted:   "bg-emerald-50 text-emerald-700 border-emerald-200",
+    Opportunity: "bg-violet-50 text-violet-700 border-violet-200",
+    Quotation:   "bg-amber-50 text-amber-700 border-amber-200",
+    Closed:      "bg-gray-100 text-gray-600 border-gray-200",
+    Replied:     "bg-teal-50 text-teal-700 border-teal-200",
+    "Lost Quotation": "bg-red-50 text-red-700 border-red-200",
+    "Do Not Contact": "bg-rose-50 text-rose-700 border-rose-200",
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="flex items-center gap-3 text-gray-400">
+          <RefreshCw className="w-5 h-5 animate-spin" />
+          <span className="text-sm">Loading your assigned leads…</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Agent Banner */}
+      <div className="bg-gradient-to-r from-violet-600 to-violet-800 rounded-2xl p-5 text-white shadow-lg shadow-violet-200">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+              <UserCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-violet-200 uppercase tracking-wide">Agent Dashboard</p>
+              <p className="text-base font-bold">{leads.length} Assigned Lead{leads.length !== 1 ? "s" : ""}</p>
+              <p className="text-[11px] text-violet-300">{email}</p>
+            </div>
+          </div>
+          <button onClick={() => refetch()} disabled={isFetching}
+            className="flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors">
+            <RefreshCw className={cn("w-3.5 h-3.5", isFetching && "animate-spin")} />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="relative flex-1 min-w-48">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-300" />
+            <input
+              className="w-full bg-white border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-sm text-gray-700 placeholder-gray-300 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 transition-all"
+              placeholder="Search by company, contact, status…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+          <div className="relative">
+            <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-300 pointer-events-none" />
+            <select
+              value={countryFilter}
+              onChange={e => setCountryFilter(e.target.value)}
+              className="pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-xl text-gray-700 bg-white outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 appearance-none cursor-pointer"
+            >
+              {countries.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <span className="text-xs text-gray-400 shrink-0">
+            {filtered.length} of {leads.length} leads
+          </span>
+        </div>
+      </div>
+
+      {/* Leads Grid */}
+      {filtered.length === 0 ? (
+        <div className="bg-white border border-gray-100 rounded-2xl p-12 text-center shadow-sm">
+          <UserCheck className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+          <p className="text-sm font-semibold text-gray-500">No assigned leads found</p>
+          <p className="text-xs text-gray-400 mt-1">
+            {leads.length === 0 ? "No leads have been assigned to you yet." : "Try changing the search or country filter."}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map(lead => (
+            <div key={lead.name} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:shadow-md hover:border-violet-200 transition-all">
+              <div className="flex items-start justify-between gap-2 mb-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-gray-900 truncate">{lead.company_name || lead.name}</p>
+                  <p className="text-[10px] text-gray-400 font-mono">{lead.name}</p>
+                </div>
+                {lead.lead_status && (
+                  <span className={cn("shrink-0 text-[9px] font-bold px-2 py-0.5 rounded-full border", STATUS_BADGE[lead.lead_status] ?? "bg-gray-100 text-gray-600 border-gray-200")}>
+                    {lead.lead_status}
+                  </span>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                {lead.country && (
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                    <MapPin className="w-3 h-3 text-gray-300 shrink-0" />
+                    <span className="truncate">{[lead.city, lead.state, lead.country].filter(Boolean).join(", ")}</span>
+                  </div>
+                )}
+                {lead.contact_person && (
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                    <Phone className="w-3 h-3 text-gray-300 shrink-0" />
+                    <span className="truncate">{lead.contact_person}</span>
+                  </div>
+                )}
+                {lead.mobile_no && (
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                    <Mail className="w-3 h-3 text-gray-300 shrink-0" />
+                    <span className="truncate">{lead.mobile_no}</span>
+                  </div>
+                )}
+                {lead.next_follow_up && (
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100">
+                    <TrendingUp className="w-3 h-3 text-violet-400 shrink-0" />
+                    <span className="text-violet-600 font-semibold">Follow-up: {lead.next_follow_up}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AgentDetailsTab() {
   const [search, setSearch] = useState("");
   const { data, isLoading, refetch, isFetching } = useQuery({
@@ -1657,20 +1818,30 @@ function AgentDetailsTab() {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-const TABS: { id: Tab; label: string; icon: React.ElementType; activeColor: string }[] = [
-  { id: "world-map",        label: "World Map",          icon: Globe,      activeColor: "bg-sky-600" },
-  { id: "overview",         label: "Lead Overview",       icon: Users,      activeColor: "bg-indigo-600" },
-  { id: "india-map",        label: "India States",        icon: Map,        activeColor: "bg-orange-500" },
-  { id: "lead-details",     label: "Lead Details",        icon: Filter,     activeColor: "bg-violet-600" },
-  { id: "news",             label: "Industry News",       icon: Newspaper,  activeColor: "bg-teal-600" },
-  { id: "competitors",      label: "Competitors",         icon: Building2,  activeColor: "bg-rose-600" },
-  { id: "followup",         label: "Followup Calendar",   icon: Calendar,   activeColor: "bg-purple-600" },
-  { id: "proposal-request", label: "Proposal Requests",  icon: FileText,   activeColor: "bg-emerald-600" },
-  { id: "agent-details",    label: "Agent Details",       icon: UserCheck,  activeColor: "bg-cyan-600" },
+const ALL_TABS: { id: Tab; label: string; icon: React.ElementType; activeColor: string; agentOnly?: boolean }[] = [
+  { id: "my-leads",         label: "My Leads",            icon: UserCheck,  activeColor: "bg-violet-600", agentOnly: true },
+  { id: "world-map",        label: "World Map",           icon: Globe,      activeColor: "bg-sky-600" },
+  { id: "overview",         label: "Lead Overview",        icon: Users,      activeColor: "bg-indigo-600" },
+  { id: "india-map",        label: "India States",         icon: Map,        activeColor: "bg-orange-500" },
+  { id: "lead-details",     label: "Lead Details",         icon: Filter,     activeColor: "bg-violet-600" },
+  { id: "news",             label: "Industry News",        icon: Newspaper,  activeColor: "bg-teal-600" },
+  { id: "competitors",      label: "Competitors",          icon: Building2,  activeColor: "bg-rose-600" },
+  { id: "followup",         label: "Followup Calendar",    icon: Calendar,   activeColor: "bg-purple-600" },
+  { id: "proposal-request", label: "Proposal Requests",   icon: FileText,   activeColor: "bg-emerald-600" },
+  { id: "agent-details",    label: "Agent Details",        icon: UserCheck,  activeColor: "bg-cyan-600" },
 ];
 
 export default function Marketing() {
+  const { user } = useAuth();
+  const isAgent = user?.isAgent === true;
+
+  const TABS = ALL_TABS.filter(t => isAgent ? !!t.agentOnly : !t.agentOnly);
+
   const [activeTab, setActiveTab] = useState<Tab>("world-map");
+
+  useEffect(() => {
+    if (isAgent) setActiveTab("my-leads");
+  }, [isAgent]);
 
   return (
     <Layout>
@@ -1682,7 +1853,14 @@ export default function Marketing() {
           </div>
           <div>
             <h1 className="text-xl font-bold text-gray-900">Marketing Department</h1>
-            <p className="text-xs text-gray-400">Lead intelligence · World map · India states · AI news & competitors · Followup calendar</p>
+            {isAgent ? (
+              <p className="text-xs text-violet-500 font-semibold">
+                <UserCheck className="w-3 h-3 inline mr-1" />
+                Logged in as Marketing Agent · {user?.email}
+              </p>
+            ) : (
+              <p className="text-xs text-gray-400">Lead intelligence · World map · India states · AI news & competitors · Followup calendar</p>
+            )}
           </div>
         </div>
 
@@ -1701,12 +1879,18 @@ export default function Marketing() {
             >
               <tab.icon style={{ width: 15, height: 15 }} />
               <span className="hidden sm:inline">{tab.label}</span>
+              {tab.id === "my-leads" && isAgent && (
+                <span className="hidden sm:inline bg-white/30 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full ml-0.5">
+                  Agent
+                </span>
+              )}
             </button>
           ))}
         </div>
 
         {/* Tab Content */}
         <div>
+          {activeTab === "my-leads"         && <MyLeadsTab email={user?.email ?? ""} />}
           {activeTab === "world-map"        && <WorldMapTab />}
           {activeTab === "overview"         && <OverviewTab />}
           {activeTab === "india-map"        && <IndiaMapTab />}

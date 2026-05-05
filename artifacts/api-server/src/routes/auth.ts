@@ -10,7 +10,7 @@ import { createRequire } from "node:module";
 import nodemailer from "nodemailer";
 import { db } from "@workspace/db";
 import { userPermissionsTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 const execFileAsync = promisify(execFile);
 
@@ -221,6 +221,36 @@ authRouter.post("/auth/login", async (req, res) => {
       .status(400)
       .json({ error: "Username and password are required" });
   }
+  // ── Agent custom-credentials check (bypasses ERPNext) ──────────────────────
+  try {
+    const AGENT_PWD_SALT = process.env.AGENT_PWD_SALT || "wtt-flowmatrix-agent-salt-2026";
+    // Check erp_agents table first (new Agent Details-based agents)
+    const agentRows = await db.execute(sql`
+      SELECT erp_name, agent_name, agent_login_id, agent_password_hash
+      FROM erp_agents
+      WHERE agent_login_id = ${usr}
+        AND agent_login_id IS NOT NULL
+        AND agent_password_hash IS NOT NULL
+    `);
+    if (agentRows.rows.length > 0) {
+      const agent = agentRows.rows[0] as any;
+      const hash = createHash("sha256").update(pwd + AGENT_PWD_SALT).digest("hex");
+      if (hash === agent.agent_password_hash) {
+        return res.json({
+          status: "success",
+          email: String(agent.erp_name),
+          full_name: String(agent.agent_name || agent.erp_name),
+          photo: null,
+          username: String(agent.agent_login_id),
+        });
+      }
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+    // No agent match — fall through to ERPNext
+  } catch (agentErr) {
+    console.warn("Agent credentials check skipped:", agentErr);
+  }
+  // ── ERPNext login ─────────────────────────────────────────────────────────
   try {
     const response = await fetch(`${ERP_URL}/api/method/login`, {
       method: "POST",
@@ -377,13 +407,33 @@ authRouter.get("/auth/user-settings", async (req, res) => {
       .select()
       .from(userPermissionsTable)
       .where(eq(userPermissionsTable.email, email));
-    if (rows.length === 0) return res.json(null);
+    if (rows.length === 0) {
+      // Check erp_agents table — agent logged in via FlowMatrix credentials
+      try {
+        const agentRows = await db.execute(sql`
+          SELECT erp_name FROM erp_agents
+          WHERE erp_name = ${email} OR agent_login_id = ${email}
+          LIMIT 1
+        `);
+        if (agentRows.rows.length > 0) {
+          return res.json({ theme: null, navbarStyle: null, hasAccess: true, twoFaEnabled: false, isAgent: true });
+        }
+      } catch {}
+      return res.json(null);
+    }
     const row = rows[0];
+    // Safely read is_agent column (may not exist before migration)
+    let isAgent = false;
+    try {
+      const raw = (row as any).isAgent ?? (row as any).is_agent ?? false;
+      isAgent = raw === true || raw === 1 || raw === "true" || raw === "t";
+    } catch { isAgent = false; }
     return res.json({
       theme: row.theme,
       navbarStyle: row.navbarStyle,
       hasAccess: row.hasAccess,
       twoFaEnabled: row.twoFaEnabled,
+      isAgent,
     });
   } catch (err) {
     console.error("user-settings error:", err);
