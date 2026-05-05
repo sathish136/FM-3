@@ -6,6 +6,9 @@
     "orientation": "portrait",
     "scheme": "flowmatrix",
     "userInterfaceStyle": "automatic",
+    "updates": {
+      "enabled": false
+    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.wtt.flowmatrix.crm",

@@ -4,7 +4,7 @@
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start --port 8099",
-    "dev": "expo start --tunnel --port 8099 --clear",
+    "dev": "EXPO_NO_TELEMETRY=1 expo start --tunnel --port 8099 --clear --non-interactive",
     "web": "serve dist -l 5000 --no-clipboard",
     "build:web": "expo export --platform web --output-dir dist --clear",
     "dev:native": "expo start --port 8099",
