@@ -2,11 +2,365 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import nodemailer from "nodemailer";
+import PDFDocument from "pdfkit";
 
 const ERP_URL = (process.env.ERPNEXT_URL || "https://erp.wttint.com").replace(/\/$/, "");
 const ERP_AUTH = () => `token ${process.env.ERPNEXT_API_KEY || ""}:${process.env.ERPNEXT_API_SECRET || ""}`;
 
 const router = Router();
+
+// ─── PDF Helpers ──────────────────────────────────────────────────────────────
+
+const NAVY  = "#1e3a5f";
+const LIGHT = "#f1f5f9";
+const MUTED = "#64748b";
+const DARK  = "#1e293b";
+const W     = 515;
+const L     = 40;
+
+function fmtDTPdf(s?: string) {
+  if (!s) return "—";
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? s : d.toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+function fmtDatePdf(s?: string) {
+  if (!s) return "—";
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? s : d.toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" });
+}
+
+function pdfBuf(fn: (doc: InstanceType<typeof PDFDocument>, addY: (n: number) => void, getY: () => number) => void): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const doc = new (PDFDocument as any)({ size: "A4", margin: 0, autoFirstPage: true });
+    const chunks: Buffer[] = [];
+    doc.on("data", (c: Buffer) => chunks.push(c));
+    doc.on("end",  () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+    let y = 40;
+    const addY = (n: number) => { y += n; };
+    const getY = () => y;
+    fn(doc, addY, getY);
+    doc.end();
+  });
+}
+
+function secHeader(doc: any, title: string, y: number): number {
+  doc.rect(L, y, W, 16).fill("#dbeafe");
+  doc.fillColor(NAVY).fontSize(7).font("Helvetica-Bold")
+     .text(title.toUpperCase(), L + 6, y + 4, { width: W - 12 });
+  return y + 20;
+}
+
+function labelVal(doc: any, label: string, value: string, x: number, y: number, colW: number) {
+  doc.fillColor(MUTED).fontSize(7).font("Helvetica").text(label, x, y, { width: colW, lineBreak: false });
+  doc.fillColor(DARK).fontSize(8.5).font("Helvetica-Bold").text(value || "—", x, y + 9, { width: colW });
+}
+
+function textSection(doc: any, title: string, value: string, y: number): number {
+  y = secHeader(doc, title, y);
+  if (value && value.trim()) {
+    doc.fillColor(DARK).fontSize(8.5).font("Helvetica")
+       .text(value.trim(), L + 6, y, { width: W - 12 });
+    y = doc.y + 8;
+  } else {
+    doc.fillColor(MUTED).fontSize(8).font("Helvetica").text("—", L + 6, y);
+    y = doc.y + 8;
+  }
+  return y;
+}
+
+function checkPageBreak(doc: any, y: number, needed = 40): number {
+  if (y + needed > doc.page.height - 60) {
+    doc.addPage({ size: "A4", margin: 0 });
+    return 40;
+  }
+  return y;
+}
+
+function pdfFooter(doc: any) {
+  const ph = doc.page.height;
+  doc.rect(L, ph - 36, W, 26).fill("#f8fafc");
+  doc.fillColor("#94a3b8").fontSize(7).font("Helvetica")
+     .text("WTT International  ·  PLC & Automation  ·  Water Loving Technology", L, ph - 29, { width: W, align: "center" });
+  doc.fillColor("#cbd5e1").fontSize(7)
+     .text(`Generated: ${fmtDatePdf(new Date().toISOString())}`, L, ph - 20, { width: W, align: "center" });
+}
+
+async function buildSiteCallPDF(call: any): Promise<Buffer> {
+  return pdfBuf((doc) => {
+    const callNo   = call.call_no || `OSC-${String(call.id).padStart(4, "0")}`;
+    const attended = Array.isArray(call.attended_by) ? call.attended_by.map((e: any) => e.name).join(", ") : "";
+    const spares   = Array.isArray(call.spares_changed) ? call.spares_changed.filter((s: any) => s.part_name?.trim()) : [];
+
+    // ── Header ────────────────────────────────────────────────────────
+    doc.rect(L, 30, W, 72).fill(NAVY);
+    doc.fillColor("white").fontSize(18).font("Helvetica-Bold").text("WTT INTERNATIONAL", L + 14, 42);
+    doc.fillColor("#93c5fd").fontSize(8).font("Helvetica").text("Water Loving Technology", L + 14, 64);
+    doc.fillColor("#93c5fd").fontSize(7.5).text("ONLINE SUPPORT CALL REPORT", L + 14, 76);
+    doc.fillColor("white").fontSize(13).font("Helvetica-Bold")
+       .text(callNo, L, 42, { width: W - 14, align: "right" });
+    doc.fillColor("#93c5fd").fontSize(7.5).font("Helvetica")
+       .text(fmtDatePdf(call.call_received_at || call.created_at), L, 64, { width: W - 14, align: "right" });
+    const statusColor = call.status === "Closed" ? "#86efac" : call.status === "In Progress" ? "#fde68a" : "#fca5a5";
+    doc.fillColor(statusColor).fontSize(7.5).font("Helvetica-Bold")
+       .text(call.status || "Open", L, 76, { width: W - 14, align: "right" });
+
+    let y = 116;
+
+    // ── Project ───────────────────────────────────────────────────────
+    y = secHeader(doc, "Project & Status", y);
+    labelVal(doc, "Project No.",  call.project_number || "—", L + 6,  y, 150);
+    labelVal(doc, "Project Name", call.project_name   || "—", L + 165, y, 220);
+    labelVal(doc, "Status",       call.status || "Open",      L + 395, y, 126);
+    y += 30;
+
+    // ── Team ──────────────────────────────────────────────────────────
+    y = secHeader(doc, "Team & Contact", y);
+    labelVal(doc, "Site Coordinator", call.site_coordinator_name  || "—", L + 6,   y, 155);
+    labelVal(doc, "Contact Number",   call.site_coordinator_phone || "—", L + 170, y, 155);
+    labelVal(doc, "Attended By",      attended || "—",                     L + 334, y, 187);
+    y += 30;
+
+    // ── Timing ────────────────────────────────────────────────────────
+    y = secHeader(doc, "Timing", y);
+    labelVal(doc, "Call Received",  fmtDTPdf(call.call_received_at),  L + 6,   y, 160);
+    labelVal(doc, "Work Started",   fmtDTPdf(call.work_started_at),   L + 180, y, 160);
+    labelVal(doc, "Work Completed", fmtDTPdf(call.work_completed_at), L + 356, y, 165);
+    y += 30;
+
+    // ── Issue ─────────────────────────────────────────────────────────
+    y = checkPageBreak(doc, y, 60);
+    y = textSection(doc, "Customer Complaint", call.issue_details, y);
+
+    // ── Action ────────────────────────────────────────────────────────
+    y = checkPageBreak(doc, y, 60);
+    y = textSection(doc, "Solution — Action Taken", call.action_taken, y);
+
+    // ── Root Cause ────────────────────────────────────────────────────
+    if (call.root_cause) {
+      y = checkPageBreak(doc, y, 50);
+      y = textSection(doc, "Root Cause", call.root_cause, y);
+    }
+
+    // ── Spares ────────────────────────────────────────────────────────
+    if (spares.length > 0) {
+      y = checkPageBreak(doc, y, 40 + spares.length * 16);
+      y = secHeader(doc, "Spares / Parts Changed", y);
+      doc.rect(L, y, W, 14).fill("#e2e8f0");
+      ["#", "Part Name", "Part No.", "Qty", "Remarks"].forEach((h, i) => {
+        const xs = [L+4, L+20, L+200, L+295, L+340];
+        const ws = [16, 178, 90, 40, 180];
+        doc.fillColor(MUTED).fontSize(7).font("Helvetica-Bold").text(h, xs[i], y + 3, { width: ws[i], lineBreak: false });
+      });
+      y += 14;
+      spares.forEach((s: any, i: number) => {
+        if (i % 2 === 0) doc.rect(L, y, W, 14).fill("#f8fafc");
+        const xs = [L+4, L+20, L+200, L+295, L+340];
+        const ws = [16, 178, 90, 40, 180];
+        [String(i+1), s.part_name||"", s.part_no||"", s.qty||"", s.remarks||""].forEach((v, j) => {
+          doc.fillColor(DARK).fontSize(8).font("Helvetica").text(v, xs[j], y + 3, { width: ws[j], lineBreak: false });
+        });
+        y += 14;
+      });
+      y += 8;
+    }
+
+    // ── Remarks ───────────────────────────────────────────────────────
+    if (call.remarks) {
+      y = checkPageBreak(doc, y, 50);
+      y = textSection(doc, "Remarks", call.remarks, y);
+    }
+
+    pdfFooter(doc);
+  });
+}
+
+async function buildServiceReportPDF(report: any): Promise<Buffer> {
+  return pdfBuf((doc) => {
+    const reportNo  = report.report_no || `SR-${String(report.id).padStart(4, "0")}`;
+    const attended  = Array.isArray(report.attended_by)    ? report.attended_by.map((e: any)    => e.name).join(", ") : "";
+    const elecTeam  = Array.isArray(report.electrical_team)? report.electrical_team.map((e: any) => e.name).join(", ") : "";
+    const checklist = Array.isArray(report.plc_checklist)  ? report.plc_checklist  : [];
+    const spares    = Array.isArray(report.spares_changed) ? report.spares_changed.filter((s: any) => s.part_name?.trim()) : [];
+    const checked   = checklist.filter((c: any) => c.checked).length;
+
+    // ── Header ────────────────────────────────────────────────────────
+    doc.rect(L, 30, W, 80).fill(NAVY);
+    doc.fillColor("white").fontSize(18).font("Helvetica-Bold").text("WTT INTERNATIONAL", L + 14, 42);
+    doc.fillColor("#93c5fd").fontSize(8).font("Helvetica").text("Water Loving Technology", L + 14, 64);
+    doc.fillColor("white").fontSize(14).font("Helvetica-Bold").text("SITE SERVICE REPORT", L + 14, 78);
+    doc.fillColor("white").fontSize(13).font("Helvetica-Bold")
+       .text(reportNo, L, 42, { width: W - 14, align: "right" });
+    doc.fillColor("#93c5fd").fontSize(7.5).font("Helvetica")
+       .text(fmtDatePdf(report.call_received_at || report.created_at), L, 64, { width: W - 14, align: "right" });
+    const statusColor = report.status === "Closed" ? "#86efac" : report.status === "In Progress" ? "#fde68a" : "#fca5a5";
+    doc.fillColor(statusColor).fontSize(7.5).font("Helvetica-Bold")
+       .text(report.status || "Open", L, 78, { width: W - 14, align: "right" });
+
+    let y = 126;
+
+    // ── Project ───────────────────────────────────────────────────────
+    y = secHeader(doc, "Project & Status", y);
+    labelVal(doc, "Project No.",  report.project_number || "—", L + 6,   y, 150);
+    labelVal(doc, "Project Name", report.project_name   || "—", L + 165, y, 220);
+    labelVal(doc, "Status",       report.status || "Open",      L + 395, y, 126);
+    y += 30;
+
+    // ── Team & Contact ────────────────────────────────────────────────
+    y = secHeader(doc, "Site Coordination & Team", y);
+    labelVal(doc, "Site Coordinator", report.site_coordinator_name  || "—", L + 6,   y, 155);
+    labelVal(doc, "Contact Number",   report.site_coordinator_phone || "—", L + 170, y, 155);
+    labelVal(doc, "Attended By",      attended || "—",                       L + 334, y, 187);
+    y += 30;
+
+    // ── Timing ────────────────────────────────────────────────────────
+    y = secHeader(doc, "Timing Details", y);
+    const timings = [
+      ["Call Received",  report.call_received_at],
+      ["Departed Office",report.departed_at],
+      ["Arrived at Site",report.arrived_site_at],
+      ["Work Started",   report.work_started_at],
+    ];
+    timings.forEach(([label, val], i) => {
+      labelVal(doc, label, fmtDTPdf(val), L + 6 + i * 128, y, 124);
+    });
+    y += 30;
+    const timings2 = [
+      ["Work Completed",  report.work_completed_at],
+      ["Departed Site",   report.departed_site_at],
+      ["Arrived Back",    report.arrived_back_at],
+    ];
+    timings2.forEach(([label, val], i) => {
+      labelVal(doc, label, fmtDTPdf(val), L + 6 + i * 170, y, 166);
+    });
+    y += 30;
+
+    // ── Issue & Service ───────────────────────────────────────────────
+    y = checkPageBreak(doc, y, 80);
+    y = secHeader(doc, "Customer Complaint & Service Details", y);
+    doc.fillColor(MUTED).fontSize(7).font("Helvetica").text("Customer Complaint", L + 6, y);
+    doc.fillColor(MUTED).fontSize(7).font("Helvetica").text("Service / Work Done", L + W/2 + 6, y);
+    y += 10;
+    const issueText   = (report.issue_details   || "—").trim();
+    const serviceText = (report.service_details || "—").trim();
+    const halfW = W/2 - 12;
+    const startY = y;
+    doc.fillColor(DARK).fontSize(8.5).font("Helvetica").text(issueText,   L + 6,       y, { width: halfW });
+    const leftEnd = doc.y;
+    doc.fillColor(DARK).fontSize(8.5).font("Helvetica").text(serviceText, L + W/2 + 6, startY, { width: halfW });
+    const rightEnd = doc.y;
+    y = Math.max(leftEnd, rightEnd) + 10;
+
+    // ── Resolution ────────────────────────────────────────────────────
+    y = checkPageBreak(doc, y, 60);
+    y = secHeader(doc, "Root Cause & Action Taken", y);
+    doc.fillColor(MUTED).fontSize(7).font("Helvetica").text("Root Cause",  L + 6,       y);
+    doc.fillColor(MUTED).fontSize(7).font("Helvetica").text("Action Taken", L + W/2 + 6, y);
+    y += 10;
+    const rcText  = (report.root_cause   || "—").trim();
+    const atText  = (report.action_taken || "—").trim();
+    const startY2 = y;
+    doc.fillColor(DARK).fontSize(8.5).font("Helvetica").text(rcText, L + 6,       y, { width: halfW });
+    const le2 = doc.y;
+    doc.fillColor(DARK).fontSize(8.5).font("Helvetica").text(atText, L + W/2 + 6, startY2, { width: halfW });
+    const re2 = doc.y;
+    y = Math.max(le2, re2) + 10;
+
+    // ── Engineer Suggestions ──────────────────────────────────────────
+    if (report.engineer_suggestions) {
+      y = checkPageBreak(doc, y, 50);
+      y = textSection(doc, "Engineer Suggestions", report.engineer_suggestions, y);
+    }
+
+    // ── PLC Checklist ─────────────────────────────────────────────────
+    if (checklist.length > 0) {
+      const rowsNeeded = Math.ceil(checklist.length / 2) * 14 + 30;
+      y = checkPageBreak(doc, y, rowsNeeded);
+      y = secHeader(doc, `PLC Points Checklist  (${checked}/${checklist.length} verified)`, y);
+      const half = Math.ceil(checklist.length / 2);
+      for (let i = 0; i < half; i++) {
+        y = checkPageBreak(doc, y, 14);
+        const left  = checklist[i];
+        const right = checklist[i + half];
+        const rowColor = i % 2 === 0 ? "#f8fafc" : "white";
+        doc.rect(L, y, W/2, 14).fill(rowColor);
+        if (right) doc.rect(L + W/2, y, W/2, 14).fill(rowColor);
+        const tickL = left.checked  ? "✓" : "○";
+        const tickR = right?.checked ? "✓" : "○";
+        doc.fillColor(left.checked  ? "#16a34a" : "#94a3b8").fontSize(9).font("Helvetica-Bold")
+           .text(tickL, L + 5, y + 3, { width: 12, lineBreak: false });
+        doc.fillColor(DARK).fontSize(7.5).font("Helvetica")
+           .text(left.label, L + 20, y + 4, { width: W/2 - 26, lineBreak: false });
+        if (right) {
+          doc.fillColor(right.checked ? "#16a34a" : "#94a3b8").fontSize(9).font("Helvetica-Bold")
+             .text(tickR, L + W/2 + 5, y + 3, { width: 12, lineBreak: false });
+          doc.fillColor(DARK).fontSize(7.5).font("Helvetica")
+             .text(right.label, L + W/2 + 20, y + 4, { width: W/2 - 26, lineBreak: false });
+        }
+        y += 14;
+      }
+      y += 8;
+    }
+
+    // ── Spares ────────────────────────────────────────────────────────
+    if (spares.length > 0) {
+      y = checkPageBreak(doc, y, 30 + spares.length * 16);
+      y = secHeader(doc, "Spares / Parts Changed", y);
+      doc.rect(L, y, W, 14).fill("#e2e8f0");
+      ["#", "Part Name", "Part No.", "Qty", "Remarks"].forEach((h, i) => {
+        const xs = [L+4, L+20, L+200, L+295, L+340];
+        const ws = [16, 178, 90, 40, 180];
+        doc.fillColor(MUTED).fontSize(7).font("Helvetica-Bold").text(h, xs[i], y + 3, { width: ws[i], lineBreak: false });
+      });
+      y += 14;
+      spares.forEach((s: any, i: number) => {
+        y = checkPageBreak(doc, y, 16);
+        if (i % 2 === 0) doc.rect(L, y, W, 14).fill("#f8fafc");
+        const xs = [L+4, L+20, L+200, L+295, L+340];
+        const ws = [16, 178, 90, 40, 180];
+        [String(i+1), s.part_name||"", s.part_no||"", s.qty||"", s.remarks||""].forEach((v, j) => {
+          doc.fillColor(DARK).fontSize(8).font("Helvetica").text(v, xs[j], y + 3, { width: ws[j], lineBreak: false });
+        });
+        y += 14;
+      });
+      y += 8;
+    }
+
+    // ── Electrical Issue ──────────────────────────────────────────────
+    if (report.electrical_issue) {
+      y = checkPageBreak(doc, y, 50);
+      y = secHeader(doc, "Electrical Issue", y);
+      labelVal(doc, "Assigned Team", elecTeam || "—", L + 6, y, 200);
+      y += 20;
+      if (report.electrical_issue_desc) {
+        doc.fillColor(DARK).fontSize(8.5).font("Helvetica")
+           .text(report.electrical_issue_desc.trim(), L + 6, y, { width: W - 12 });
+        y = doc.y + 8;
+      }
+    }
+
+    // ── Customer Remarks ──────────────────────────────────────────────
+    if (report.customer_remarks) {
+      y = checkPageBreak(doc, y, 50);
+      y = textSection(doc, "Customer Remarks", report.customer_remarks, y);
+    }
+
+    // ── Signatures ────────────────────────────────────────────────────
+    y = checkPageBreak(doc, y, 70);
+    y = secHeader(doc, "Signatures", y);
+    const sigLabels = ["Customer / Site Rep.", "WTT Engineer", "WTT Supervisor"];
+    const sigW = W / 3;
+    sigLabels.forEach((label, i) => {
+      const sx = L + i * sigW;
+      doc.rect(sx + 4, y, sigW - 8, 36).stroke("#cbd5e1");
+      doc.fillColor(MUTED).fontSize(7).font("Helvetica")
+         .text(label, sx + 4, y + 40, { width: sigW - 8, align: "center" });
+    });
+    y += 52;
+
+    pdfFooter(doc);
+  });
+}
 
 (async () => {
   try {
@@ -266,46 +620,41 @@ router.post("/plc/site-calls/:id/send-email", async (req, res) => {
       auth: { user: smtpUser, pass: smtpPass },
     });
 
-    const callNo = call.call_no || `OSC-${String(call.id).padStart(4, "0")}`;
-    const fmtDT = (s?: string) => { if (!s) return "—"; const d = new Date(s); return isNaN(d.getTime()) ? s : d.toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }); };
+    const callNo   = call.call_no || `OSC-${String(call.id).padStart(4, "0")}`;
     const attended = Array.isArray(call.attended_by) ? call.attended_by.map((e: any) => e.name).join(", ") : "";
+    const dateStr  = fmtDatePdf(call.call_received_at || call.created_at);
+    const pdfBuf   = await buildSiteCallPDF(call);
 
-    const html = `
-<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif;">
+    const html = `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif;">
 <div style="max-width:640px;margin:24px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
-  <div style="background:#1e3a5f;padding:28px 32px;display:flex;align-items:center;gap:16px;">
-    <div>
-      <div style="color:#fff;font-size:20px;font-weight:900;letter-spacing:1px;">WTT INTERNATIONAL</div>
-      <div style="color:#93c5fd;font-size:11px;margin-top:2px;">Water Loving Technology</div>
-    </div>
-    <div style="margin-left:auto;text-align:right;">
-      <div style="color:#93c5fd;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Online Support Call Report</div>
-      <div style="color:#fff;font-size:15px;font-weight:bold;margin-top:2px;">${callNo}</div>
-    </div>
+  <div style="background:#1e3a5f;padding:28px 32px;">
+    <div style="color:#fff;font-size:20px;font-weight:900;letter-spacing:1px;">WTT INTERNATIONAL</div>
+    <div style="color:#93c5fd;font-size:11px;margin-top:2px;">Water Loving Technology</div>
+    <div style="margin-top:10px;color:#93c5fd;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Online Support Call Report — <span style="color:#fff;font-weight:bold;">${callNo}</span></div>
   </div>
   <div style="padding:24px 32px;">
-    <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
-      <tr><td style="padding:6px 0;color:#64748b;font-size:12px;width:140px;">Project</td><td style="padding:6px 0;font-size:13px;font-weight:600;">${call.project_name || "—"}${call.project_number ? ` (${call.project_number})` : ""}</td></tr>
-      <tr><td style="padding:6px 0;color:#64748b;font-size:12px;">Status</td><td style="padding:6px 0;font-size:13px;font-weight:600;">${call.status || "Open"}</td></tr>
-      <tr><td style="padding:6px 0;color:#64748b;font-size:12px;">Attended By</td><td style="padding:6px 0;font-size:13px;">${attended || "—"}</td></tr>
-      <tr><td style="padding:6px 0;color:#64748b;font-size:12px;">Call Received</td><td style="padding:6px 0;font-size:13px;">${fmtDT(call.call_received_at)}</td></tr>
-      <tr><td style="padding:6px 0;color:#64748b;font-size:12px;">Work Started</td><td style="padding:6px 0;font-size:13px;">${fmtDT(call.work_started_at)}</td></tr>
-      <tr><td style="padding:6px 0;color:#64748b;font-size:12px;">Work Completed</td><td style="padding:6px 0;font-size:13px;">${fmtDT(call.work_completed_at)}</td></tr>
+    <p style="margin:0 0 18px;font-size:14px;color:#1e293b;">Dear Customer,</p>
+    <p style="margin:0 0 18px;font-size:13px;color:#475569;line-height:1.6;">
+      Please find attached the Online Support Call Report <strong>${callNo}</strong> for your reference.
+      This report covers the support session handled on <strong>${dateStr}</strong>.
+    </p>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:20px;background:#f8fafc;border-radius:8px;overflow:hidden;">
+      <tr><td style="padding:8px 14px;color:#64748b;font-size:12px;width:140px;border-bottom:1px solid #e2e8f0;">Project</td><td style="padding:8px 14px;font-size:13px;font-weight:600;border-bottom:1px solid #e2e8f0;">${call.project_name || "—"}${call.project_number ? ` (${call.project_number})` : ""}</td></tr>
+      <tr><td style="padding:8px 14px;color:#64748b;font-size:12px;border-bottom:1px solid #e2e8f0;">Status</td><td style="padding:8px 14px;font-size:13px;font-weight:600;border-bottom:1px solid #e2e8f0;">${call.status || "Open"}</td></tr>
+      <tr><td style="padding:8px 14px;color:#64748b;font-size:12px;border-bottom:1px solid #e2e8f0;">Attended By</td><td style="padding:8px 14px;font-size:13px;border-bottom:1px solid #e2e8f0;">${attended || "—"}</td></tr>
+      <tr><td style="padding:8px 14px;color:#64748b;font-size:12px;border-bottom:1px solid #e2e8f0;">Call Received</td><td style="padding:8px 14px;font-size:13px;border-bottom:1px solid #e2e8f0;">${fmtDTPdf(call.call_received_at)}</td></tr>
+      <tr><td style="padding:8px 14px;color:#64748b;font-size:12px;border-bottom:1px solid #e2e8f0;">Work Started</td><td style="padding:8px 14px;font-size:13px;border-bottom:1px solid #e2e8f0;">${fmtDTPdf(call.work_started_at)}</td></tr>
+      <tr><td style="padding:8px 14px;color:#64748b;font-size:12px;">Work Completed</td><td style="padding:8px 14px;font-size:13px;">${fmtDTPdf(call.work_completed_at)}</td></tr>
     </table>
-    <div style="background:#f8fafc;border-left:4px solid #1e3a5f;padding:14px 18px;border-radius:0 8px 8px 0;margin-bottom:16px;">
-      <div style="color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Customer Complaint</div>
-      <div style="font-size:13px;color:#1e293b;white-space:pre-wrap;">${call.issue_details || "—"}</div>
-    </div>
-    <div style="background:#f0fdf4;border-left:4px solid #16a34a;padding:14px 18px;border-radius:0 8px 8px 0;margin-bottom:16px;">
-      <div style="color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Solution — Action Taken</div>
+    <div style="background:#f0fdf4;border-left:4px solid #16a34a;padding:14px 18px;border-radius:0 8px 8px 0;margin-bottom:20px;">
+      <div style="color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Action Taken</div>
       <div style="font-size:13px;color:#1e293b;white-space:pre-wrap;">${call.action_taken || "—"}</div>
     </div>
-    ${call.root_cause ? `<div style="background:#fefce8;border-left:4px solid #ca8a04;padding:14px 18px;border-radius:0 8px 8px 0;margin-bottom:16px;"><div style="color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Root Cause</div><div style="font-size:13px;color:#1e293b;white-space:pre-wrap;">${call.root_cause}</div></div>` : ""}
-    ${call.remarks ? `<div style="background:#fdf4ff;border-left:4px solid #9333ea;padding:14px 18px;border-radius:0 8px 8px 0;margin-bottom:16px;"><div style="color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Remarks</div><div style="font-size:13px;color:#1e293b;">${call.remarks}</div></div>` : ""}
+    <p style="margin:0;font-size:12px;color:#94a3b8;">The full detailed report is attached as a PDF to this email.</p>
   </div>
   <div style="background:#f8fafc;padding:16px 32px;border-top:1px solid #e2e8f0;text-align:center;">
-    <div style="color:#94a3b8;font-size:11px;">WTT International · PLC &amp; Automation · noreply@wttint.com</div>
-    <div style="color:#cbd5e1;font-size:10px;margin-top:4px;">Generated on ${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}</div>
+    <div style="color:#94a3b8;font-size:11px;">WTT International · PLC &amp; Automation</div>
+    <div style="color:#cbd5e1;font-size:10px;margin-top:4px;">Generated on ${fmtDatePdf(new Date().toISOString())}</div>
   </div>
 </div>
 </body></html>`;
@@ -315,6 +664,11 @@ router.post("/plc/site-calls/:id/send-email", async (req, res) => {
       to: toEmail,
       subject: `Online Support Call Report — ${callNo} | ${call.project_name || ""}`,
       html,
+      attachments: [{
+        filename: `${callNo}.pdf`,
+        content: pdfBuf,
+        contentType: "application/pdf",
+      }],
     });
     res.json({ ok: true, sent_to: toEmail });
   } catch (e: any) {
@@ -517,28 +871,33 @@ router.post("/plc/service-reports/:id/send-email", async (req, res) => {
       auth: { user: smtpUser, pass: smtpPass },
     });
 
-    const reportNo = report.report_no || `SR-${String(report.id).padStart(4, "0")}`;
-    const fmtDT = (s?: string) => { if (!s) return "—"; const d = new Date(s); return isNaN(d.getTime()) ? s : d.toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }); };
-    const attended = Array.isArray(report.attended_by) ? report.attended_by.map((e: any) => e.name).join(", ") : "";
-    const checklist = Array.isArray(report.plc_checklist) ? report.plc_checklist : [];
+    const reportNo    = report.report_no || `SR-${String(report.id).padStart(4, "0")}`;
+    const attended    = Array.isArray(report.attended_by)   ? report.attended_by.map((e: any)   => e.name).join(", ") : "";
+    const checklist   = Array.isArray(report.plc_checklist) ? report.plc_checklist : [];
     const checkedCount = checklist.filter((c: any) => c.checked).length;
+    const dateStr     = fmtDatePdf(report.call_received_at || report.created_at);
+    const pdfBuffer   = await buildServiceReportPDF(report);
 
-    const html = `
-<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif;">
+    const html = `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif;">
 <div style="max-width:640px;margin:24px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
   <div style="background:#1e3a5f;padding:28px 32px;">
     <div style="color:#fff;font-size:20px;font-weight:900;letter-spacing:1px;">WTT INTERNATIONAL</div>
     <div style="color:#93c5fd;font-size:11px;margin-top:2px;">Water Loving Technology</div>
-    <div style="margin-top:12px;color:#93c5fd;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Site Service Report — <span style="color:#fff;font-weight:bold;">${reportNo}</span></div>
+    <div style="margin-top:10px;color:#93c5fd;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Site Service Report — <span style="color:#fff;font-weight:bold;">${reportNo}</span></div>
   </div>
   <div style="padding:24px 32px;">
-    <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
-      <tr><td style="padding:6px 0;color:#64748b;font-size:12px;width:140px;">Project</td><td style="padding:6px 0;font-size:13px;font-weight:600;">${report.project_name || "—"}${report.project_number ? ` (${report.project_number})` : ""}</td></tr>
-      <tr><td style="padding:6px 0;color:#64748b;font-size:12px;">Site Coordinator</td><td style="padding:6px 0;font-size:13px;">${report.site_coordinator_name || "—"}${report.site_coordinator_phone ? ` · ${report.site_coordinator_phone}` : ""}</td></tr>
-      <tr><td style="padding:6px 0;color:#64748b;font-size:12px;">Status</td><td style="padding:6px 0;font-size:13px;font-weight:600;">${report.status || "Open"}</td></tr>
-      <tr><td style="padding:6px 0;color:#64748b;font-size:12px;">Attended By</td><td style="padding:6px 0;font-size:13px;">${attended || "—"}</td></tr>
-      <tr><td style="padding:6px 0;color:#64748b;font-size:12px;">Visit Date</td><td style="padding:6px 0;font-size:13px;">${fmtDT(report.call_received_at)}</td></tr>
-      <tr><td style="padding:6px 0;color:#64748b;font-size:12px;">Work Completed</td><td style="padding:6px 0;font-size:13px;">${fmtDT(report.work_completed_at)}</td></tr>
+    <p style="margin:0 0 18px;font-size:14px;color:#1e293b;">Dear Customer,</p>
+    <p style="margin:0 0 18px;font-size:13px;color:#475569;line-height:1.6;">
+      Please find attached the Site Service Report <strong>${reportNo}</strong> for the visit conducted on <strong>${dateStr}</strong>.
+      This report includes the service work performed, PLC checklist, and action taken by our team.
+    </p>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:20px;background:#f8fafc;border-radius:8px;overflow:hidden;">
+      <tr><td style="padding:8px 14px;color:#64748b;font-size:12px;width:140px;border-bottom:1px solid #e2e8f0;">Project</td><td style="padding:8px 14px;font-size:13px;font-weight:600;border-bottom:1px solid #e2e8f0;">${report.project_name || "—"}${report.project_number ? ` (${report.project_number})` : ""}</td></tr>
+      <tr><td style="padding:8px 14px;color:#64748b;font-size:12px;border-bottom:1px solid #e2e8f0;">Site Coordinator</td><td style="padding:8px 14px;font-size:13px;border-bottom:1px solid #e2e8f0;">${report.site_coordinator_name || "—"}${report.site_coordinator_phone ? ` · ${report.site_coordinator_phone}` : ""}</td></tr>
+      <tr><td style="padding:8px 14px;color:#64748b;font-size:12px;border-bottom:1px solid #e2e8f0;">Status</td><td style="padding:8px 14px;font-size:13px;font-weight:600;border-bottom:1px solid #e2e8f0;">${report.status || "Open"}</td></tr>
+      <tr><td style="padding:8px 14px;color:#64748b;font-size:12px;border-bottom:1px solid #e2e8f0;">Attended By</td><td style="padding:8px 14px;font-size:13px;border-bottom:1px solid #e2e8f0;">${attended || "—"}</td></tr>
+      <tr><td style="padding:8px 14px;color:#64748b;font-size:12px;border-bottom:1px solid #e2e8f0;">Visit Date</td><td style="padding:8px 14px;font-size:13px;border-bottom:1px solid #e2e8f0;">${fmtDTPdf(report.call_received_at)}</td></tr>
+      <tr><td style="padding:8px 14px;color:#64748b;font-size:12px;">Work Completed</td><td style="padding:8px 14px;font-size:13px;">${fmtDTPdf(report.work_completed_at)}</td></tr>
     </table>
     <div style="background:#f8fafc;border-left:4px solid #1e3a5f;padding:14px 18px;border-radius:0 8px 8px 0;margin-bottom:16px;">
       <div style="color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Customer Complaint</div>
@@ -548,13 +907,12 @@ router.post("/plc/service-reports/:id/send-email", async (req, res) => {
       <div style="color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Solution — Work Done</div>
       <div style="font-size:13px;color:#1e293b;white-space:pre-wrap;">${report.service_details || "—"}</div>
     </div>
-    ${report.action_taken ? `<div style="background:#eff6ff;border-left:4px solid #3b82f6;padding:14px 18px;border-radius:0 8px 8px 0;margin-bottom:16px;"><div style="color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Action Taken</div><div style="font-size:13px;color:#1e293b;white-space:pre-wrap;">${report.action_taken}</div></div>` : ""}
-    ${checklist.length > 0 ? `<div style="background:#f8fafc;border-radius:8px;padding:14px 18px;margin-bottom:16px;"><div style="color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">PLC Checklist — ${checkedCount}/${checklist.length} points verified</div>${checklist.map((item: any) => `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;color:${item.checked ? "#16a34a" : "#94a3b8"};">${item.checked ? "✅" : "⬜"} ${item.label}${item.note ? ` <span style="color:#94a3b8;font-size:11px;">— ${item.note}</span>` : ""}</div>`).join("")}</div>` : ""}
-    ${report.engineer_suggestions ? `<div style="background:#fdf4ff;border-left:4px solid #9333ea;padding:14px 18px;border-radius:0 8px 8px 0;margin-bottom:16px;"><div style="color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Engineer Suggestions</div><div style="font-size:13px;color:#1e293b;white-space:pre-wrap;">${report.engineer_suggestions}</div></div>` : ""}
+    ${checklist.length > 0 ? `<div style="background:#f8fafc;border-radius:8px;padding:12px 16px;margin-bottom:16px;"><div style="color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">PLC Checklist — ${checkedCount}/${checklist.length} points verified</div></div>` : ""}
+    <p style="margin:0;font-size:12px;color:#94a3b8;">The full detailed report with complete checklist, timing, and signatures is attached as a PDF.</p>
   </div>
   <div style="background:#f8fafc;padding:16px 32px;border-top:1px solid #e2e8f0;text-align:center;">
-    <div style="color:#94a3b8;font-size:11px;">WTT International · PLC &amp; Automation · noreply@wttint.com</div>
-    <div style="color:#cbd5e1;font-size:10px;margin-top:4px;">Generated on ${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}</div>
+    <div style="color:#94a3b8;font-size:11px;">WTT International · PLC &amp; Automation</div>
+    <div style="color:#cbd5e1;font-size:10px;margin-top:4px;">Generated on ${fmtDatePdf(new Date().toISOString())}</div>
   </div>
 </div>
 </body></html>`;
@@ -564,6 +922,11 @@ router.post("/plc/service-reports/:id/send-email", async (req, res) => {
       to: toEmail,
       subject: `Site Service Report — ${reportNo} | ${report.project_name || ""}`,
       html,
+      attachments: [{
+        filename: `${reportNo}.pdf`,
+        content: pdfBuffer,
+        contentType: "application/pdf",
+      }],
     });
     res.json({ ok: true, sent_to: toEmail });
   } catch (e: any) {
