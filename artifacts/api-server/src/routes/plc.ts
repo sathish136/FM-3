@@ -99,7 +99,7 @@ router.get("/plc/site-calls", async (req, res) => {
     if (hasSearch && hasStatus) {
       result = await db.execute(sql`
         SELECT id, call_no, project_number, project_name, attended_by,
-               issue_details, status, call_received_at, electrical_issue, created_at, created_by, call_type
+               issue_details, status, call_received_at, electrical_issue, created_at, created_by, call_type, customer_email
         FROM plc_site_calls
         WHERE status = ${status}
           AND (project_name ILIKE ${"%" + search + "%"}
@@ -111,7 +111,7 @@ router.get("/plc/site-calls", async (req, res) => {
     } else if (hasSearch) {
       result = await db.execute(sql`
         SELECT id, call_no, project_number, project_name, attended_by,
-               issue_details, status, call_received_at, electrical_issue, created_at, created_by, call_type
+               issue_details, status, call_received_at, electrical_issue, created_at, created_by, call_type, customer_email
         FROM plc_site_calls
         WHERE project_name ILIKE ${"%" + search + "%"}
            OR project_number ILIKE ${"%" + search + "%"}
@@ -122,7 +122,7 @@ router.get("/plc/site-calls", async (req, res) => {
     } else if (hasStatus) {
       result = await db.execute(sql`
         SELECT id, call_no, project_number, project_name, attended_by,
-               issue_details, status, call_received_at, electrical_issue, created_at, created_by, call_type
+               issue_details, status, call_received_at, electrical_issue, created_at, created_by, call_type, customer_email
         FROM plc_site_calls
         WHERE status = ${status}
         ORDER BY created_at DESC LIMIT 200
@@ -130,7 +130,7 @@ router.get("/plc/site-calls", async (req, res) => {
     } else {
       result = await db.execute(sql`
         SELECT id, call_no, project_number, project_name, attended_by,
-               issue_details, status, call_received_at, electrical_issue, created_at, created_by, call_type
+               issue_details, status, call_received_at, electrical_issue, created_at, created_by, call_type, customer_email
         FROM plc_site_calls
         ORDER BY created_at DESC LIMIT 200
       `);
@@ -334,7 +334,7 @@ router.get("/plc/service-reports", async (req, res) => {
     if (hasSearch && hasStatus) {
       result = await db.execute(sql`
         SELECT id, report_no, project_number, project_name, attended_by,
-               service_details, status, call_received_at, created_at, created_by
+               service_details, status, call_received_at, created_at, created_by, customer_email
         FROM plc_service_reports
         WHERE status = ${status}
           AND (project_name ILIKE ${"%" + search + "%"}
@@ -346,7 +346,7 @@ router.get("/plc/service-reports", async (req, res) => {
     } else if (hasSearch) {
       result = await db.execute(sql`
         SELECT id, report_no, project_number, project_name, attended_by,
-               service_details, status, call_received_at, created_at, created_by
+               service_details, status, call_received_at, created_at, created_by, customer_email
         FROM plc_service_reports
         WHERE project_name ILIKE ${"%" + search + "%"}
            OR project_number ILIKE ${"%" + search + "%"}
@@ -357,7 +357,7 @@ router.get("/plc/service-reports", async (req, res) => {
     } else if (hasStatus) {
       result = await db.execute(sql`
         SELECT id, report_no, project_number, project_name, attended_by,
-               service_details, status, call_received_at, created_at, created_by
+               service_details, status, call_received_at, created_at, created_by, customer_email
         FROM plc_service_reports
         WHERE status = ${status}
         ORDER BY created_at DESC LIMIT 200
@@ -365,7 +365,7 @@ router.get("/plc/service-reports", async (req, res) => {
     } else {
       result = await db.execute(sql`
         SELECT id, report_no, project_number, project_name, attended_by,
-               service_details, status, call_received_at, created_at, created_by
+               service_details, status, call_received_at, created_at, created_by, customer_email
         FROM plc_service_reports
         ORDER BY created_at DESC LIMIT 200
       `);
