@@ -435,6 +435,132 @@ async function buildServiceReportPDF(report: any): Promise<Buffer> {
       )
     `);
     await db.execute(sql`ALTER TABLE plc_service_reports ADD COLUMN IF NOT EXISTS customer_email TEXT`);
+
+    // ── PLC Programs ──────────────────────────────────────────────────────────
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS plc_programs (
+        id               SERIAL PRIMARY KEY,
+        program_no       TEXT,
+        project_number   TEXT,
+        project_name     TEXT,
+        controller_make  TEXT,
+        controller_model TEXT,
+        program_name     TEXT,
+        language         TEXT NOT NULL DEFAULT 'Ladder Diagram',
+        version          TEXT NOT NULL DEFAULT '1.0',
+        status           TEXT NOT NULL DEFAULT 'Draft',
+        description      TEXT,
+        notes            TEXT,
+        created_by       TEXT,
+        created_at       TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at       TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    // ── HMI Programs ─────────────────────────────────────────────────────────
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS plc_hmi_programs (
+        id            SERIAL PRIMARY KEY,
+        program_no    TEXT,
+        project_number TEXT,
+        project_name  TEXT,
+        hmi_make      TEXT,
+        hmi_model     TEXT,
+        software      TEXT,
+        screen_count  INTEGER NOT NULL DEFAULT 0,
+        version       TEXT NOT NULL DEFAULT '1.0',
+        status        TEXT NOT NULL DEFAULT 'Draft',
+        description   TEXT,
+        notes         TEXT,
+        created_by    TEXT,
+        created_at    TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at    TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    // ── PID Design ───────────────────────────────────────────────────────────
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS plc_pid_loops (
+        id               SERIAL PRIMARY KEY,
+        loop_no          TEXT,
+        project_number   TEXT,
+        project_name     TEXT,
+        loop_tag         TEXT,
+        loop_name        TEXT,
+        process_variable TEXT,
+        set_point        TEXT,
+        unit             TEXT,
+        kp               NUMERIC,
+        ki               NUMERIC,
+        kd               NUMERIC,
+        mode             TEXT NOT NULL DEFAULT 'Auto',
+        controller_type  TEXT,
+        output_min       NUMERIC,
+        output_max       NUMERIC,
+        alarm_hh         NUMERIC,
+        alarm_h          NUMERIC,
+        alarm_l          NUMERIC,
+        alarm_ll         NUMERIC,
+        notes            TEXT,
+        status           TEXT NOT NULL DEFAULT 'Draft',
+        created_by       TEXT,
+        created_at       TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at       TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    // ── Instruments ──────────────────────────────────────────────────────────
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS plc_instruments (
+        id                    SERIAL PRIMARY KEY,
+        tag_no                TEXT,
+        project_number        TEXT,
+        project_name          TEXT,
+        instrument_type       TEXT,
+        make                  TEXT,
+        model                 TEXT,
+        range_min             TEXT,
+        range_max             TEXT,
+        unit                  TEXT,
+        signal_type           TEXT,
+        process_connection    TEXT,
+        installation_location TEXT,
+        calibration_date      TEXT,
+        next_calibration      TEXT,
+        status                TEXT NOT NULL DEFAULT 'Active',
+        notes                 TEXT,
+        created_by            TEXT,
+        created_at            TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at            TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    // ── Tags ─────────────────────────────────────────────────────────────────
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS plc_tags (
+        id             SERIAL PRIMARY KEY,
+        tag_name       TEXT NOT NULL,
+        tag_type       TEXT NOT NULL DEFAULT 'AI',
+        address        TEXT,
+        data_type      TEXT,
+        description    TEXT,
+        project_number TEXT,
+        project_name   TEXT,
+        eu_min         NUMERIC,
+        eu_max         NUMERIC,
+        unit           TEXT,
+        hh_limit       NUMERIC,
+        h_limit        NUMERIC,
+        l_limit        NUMERIC,
+        ll_limit       NUMERIC,
+        status         TEXT NOT NULL DEFAULT 'Active',
+        notes          TEXT,
+        created_by     TEXT,
+        created_at     TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at     TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+
     console.log("PLC site calls & service reports tables ready");
   } catch (e) {
     console.error("PLC table init error:", e);
@@ -932,6 +1058,274 @@ router.post("/plc/service-reports/:id/send-email", async (req, res) => {
   } catch (e: any) {
     res.status(500).json({ error: e.message || String(e) });
   }
+});
+
+// ─── PLC Programs ─────────────────────────────────────────────────────────────
+
+router.get("/plc/programs", async (req, res) => {
+  try {
+    const { search, status } = req.query as { search?: string; status?: string };
+    const hasSearch = search && search.trim();
+    const hasStatus = status && status !== "All";
+    let result: any;
+    if (hasSearch && hasStatus) {
+      result = await db.execute(sql`SELECT * FROM plc_programs WHERE status = ${status} AND (program_name ILIKE ${"%" + search + "%"} OR project_name ILIKE ${"%" + search + "%"} OR program_no ILIKE ${"%" + search + "%"}) ORDER BY created_at DESC LIMIT 200`);
+    } else if (hasSearch) {
+      result = await db.execute(sql`SELECT * FROM plc_programs WHERE program_name ILIKE ${"%" + search + "%"} OR project_name ILIKE ${"%" + search + "%"} OR program_no ILIKE ${"%" + search + "%"} ORDER BY created_at DESC LIMIT 200`);
+    } else if (hasStatus) {
+      result = await db.execute(sql`SELECT * FROM plc_programs WHERE status = ${status} ORDER BY created_at DESC LIMIT 200`);
+    } else {
+      result = await db.execute(sql`SELECT * FROM plc_programs ORDER BY created_at DESC LIMIT 200`);
+    }
+    res.json({ data: (result as any).rows ?? result });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.get("/plc/programs/:id", async (req, res) => {
+  try {
+    const result = await db.execute(sql`SELECT * FROM plc_programs WHERE id = ${Number(req.params.id)}`);
+    const rows = (result as any).rows ?? result;
+    if (!rows[0]) return res.status(404).json({ error: "Not found" });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.post("/plc/programs", async (req, res) => {
+  try {
+    const { program_no, project_number, project_name, controller_make, controller_model, program_name, language, version, status, description, notes, created_by } = req.body;
+    const result = await db.execute(sql`INSERT INTO plc_programs (program_no,project_number,project_name,controller_make,controller_model,program_name,language,version,status,description,notes,created_by) VALUES (${program_no??null},${project_number??null},${project_name??null},${controller_make??null},${controller_model??null},${program_name??null},${language??"Ladder Diagram"},${version??"1.0"},${status??"Draft"},${description??null},${notes??null},${created_by??null}) RETURNING *`);
+    res.json(((result as any).rows ?? result)[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.patch("/plc/programs/:id", async (req, res) => {
+  try {
+    const { program_no, project_number, project_name, controller_make, controller_model, program_name, language, version, status, description, notes } = req.body;
+    await db.execute(sql`UPDATE plc_programs SET program_no=COALESCE(${program_no??null},program_no), project_number=COALESCE(${project_number??null},project_number), project_name=COALESCE(${project_name??null},project_name), controller_make=${controller_make??null}, controller_model=${controller_model??null}, program_name=COALESCE(${program_name??null},program_name), language=COALESCE(${language??null},language), version=COALESCE(${version??null},version), status=COALESCE(${status??null},status), description=${description??null}, notes=${notes??null}, updated_at=NOW() WHERE id=${Number(req.params.id)}`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.delete("/plc/programs/:id", async (req, res) => {
+  try {
+    await db.execute(sql`DELETE FROM plc_programs WHERE id = ${Number(req.params.id)}`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// ─── HMI Programs ─────────────────────────────────────────────────────────────
+
+router.get("/plc/hmi-programs", async (req, res) => {
+  try {
+    const { search, status } = req.query as { search?: string; status?: string };
+    const hasSearch = search && search.trim();
+    const hasStatus = status && status !== "All";
+    let result: any;
+    if (hasSearch && hasStatus) {
+      result = await db.execute(sql`SELECT * FROM plc_hmi_programs WHERE status = ${status} AND (program_no ILIKE ${"%" + search + "%"} OR project_name ILIKE ${"%" + search + "%"} OR hmi_make ILIKE ${"%" + search + "%"}) ORDER BY created_at DESC LIMIT 200`);
+    } else if (hasSearch) {
+      result = await db.execute(sql`SELECT * FROM plc_hmi_programs WHERE program_no ILIKE ${"%" + search + "%"} OR project_name ILIKE ${"%" + search + "%"} OR hmi_make ILIKE ${"%" + search + "%"} ORDER BY created_at DESC LIMIT 200`);
+    } else if (hasStatus) {
+      result = await db.execute(sql`SELECT * FROM plc_hmi_programs WHERE status = ${status} ORDER BY created_at DESC LIMIT 200`);
+    } else {
+      result = await db.execute(sql`SELECT * FROM plc_hmi_programs ORDER BY created_at DESC LIMIT 200`);
+    }
+    res.json({ data: (result as any).rows ?? result });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.get("/plc/hmi-programs/:id", async (req, res) => {
+  try {
+    const result = await db.execute(sql`SELECT * FROM plc_hmi_programs WHERE id = ${Number(req.params.id)}`);
+    const rows = (result as any).rows ?? result;
+    if (!rows[0]) return res.status(404).json({ error: "Not found" });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.post("/plc/hmi-programs", async (req, res) => {
+  try {
+    const { program_no, project_number, project_name, hmi_make, hmi_model, software, screen_count, version, status, description, notes, created_by } = req.body;
+    const result = await db.execute(sql`INSERT INTO plc_hmi_programs (program_no,project_number,project_name,hmi_make,hmi_model,software,screen_count,version,status,description,notes,created_by) VALUES (${program_no??null},${project_number??null},${project_name??null},${hmi_make??null},${hmi_model??null},${software??null},${screen_count??0},${version??"1.0"},${status??"Draft"},${description??null},${notes??null},${created_by??null}) RETURNING *`);
+    res.json(((result as any).rows ?? result)[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.patch("/plc/hmi-programs/:id", async (req, res) => {
+  try {
+    const { program_no, project_number, project_name, hmi_make, hmi_model, software, screen_count, version, status, description, notes } = req.body;
+    await db.execute(sql`UPDATE plc_hmi_programs SET program_no=COALESCE(${program_no??null},program_no), project_number=COALESCE(${project_number??null},project_number), project_name=COALESCE(${project_name??null},project_name), hmi_make=${hmi_make??null}, hmi_model=${hmi_model??null}, software=${software??null}, screen_count=COALESCE(${screen_count??null},screen_count), version=COALESCE(${version??null},version), status=COALESCE(${status??null},status), description=${description??null}, notes=${notes??null}, updated_at=NOW() WHERE id=${Number(req.params.id)}`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.delete("/plc/hmi-programs/:id", async (req, res) => {
+  try {
+    await db.execute(sql`DELETE FROM plc_hmi_programs WHERE id = ${Number(req.params.id)}`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// ─── PID Design ───────────────────────────────────────────────────────────────
+
+router.get("/plc/pid-loops", async (req, res) => {
+  try {
+    const { search, status } = req.query as { search?: string; status?: string };
+    const hasSearch = search && search.trim();
+    const hasStatus = status && status !== "All";
+    let result: any;
+    if (hasSearch && hasStatus) {
+      result = await db.execute(sql`SELECT * FROM plc_pid_loops WHERE status = ${status} AND (loop_tag ILIKE ${"%" + search + "%"} OR loop_name ILIKE ${"%" + search + "%"} OR project_name ILIKE ${"%" + search + "%"}) ORDER BY created_at DESC LIMIT 200`);
+    } else if (hasSearch) {
+      result = await db.execute(sql`SELECT * FROM plc_pid_loops WHERE loop_tag ILIKE ${"%" + search + "%"} OR loop_name ILIKE ${"%" + search + "%"} OR project_name ILIKE ${"%" + search + "%"} ORDER BY created_at DESC LIMIT 200`);
+    } else if (hasStatus) {
+      result = await db.execute(sql`SELECT * FROM plc_pid_loops WHERE status = ${status} ORDER BY created_at DESC LIMIT 200`);
+    } else {
+      result = await db.execute(sql`SELECT * FROM plc_pid_loops ORDER BY created_at DESC LIMIT 200`);
+    }
+    res.json({ data: (result as any).rows ?? result });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.get("/plc/pid-loops/:id", async (req, res) => {
+  try {
+    const result = await db.execute(sql`SELECT * FROM plc_pid_loops WHERE id = ${Number(req.params.id)}`);
+    const rows = (result as any).rows ?? result;
+    if (!rows[0]) return res.status(404).json({ error: "Not found" });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.post("/plc/pid-loops", async (req, res) => {
+  try {
+    const { loop_no, project_number, project_name, loop_tag, loop_name, process_variable, set_point, unit, kp, ki, kd, mode, controller_type, output_min, output_max, alarm_hh, alarm_h, alarm_l, alarm_ll, notes, status, created_by } = req.body;
+    const result = await db.execute(sql`INSERT INTO plc_pid_loops (loop_no,project_number,project_name,loop_tag,loop_name,process_variable,set_point,unit,kp,ki,kd,mode,controller_type,output_min,output_max,alarm_hh,alarm_h,alarm_l,alarm_ll,notes,status,created_by) VALUES (${loop_no??null},${project_number??null},${project_name??null},${loop_tag??null},${loop_name??null},${process_variable??null},${set_point??null},${unit??null},${kp??null},${ki??null},${kd??null},${mode??"Auto"},${controller_type??null},${output_min??null},${output_max??null},${alarm_hh??null},${alarm_h??null},${alarm_l??null},${alarm_ll??null},${notes??null},${status??"Draft"},${created_by??null}) RETURNING *`);
+    res.json(((result as any).rows ?? result)[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.patch("/plc/pid-loops/:id", async (req, res) => {
+  try {
+    const { loop_no, project_number, project_name, loop_tag, loop_name, process_variable, set_point, unit, kp, ki, kd, mode, controller_type, output_min, output_max, alarm_hh, alarm_h, alarm_l, alarm_ll, notes, status } = req.body;
+    await db.execute(sql`UPDATE plc_pid_loops SET loop_no=COALESCE(${loop_no??null},loop_no), project_number=COALESCE(${project_number??null},project_number), project_name=COALESCE(${project_name??null},project_name), loop_tag=${loop_tag??null}, loop_name=${loop_name??null}, process_variable=${process_variable??null}, set_point=${set_point??null}, unit=${unit??null}, kp=${kp??null}, ki=${ki??null}, kd=${kd??null}, mode=COALESCE(${mode??null},mode), controller_type=${controller_type??null}, output_min=${output_min??null}, output_max=${output_max??null}, alarm_hh=${alarm_hh??null}, alarm_h=${alarm_h??null}, alarm_l=${alarm_l??null}, alarm_ll=${alarm_ll??null}, notes=${notes??null}, status=COALESCE(${status??null},status), updated_at=NOW() WHERE id=${Number(req.params.id)}`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.delete("/plc/pid-loops/:id", async (req, res) => {
+  try {
+    await db.execute(sql`DELETE FROM plc_pid_loops WHERE id = ${Number(req.params.id)}`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// ─── Instruments ──────────────────────────────────────────────────────────────
+
+router.get("/plc/instruments", async (req, res) => {
+  try {
+    const { search, status } = req.query as { search?: string; status?: string };
+    const hasSearch = search && search.trim();
+    const hasStatus = status && status !== "All";
+    let result: any;
+    if (hasSearch && hasStatus) {
+      result = await db.execute(sql`SELECT * FROM plc_instruments WHERE status = ${status} AND (tag_no ILIKE ${"%" + search + "%"} OR instrument_type ILIKE ${"%" + search + "%"} OR project_name ILIKE ${"%" + search + "%"} OR make ILIKE ${"%" + search + "%"}) ORDER BY created_at DESC LIMIT 200`);
+    } else if (hasSearch) {
+      result = await db.execute(sql`SELECT * FROM plc_instruments WHERE tag_no ILIKE ${"%" + search + "%"} OR instrument_type ILIKE ${"%" + search + "%"} OR project_name ILIKE ${"%" + search + "%"} OR make ILIKE ${"%" + search + "%"} ORDER BY created_at DESC LIMIT 200`);
+    } else if (hasStatus) {
+      result = await db.execute(sql`SELECT * FROM plc_instruments WHERE status = ${status} ORDER BY created_at DESC LIMIT 200`);
+    } else {
+      result = await db.execute(sql`SELECT * FROM plc_instruments ORDER BY created_at DESC LIMIT 200`);
+    }
+    res.json({ data: (result as any).rows ?? result });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.get("/plc/instruments/:id", async (req, res) => {
+  try {
+    const result = await db.execute(sql`SELECT * FROM plc_instruments WHERE id = ${Number(req.params.id)}`);
+    const rows = (result as any).rows ?? result;
+    if (!rows[0]) return res.status(404).json({ error: "Not found" });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.post("/plc/instruments", async (req, res) => {
+  try {
+    const { tag_no, project_number, project_name, instrument_type, make, model, range_min, range_max, unit, signal_type, process_connection, installation_location, calibration_date, next_calibration, status, notes, created_by } = req.body;
+    const result = await db.execute(sql`INSERT INTO plc_instruments (tag_no,project_number,project_name,instrument_type,make,model,range_min,range_max,unit,signal_type,process_connection,installation_location,calibration_date,next_calibration,status,notes,created_by) VALUES (${tag_no??null},${project_number??null},${project_name??null},${instrument_type??null},${make??null},${model??null},${range_min??null},${range_max??null},${unit??null},${signal_type??null},${process_connection??null},${installation_location??null},${calibration_date??null},${next_calibration??null},${status??"Active"},${notes??null},${created_by??null}) RETURNING *`);
+    res.json(((result as any).rows ?? result)[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.patch("/plc/instruments/:id", async (req, res) => {
+  try {
+    const { tag_no, project_number, project_name, instrument_type, make, model, range_min, range_max, unit, signal_type, process_connection, installation_location, calibration_date, next_calibration, status, notes } = req.body;
+    await db.execute(sql`UPDATE plc_instruments SET tag_no=${tag_no??null}, project_number=COALESCE(${project_number??null},project_number), project_name=COALESCE(${project_name??null},project_name), instrument_type=${instrument_type??null}, make=${make??null}, model=${model??null}, range_min=${range_min??null}, range_max=${range_max??null}, unit=${unit??null}, signal_type=${signal_type??null}, process_connection=${process_connection??null}, installation_location=${installation_location??null}, calibration_date=${calibration_date??null}, next_calibration=${next_calibration??null}, status=COALESCE(${status??null},status), notes=${notes??null}, updated_at=NOW() WHERE id=${Number(req.params.id)}`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.delete("/plc/instruments/:id", async (req, res) => {
+  try {
+    await db.execute(sql`DELETE FROM plc_instruments WHERE id = ${Number(req.params.id)}`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// ─── Tags ─────────────────────────────────────────────────────────────────────
+
+router.get("/plc/tags", async (req, res) => {
+  try {
+    const { search, status, tag_type } = req.query as { search?: string; status?: string; tag_type?: string };
+    const hasSearch = search && search.trim();
+    const hasStatus = status && status !== "All";
+    const hasType   = tag_type && tag_type !== "All";
+    let result: any;
+    if (hasSearch) {
+      result = await db.execute(sql`SELECT * FROM plc_tags WHERE (tag_name ILIKE ${"%" + search + "%"} OR description ILIKE ${"%" + search + "%"} OR address ILIKE ${"%" + search + "%"} OR project_name ILIKE ${"%" + search + "%"}) ORDER BY created_at DESC LIMIT 500`);
+    } else if (hasStatus && hasType) {
+      result = await db.execute(sql`SELECT * FROM plc_tags WHERE status = ${status} AND tag_type = ${tag_type} ORDER BY created_at DESC LIMIT 500`);
+    } else if (hasStatus) {
+      result = await db.execute(sql`SELECT * FROM plc_tags WHERE status = ${status} ORDER BY created_at DESC LIMIT 500`);
+    } else if (hasType) {
+      result = await db.execute(sql`SELECT * FROM plc_tags WHERE tag_type = ${tag_type} ORDER BY created_at DESC LIMIT 500`);
+    } else {
+      result = await db.execute(sql`SELECT * FROM plc_tags ORDER BY created_at DESC LIMIT 500`);
+    }
+    res.json({ data: (result as any).rows ?? result });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.get("/plc/tags/:id", async (req, res) => {
+  try {
+    const result = await db.execute(sql`SELECT * FROM plc_tags WHERE id = ${Number(req.params.id)}`);
+    const rows = (result as any).rows ?? result;
+    if (!rows[0]) return res.status(404).json({ error: "Not found" });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.post("/plc/tags", async (req, res) => {
+  try {
+    const { tag_name, tag_type, address, data_type, description, project_number, project_name, eu_min, eu_max, unit, hh_limit, h_limit, l_limit, ll_limit, status, notes, created_by } = req.body;
+    const result = await db.execute(sql`INSERT INTO plc_tags (tag_name,tag_type,address,data_type,description,project_number,project_name,eu_min,eu_max,unit,hh_limit,h_limit,l_limit,ll_limit,status,notes,created_by) VALUES (${tag_name},${tag_type??"AI"},${address??null},${data_type??null},${description??null},${project_number??null},${project_name??null},${eu_min??null},${eu_max??null},${unit??null},${hh_limit??null},${h_limit??null},${l_limit??null},${ll_limit??null},${status??"Active"},${notes??null},${created_by??null}) RETURNING *`);
+    res.json(((result as any).rows ?? result)[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.patch("/plc/tags/:id", async (req, res) => {
+  try {
+    const { tag_name, tag_type, address, data_type, description, project_number, project_name, eu_min, eu_max, unit, hh_limit, h_limit, l_limit, ll_limit, status, notes } = req.body;
+    await db.execute(sql`UPDATE plc_tags SET tag_name=COALESCE(${tag_name??null},tag_name), tag_type=COALESCE(${tag_type??null},tag_type), address=${address??null}, data_type=${data_type??null}, description=${description??null}, project_number=COALESCE(${project_number??null},project_number), project_name=COALESCE(${project_name??null},project_name), eu_min=${eu_min??null}, eu_max=${eu_max??null}, unit=${unit??null}, hh_limit=${hh_limit??null}, h_limit=${h_limit??null}, l_limit=${l_limit??null}, ll_limit=${ll_limit??null}, status=COALESCE(${status??null},status), notes=${notes??null}, updated_at=NOW() WHERE id=${Number(req.params.id)}`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.delete("/plc/tags/:id", async (req, res) => {
+  try {
+    await db.execute(sql`DELETE FROM plc_tags WHERE id = ${Number(req.params.id)}`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
 // ─── ERP Employees ────────────────────────────────────────────────────────────

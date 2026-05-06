@@ -61,7 +61,13 @@ FlowMatrix provides integrated tools for managing proposals, monitoring plant op
 *   **HRMS Modules:** Integrates with ERPNext for Attendance Check-in, Leave Request, Claim Request, and Recruitment Tracking, with scope-based permissions.
 *   **Realtime Voice Transcription:** Uses Whisper for transcribing mic audio in "Plant Enquiry" and "Customer Meeting" (Meeting Minutes), with adaptive VAD and script/hallucination filters. Supports auto-detection and explicit language selection for transcription and translation.
 *   **Email Feature:** Provides an inbox, sent items, and compose functionality via Gmail SMTP/IMAP.
-*   **PLC & Automation — Site Support Calls:** Logs field service visits with project (ERP dropdown), multi-employee attendance, 7-point timing chain (call received → departed → arrived site → work start/end → departed site → arrived back), issue details, electrical-issue flag + assigned electrical team, dynamic spares/parts table, root cause & action taken. Print view generates a formatted A4 report. Route: `/plc-automation/site-calls`; DB table: `plc_site_calls`; API: `/api/plc/site-calls` + `/api/plc/erp-employees`.
+*   **PLC & Automation — Site Support Calls:** Logs field service visits with project (ERP dropdown), multi-employee attendance, 7-point timing chain, issue details, electrical-issue flag, dynamic spares table, root cause & action taken. Emails PDF report. Route: `/plc-automation/site-calls`; DB: `plc_site_calls`; API: `/api/plc/site-calls`.
+*   **PLC & Automation — Service Reports:** Full site visit reports with PLC checklist, timing details, signature blocks. Emails PDF. Route: `/plc-automation/service-reports`; DB: `plc_service_reports`; API: `/api/plc/service-reports`.
+*   **PLC Programs:** Document PLC programs with controller make/model, IEC 61131 language, version, status (Draft/In Progress/Completed/Released). Route: `/plc-automation/plc-programs`; DB: `plc_programs`; API: `/api/plc/programs`.
+*   **HMI Programs:** Track HMI screen programs with make/model, software, screen count, version. Route: `/plc-automation/hmi-programs`; DB: `plc_hmi_programs`; API: `/api/plc/hmi-programs`.
+*   **PID Design:** Configure PID control loops with Kp/Ki/Kd tuning, mode (Auto/Manual/Cascade), controller type, output limits, HH/H/L/LL alarms. Route: `/plc-automation/pid-design`; DB: `plc_pid_loops`; API: `/api/plc/pid-loops`.
+*   **Instrument Details:** Instrument registry with tag, type, make/model, range, signal type, process connection, location, and calibration due-date tracking. Route: `/plc-automation/instruments`; DB: `plc_instruments`; API: `/api/plc/instruments`.
+*   **PLC Tags:** Full tag database with type (AI/AO/DI/DO/INT/REAL/BOOL/etc.), PLC address, engineering units, alarm limits, CSV export. Route: `/plc-automation/tags`; DB: `plc_tags`; API: `/api/plc/tags`.
 
 ## User preferences
 

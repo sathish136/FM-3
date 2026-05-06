@@ -90,6 +90,11 @@ import ProposalPDFView from "@/pages/ProposalPDFView";
 import Workshop from "@/pages/Workshop";
 import PLCAutomation from "@/pages/PLCAutomation";
 import PLCServiceReports from "@/pages/PLCServiceReports";
+import PLCPrograms from "@/pages/PLCPrograms";
+import PLCHMIPrograms from "@/pages/PLCHMIPrograms";
+import PLCPIDDesign from "@/pages/PLCPIDDesign";
+import PLCInstruments from "@/pages/PLCInstruments";
+import PLCTags from "@/pages/PLCTags";
 import { SlideshowProvider } from "@/contexts/SlideshowContext";
 import { RecordingProvider } from "@/contexts/RecordingContext";
 
@@ -272,6 +277,11 @@ function ProtectedRoutes() {
       <Route path="/workshop/fitter" component={Workshop} />
       <Route path="/plc-automation/site-calls"      component={PLCAutomation}      />
       <Route path="/plc-automation/service-reports" component={PLCServiceReports} />
+      <Route path="/plc-automation/plc-programs"    component={PLCPrograms}        />
+      <Route path="/plc-automation/hmi-programs"    component={PLCHMIPrograms}     />
+      <Route path="/plc-automation/pid-design"      component={PLCPIDDesign}       />
+      <Route path="/plc-automation/instruments"     component={PLCInstruments}     />
+      <Route path="/plc-automation/tags"            component={PLCTags}            />
       <Route component={NotFound} />
     </Switch>
   );

@@ -6,6 +6,7 @@ import {
   MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp, ListChecks, ClipboardList, Truck, Building2, Package,
   Play, Square, Phone, ShieldOff, Loader2, Languages, Globe,
   ScanLine, Factory, Database, UserCheck,
+  Code2, Monitor, Gauge, Tag,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -317,6 +318,11 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     items: [
       { path: "/plc-automation/site-calls",      label: "Online Support Calls", icon: Phone,          color: "text-cyan-400",    bgColor: "bg-cyan-500/15"    },
       { path: "/plc-automation/service-reports", label: "Service Reports",       icon: ClipboardList, color: "text-blue-400",    bgColor: "bg-blue-500/15"    },
+      { path: "/plc-automation/plc-programs",    label: "PLC Programs",          icon: Code2,         color: "text-blue-400",    bgColor: "bg-blue-500/15"    },
+      { path: "/plc-automation/hmi-programs",    label: "HMI Programs",          icon: Monitor,       color: "text-violet-400",  bgColor: "bg-violet-500/15"  },
+      { path: "/plc-automation/pid-design",      label: "PID Design",            icon: GitBranch,     color: "text-orange-400",  bgColor: "bg-orange-500/15"  },
+      { path: "/plc-automation/instruments",     label: "Instrument Details",    icon: Gauge,         color: "text-teal-400",    bgColor: "bg-teal-500/15"    },
+      { path: "/plc-automation/tags",            label: "PLC Tags",              icon: Tag,           color: "text-indigo-400",  bgColor: "bg-indigo-500/15"  },
     ],
   },
   {
@@ -423,6 +429,11 @@ const PATH_TO_MODULE: Record<string, string> = {
   "/workshop/fitter":               "workshop",
   "/plc-automation/site-calls":      "plc-automation-site-calls",
   "/plc-automation/service-reports": "plc-automation-service-reports",
+  "/plc-automation/plc-programs":    "plc-automation-plc-programs",
+  "/plc-automation/hmi-programs":    "plc-automation-hmi-programs",
+  "/plc-automation/pid-design":      "plc-automation-pid-design",
+  "/plc-automation/instruments":     "plc-automation-instruments",
+  "/plc-automation/tags":            "plc-automation-tags",
   "/cctv":                  "cctv",
   "/mis-report":            "mis-report",
   "/payment-tracker":       "payment-tracker",
