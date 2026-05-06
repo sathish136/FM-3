@@ -100,7 +100,7 @@ async function getAccount(userEmail?: string): Promise<Account> {
 // ─── IMAP helpers ─────────────────────────────────────────────────────────────
 function makeImapClient(user: string, pass: string) {
   return new ImapFlow({
-    host: "imap.gmail.com",
+    host: "outlook.office365.com",
     port: 993,
     secure: true,
     auth: { user, pass },
@@ -637,9 +637,10 @@ router.post("/email/send", upload.array("attachments"), async (req, res) => {
   try {
     const account = await getAccount(reqUser);
     const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
+      host: "smtp.office365.com",
       port: 587,
       secure: false,
+      requireTLS: true,
       auth: { user: account.gmailUser, pass: account.gmailAppPassword },
     });
     const files = (req.files as Express.Multer.File[]) || [];

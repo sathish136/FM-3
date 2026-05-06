@@ -11,7 +11,7 @@ const ULTRAMSG_TOKEN = "6baxh4iuxajibxez";
 const ULTRAMSG_BASE = `https://api.ultramsg.com/${ULTRAMSG_INSTANCE}`;
 
 const GMAIL_USER = process.env.GMAIL_USER || "noreply@wttint.com";
-const GMAIL_PASS = process.env.GMAIL_APP_PASSWORD || "ejjjsfufipqmvpuh";
+const GMAIL_PASS = process.env.GMAIL_APP_PASSWORD || "";
 
 export async function sendWhatsApp(to: string, message: string): Promise<{ success: boolean; error?: string }> {
   try {
@@ -37,9 +37,10 @@ export async function sendWhatsApp(to: string, message: string): Promise<{ succe
 export async function sendEmailNotification(to: string, subject: string, html: string): Promise<{ success: boolean; error?: string }> {
   try {
     const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
+      host: "smtp.office365.com",
       port: 587,
       secure: false,
+      requireTLS: true,
       auth: { user: GMAIL_USER, pass: GMAIL_PASS },
     });
     await transporter.sendMail({

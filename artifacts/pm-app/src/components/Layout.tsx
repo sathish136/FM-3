@@ -313,6 +313,13 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     ],
   },
   {
+    label: "PLC & Automation",
+    items: [
+      { path: "/plc-automation/site-calls",      label: "Online Support Calls", icon: Phone,          color: "text-cyan-400",    bgColor: "bg-cyan-500/15"    },
+      { path: "/plc-automation/service-reports", label: "Service Reports",       icon: ClipboardList, color: "text-blue-400",    bgColor: "bg-blue-500/15"    },
+    ],
+  },
+  {
     label: "Monitoring",
     items: [
       { path: "/plant-overview", label: "Plant Overview", icon: Activity, color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
@@ -411,9 +418,11 @@ const PATH_TO_MODULE: Record<string, string> = {
   "/site-data":             "site-data",
   "/site-db":               "site-db",
   "/site-db/analyze":       "site-db",
-  "/workshop":              "workshop",
-  "/workshop/welder":       "workshop",
-  "/workshop/fitter":       "workshop",
+  "/workshop":                      "workshop",
+  "/workshop/welder":               "workshop",
+  "/workshop/fitter":               "workshop",
+  "/plc-automation/site-calls":      "plc-automation-site-calls",
+  "/plc-automation/service-reports": "plc-automation-service-reports",
   "/cctv":                  "cctv",
   "/mis-report":            "mis-report",
   "/payment-tracker":       "payment-tracker",

@@ -47,12 +47,13 @@ async function sendOtpEmail(
   name: string,
 ): Promise<void> {
   const gmailUser = process.env.GMAIL_USER || "noreply@wttint.com";
-  const gmailPass = process.env.GMAIL_APP_PASSWORD || "ejjjsfufipqmvpuh";
+  const gmailPass = process.env.GMAIL_APP_PASSWORD || "";
 
   const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
+    host: "smtp.office365.com",
     port: 587,
     secure: false,
+    requireTLS: true,
     auth: { user: gmailUser, pass: gmailPass },
   });
 

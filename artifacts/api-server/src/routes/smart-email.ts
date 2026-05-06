@@ -710,9 +710,10 @@ async function sendEmail(
   attachments?: { filename: string; content: Buffer; contentType: string }[]
 ) {
   const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
+    host: "smtp.office365.com",
     port: 587,
     secure: false,
+    requireTLS: true,
     auth: { user: account.gmailUser, pass: account.gmailAppPassword },
   });
   await transporter.sendMail({

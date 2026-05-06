@@ -88,6 +88,8 @@ import AgentManagement from "@/pages/AgentManagement";
 import HrmsWorkMonitor from "@/pages/HrmsWorkMonitor";
 import ProposalPDFView from "@/pages/ProposalPDFView";
 import Workshop from "@/pages/Workshop";
+import PLCAutomation from "@/pages/PLCAutomation";
+import PLCServiceReports from "@/pages/PLCServiceReports";
 import { SlideshowProvider } from "@/contexts/SlideshowContext";
 import { RecordingProvider } from "@/contexts/RecordingContext";
 
@@ -268,6 +270,8 @@ function ProtectedRoutes() {
       <Route path="/workshop" component={Workshop} />
       <Route path="/workshop/welder" component={Workshop} />
       <Route path="/workshop/fitter" component={Workshop} />
+      <Route path="/plc-automation/site-calls"      component={PLCAutomation}      />
+      <Route path="/plc-automation/service-reports" component={PLCServiceReports} />
       <Route component={NotFound} />
     </Switch>
   );
