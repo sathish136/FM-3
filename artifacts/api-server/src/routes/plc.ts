@@ -45,7 +45,6 @@ const router = Router();
     await db.execute(sql`ALTER TABLE plc_site_calls ADD COLUMN IF NOT EXISTS site_coordinator_name TEXT`);
     await db.execute(sql`ALTER TABLE plc_site_calls ADD COLUMN IF NOT EXISTS site_coordinator_phone TEXT`);
     await db.execute(sql`ALTER TABLE plc_site_calls ADD COLUMN IF NOT EXISTS customer_email TEXT`);
-    await db.execute(sql`ALTER TABLE plc_service_reports ADD COLUMN IF NOT EXISTS customer_email TEXT`);
 
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS plc_service_reports (
@@ -55,6 +54,7 @@ const router = Router();
         project_name            TEXT,
         site_coordinator_name   TEXT,
         site_coordinator_phone  TEXT,
+        customer_email          TEXT,
         call_received_at        TEXT,
         departed_at             TEXT,
         arrived_site_at         TEXT,
@@ -80,6 +80,7 @@ const router = Router();
         updated_at              TIMESTAMP NOT NULL DEFAULT NOW()
       )
     `);
+    await db.execute(sql`ALTER TABLE plc_service_reports ADD COLUMN IF NOT EXISTS customer_email TEXT`);
     console.log("PLC site calls & service reports tables ready");
   } catch (e) {
     console.error("PLC table init error:", e);
