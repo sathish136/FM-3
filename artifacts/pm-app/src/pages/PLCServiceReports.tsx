@@ -8,6 +8,7 @@ import {
   ChevronDown, Clock, CircleCheck, Circle,
   MapPin, Cpu, User, PhoneCall, CheckSquare, Square,
   ClipboardList, MessageSquare, Lightbulb, Mail, Send,
+  Camera, ImageIcon, Trash,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -18,6 +19,7 @@ interface Employee { id: string; name: string; designation: string; label: strin
 interface Project  { code: string; name: string; label: string; }
 interface Spare    { part_name: string; part_no: string; qty: string; remarks: string; }
 interface ChecklistItem { label: string; checked: boolean; note: string; }
+interface Photo { data: string; filename: string; comment: string; mime: string; }
 
 interface ServiceReport {
   id?: number;
@@ -47,6 +49,7 @@ interface ServiceReport {
   status?: Status;
   root_cause?: string;
   action_taken?: string;
+  photos?: Photo[];
   created_by?: string;
   created_at?: string;
 }
@@ -535,6 +538,29 @@ function PrintView({ report, onClose }: { report: ServiceReport; onClose: () => 
           </div>
         )}
 
+        {/* ── PHOTOS ─────────────────────────────────────────── */}
+        {Array.isArray(report.photos) && report.photos.length > 0 && (
+          <div className="border-b border-gray-200">
+            <SH title={`Site Photos (${report.photos.length})`} />
+            <div className="px-4 py-3 grid grid-cols-2 gap-3">
+              {report.photos.map((photo, i) => (
+                <div key={i} className="rounded-lg overflow-hidden border border-gray-200">
+                  <img
+                    src={photo.data}
+                    alt={photo.comment || `Site photo ${i + 1}`}
+                    className="w-full h-44 object-cover"
+                  />
+                  {photo.comment && (
+                    <div className="px-3 py-1.5 bg-gray-50 border-t border-gray-100">
+                      <span className="text-[10px] text-gray-500 font-medium">{photo.comment}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* ── SIGNATURES ─────────────────────────────────────── */}
         <div>
           <SH title="Acknowledgement &amp; Signatures" />
@@ -622,7 +648,11 @@ function ServiceReportModal({
       ? initial.spares_changed
       : [{ part_name: "", part_no: "", qty: "", remarks: "" }]
   );
+  const [photos, setPhotos] = useState<Photo[]>(
+    Array.isArray(initial?.photos) ? initial.photos : []
+  );
   const [saving, setSaving] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const inputCls   = "w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white";
   const sectionCls = "text-xs font-bold uppercase tracking-wider mb-4 pb-1.5 border-b-2 text-blue-800 border-blue-200";
@@ -631,6 +661,22 @@ function ServiceReportModal({
   const removeSpare = (i: number) => setSpares(s => s.filter((_, idx) => idx !== i));
   const updateSpare = (i: number, field: keyof Spare, v: string) =>
     setSpares(s => s.map((row, idx) => idx === i ? { ...row, [field]: v } : row));
+
+  const handlePhotoFiles = (files: FileList | null) => {
+    if (!files) return;
+    Array.from(files).forEach(file => {
+      if (!file.type.startsWith("image/")) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        const data = e.target?.result as string;
+        setPhotos(prev => [...prev, { data, filename: file.name, comment: "", mime: file.type }]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+  const removePhoto = (i: number) => setPhotos(p => p.filter((_, idx) => idx !== i));
+  const updatePhotoComment = (i: number, comment: string) =>
+    setPhotos(p => p.map((ph, idx) => idx === i ? { ...ph, comment } : ph));
 
   const toggleCheck = (i: number) =>
     setChecklist(c => c.map((item, idx) => idx === i ? { ...item, checked: !item.checked } : item));
@@ -668,6 +714,7 @@ function ServiceReportModal({
         status,
         root_cause:   rootCause   || undefined,
         action_taken: actionTaken || undefined,
+        photos,
         created_by:   user?.email,
       };
 
@@ -1014,6 +1061,89 @@ function ServiceReportModal({
                 />
               </div>
             </div>
+          </section>
+
+          {/* ── Site Photos ── */}
+          <section>
+            <div className="flex items-center justify-between mb-4 pb-1.5 border-b-2 border-blue-200">
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-blue-800">Site Photos</h3>
+                {photos.length > 0 && (
+                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">
+                    {photos.length} attached
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => photoInputRef.current?.click()}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-700 hover:bg-blue-800 text-white rounded-lg transition-colors"
+              >
+                <Camera className="w-3.5 h-3.5" /> Add Photos
+              </button>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={e => handlePhotoFiles(e.target.files)}
+              />
+            </div>
+
+            {photos.length === 0 ? (
+              <div
+                className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-all"
+                onClick={() => photoInputRef.current?.click()}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => { e.preventDefault(); handlePhotoFiles(e.dataTransfer.files); }}
+              >
+                <ImageIcon className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                <p className="text-sm font-semibold text-gray-400">Drop photos here or click to browse</p>
+                <p className="text-xs text-gray-300 mt-1">JPG, PNG, HEIC · Multiple files supported</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {photos.map((photo, i) => (
+                  <div key={i} className="rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm">
+                    <div className="relative">
+                      <img
+                        src={photo.data}
+                        alt={photo.comment || `Photo ${i + 1}`}
+                        className="w-full h-40 object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removePhoto(i)}
+                        className="absolute top-2 right-2 p-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 shadow transition-colors"
+                      >
+                        <Trash className="w-3.5 h-3.5" />
+                      </button>
+                      <div className="absolute bottom-2 left-2 bg-black/50 text-white text-[10px] px-2 py-0.5 rounded-full">
+                        Photo {i + 1}
+                      </div>
+                    </div>
+                    <div className="p-2">
+                      <input
+                        className="w-full text-xs border-0 border-b border-gray-200 focus:border-blue-400 outline-none bg-transparent text-gray-600 placeholder-gray-300 pb-0.5"
+                        placeholder="Add a comment for this photo…"
+                        value={photo.comment}
+                        onChange={e => updatePhotoComment(i, e.target.value)}
+                      />
+                    </div>
+                  </div>
+                ))}
+                <div
+                  className="rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center h-40 cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-all"
+                  onClick={() => photoInputRef.current?.click()}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => { e.preventDefault(); handlePhotoFiles(e.dataTransfer.files); }}
+                >
+                  <Camera className="w-7 h-7 text-gray-300 mb-1" />
+                  <span className="text-xs text-gray-300 font-medium">Add more</span>
+                </div>
+              </div>
+            )}
           </section>
 
         </div>

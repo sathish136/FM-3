@@ -345,6 +345,33 @@ async function buildServiceReportPDF(report: any): Promise<Buffer> {
       y = textSection(doc, "Customer Remarks", report.customer_remarks, y);
     }
 
+    // ── Photos ────────────────────────────────────────────────────────
+    const photos = Array.isArray(report.photos) ? report.photos.filter((p: any) => p?.data) : [];
+    if (photos.length > 0) {
+      y = checkPageBreak(doc, y, 80);
+      y = secHeader(doc, `Site Photos  (${photos.length})`, y);
+      const imgW = (W - 16) / 2;
+      const imgH = 110;
+      let col = 0;
+      for (const photo of photos) {
+        try {
+          y = checkPageBreak(doc, y, imgH + 28);
+          const base64 = photo.data.replace(/^data:[^;]+;base64,/, "");
+          const imgBuf = Buffer.from(base64, "base64");
+          const x = L + 4 + col * (imgW + 8);
+          doc.image(imgBuf, x, y, { width: imgW, height: imgH, cover: [imgW, imgH] });
+          if (photo.comment) {
+            doc.fillColor(DARK).fontSize(7).font("Helvetica")
+               .text(photo.comment.trim(), x, y + imgH + 3, { width: imgW, lineBreak: false });
+          }
+          col++;
+          if (col >= 2) { col = 0; y += imgH + 20; }
+        } catch {}
+      }
+      if (col > 0) y += imgH + 20;
+      y += 4;
+    }
+
     // ── Signatures ────────────────────────────────────────────────────
     y = checkPageBreak(doc, y, 70);
     y = secHeader(doc, "Signatures", y);
@@ -435,6 +462,7 @@ async function buildServiceReportPDF(report: any): Promise<Buffer> {
       )
     `);
     await db.execute(sql`ALTER TABLE plc_service_reports ADD COLUMN IF NOT EXISTS customer_email TEXT`);
+    await db.execute(sql`ALTER TABLE plc_service_reports ADD COLUMN IF NOT EXISTS photos JSONB NOT NULL DEFAULT '[]'`);
 
     // ── PLC Programs ──────────────────────────────────────────────────────────
     await db.execute(sql`
@@ -879,7 +907,7 @@ router.post("/plc/service-reports", async (req, res) => {
       attended_by, service_details, issue_details, spares_changed,
       plc_checklist, customer_remarks, engineer_suggestions,
       electrical_issue, electrical_issue_desc, electrical_team,
-      status, root_cause, action_taken, created_by,
+      status, root_cause, action_taken, created_by, photos,
     } = req.body;
 
     const result = await db.execute(sql`
@@ -891,7 +919,7 @@ router.post("/plc/service-reports", async (req, res) => {
          attended_by, service_details, issue_details, spares_changed,
          plc_checklist, customer_remarks, engineer_suggestions,
          electrical_issue, electrical_issue_desc, electrical_team,
-         status, root_cause, action_taken, created_by)
+         status, root_cause, action_taken, created_by, photos)
       VALUES
         (${report_no ?? null},
          ${project_number ?? null}, ${project_name ?? null},
@@ -909,7 +937,8 @@ router.post("/plc/service-reports", async (req, res) => {
          ${JSON.stringify(electrical_team ?? [])}::jsonb,
          ${status ?? "Open"},
          ${root_cause ?? null}, ${action_taken ?? null},
-         ${created_by ?? null})
+         ${created_by ?? null},
+         ${JSON.stringify(photos ?? [])}::jsonb)
       RETURNING *
     `);
     const rows = (result as any).rows ?? result;
@@ -930,7 +959,7 @@ router.patch("/plc/service-reports/:id", async (req, res) => {
       attended_by, service_details, issue_details, spares_changed,
       plc_checklist, customer_remarks, engineer_suggestions,
       electrical_issue, electrical_issue_desc, electrical_team,
-      status, root_cause, action_taken,
+      status, root_cause, action_taken, photos,
     } = req.body;
 
     await db.execute(sql`
@@ -961,6 +990,7 @@ router.patch("/plc/service-reports/:id", async (req, res) => {
         status                  = COALESCE(${status ?? null}, status),
         root_cause              = COALESCE(${root_cause ?? null}, root_cause),
         action_taken            = COALESCE(${action_taken ?? null}, action_taken),
+        photos                  = COALESCE(${photos != null ? JSON.stringify(photos) : null}::jsonb, photos),
         updated_at              = NOW()
       WHERE id = ${id}
     `);
@@ -1043,18 +1073,46 @@ router.post("/plc/service-reports/:id/send-email", async (req, res) => {
 </div>
 </body></html>`;
 
+    const photos = Array.isArray(report.photos) ? report.photos.filter((p: any) => p?.data) : [];
+    const photoAttachments = photos.map((p: any, i: number) => {
+      const base64 = p.data.replace(/^data:[^;]+;base64,/, "");
+      const ext = (p.mime || "image/jpeg").split("/")[1] || "jpg";
+      return {
+        filename: p.filename || `photo-${i + 1}.${ext}`,
+        content: Buffer.from(base64, "base64"),
+        contentType: p.mime || "image/jpeg",
+        cid: `photo${i}@wttint`,
+      };
+    });
+
+    const photosHtml = photos.length > 0
+      ? `<div style="margin-bottom:16px;">
+          <div style="color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Site Photos (${photos.length})</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            ${photos.map((p: any, i: number) => `
+              <div style="border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;">
+                <img src="cid:photo${i}@wttint" style="width:100%;height:160px;object-fit:cover;display:block;" alt="Site photo ${i+1}" />
+                ${p.comment ? `<div style="padding:6px 10px;font-size:11px;color:#475569;background:#f8fafc;">${p.comment}</div>` : ""}
+              </div>`).join("")}
+          </div>
+        </div>`
+      : "";
+
     await transporter.sendMail({
       from: `"WTT International" <${smtpUser}>`,
       to: toEmail,
       subject: `Site Service Report — ${reportNo} | ${report.project_name || ""}`,
-      html,
-      attachments: [{
-        filename: `${reportNo}.pdf`,
-        content: pdfBuffer,
-        contentType: "application/pdf",
-      }],
+      html: html.replace("</div>\n</body></html>", `${photosHtml}</div>\n</body></html>`),
+      attachments: [
+        {
+          filename: `${reportNo}.pdf`,
+          content: pdfBuffer,
+          contentType: "application/pdf",
+        },
+        ...photoAttachments,
+      ],
     });
-    res.json({ ok: true, sent_to: toEmail });
+    res.json({ ok: true, sent_to: toEmail, photos_attached: photos.length });
   } catch (e: any) {
     res.status(500).json({ error: e.message || String(e) });
   }
