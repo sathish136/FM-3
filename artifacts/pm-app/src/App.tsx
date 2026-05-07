@@ -97,6 +97,7 @@ import PLCInstruments from "@/pages/PLCInstruments";
 import PLCTags from "@/pages/PLCTags";
 import { SlideshowProvider } from "@/contexts/SlideshowContext";
 import { RecordingProvider } from "@/contexts/RecordingContext";
+import { LiveMeetingProvider } from "@/contexts/LiveMeetingContext";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -295,6 +296,7 @@ function App() {
         <TooltipProvider>
           <WouterRouter base={base}>
             <RecordingProvider>
+            <LiveMeetingProvider>
             <SlideshowProvider>
               <Switch>
                 <Route path="/pptx-viewer" component={PptxPreviewPage} />
@@ -304,6 +306,7 @@ function App() {
                 <Route component={ProtectedRoutes} />
               </Switch>
             </SlideshowProvider>
+            </LiveMeetingProvider>
             </RecordingProvider>
           </WouterRouter>
           <Toaster />

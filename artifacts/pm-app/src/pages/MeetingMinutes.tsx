@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRecording, getGlobalRec } from "@/contexts/RecordingContext";
+import { useLiveMeeting, getGlobalLive } from "@/contexts/LiveMeetingContext";
 import { MicLevelBars } from "@/components/MicLevelBars";
 import { useListProjects } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -1389,9 +1390,11 @@ function LiveSpeechMinutesView({
   onSaved: (meeting: Meeting) => void;
   createdBy: string;
 }) {
-  const [lang, setLang] = useState("auto");
-  const [isRecording, setIsRecording] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
+  const liveMeeting = useLiveMeeting();
+  const g = getGlobalLive();
+  const [lang, setLang] = useState(g.isRecording ? "auto" : "auto");
+  const [isRecording, setIsRecording] = useState(() => g.isRecording);
+  const [isPaused, setIsPaused] = useState(() => g.isPaused);
   const [liveText, setLiveText] = useState("");
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [title, setTitle] = useState("");
@@ -1452,12 +1455,74 @@ function LiveSpeechMinutesView({
 
   const idCounterRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const blocksRef = useRef<Block[]>([]);
+  const langRef = useRef("auto");
+
+  useEffect(() => { blocksRef.current = blocks; }, [blocks]);
+  useEffect(() => { langRef.current = lang; }, [lang]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [blocks, liveText]);
+
+  // On unmount: if still recording, keep stream/WS alive in window global so
+  // the segment recorder chain keeps running in the background. Only teardown
+  // on unmount when NOT recording (or when the user explicitly stopped).
   useEffect(() => () => {
-    teardownStream();
+    if (isRecordingRef.current) {
+      // Park current blocks so they survive navigation
+      getGlobalLive().blocks = blocksRef.current;
+      // Stop the AudioContext / RAF (they don't work when component is hidden)
+      if (levelRafRef.current) { cancelAnimationFrame(levelRafRef.current); levelRafRef.current = null; }
+      if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
+        try { audioCtxRef.current.close(); } catch {}
+      }
+      audioCtxRef.current = null; analyserRef.current = null;
+    } else {
+      teardownStream();
+    }
     if (durationTimerRef.current) window.clearInterval(durationTimerRef.current);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep window._fm_live.onSegment pointed at the current appendSpeechChunk so
+  // WS messages are processed even when this component remounts.
+  // (appendSpeechChunk is redefined below but the effect below runs after every
+  // render, keeping the pointer fresh.)
+  useEffect(() => {
+    if (isRecordingRef.current) {
+      getGlobalLive().onSegment = appendSpeechChunk; // eslint-disable-line react-hooks/exhaustive-deps
+    }
+  }); // runs every render — intentional
+
+  // On mount: if a live session was already active (navigated away and back),
+  // restore state from window global and reconnect to the existing stream/WS.
+  useEffect(() => {
+    const gl = getGlobalLive();
+    if (!gl.isRecording) return;
+    // Restore blocks
+    setBlocks(gl.blocks); blocksRef.current = gl.blocks;
+    setIsRecording(true); isRecordingRef.current = true;
+    setIsPaused(gl.isPaused); isPausedRef.current = gl.isPaused;
+    stopRequestedRef.current = false;
+    if (gl.stream) { streamRef.current = gl.stream; startAudioAnalyser(gl.stream); }
+    if (gl.ws) {
+      wsRef.current = gl.ws;
+      wsReadyRef.current = gl.ws.readyState === WebSocket.OPEN;
+      gl.ws.onmessage = (ev: MessageEvent) => {
+        try {
+          const msg = JSON.parse(typeof ev.data === "string" ? ev.data : "");
+          if (msg.type === "segment" && !msg.skipped && msg.original) {
+            gl.onSegment?.(String(msg.original));
+          }
+        } catch {}
+      };
+    }
+    // Re-register callbacks with context
+    liveMeeting.notifyStarted(gl.title, pauseRecording, resumeRecording, stopRecording); // eslint-disable-line react-hooks/exhaustive-deps
+    // Restore duration timer
+    if (gl.startTime) {
+      setDuration(Math.floor((Date.now() - gl.startTime) / 1000));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Live recording timer
   useEffect(() => {
@@ -1505,14 +1570,20 @@ function LiveSpeechMinutesView({
       kind: "speech", id, text, translated: null, ts: t.ts, tsMs: t.tsMs,
       detectedLang: detected.lang, detectedFlag: detected.flag, isEnglish: detected.isEnglish, translating: false,
     };
-    setBlocks(prev => [...prev, block]);
+    setBlocks(prev => {
+      const next = [...prev, block];
+      // Keep window global in sync for background persistence
+      getGlobalLive().blocks = next;
+      liveMeeting.notifyBlock(next.length);
+      return next;
+    });
     setLiveText("");
     setLiveDetected({ lang: detected.lang, flag: detected.flag });
     // Only auto-translate when the user picked "Auto Detect". If they
     // explicitly chose a language (Tamil, Hindi, etc.) they want the original
     // transcript ONLY — no English translation cluttering the timeline.
     // Per user request 2026-04-25.
-    if (lang === "auto" && !detected.isEnglish) translateBlock(id, text, detected.lang);
+    if (langRef.current === "auto" && !detected.isEnglish) translateBlock(id, text, detected.lang);
   };
 
   // ─── Whisper realtime streaming ──────────────────────────────────────────
@@ -1752,6 +1823,9 @@ function LiveSpeechMinutesView({
 
     ws.onopen = () => { console.log("[Whisper MM] WS open"); };
 
+    // Store WS on window so it survives navigation-induced component unmount
+    getGlobalLive().ws = ws;
+
     ws.onmessage = (ev) => {
       try {
         const raw = typeof ev.data === "string" ? ev.data : "";
@@ -1773,7 +1847,11 @@ function LiveSpeechMinutesView({
         }
         if (msg.type === "segment") {
           if (msg.skipped || !msg.original) return;
-          appendSpeechChunk(String(msg.original));
+          // Route through the forwardable callback so reconnecting after
+          // navigation still processes segments correctly.
+          const onSeg = getGlobalLive().onSegment;
+          if (onSeg) onSeg(String(msg.original));
+          else appendSpeechChunk(String(msg.original));
           return;
         }
         // "translation" frames are ignored here — appendSpeechChunk runs the
@@ -1885,6 +1963,16 @@ function LiveSpeechMinutesView({
     setDuration(0);
     setLiveText("");
     setLiveDetected(null);
+    // Park stream on window and register callbacks with the global context
+    const gl = getGlobalLive();
+    gl.stream = stream;
+    gl.isRecording = true;
+    gl.isPaused = false;
+    gl.startTime = Date.now();
+    gl.title = title;
+    gl.blocks = [];
+    gl.onSegment = appendSpeechChunk; // eslint-disable-line react-hooks/exhaustive-deps
+    liveMeeting.notifyStarted(title, pauseRecording, resumeRecording, stopRecording); // eslint-disable-line react-hooks/exhaustive-deps
     startAudioAnalyser(stream);
     startStreaming(stream);
   };
@@ -1895,6 +1983,8 @@ function LiveSpeechMinutesView({
   const pauseRecording = () => {
     isPausedRef.current = true;
     setIsPaused(true);
+    getGlobalLive().isPaused = true;
+    liveMeeting.notifyPaused();
     if (segTimerRef.current) {
       window.clearTimeout(segTimerRef.current);
       segTimerRef.current = null;
@@ -1915,6 +2005,8 @@ function LiveSpeechMinutesView({
   const resumeRecording = () => {
     isPausedRef.current = false;
     setIsPaused(false);
+    getGlobalLive().isPaused = false;
+    liveMeeting.notifyResumed();
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && segStreamRef.current) {
       startSegmentRecorder();
     }
@@ -1928,6 +2020,7 @@ function LiveSpeechMinutesView({
     setLiveDetected(null);
     setIsRecording(false);
     setIsPaused(false);
+    liveMeeting.notifyStopped();
   };
 
   const addNote = () => {

@@ -4,7 +4,7 @@ import {
   Briefcase, FileText,
   LogOut, ChevronDown, ChevronRight as ChevronRightIcon, Menu, MoreHorizontal,
   MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp, ListChecks, ClipboardList, Truck, Building2, Package,
-  Play, Square, Phone, ShieldOff, Loader2, Languages, Globe,
+  Play, Square, Phone, ShieldOff, Loader2, Languages, Globe, Mic, Pause,
   ScanLine, Factory, Database, UserCheck,
   Code2, Monitor, Gauge, Tag,
 } from "lucide-react";
@@ -14,6 +14,7 @@ import { useAuth, type AuthUser } from "@/hooks/useAuth";
 import { AISearch } from "@/components/AISearch";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { useRecording } from "@/contexts/RecordingContext";
+import { useLiveMeeting } from "@/contexts/LiveMeetingContext";
 import { WaterDropAnimation } from "@/components/WaterAnimation";
 import { useTheme, THEME_PRESETS } from "@/hooks/useTheme";
 import { useNavStyle } from "@/hooks/useNavStyle";
@@ -875,7 +876,9 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   const isAgent = (user?.isAgent === true) && !isAdmin;
   const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
   const rec = useRecording();
+  const live = useLiveMeeting();
   const fmtDur = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+  const fmtLiveDur = (s: number) => `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
   useEffect(() => {
     if (!user) { setPermLoading(false); return; }
@@ -1108,6 +1111,35 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
                 <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                 REC {fmtDur(rec.duration)}
               </Link>
+            )}
+            {live.isLiveRecording && (
+              <div className="hidden md:flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-1.5 py-1 shrink-0">
+                <Link href="/meeting-minutes"
+                  className="flex items-center gap-1.5 px-1.5 text-xs font-bold text-rose-700 hover:text-rose-900 transition-colors">
+                  {live.isLivePaused
+                    ? <Pause className="w-3 h-3 text-amber-600" />
+                    : <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />}
+                  <Mic className="w-3 h-3" />
+                  <span>{live.isLivePaused ? "Paused" : "Live"} · {fmtLiveDur(live.liveDuration)}</span>
+                  {live.liveBlockCount > 0 && <span className="text-[10px] text-rose-500">· {live.liveBlockCount} ¶</span>}
+                </Link>
+                <div className="w-px h-4 bg-rose-200" />
+                {live.isLivePaused ? (
+                  <button onClick={live.resume} title="Resume recording"
+                    className="p-1 rounded-lg hover:bg-rose-100 text-emerald-600 transition-colors">
+                    <Play className="w-3 h-3" fill="currentColor" />
+                  </button>
+                ) : (
+                  <button onClick={live.pause} title="Pause recording"
+                    className="p-1 rounded-lg hover:bg-rose-100 text-rose-600 transition-colors">
+                    <Pause className="w-3 h-3" />
+                  </button>
+                )}
+                <button onClick={live.stop} title="Stop & save meeting"
+                  className="p-1 rounded-lg hover:bg-rose-100 text-rose-700 transition-colors">
+                  <Square className="w-3 h-3" fill="currentColor" />
+                </button>
+              </div>
             )}
           </div>
 
