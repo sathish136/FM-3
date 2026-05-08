@@ -399,7 +399,7 @@ function printDoc(el: HTMLElement | null) {
     .join("\n");
   const win = window.open("", "_blank", "width=900,height=700");
   if (!win) return;
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">${styles}</head><body style="margin:0;background:#fff">${el.outerHTML}</body></html>`);
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">${styles}<style>*,*::before,*::after{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}</style></head><body style="margin:0;background:#fff">${el.outerHTML}</body></html>`);
   win.document.close();
   win.focus();
   setTimeout(() => { win.print(); win.close(); }, 600);
