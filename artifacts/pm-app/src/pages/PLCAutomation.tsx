@@ -64,6 +64,7 @@ function ProjectDropdown({ value, onChange }: { value: string; onChange: (p: Pro
   const [loading, setLoading] = useState(false);
   const [erpFailed, setErpFailed] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const pickedRef = useRef(false);
 
   useEffect(() => {
     setLoading(true);
@@ -86,12 +87,20 @@ function ProjectDropdown({ value, onChange }: { value: string; onChange: (p: Pro
     : projects;
 
   const commitFreeText = () => {
+    if (pickedRef.current) { pickedRef.current = false; return; }
     if (q.trim()) {
       const parts = q.trim().split(" - ");
       const code = parts.length > 1 ? parts[0].trim() : "";
       const name = parts.length > 1 ? parts.slice(1).join(" - ").trim() : q.trim();
       onChange({ code, name, label: q.trim() });
     }
+    setOpen(false);
+  };
+
+  const pickProject = (p: Project) => {
+    pickedRef.current = true;
+    onChange(p);
+    setQ(p.label);
     setOpen(false);
   };
 
@@ -118,7 +127,8 @@ function ProjectDropdown({ value, onChange }: { value: string; onChange: (p: Pro
               key={p.code}
               type="button"
               className="w-full text-left px-3 py-2.5 text-sm hover:bg-blue-50 border-b border-gray-50 last:border-0"
-              onClick={() => { onChange(p); setQ(p.label); setOpen(false); }}
+              onMouseDown={() => { pickedRef.current = true; }}
+              onClick={() => pickProject(p)}
             >
               <span className="font-mono text-xs text-blue-700 mr-1">{p.code}</span>
               <span className="text-gray-800">{p.name}</span>
