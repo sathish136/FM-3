@@ -9,6 +9,7 @@ import {
   MapPin, Cpu, User, PhoneCall, CheckSquare, Square,
   ClipboardList, MessageSquare, Lightbulb, Mail, Send,
   Camera, ImageIcon, Trash,
+  AlignLeft, List, ListOrdered,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -85,6 +86,140 @@ function fmtDT(s?: string) {
   const d = new Date(s);
   if (isNaN(d.getTime())) return s;
   return d.toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+// ─── Rich Textarea ────────────────────────────────────────────────────────────
+type RichMode = "para" | "bullet" | "numbered";
+
+function detectMode(text: string): RichMode {
+  const lines = text.split("\n").filter(l => l.trim());
+  if (!lines.length) return "para";
+  if (lines.every(l => l.startsWith("• "))) return "bullet";
+  if (lines.every(l => /^\d+\.\s/.test(l))) return "numbered";
+  return "para";
+}
+
+function stripFormatting(text: string): string[] {
+  return text.split("\n").map(l => {
+    if (l.startsWith("• ")) return l.slice(2);
+    const m = l.match(/^\d+\.\s([\s\S]*)$/);
+    if (m) return m[1];
+    return l;
+  });
+}
+
+function RichTextarea({ value, onChange, placeholder, rows = 4 }: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  rows?: number;
+}) {
+  const [mode, setMode] = useState<RichMode>(() => detectMode(value));
+  const taRef = useRef<HTMLTextAreaElement>(null);
+
+  const switchMode = (newMode: RichMode) => {
+    const stripped = stripFormatting(value);
+    let converted: string[];
+    if (newMode === "para") {
+      converted = stripped;
+    } else if (newMode === "bullet") {
+      converted = stripped.map(l => (l.trim() ? `• ${l}` : l));
+    } else {
+      let n = 1;
+      converted = stripped.map(l => (l.trim() ? `${n++}. ${l}` : l));
+    }
+    setMode(newMode);
+    onChange(converted.join("\n"));
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key !== "Enter" || mode === "para") return;
+    e.preventDefault();
+    const ta = e.currentTarget;
+    const pos = ta.selectionStart;
+    const before = value.slice(0, pos);
+    const after = value.slice(pos);
+    const currentLine = before.split("\n").at(-1) ?? "";
+    let prefix = "";
+    if (mode === "bullet") {
+      prefix = "• ";
+    } else {
+      const m = currentLine.match(/^(\d+)\./);
+      prefix = m ? `${parseInt(m[1]) + 1}. ` : "1. ";
+    }
+    const next = before + "\n" + prefix + after;
+    onChange(next);
+    setTimeout(() => {
+      if (taRef.current) {
+        taRef.current.selectionStart = taRef.current.selectionEnd = pos + 1 + prefix.length;
+      }
+    }, 0);
+  };
+
+  const MODES: { key: RichMode; label: string; Icon: typeof AlignLeft }[] = [
+    { key: "para",     label: "Para",     Icon: AlignLeft    },
+    { key: "bullet",   label: "Bullet",   Icon: List         },
+    { key: "numbered", label: "Numbered", Icon: ListOrdered  },
+  ];
+
+  return (
+    <div className="border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-400">
+      <div className="flex items-center gap-0.5 px-2 py-1 bg-gray-50 border-b border-gray-200">
+        <span className="text-[10px] text-gray-400 mr-1.5 font-medium">Format:</span>
+        {MODES.map(({ key, label, Icon }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => switchMode(key)}
+            className={cn(
+              "flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium transition-colors",
+              mode === key
+                ? "bg-blue-600 text-white"
+                : "text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+            )}
+          >
+            <Icon className="w-3 h-3" />
+            {label}
+          </button>
+        ))}
+      </div>
+      <textarea
+        ref={taRef}
+        className="w-full px-3 py-2.5 text-sm bg-white outline-none resize-none"
+        rows={rows}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder}
+      />
+    </div>
+  );
+}
+
+// ─── Formatted text renderer (for print/card view) ───────────────────────────
+function RenderFormatted({ text, className }: { text?: string; className?: string }) {
+  if (!text) return <span className="text-gray-400 italic">—</span>;
+  const lines = text.split("\n");
+  const isBullet   = lines.filter(l => l.trim()).every(l => l.startsWith("• "));
+  const isNumbered = lines.filter(l => l.trim()).every(l => /^\d+\.\s/.test(l));
+  if (isBullet) {
+    return (
+      <ul className={cn("list-disc list-inside space-y-0.5 text-sm text-gray-900", className)}>
+        {lines.filter(l => l.trim()).map((l, i) => <li key={i}>{l.slice(2)}</li>)}
+      </ul>
+    );
+  }
+  if (isNumbered) {
+    return (
+      <ol className={cn("list-decimal list-inside space-y-0.5 text-sm text-gray-900", className)}>
+        {lines.filter(l => l.trim()).map((l, i) => {
+          const m = l.match(/^\d+\.\s([\s\S]*)$/);
+          return <li key={i}>{m ? m[1] : l}</li>;
+        })}
+      </ol>
+    );
+  }
+  return <div className={cn("text-sm text-gray-900 whitespace-pre-wrap leading-relaxed", className)}>{text}</div>;
 }
 
 // ─── Project Dropdown ────────────────────────────────────────────────────────
@@ -439,23 +574,23 @@ function PrintView({ report, onClose }: { report: ServiceReport; onClose: () => 
         <div className="border-b border-gray-200">
           <SH title="Solution" />
           <div className="grid grid-cols-2 divide-x divide-gray-200">
-            <div className="px-4 py-3">
+            <div className="px-4 py-3 min-h-[50px]">
               <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Service / Work Done</div>
-              <div className="text-sm text-gray-900 whitespace-pre-wrap min-h-[50px] leading-relaxed">{report.service_details || "—"}</div>
+              <RenderFormatted text={report.service_details} />
             </div>
-            <div className="px-4 py-3">
+            <div className="px-4 py-3 min-h-[50px]">
               <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Action Taken</div>
-              <div className="text-sm text-gray-900 whitespace-pre-wrap min-h-[50px] leading-relaxed">{report.action_taken || "—"}</div>
+              <RenderFormatted text={report.action_taken} />
             </div>
           </div>
           <div className="border-t border-gray-200 grid grid-cols-2 divide-x divide-gray-200">
-            <div className="px-4 py-3">
+            <div className="px-4 py-3 min-h-[40px]">
               <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Root Cause</div>
-              <div className="text-sm text-gray-900 whitespace-pre-wrap min-h-[40px] leading-relaxed">{report.root_cause || "—"}</div>
+              <RenderFormatted text={report.root_cause} />
             </div>
-            <div className="px-4 py-3">
+            <div className="px-4 py-3 min-h-[40px]">
               <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Engineer Suggestions</div>
-              <div className="text-sm text-gray-900 whitespace-pre-wrap min-h-[40px] leading-relaxed">{report.engineer_suggestions || "—"}</div>
+              <RenderFormatted text={report.engineer_suggestions} />
             </div>
           </div>
         </div>
@@ -864,11 +999,10 @@ function ServiceReportModal({
               </div>
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">Service / Work Done</label>
-                <textarea
-                  className={cn(inputCls, "resize-none")}
+                <RichTextarea
                   rows={4}
                   value={serviceDetails}
-                  onChange={e => setServiceDetails(e.target.value)}
+                  onChange={setServiceDetails}
                   placeholder="Describe the service performed…"
                 />
               </div>
@@ -1036,11 +1170,11 @@ function ServiceReportModal({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">Root Cause</label>
-                <textarea className={cn(inputCls, "resize-none")} rows={3} value={rootCause} onChange={e => setRootCause(e.target.value)} placeholder="Root cause analysis…" />
+                <RichTextarea rows={3} value={rootCause} onChange={setRootCause} placeholder="Root cause analysis…" />
               </div>
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1.5 block">Action Taken</label>
-                <textarea className={cn(inputCls, "resize-none")} rows={3} value={actionTaken} onChange={e => setActionTaken(e.target.value)} placeholder="Action taken…" />
+                <RichTextarea rows={3} value={actionTaken} onChange={setActionTaken} placeholder="Action taken…" />
               </div>
             </div>
           </section>
@@ -1065,13 +1199,7 @@ function ServiceReportModal({
                 <label className="text-xs font-medium text-gray-600 mb-1.5 flex items-center gap-1.5">
                   <Lightbulb className="w-3.5 h-3.5 text-amber-500" /> Engineer Suggestions
                 </label>
-                <textarea
-                  className={cn(inputCls, "resize-none")}
-                  rows={3}
-                  value={engineerSugg}
-                  onChange={e => setEngineerSugg(e.target.value)}
-                  placeholder="Recommendations, preventive maintenance tips…"
-                />
+                <RichTextarea rows={3} value={engineerSugg} onChange={setEngineerSugg} placeholder="Recommendations, preventive maintenance tips…" />
               </div>
             </div>
           </section>
