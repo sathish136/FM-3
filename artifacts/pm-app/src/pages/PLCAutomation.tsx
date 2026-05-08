@@ -225,6 +225,20 @@ function EmpMultiSelect({
   );
 }
 
+// ─── Print helper: open new window with only the document ─────────────────────
+function printDoc(el: HTMLElement | null) {
+  if (!el) return;
+  const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+    .map(n => n.outerHTML)
+    .join("\n");
+  const win = window.open("", "_blank", "width=900,height=700");
+  if (!win) return;
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">${styles}</head><body style="margin:0;background:#fff">${el.outerHTML}</body></html>`);
+  win.document.close();
+  win.focus();
+  setTimeout(() => { win.print(); win.close(); }, 600);
+}
+
 // ─── Print View ──────────────────────────────────────────────────────────────
 function PrintView({ call, onClose }: { call: SiteCall; onClose: () => void }) {
   const { toast } = useToast();
@@ -232,6 +246,7 @@ function PrintView({ call, onClose }: { call: SiteCall; onClose: () => void }) {
   const spares   = Array.isArray(call.spares_changed) ? call.spares_changed : [];
   const elecTeam = Array.isArray(call.electrical_team) ? call.electrical_team : [];
   const [emailSending, setEmailSending] = useState(false);
+  const docRef = useRef<HTMLDivElement>(null);
 
   const reportDate = call.call_received_at || call.created_at || "";
   const fmtDate = (s: string) => {
@@ -291,7 +306,7 @@ function PrintView({ call, onClose }: { call: SiteCall; onClose: () => void }) {
             {emailSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
             {emailSending ? "Sending…" : "Email Report"}
           </button>
-          <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium">
+          <button onClick={() => printDoc(docRef.current)} className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium">
             <Printer className="w-3.5 h-3.5" /> Print / Save PDF
           </button>
           <button onClick={onClose} className="flex items-center gap-2 px-4 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm">
@@ -300,7 +315,7 @@ function PrintView({ call, onClose }: { call: SiteCall; onClose: () => void }) {
         </div>
       </div>
 
-      <div className="max-w-[794px] mx-auto my-6 print:my-0 print:mx-0 bg-white shadow-xl print:shadow-none font-sans text-gray-900">
+      <div ref={docRef} className="max-w-[794px] mx-auto my-6 print:my-0 print:mx-0 bg-white shadow-xl print:shadow-none font-sans text-gray-900">
 
         {/* ── HEADER ───────────────────────────────────────────── */}
         <div className="flex border-b-[3px] border-blue-900">
