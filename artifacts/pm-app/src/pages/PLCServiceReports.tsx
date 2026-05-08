@@ -469,8 +469,6 @@ function PrintView({ report, onClose }: { report: ServiceReport; onClose: () => 
           {/* Logo */}
           <div className="w-40 shrink-0 flex flex-col items-center justify-center py-4 px-3 border-r border-blue-200 bg-blue-50">
             <img src={`${BASE}/wtt-logo.png`} alt="WTT" className="w-24 h-24 object-contain" />
-            <div className="text-[8px] font-black tracking-[0.25em] text-orange-500 mt-1">INTERNATIONAL</div>
-            <div className="text-[7px] text-gray-400 italic">Water Loving Technology</div>
           </div>
           {/* Title */}
           <div className="flex-1 flex flex-col items-center justify-center py-4 px-6 text-center">
@@ -738,7 +736,7 @@ function PrintView({ report, onClose }: { report: ServiceReport; onClose: () => 
 
         {/* Footer */}
         <div className="border-t-[3px] border-blue-900 bg-blue-50 px-4 py-2 flex items-center justify-between">
-          <span className="text-[9px] text-blue-700 font-semibold">WTT International · Water Loving Technology</span>
+          <span className="text-[9px] text-blue-700 font-semibold">WTT International</span>
           <span className="text-[9px] text-gray-400">
             {report.created_by ? `Prepared by: ${report.created_by}` : ""} · Generated: {new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
           </span>
