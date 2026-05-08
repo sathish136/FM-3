@@ -468,7 +468,7 @@ function PrintView({ report, onClose }: { report: ServiceReport; onClose: () => 
         <div className="flex border-b-[3px] border-blue-900">
           {/* Logo */}
           <div className="w-40 shrink-0 flex flex-col items-center justify-center py-4 px-3 border-r border-blue-200 bg-blue-50">
-            <img src={`${BASE}/wtt-logo.png`} alt="WTT" className="w-24 h-24 object-contain" />
+            <img src={`${BASE}/wtt-logo.png`} alt="WTT" className="w-32 h-32 object-contain" />
           </div>
           {/* Title */}
           <div className="flex-1 flex flex-col items-center justify-center py-4 px-6 text-center">
