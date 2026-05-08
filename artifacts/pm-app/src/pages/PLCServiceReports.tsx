@@ -16,7 +16,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 type Status = "Open" | "In Progress" | "Closed";
 
 interface Employee { id: string; name: string; designation: string; label: string; }
-interface Project  { code: string; name: string; label: string; }
+interface Project  { code: string; name: string; label: string; status?: string; }
 interface Spare    { part_name: string; part_no: string; qty: string; remarks: string; }
 interface ChecklistItem { label: string; checked: boolean; note: string; }
 interface Photo { data: string; filename: string; comment: string; mime: string; }
@@ -153,6 +153,9 @@ function ProjectDropdown({ value, onChange }: { value: string; onChange: (p: Pro
             >
               <span className="font-mono text-xs text-blue-700 mr-1">{p.code}</span>
               <span className="text-gray-800">{p.name}</span>
+              {p.status === "Completed" && (
+                <span className="ml-1.5 inline-block text-[10px] font-semibold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full leading-none">Completed</span>
+              )}
             </button>
           ))}
         </div>
