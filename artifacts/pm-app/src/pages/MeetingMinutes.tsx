@@ -4,7 +4,7 @@ import {
   X, Save, Loader2, CheckCircle, Clock, Mic,
   Square, Type, Radio, MapPin, Search, FolderOpen,
   Printer, MessageSquare, Mail, ChevronDown, Globe,
-  Camera, Image as ImageIcon, StickyNote, Paperclip, Pause, Play,
+  Camera, Image as ImageIcon, StickyNote, Paperclip, Pause, Play, Languages,
 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRecording, getGlobalRec } from "@/contexts/RecordingContext";
