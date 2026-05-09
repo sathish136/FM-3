@@ -1397,11 +1397,12 @@ function LiveSpeechMinutesView({
   const [isPaused, setIsPaused] = useState(() => g.isPaused);
   const [liveText, setLiveText] = useState("");
   const [blocks, setBlocks] = useState<Block[]>([]);
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState("Untitled customer meeting");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [venue, setVenue] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [hasRecorded, setHasRecorded] = useState(false);
   const [liveDetected, setLiveDetected] = useState<{ lang: string; flag: string } | null>(null);
   const [recError, setRecError] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
@@ -1960,6 +1961,7 @@ function LiveSpeechMinutesView({
     isPausedRef.current = false;
     setIsRecording(true);
     setIsPaused(false);
+    setHasRecorded(true);
     setDuration(0);
     setLiveText("");
     setLiveDetected(null);
@@ -2156,6 +2158,7 @@ function LiveSpeechMinutesView({
             <button
               onClick={handleSave}
               disabled={!canSave}
+              title={!canSave && !saved ? (!title.trim() ? "Add a title to save" : totalItems === 0 ? "Add some content — type a note or record speech first" : "") : ""}
               className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-black disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg transition-colors">
               {saved
                 ? <><CheckCircle className="w-3.5 h-3.5" /> Saved</>
@@ -2228,18 +2231,30 @@ function LiveSpeechMinutesView({
         {showEmpty ? (
           <div className="h-full flex flex-col items-center justify-center text-center px-8 gap-5">
             <div className="w-20 h-20 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center">
-              <Mic className="w-9 h-9 text-slate-300" />
+              <Mic className={`w-9 h-9 ${hasRecorded ? "text-amber-300" : "text-slate-300"}`} />
             </div>
             <div className="max-w-sm space-y-1.5">
-              <p className="text-base font-bold text-slate-800">Start your customer meeting</p>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Press <span className="font-semibold text-slate-700">Record</span> to capture speech in any language.
-                You can also type quick notes or attach photos at any moment.
-              </p>
+              {hasRecorded ? (
+                <>
+                  <p className="text-base font-bold text-slate-800">No speech was detected</p>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    The recording didn't pick up any voice. You can <span className="font-semibold text-slate-700">record again</span>,
+                    or type a note manually and then save.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-base font-bold text-slate-800">Start your customer meeting</p>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Press <span className="font-semibold text-slate-700">Record</span> to capture speech in any language.
+                    You can also type quick notes or attach photos at any moment.
+                  </p>
+                </>
+              )}
             </div>
             <button onClick={startRecording}
               className="flex items-center gap-2 px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-xl shadow-md shadow-rose-200 transition-colors">
-              <Mic className="w-4 h-4" /> Start Recording
+              <Mic className="w-4 h-4" /> {hasRecorded ? "Record Again" : "Start Recording"}
             </button>
             {recError && (
               <div className="max-w-md w-full rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-left">
