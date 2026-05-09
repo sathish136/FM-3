@@ -3,6 +3,9 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import nodemailer from "nodemailer";
 import PDFDocument from "pdfkit";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 
 const ERP_URL = (process.env.ERPNEXT_URL || "https://erp.wttint.com").replace(/\/$/, "");
 const ERP_AUTH = () => `token ${process.env.ERPNEXT_API_KEY || ""}:${process.env.ERPNEXT_API_SECRET || ""}`;
@@ -1412,6 +1415,330 @@ router.get("/plc/erp-employees", async (req, res) => {
   } catch (e: any) {
     res.status(502).json({ error: e.message, employees: [] });
   }
+});
+
+// ─── Program File Backup (shared for PLC & HMI) ──────────────────────────────
+
+const plcFilesDir = path.join(process.cwd(), "uploads", "plc-program-files");
+fs.mkdirSync(plcFilesDir, { recursive: true });
+
+const plcFileStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, plcFilesDir),
+  filename: (_req, file, cb) => {
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, `${unique}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_")}`);
+  },
+});
+const plcUpload = multer({ storage: plcFileStorage, limits: { fileSize: 50 * 1024 * 1024 } });
+
+async function ensureFilesTable() {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS plc_program_files (
+      id           SERIAL PRIMARY KEY,
+      program_id   INTEGER NOT NULL,
+      program_type TEXT NOT NULL DEFAULT 'plc',
+      filename     TEXT NOT NULL,
+      original_name TEXT NOT NULL,
+      size         INTEGER,
+      uploaded_by  TEXT,
+      uploaded_at  TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+ensureFilesTable().catch(() => {});
+
+router.get("/plc/programs/:id/files", async (req, res) => {
+  try {
+    const r = await db.execute(sql`SELECT * FROM plc_program_files WHERE program_id=${Number(req.params.id)} AND program_type='plc' ORDER BY uploaded_at DESC`);
+    res.json({ data: (r as any).rows ?? r });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.post("/plc/programs/:id/files", plcUpload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file" });
+    const { uploaded_by } = req.body;
+    const r = await db.execute(sql`INSERT INTO plc_program_files (program_id,program_type,filename,original_name,size,uploaded_by) VALUES (${Number(req.params.id)},'plc',${req.file.filename},${req.file.originalname},${req.file.size},${uploaded_by??null}) RETURNING *`);
+    res.json(((r as any).rows ?? r)[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.get("/plc/hmi-programs/:id/files", async (req, res) => {
+  try {
+    const r = await db.execute(sql`SELECT * FROM plc_program_files WHERE program_id=${Number(req.params.id)} AND program_type='hmi' ORDER BY uploaded_at DESC`);
+    res.json({ data: (r as any).rows ?? r });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.post("/plc/hmi-programs/:id/files", plcUpload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file" });
+    const { uploaded_by } = req.body;
+    const r = await db.execute(sql`INSERT INTO plc_program_files (program_id,program_type,filename,original_name,size,uploaded_by) VALUES (${Number(req.params.id)},'hmi',${req.file.filename},${req.file.originalname},${req.file.size},${uploaded_by??null}) RETURNING *`);
+    res.json(((r as any).rows ?? r)[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.get("/plc/files/:fileId/download", async (req, res) => {
+  try {
+    const r = await db.execute(sql`SELECT * FROM plc_program_files WHERE id=${Number(req.params.fileId)}`);
+    const rows = (r as any).rows ?? r;
+    if (!rows[0]) return res.status(404).json({ error: "Not found" });
+    const f = rows[0];
+    const fp = path.join(plcFilesDir, f.filename);
+    if (!fs.existsSync(fp)) return res.status(404).json({ error: "File not found on disk" });
+    res.download(fp, f.original_name);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.delete("/plc/files/:fileId", async (req, res) => {
+  try {
+    const r = await db.execute(sql`SELECT * FROM plc_program_files WHERE id=${Number(req.params.fileId)}`);
+    const rows = (r as any).rows ?? r;
+    if (!rows[0]) return res.status(404).json({ error: "Not found" });
+    const fp = path.join(plcFilesDir, rows[0].filename);
+    if (fs.existsSync(fp)) fs.unlinkSync(fp);
+    await db.execute(sql`DELETE FROM plc_program_files WHERE id=${Number(req.params.fileId)}`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// ─── Panel Inspection Before Dispatch ─────────────────────────────────────────
+
+async function ensurePanelInspTable() {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS panel_inspections (
+      id              SERIAL PRIMARY KEY,
+      inspection_no   TEXT,
+      project_number  TEXT,
+      project_name    TEXT,
+      panel_name      TEXT,
+      panel_type      TEXT,
+      panel_serial_no TEXT,
+      inspection_date TEXT,
+      inspector_name  TEXT,
+      customer_name   TEXT,
+      checklist       JSONB NOT NULL DEFAULT '[]'::jsonb,
+      issues          JSONB NOT NULL DEFAULT '[]'::jsonb,
+      overall_result  TEXT NOT NULL DEFAULT 'Pending',
+      remarks         TEXT,
+      email_to        TEXT,
+      status          TEXT NOT NULL DEFAULT 'Draft',
+      created_by      TEXT,
+      created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+ensurePanelInspTable().catch(() => {});
+
+router.get("/plc/panel-inspections", async (req, res) => {
+  try {
+    const { search, status, result } = req.query as { search?: string; status?: string; result?: string };
+    const hasSearch = search && search.trim();
+    const hasStatus = status && status !== "All";
+    const hasResult = result && result !== "All";
+    let r: any;
+    if (hasSearch) {
+      r = await db.execute(sql`SELECT id,inspection_no,project_number,project_name,panel_name,panel_type,panel_serial_no,inspection_date,inspector_name,overall_result,status,created_at FROM panel_inspections WHERE project_name ILIKE ${"%" + search + "%"} OR project_number ILIKE ${"%" + search + "%"} OR panel_name ILIKE ${"%" + search + "%"} OR inspection_no ILIKE ${"%" + search + "%"} ORDER BY created_at DESC LIMIT 200`);
+    } else if (hasStatus && hasResult) {
+      r = await db.execute(sql`SELECT id,inspection_no,project_number,project_name,panel_name,panel_type,panel_serial_no,inspection_date,inspector_name,overall_result,status,created_at FROM panel_inspections WHERE status=${status} AND overall_result=${result} ORDER BY created_at DESC LIMIT 200`);
+    } else if (hasStatus) {
+      r = await db.execute(sql`SELECT id,inspection_no,project_number,project_name,panel_name,panel_type,panel_serial_no,inspection_date,inspector_name,overall_result,status,created_at FROM panel_inspections WHERE status=${status} ORDER BY created_at DESC LIMIT 200`);
+    } else if (hasResult) {
+      r = await db.execute(sql`SELECT id,inspection_no,project_number,project_name,panel_name,panel_type,panel_serial_no,inspection_date,inspector_name,overall_result,status,created_at FROM panel_inspections WHERE overall_result=${result} ORDER BY created_at DESC LIMIT 200`);
+    } else {
+      r = await db.execute(sql`SELECT id,inspection_no,project_number,project_name,panel_name,panel_type,panel_serial_no,inspection_date,inspector_name,overall_result,status,created_at FROM panel_inspections ORDER BY created_at DESC LIMIT 200`);
+    }
+    res.json({ data: (r as any).rows ?? r });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.get("/plc/panel-inspections/:id", async (req, res) => {
+  try {
+    const r = await db.execute(sql`SELECT * FROM panel_inspections WHERE id=${Number(req.params.id)}`);
+    const rows = (r as any).rows ?? r;
+    if (!rows[0]) return res.status(404).json({ error: "Not found" });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.post("/plc/panel-inspections", async (req, res) => {
+  try {
+    const { inspection_no, project_number, project_name, panel_name, panel_type, panel_serial_no, inspection_date, inspector_name, customer_name, checklist, issues, overall_result, remarks, email_to, status, created_by } = req.body;
+    const r = await db.execute(sql`INSERT INTO panel_inspections (inspection_no,project_number,project_name,panel_name,panel_type,panel_serial_no,inspection_date,inspector_name,customer_name,checklist,issues,overall_result,remarks,email_to,status,created_by) VALUES (${inspection_no??null},${project_number??null},${project_name??null},${panel_name??null},${panel_type??null},${panel_serial_no??null},${inspection_date??null},${inspector_name??null},${customer_name??null},${JSON.stringify(checklist??[])}::jsonb,${JSON.stringify(issues??[])}::jsonb,${overall_result??"Pending"},${remarks??null},${email_to??null},${status??"Draft"},${created_by??null}) RETURNING *`);
+    res.json(((r as any).rows ?? r)[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.patch("/plc/panel-inspections/:id", async (req, res) => {
+  try {
+    const { inspection_no, project_number, project_name, panel_name, panel_type, panel_serial_no, inspection_date, inspector_name, customer_name, checklist, issues, overall_result, remarks, email_to, status } = req.body;
+    await db.execute(sql`UPDATE panel_inspections SET inspection_no=COALESCE(${inspection_no??null},inspection_no), project_number=COALESCE(${project_number??null},project_number), project_name=COALESCE(${project_name??null},project_name), panel_name=${panel_name??null}, panel_type=${panel_type??null}, panel_serial_no=${panel_serial_no??null}, inspection_date=${inspection_date??null}, inspector_name=${inspector_name??null}, customer_name=${customer_name??null}, checklist=COALESCE(${checklist!=null?JSON.stringify(checklist):null}::jsonb,checklist), issues=COALESCE(${issues!=null?JSON.stringify(issues):null}::jsonb,issues), overall_result=COALESCE(${overall_result??null},overall_result), remarks=${remarks??null}, email_to=${email_to??null}, status=COALESCE(${status??null},status), updated_at=NOW() WHERE id=${Number(req.params.id)}`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.delete("/plc/panel-inspections/:id", async (req, res) => {
+  try {
+    await db.execute(sql`DELETE FROM panel_inspections WHERE id=${Number(req.params.id)}`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.post("/plc/panel-inspections/:id/send-email", async (req, res) => {
+  try {
+    const r = await db.execute(sql`SELECT * FROM panel_inspections WHERE id=${Number(req.params.id)}`);
+    const rows = (r as any).rows ?? r;
+    const insp = rows[0];
+    if (!insp) return res.status(404).json({ error: "Not found" });
+    const toEmail = req.body.email_to || insp.email_to;
+    if (!toEmail) return res.status(400).json({ error: "No recipient email" });
+
+    const smtpUser = process.env.GMAIL_USER;
+    const smtpPass = process.env.GMAIL_APP_PASSWORD;
+    if (!smtpUser || !smtpPass) return res.status(500).json({ error: "Email not configured" });
+
+    const inspNo = insp.inspection_no || `PID-${String(insp.id).padStart(4, "0")}`;
+    const checklist: any[] = Array.isArray(insp.checklist) ? insp.checklist : [];
+    const issues: any[] = Array.isArray(insp.issues) ? insp.issues : [];
+
+    const resultColor = insp.overall_result === "Pass" ? "#16a34a" : insp.overall_result === "Fail" ? "#dc2626" : "#d97706";
+
+    const pdfBuffer = await pdfBuf((doc, addY, getY) => {
+      let y = 40;
+      doc.rect(40, y, 515, 72).fill(NAVY);
+      doc.fillColor("white").fontSize(18).font("Helvetica-Bold").text("WTT INTERNATIONAL", 54, y + 12);
+      doc.fillColor("#93c5fd").fontSize(8).font("Helvetica").text("Water Loving Technology", 54, y + 34);
+      doc.fillColor("#93c5fd").fontSize(7.5).text("PANEL INSPECTION REPORT — PRE-DISPATCH", 54, y + 46);
+      doc.fillColor("white").fontSize(13).font("Helvetica-Bold").text(inspNo, 54, y + 60, { width: 200 });
+      const rColor = insp.overall_result === "Pass" ? "#22c55e" : insp.overall_result === "Fail" ? "#ef4444" : "#f59e0b";
+      doc.rect(380, y + 10, 135, 40).fill(rColor);
+      doc.fillColor("white").fontSize(10).font("Helvetica-Bold").text(insp.overall_result || "Pending", 380, y + 25, { width: 135, align: "center" });
+      y += 90; addY(90);
+
+      y = secHeader(doc, "Inspection Details", y); addY(20);
+      const c1W = 160, c2W = 160;
+      labelVal(doc, "Inspection No.", inspNo, 40, y, c1W);
+      labelVal(doc, "Date", fmtDatePdf(insp.inspection_date), 210, y, c2W);
+      labelVal(doc, "Project Number", insp.project_number || "—", 380, y, c2W);
+      y += 28; addY(28);
+      labelVal(doc, "Project Name", insp.project_name || "—", 40, y, c1W);
+      labelVal(doc, "Customer", insp.customer_name || "—", 210, y, c2W);
+      labelVal(doc, "Inspector", insp.inspector_name || "—", 380, y, c2W);
+      y += 28; addY(28);
+      labelVal(doc, "Panel Name / Tag", insp.panel_name || "—", 40, y, c1W);
+      labelVal(doc, "Panel Type", insp.panel_type || "—", 210, y, c2W);
+      labelVal(doc, "Serial No.", insp.panel_serial_no || "—", 380, y, c2W);
+      y += 36; addY(36);
+
+      const sections = [...new Set(checklist.map((c: any) => c.section))];
+      for (const section of sections) {
+        y = checkPageBreak(doc, y, 60);
+        y = secHeader(doc, section, y); addY(20);
+        const items = checklist.filter((c: any) => c.section === section);
+        doc.fillColor(NAVY).fontSize(7).font("Helvetica-Bold")
+           .text("#", 40, y, { width: 14 })
+           .text("Inspection Item", 58, y, { width: 240 })
+           .text("Result", 304, y, { width: 60 })
+           .text("Remarks", 370, y, { width: 185 });
+        y += 14; addY(14);
+        items.forEach((item: any, idx: number) => {
+          y = checkPageBreak(doc, y, 20);
+          const bg = idx % 2 === 0 ? "#f8fafc" : "white";
+          doc.rect(40, y - 2, 515, 16).fill(bg);
+          const rc = item.result === "Yes" ? "#16a34a" : item.result === "No" ? "#dc2626" : "#64748b";
+          doc.fillColor(DARK).fontSize(7).font("Helvetica")
+             .text(String(idx + 1), 40, y, { width: 14 })
+             .text(item.item || "", 58, y, { width: 240 });
+          doc.fillColor(rc).font("Helvetica-Bold").text(item.result || "—", 304, y, { width: 60 });
+          doc.fillColor(MUTED).font("Helvetica").text(item.remarks || "—", 370, y, { width: 185 });
+          y += 16; addY(16);
+        });
+        y += 6; addY(6);
+      }
+
+      if (issues.length > 0) {
+        y = checkPageBreak(doc, y, 50);
+        y = secHeader(doc, "Issues / Findings", y); addY(20);
+        doc.fillColor(NAVY).fontSize(7).font("Helvetica-Bold")
+           .text("#", 40, y, { width: 14 })
+           .text("Description", 58, y, { width: 220 })
+           .text("Severity", 284, y, { width: 80 })
+           .text("Status", 370, y, { width: 80 })
+           .text("Remarks", 456, y, { width: 99 });
+        y += 14; addY(14);
+        issues.forEach((issue: any, idx: number) => {
+          y = checkPageBreak(doc, y, 20);
+          const bg = idx % 2 === 0 ? "#f8fafc" : "white";
+          doc.rect(40, y - 2, 515, 16).fill(bg);
+          const sc = issue.severity === "Critical" ? "#dc2626" : issue.severity === "Major" ? "#d97706" : "#64748b";
+          doc.fillColor(DARK).fontSize(7).font("Helvetica")
+             .text(String(idx + 1), 40, y, { width: 14 })
+             .text(issue.description || "—", 58, y, { width: 220 });
+          doc.fillColor(sc).font("Helvetica-Bold").text(issue.severity || "—", 284, y, { width: 80 });
+          doc.fillColor(DARK).font("Helvetica").text(issue.status || "—", 370, y, { width: 80 });
+          doc.fillColor(MUTED).text(issue.remarks || "—", 456, y, { width: 99 });
+          y += 16; addY(16);
+        });
+        y += 6; addY(6);
+      }
+
+      if (insp.remarks) {
+        y = checkPageBreak(doc, y, 40);
+        y = textSection(doc, "Remarks / Notes", insp.remarks, y);
+      }
+
+      y = checkPageBreak(doc, y, 60);
+      y += 10; addY(10);
+      doc.rect(40, y, 515, 1).fill("#e2e8f0");
+      y += 12; addY(12);
+      const sigW = 155;
+      doc.fillColor(MUTED).fontSize(7).font("Helvetica").text("Inspector Signature", 40, y, { width: sigW, align: "center" });
+      doc.fillColor(MUTED).text("QC / Supervisor", 210, y, { width: sigW, align: "center" });
+      doc.fillColor(MUTED).text("Customer Representative", 380, y, { width: sigW, align: "center" });
+      y += 12; addY(12);
+      doc.fillColor("#94a3b8").fontSize(7).text(insp.inspector_name || "—", 40, y, { width: sigW, align: "center" });
+      y += 18; addY(18);
+      doc.rect(40, y, sigW, 1).fill("#94a3b8");
+      doc.rect(210, y, sigW, 1).fill("#94a3b8");
+      doc.rect(380, y, sigW, 1).fill("#94a3b8");
+
+      pdfFooter(doc);
+      doc.end();
+    });
+
+    const transporter = nodemailer.createTransport({ service: "gmail", auth: { user: smtpUser, pass: smtpPass } });
+
+    const html = `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif;">
+<div style="max-width:600px;margin:24px auto;background:white;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.08);">
+  <div style="background:#1e3a5f;padding:28px 32px;">
+    <div style="color:white;font-size:20px;font-weight:700;">WTT International</div>
+    <div style="color:#93c5fd;font-size:12px;margin-top:4px;">Panel Inspection Report — Pre-Dispatch</div>
+  </div>
+  <div style="padding:28px 32px;">
+    <p style="margin:0 0 16px;font-size:14px;color:#1e293b;">Please find the <strong>Pre-Dispatch Panel Inspection Report</strong> attached.</p>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+      <tr><td style="padding:8px 14px;color:#64748b;font-size:12px;border-bottom:1px solid #e2e8f0;">Inspection No.</td><td style="padding:8px 14px;font-size:13px;font-weight:700;border-bottom:1px solid #e2e8f0;">${inspNo}</td></tr>
+      <tr><td style="padding:8px 14px;color:#64748b;font-size:12px;border-bottom:1px solid #e2e8f0;">Project</td><td style="padding:8px 14px;font-size:13px;border-bottom:1px solid #e2e8f0;">${insp.project_name || "—"} (${insp.project_number || "—"})</td></tr>
+      <tr><td style="padding:8px 14px;color:#64748b;font-size:12px;border-bottom:1px solid #e2e8f0;">Panel</td><td style="padding:8px 14px;font-size:13px;border-bottom:1px solid #e2e8f0;">${insp.panel_name || "—"} | ${insp.panel_type || "—"}</td></tr>
+      <tr><td style="padding:8px 14px;color:#64748b;font-size:12px;">Overall Result</td><td style="padding:8px 14px;font-size:13px;font-weight:700;color:${resultColor};">${insp.overall_result || "Pending"}</td></tr>
+    </table>
+  </div>
+  <div style="background:#f8fafc;padding:16px 32px;border-top:1px solid #e2e8f0;text-align:center;">
+    <div style="color:#94a3b8;font-size:11px;">WTT International · PLC &amp; Automation</div>
+  </div>
+</div></body></html>`;
+
+    await transporter.sendMail({
+      from: `"WTT International" <${smtpUser}>`,
+      to: toEmail,
+      subject: `Panel Inspection Report — ${inspNo} | ${insp.project_name || ""}`,
+      html,
+      attachments: [{ filename: `${inspNo}.pdf`, content: pdfBuffer, contentType: "application/pdf" }],
+    });
+    res.json({ ok: true, sent_to: toEmail });
+  } catch (e: any) { res.status(500).json({ error: e.message || String(e) }); }
 });
 
 export default router;

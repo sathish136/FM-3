@@ -95,6 +95,7 @@ import PLCHMIPrograms from "@/pages/PLCHMIPrograms";
 import PLCPIDDesign from "@/pages/PLCPIDDesign";
 import PLCInstruments from "@/pages/PLCInstruments";
 import PLCTags from "@/pages/PLCTags";
+import PLCPanelInspection from "@/pages/PLCPanelInspection";
 import { SlideshowProvider } from "@/contexts/SlideshowContext";
 import { RecordingProvider } from "@/contexts/RecordingContext";
 import { LiveMeetingProvider } from "@/contexts/LiveMeetingContext";
@@ -278,11 +279,12 @@ function ProtectedRoutes() {
       <Route path="/workshop/fitter" component={Workshop} />
       <Route path="/plc-automation/site-calls"      component={PLCAutomation}      />
       <Route path="/plc-automation/service-reports" component={PLCServiceReports} />
-      <Route path="/plc-automation/plc-programs"    component={PLCPrograms}        />
-      <Route path="/plc-automation/hmi-programs"    component={PLCHMIPrograms}     />
-      <Route path="/plc-automation/pid-design"      component={PLCPIDDesign}       />
-      <Route path="/plc-automation/instruments"     component={PLCInstruments}     />
-      <Route path="/plc-automation/tags"            component={PLCTags}            />
+      <Route path="/plc-automation/plc-programs"      component={PLCPrograms}         />
+      <Route path="/plc-automation/hmi-programs"    component={PLCHMIPrograms}      />
+      <Route path="/plc-automation/pid-design"      component={PLCPIDDesign}        />
+      <Route path="/plc-automation/instruments"     component={PLCInstruments}      />
+      <Route path="/plc-automation/tags"            component={PLCTags}             />
+      <Route path="/plc-automation/panel-inspection" component={PLCPanelInspection} />
       <Route component={NotFound} />
     </Switch>
   );
