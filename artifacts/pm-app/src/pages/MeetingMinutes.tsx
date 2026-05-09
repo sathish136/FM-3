@@ -2062,7 +2062,7 @@ function LiveSpeechMinutesView({
   };
 
   const handleSave = async () => {
-    if (!title.trim() || blocks.length === 0) return;
+    if (!title.trim()) return;
     setSaving(true);
     try {
       const transcript = blocks.map(b => {
@@ -2095,7 +2095,7 @@ function LiveSpeechMinutesView({
   const translatedCount = speechBlocks.filter(b => !b.isEnglish).length;
 
   const totalItems = blocks.length;
-  const canSave = !!title.trim() && totalItems > 0 && !saving && !saved;
+  const canSave = !!title.trim() && !saving && !saved;
   const showEmpty = totalItems === 0 && !liveText && !isRecording;
 
   return (
