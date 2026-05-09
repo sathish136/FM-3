@@ -1403,6 +1403,7 @@ function LiveSpeechMinutesView({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [hasRecorded, setHasRecorded] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [liveDetected, setLiveDetected] = useState<{ lang: string; flag: string } | null>(null);
   const [recError, setRecError] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
@@ -2064,6 +2065,7 @@ function LiveSpeechMinutesView({
   const handleSave = async () => {
     if (!title.trim()) return;
     setSaving(true);
+    setSaveError(null);
     try {
       const transcript = blocks.map(b => {
         if (b.kind === "speech") {
@@ -2083,7 +2085,10 @@ function LiveSpeechMinutesView({
       }).then(r => r.json());
       setSaved(true);
       setTimeout(() => { onSaved(created); }, 800);
-    } catch {}
+    } catch (e: any) {
+      console.error("Save meeting error:", e);
+      setSaveError(String(e?.message ?? e));
+    }
     finally { setSaving(false); }
   };
 
@@ -2158,7 +2163,7 @@ function LiveSpeechMinutesView({
             <button
               onClick={handleSave}
               disabled={!canSave}
-              title={!canSave && !saved ? (!title.trim() ? "Add a title to save" : totalItems === 0 ? "Add some content — type a note or record speech first" : "") : ""}
+              title={!canSave && !saved ? (!title.trim() ? "Add a title to save" : "") : ""}
               className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-black disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg transition-colors">
               {saved
                 ? <><CheckCircle className="w-3.5 h-3.5" /> Saved</>
@@ -2168,6 +2173,13 @@ function LiveSpeechMinutesView({
             </button>
           </div>
         </div>
+        {saveError && (
+          <div className="px-5 py-2 bg-rose-50 border-b border-rose-200 flex items-center gap-2">
+            <span className="text-[11px] font-bold text-rose-600 uppercase tracking-wider">Save failed:</span>
+            <span className="text-[11px] text-rose-700 flex-1 truncate">{saveError}</span>
+            <button onClick={() => setSaveError(null)} className="text-rose-400 hover:text-rose-700"><X className="w-3 h-3" /></button>
+          </div>
+        )}
 
         {/* Collapsible details panel */}
         {metaOpen && (
