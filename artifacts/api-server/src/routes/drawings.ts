@@ -1,8 +1,11 @@
 import { Router } from "express";
+import multer from "multer";
 import { db } from "@workspace/db";
 import { projectDrawingsTable } from "@workspace/db/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import OpenAI from "openai";
+
+const drawingUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
 let _openai: OpenAI | null = null;
 function getOpenAI(): OpenAI {
@@ -40,10 +43,24 @@ router.get("/project-drawings", async (_req, res) => {
   }
 });
 
-// POST /api/project-drawings — create a new drawing
-router.post("/project-drawings", async (req, res) => {
+// POST /api/project-drawings — create a new drawing (supports multipart or JSON)
+router.post("/project-drawings", drawingUpload.single("file"), async (req, res) => {
   try {
-    const body = req.body as any;
+    // When uploaded as multipart, metadata comes in req.body.meta (JSON string)
+    let body: any;
+    if (req.file) {
+      try {
+        body = JSON.parse((req.body as any).meta ?? "{}");
+      } catch {
+        return res.status(400).json({ error: "Invalid meta JSON in multipart upload" });
+      }
+      // Embed the PDF as base64 so it can be stored / served later
+      body.fileData = `data:application/pdf;base64,${req.file.buffer.toString("base64")}`;
+      body.fileName = body.fileName || req.file.originalname;
+    } else {
+      body = req.body as any;
+    }
+
     if (!body.id || !body.drawingNo || !body.uploadedAt) {
       return res.status(400).json({ error: "id, drawingNo and uploadedAt are required" });
     }
