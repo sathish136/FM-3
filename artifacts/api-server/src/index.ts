@@ -20,7 +20,7 @@ process.on("unhandledRejection", (reason) => {
   console.error("Unhandled rejection (server kept alive):", reason);
 });
 
-const rawPort = process.env["PORT"] ?? "8080";
+const rawPort = process.env["PORT"] || "8080";
 
 const port = Number(rawPort);
 
