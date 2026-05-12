@@ -1,9 +1,9 @@
 import { Link, useLocation } from "wouter";
 import {
-  LayoutDashboard, Box, PenTool, GitBranch,
+  LayoutDashboard, Box, GitBranch,
   Briefcase, FileText,
   LogOut, ChevronDown, ChevronRight as ChevronRightIcon, Menu, MoreHorizontal,
-  MonitorPlay, Table2, PenLine, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp, ListChecks, ClipboardList, Truck, Building2, Package,
+  MonitorPlay, Table2, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp, ListChecks, ClipboardList, Truck, Package,
   Play, Square, Phone, ShieldOff, Loader2, Languages, Globe, Mic, Pause,
   ScanLine, Factory, Database, UserCheck,
   Code2, Monitor, Gauge, Tag,
@@ -242,19 +242,9 @@ const navGroups: { label: string; items: NavItem[] }[] = [
   {
     label: "Design & Engineering",
     items: [
-      {
-        path: "/drawings", label: "Drawings", icon: PenTool, color: "text-amber-400", bgColor: "bg-amber-500/15",
-        children: [
-          { path: "/drawings/mechanical", label: "Mechanical" },
-          { path: "/drawings/electrical", label: "Electrical" },
-          { path: "/drawings/civil",      label: "Civil" },
-        ],
-      },
-      { path: "/design-2d",        label: "Design 2D",          icon: PenLine,    color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
       { path: "/design-3d",        label: "Design 3D",          icon: Box,        color: "text-violet-400",  bgColor: "bg-violet-500/15" },
       { path: "/pid",              label: "P&ID Process",       icon: GitBranch,  color: "text-rose-400",    bgColor: "bg-rose-500/15" },
       { path: "/nesting",          label: "Nesting",            icon: Layers,     color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
-      { path: "/civil-drawing-ai", label: "Civil Drawing AI",   icon: Building2,  color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
     ],
   },
   {
@@ -383,15 +373,9 @@ const PATH_TO_MODULE: Record<string, string> = {
   "/translator":            "translator",
   "/project-drawings":      "project-drawings",
   "/presentation":          "presentation",
-  "/drawings":              "drawings",
-  "/drawings/mechanical":   "drawings",
-  "/drawings/electrical":   "drawings",
-  "/drawings/civil":        "drawings",
-  "/design-2d":             "design-2d",
   "/design-3d":             "design-3d",
   "/pid":                   "pid",
   "/nesting":               "nesting",
-  "/civil-drawing-ai":      "civil-drawing-ai",
   "/material-request":      "material-request",
   "/purchase-order":        "purchase-order",
   "/purchase-dashboard":    "purchase-dashboard",
@@ -852,7 +836,7 @@ function getActiveGroupLabel(loc: string): string | null {
 export function Layout({ children, hideChrome }: { children: React.ReactNode; hideChrome?: boolean }) {
   const [location] = useLocation();
   const { navStyle } = useNavStyle();
-  const [expandedItems, setExpandedItems] = useState<string[]>(["/drawings"]);
+  const [expandedItems, setExpandedItems] = useState<string[]>([]);
   // Restore previously expanded groups from localStorage so they persist across page navigations.
   const [expandedGroups, setExpandedGroups] = useState<string[]>(() => {
     try {

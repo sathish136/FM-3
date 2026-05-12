@@ -24,8 +24,6 @@ import SheetsHome from "@/pages/SheetsHome";
 import Sheets from "@/pages/Sheets";
 import Presentation from "@/pages/Presentation";
 import PptxPreviewPage from "@/pages/PptxPreviewPage";
-import Design2D from "@/pages/Design2D";
-import Drawings from "@/pages/Drawings";
 import Design3D from "@/pages/Design3D";
 import PID from "@/pages/PID";
 import Gallery from "@/pages/Gallery";
@@ -49,7 +47,6 @@ import HRIncidents from "@/pages/HRIncidents";
 import HrAnalytics from "@/pages/HrAnalytics";
 import Nesting from "@/pages/Nesting";
 import ProjectDrawings from "@/pages/ProjectDrawings";
-import CivilDrawingAI from "@/pages/CivilDrawingAI";
 import ProjectTimeline from "@/pages/ProjectTimeline";
 import SiteData from "@/pages/SiteData";
 import PlantOverview from "@/pages/PlantOverview";
@@ -208,10 +205,6 @@ function ProtectedRoutes() {
       <Route path="/viewer-options" component={ViewerOptions} />
       <Route path="/viewer-options/mechanical" component={MechanicalViewer} />
       <Route path="/presentation" component={Presentation} />
-      <Route path="/design-2d" component={Design2D} />
-      <Route path="/drawings/mechanical" component={Drawings} />
-      <Route path="/drawings/electrical" component={Drawings} />
-      <Route path="/drawings/civil" component={Drawings} />
       <Route path="/design-3d" component={Design3D} />
       <Route path="/gallery" component={Gallery} />
       <Route path="/settings" component={Settings} />
@@ -235,7 +228,6 @@ function ProtectedRoutes() {
       <Route path="/hrms/analytics" component={HrAnalytics} />
       <Route path="/nesting" component={Nesting} />
       <Route path="/project-drawings" component={ProjectDrawings} />
-      <Route path="/civil-drawing-ai" component={CivilDrawingAI} />
       <Route path="/project-timeline" component={ProjectTimeline} />
       <Route path="/site-data" component={SiteData} />
       <Route path="/plant-overview" component={PlantOverview} />

@@ -601,7 +601,6 @@ export default function MisReport() {
                           { label: "Meeting Minutes", icon: FileText,        href: "/meeting-minutes",       color: "text-teal-600",    bg: "bg-teal-50"    },
                           { label: "Drawings",        icon: FolderOpen,      href: "/project-drawings",      color: "text-teal-500",    bg: "bg-teal-50"    },
                           { label: "Presentation",    icon: MonitorPlay,     href: "/presentation",          color: "text-purple-600",  bg: "bg-purple-50"  },
-                          { label: "Design 2D",       icon: PenTool,         href: "/design-2d",             color: "text-violet-600",  bg: "bg-violet-50"  },
                           { label: "Design 3D",       icon: Box,             href: "/design-3d",             color: "text-violet-500",  bg: "bg-violet-50"  },
                           { label: "P&ID Process",    icon: GitBranch,       href: "/pid",                   color: "text-slate-600",   bg: "bg-slate-50"   },
                           { label: "Nesting",         icon: Layers,          href: "/nesting",               color: "text-slate-500",   bg: "bg-slate-50"   },
