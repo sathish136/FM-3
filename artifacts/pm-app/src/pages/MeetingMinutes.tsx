@@ -1459,9 +1459,19 @@ function LiveSpeechMinutesView({
   const bottomRef = useRef<HTMLDivElement>(null);
   const blocksRef = useRef<Block[]>([]);
   const langRef = useRef("auto");
+  const titleRef = useRef("Untitled customer meeting");
+  const venueRef = useRef("");
+  const dateRef = useRef(new Date().toISOString().slice(0, 10));
+  const savingRef = useRef(false);
+  const savedRef = useRef(false);
 
   useEffect(() => { blocksRef.current = blocks; }, [blocks]);
   useEffect(() => { langRef.current = lang; }, [lang]);
+  useEffect(() => { titleRef.current = title; }, [title]);
+  useEffect(() => { venueRef.current = venue; }, [venue]);
+  useEffect(() => { dateRef.current = date; }, [date]);
+  useEffect(() => { savingRef.current = saving; }, [saving]);
+  useEffect(() => { savedRef.current = saved; }, [saved]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [blocks, liveText]);
 
@@ -2015,15 +2025,50 @@ function LiveSpeechMinutesView({
     }
   };
 
+  const performSave = async (blocksSnapshot: Block[]) => {
+    if (savingRef.current || savedRef.current) return;
+    const t = titleRef.current.trim();
+    if (!t) return;
+    setSaving(true); savingRef.current = true;
+    setSaveError(null);
+    try {
+      const transcript = blocksSnapshot.map(b => {
+        if (b.kind === "speech") {
+          const line = `[${b.ts}] ${b.text}`;
+          return b.translated && !b.isEnglish ? `${line}\n[EN] ${b.translated}` : line;
+        }
+        if (b.kind === "note") return `[${b.ts}] 📝 NOTE: ${b.text}`;
+        return `[${b.ts}] 📷 IMAGE (${b.source}): ${b.caption}\n${b.dataUrl}`;
+      }).join("\n\n");
+      const created = await apiFetch("/meeting-minutes", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: t, date: dateRef.current, rawNotes: transcript,
+          status: "draft", mode: "speech",
+          attendees: null, venue: venueRef.current.trim() || null, projectId: null, createdBy,
+        }),
+      }).then(r => r.json());
+      setSaved(true); savedRef.current = true;
+      setTimeout(() => { onSaved(created); }, 1000);
+    } catch (e: any) {
+      console.error("Save meeting error:", e);
+      setSaveError(String(e?.message ?? e));
+    } finally {
+      setSaving(false); savingRef.current = false;
+    }
+  };
+
   const stopRecording = () => {
     isRecordingRef.current = false;
     isPausedRef.current = false;
+    const blocksSnapshot = blocksRef.current.slice();
     teardownStream();
     setLiveText("");
     setLiveDetected(null);
     setIsRecording(false);
     setIsPaused(false);
     liveMeeting.notifyStopped();
+    performSave(blocksSnapshot);
   };
 
   const addNote = () => {
@@ -2063,33 +2108,7 @@ function LiveSpeechMinutesView({
   };
 
   const handleSave = async () => {
-    if (!title.trim()) return;
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const transcript = blocks.map(b => {
-        if (b.kind === "speech") {
-          const line = `[${b.ts}] ${b.text}`;
-          return b.translated && !b.isEnglish ? `${line}\n[EN] ${b.translated}` : line;
-        }
-        if (b.kind === "note") return `[${b.ts}] 📝 NOTE: ${b.text}`;
-        return `[${b.ts}] 📷 IMAGE (${b.source}): ${b.caption}\n${b.dataUrl}`;
-      }).join("\n\n");
-      const created = await apiFetch("/meeting-minutes", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: title.trim(), date, rawNotes: transcript,
-          status: "draft", mode: "speech",
-          attendees: null, venue: venue.trim() || null, projectId: null, createdBy,
-        }),
-      }).then(r => r.json());
-      setSaved(true);
-      setTimeout(() => { onSaved(created); }, 800);
-    } catch (e: any) {
-      console.error("Save meeting error:", e);
-      setSaveError(String(e?.message ?? e));
-    }
-    finally { setSaving(false); }
+    await performSave(blocksRef.current);
   };
 
   const langLabel = SPEECH_LANGS.find(l => l.code === lang)?.label || "English";
