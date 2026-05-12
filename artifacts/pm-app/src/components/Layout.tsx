@@ -264,8 +264,6 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     items: [
       { path: "/email",       label: "Email",            icon: Mail,          color: "text-sky-400",    bgColor: "bg-sky-500/15" },
       { path: "/smart-inbox", label: "Smart Inbox (AI)", icon: Bot,           color: "text-orange-400", bgColor: "bg-orange-500/15" },
-      { path: "/chat",        label: "FlowTalk",         icon: MessageSquare, color: "text-violet-400", bgColor: "bg-violet-500/15" },
-      { path: "/sheets",      label: "Sheets",           icon: Table2,        color: "text-lime-400",   bgColor: "bg-lime-500/15" },
     ],
   },
   {
@@ -320,11 +318,9 @@ const navGroups: { label: string; items: NavItem[] }[] = [
   {
     label: "Monitoring",
     items: [
-      { path: "/plant-overview", label: "Plant Overview", icon: Activity, color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
       { path: "/site-data", label: "Site Data", icon: Activity, color: "text-cyan-400", bgColor: "bg-cyan-500/15" },
       { path: "/site-db", label: "Site DB Viewer", icon: Database, color: "text-indigo-400", bgColor: "bg-indigo-500/15" },
       { path: "/site-db/analyze", label: "Plant Analytics", icon: Sparkles, color: "text-violet-400", bgColor: "bg-violet-500/15" },
-      { path: "/cctv", label: "CCTV", icon: MonitorPlay, color: "text-sky-400", bgColor: "bg-sky-500/15" },
     ],
   },
   {
@@ -433,7 +429,6 @@ const PATH_TO_MODULE: Record<string, string> = {
 const mobileBottomNav = [
   { path: "/", label: "Home", icon: LayoutDashboard, color: "text-sky-400" },
   { path: "/project-board", label: "Board", icon: LayoutGrid, color: "text-indigo-400" },
-  { path: "/chat", label: "FlowTalk", icon: MessageSquare, color: "text-violet-400" },
   { path: "/hrms", label: "HRMS", icon: UserCircle, color: "text-emerald-400" },
 ];
 
@@ -848,8 +843,14 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
     } catch {}
     return [];
   });
-  // Always start in expanded mode when the app loads (user can collapse manually).
-  const [collapsed, setCollapsedState] = useState(false);
+  // Default to collapsed (icon-only) mode; remember the user's preference.
+  const [collapsed, setCollapsedState] = useState(() => {
+    try {
+      const saved = localStorage.getItem(COLLAPSED_KEY);
+      if (saved !== null) return saved === "true";
+    } catch {}
+    return true;
+  });
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [launcherOpen, setLauncherOpen] = useState(false);
   const [aiTrigger, setAiTrigger] = useState(0);

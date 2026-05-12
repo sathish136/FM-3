@@ -2358,32 +2358,48 @@ router.get("/project-drawings/:id/file", async (req, res) => {
   }
 });
 
-router.post("/project-drawings", async (req, res) => {
+// Multer instance for drawing PDF uploads (multipart/form-data, up to 500 MB)
+const drawingUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 500 * 1024 * 1024 },
+});
+
+router.post("/project-drawings", drawingUpload.single("file"), async (req, res) => {
   try {
-    const body = req.body;
+    // Multipart upload: file arrives as req.file; metadata as req.body fields or JSON string
+    let body: Record<string, unknown>;
+    if (req.file) {
+      // file sent as multipart — metadata in req.body.meta (JSON) or individual fields
+      const meta = req.body.meta ? JSON.parse(req.body.meta as string) : req.body;
+      const fileData = `data:application/pdf;base64,${req.file.buffer.toString("base64")}`;
+      body = { ...meta, fileData };
+    } else {
+      // Legacy JSON body upload
+      body = req.body;
+    }
     const [row] = await db
       .insert(projectDrawingsTable)
       .values({
-        id: body.id,
-        drawingNo: body.drawingNo,
-        title: body.title ?? "",
-        project: body.project ?? "",
-        department: body.department ?? "",
-        drawingType: body.drawingType ?? "",
-        systemName: body.systemName ?? "",
-        uploadedAt: body.uploadedAt,
-        status: body.status ?? "draft",
-        revisionNo: body.revisionNo ?? 0,
-        revisionLabel: body.revisionLabel ?? "",
-        fileData: body.fileData ?? "",
-        fileName: body.fileName ?? "",
-        note: body.note ?? "",
-        uploadedBy: body.uploadedBy ?? "",
-        history: body.history ?? [],
-        viewLog: body.viewLog ?? [],
-        checkedBy: body.checkedBy ?? null,
-        approvedBy: body.approvedBy ?? null,
-        erpFileUrl: body.erpFileUrl ?? null,
+        id: body.id as string,
+        drawingNo: body.drawingNo as string,
+        title: (body.title as string) ?? "",
+        project: (body.project as string) ?? "",
+        department: (body.department as string) ?? "",
+        drawingType: (body.drawingType as string) ?? "",
+        systemName: (body.systemName as string) ?? "",
+        uploadedAt: body.uploadedAt as string,
+        status: (body.status as string) ?? "draft",
+        revisionNo: (body.revisionNo as number) ?? 0,
+        revisionLabel: (body.revisionLabel as string) ?? "",
+        fileData: (body.fileData as string) ?? "",
+        fileName: (body.fileName as string) ?? "",
+        note: (body.note as string) ?? "",
+        uploadedBy: (body.uploadedBy as string) ?? "",
+        history: (body.history as unknown[]) ?? [],
+        viewLog: (body.viewLog as unknown[]) ?? [],
+        checkedBy: (body.checkedBy as object | null) ?? null,
+        approvedBy: (body.approvedBy as object | null) ?? null,
+        erpFileUrl: (body.erpFileUrl as string | null) ?? null,
       })
       .returning();
     res.status(201).json({ ...row, fileData: "", createdAt: row.createdAt?.toISOString?.() ?? row.createdAt, updatedAt: row.updatedAt?.toISOString?.() ?? row.updatedAt });

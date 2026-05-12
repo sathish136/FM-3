@@ -487,6 +487,8 @@ async function buildServiceReportPDF(report: any): Promise<Buffer> {
         updated_at       TIMESTAMP NOT NULL DEFAULT NOW()
       )
     `);
+    await db.execute(sql`ALTER TABLE plc_programs ADD COLUMN IF NOT EXISTS updated_by TEXT`);
+    await db.execute(sql`ALTER TABLE plc_programs ADD COLUMN IF NOT EXISTS revisions JSONB NOT NULL DEFAULT '[]'::jsonb`);
 
     // ── HMI Programs ─────────────────────────────────────────────────────────
     await db.execute(sql`
@@ -508,6 +510,8 @@ async function buildServiceReportPDF(report: any): Promise<Buffer> {
         updated_at    TIMESTAMP NOT NULL DEFAULT NOW()
       )
     `);
+    await db.execute(sql`ALTER TABLE plc_hmi_programs ADD COLUMN IF NOT EXISTS updated_by TEXT`);
+    await db.execute(sql`ALTER TABLE plc_hmi_programs ADD COLUMN IF NOT EXISTS revisions JSONB NOT NULL DEFAULT '[]'::jsonb`);
 
     // ── PID Design ───────────────────────────────────────────────────────────
     await db.execute(sql`
@@ -1153,16 +1157,22 @@ router.get("/plc/programs/:id", async (req, res) => {
 
 router.post("/plc/programs", async (req, res) => {
   try {
-    const { program_no, project_number, project_name, controller_make, controller_model, program_name, language, version, status, description, notes, created_by } = req.body;
-    const result = await db.execute(sql`INSERT INTO plc_programs (program_no,project_number,project_name,controller_make,controller_model,program_name,language,version,status,description,notes,created_by) VALUES (${program_no??null},${project_number??null},${project_name??null},${controller_make??null},${controller_model??null},${program_name??null},${language??"Ladder Diagram"},${version??"1.0"},${status??"Draft"},${description??null},${notes??null},${created_by??null}) RETURNING *`);
+    const { program_no, project_number, project_name, controller_make, controller_model, program_name, language, version, status, description, notes, created_by, rev_description } = req.body;
+    const initRevision = JSON.stringify([{ rev: "R00", description: rev_description || "Initial release", by: created_by || "—", at: new Date().toISOString() }]);
+    const result = await db.execute(sql`INSERT INTO plc_programs (program_no,project_number,project_name,controller_make,controller_model,program_name,language,version,status,description,notes,created_by,updated_by,revisions) VALUES (${program_no??null},${project_number??null},${project_name??null},${controller_make??null},${controller_model??null},${program_name??null},${language??"Ladder Diagram"},${version??"1.0"},${status??"Draft"},${description??null},${notes??null},${created_by??null},${created_by??null},${initRevision}::jsonb) RETURNING *`);
     res.json(((result as any).rows ?? result)[0]);
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
 router.patch("/plc/programs/:id", async (req, res) => {
   try {
-    const { program_no, project_number, project_name, controller_make, controller_model, program_name, language, version, status, description, notes } = req.body;
-    await db.execute(sql`UPDATE plc_programs SET program_no=COALESCE(${program_no??null},program_no), project_number=COALESCE(${project_number??null},project_number), project_name=COALESCE(${project_name??null},project_name), controller_make=${controller_make??null}, controller_model=${controller_model??null}, program_name=COALESCE(${program_name??null},program_name), language=COALESCE(${language??null},language), version=COALESCE(${version??null},version), status=COALESCE(${status??null},status), description=${description??null}, notes=${notes??null}, updated_at=NOW() WHERE id=${Number(req.params.id)}`);
+    const { program_no, project_number, project_name, controller_make, controller_model, program_name, language, version, status, description, notes, updated_by, rev_code, rev_description } = req.body;
+    if (rev_code) {
+      const newEntry = JSON.stringify([{ rev: rev_code, description: rev_description || "—", by: updated_by || "—", at: new Date().toISOString() }]);
+      await db.execute(sql`UPDATE plc_programs SET program_no=COALESCE(${program_no??null},program_no), project_number=COALESCE(${project_number??null},project_number), project_name=COALESCE(${project_name??null},project_name), controller_make=${controller_make??null}, controller_model=${controller_model??null}, program_name=COALESCE(${program_name??null},program_name), language=COALESCE(${language??null},language), version=COALESCE(${version??null},version), status=COALESCE(${status??null},status), description=${description??null}, notes=${notes??null}, updated_by=${updated_by??null}, updated_at=NOW(), revisions=COALESCE(revisions,'[]'::jsonb) || ${newEntry}::jsonb WHERE id=${Number(req.params.id)}`);
+    } else {
+      await db.execute(sql`UPDATE plc_programs SET program_no=COALESCE(${program_no??null},program_no), project_number=COALESCE(${project_number??null},project_number), project_name=COALESCE(${project_name??null},project_name), controller_make=${controller_make??null}, controller_model=${controller_model??null}, program_name=COALESCE(${program_name??null},program_name), language=COALESCE(${language??null},language), version=COALESCE(${version??null},version), status=COALESCE(${status??null},status), description=${description??null}, notes=${notes??null}, updated_by=${updated_by??null}, updated_at=NOW() WHERE id=${Number(req.params.id)}`);
+    }
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
@@ -1206,16 +1216,22 @@ router.get("/plc/hmi-programs/:id", async (req, res) => {
 
 router.post("/plc/hmi-programs", async (req, res) => {
   try {
-    const { program_no, project_number, project_name, hmi_make, hmi_model, software, screen_count, version, status, description, notes, created_by } = req.body;
-    const result = await db.execute(sql`INSERT INTO plc_hmi_programs (program_no,project_number,project_name,hmi_make,hmi_model,software,screen_count,version,status,description,notes,created_by) VALUES (${program_no??null},${project_number??null},${project_name??null},${hmi_make??null},${hmi_model??null},${software??null},${screen_count??0},${version??"1.0"},${status??"Draft"},${description??null},${notes??null},${created_by??null}) RETURNING *`);
+    const { program_no, project_number, project_name, hmi_make, hmi_model, software, screen_count, version, status, description, notes, created_by, rev_description } = req.body;
+    const initRevision = JSON.stringify([{ rev: "R00", description: rev_description || "Initial release", by: created_by || "—", at: new Date().toISOString() }]);
+    const result = await db.execute(sql`INSERT INTO plc_hmi_programs (program_no,project_number,project_name,hmi_make,hmi_model,software,screen_count,version,status,description,notes,created_by,updated_by,revisions) VALUES (${program_no??null},${project_number??null},${project_name??null},${hmi_make??null},${hmi_model??null},${software??null},${screen_count??0},${version??"1.0"},${status??"Draft"},${description??null},${notes??null},${created_by??null},${created_by??null},${initRevision}::jsonb) RETURNING *`);
     res.json(((result as any).rows ?? result)[0]);
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
 router.patch("/plc/hmi-programs/:id", async (req, res) => {
   try {
-    const { program_no, project_number, project_name, hmi_make, hmi_model, software, screen_count, version, status, description, notes } = req.body;
-    await db.execute(sql`UPDATE plc_hmi_programs SET program_no=COALESCE(${program_no??null},program_no), project_number=COALESCE(${project_number??null},project_number), project_name=COALESCE(${project_name??null},project_name), hmi_make=${hmi_make??null}, hmi_model=${hmi_model??null}, software=${software??null}, screen_count=COALESCE(${screen_count??null},screen_count), version=COALESCE(${version??null},version), status=COALESCE(${status??null},status), description=${description??null}, notes=${notes??null}, updated_at=NOW() WHERE id=${Number(req.params.id)}`);
+    const { program_no, project_number, project_name, hmi_make, hmi_model, software, screen_count, version, status, description, notes, updated_by, rev_code, rev_description } = req.body;
+    if (rev_code) {
+      const newEntry = JSON.stringify([{ rev: rev_code, description: rev_description || "—", by: updated_by || "—", at: new Date().toISOString() }]);
+      await db.execute(sql`UPDATE plc_hmi_programs SET program_no=COALESCE(${program_no??null},program_no), project_number=COALESCE(${project_number??null},project_number), project_name=COALESCE(${project_name??null},project_name), hmi_make=${hmi_make??null}, hmi_model=${hmi_model??null}, software=${software??null}, screen_count=COALESCE(${screen_count??null},screen_count), version=COALESCE(${version??null},version), status=COALESCE(${status??null},status), description=${description??null}, notes=${notes??null}, updated_by=${updated_by??null}, updated_at=NOW(), revisions=COALESCE(revisions,'[]'::jsonb) || ${newEntry}::jsonb WHERE id=${Number(req.params.id)}`);
+    } else {
+      await db.execute(sql`UPDATE plc_hmi_programs SET program_no=COALESCE(${program_no??null},program_no), project_number=COALESCE(${project_number??null},project_number), project_name=COALESCE(${project_name??null},project_name), hmi_make=${hmi_make??null}, hmi_model=${hmi_model??null}, software=${software??null}, screen_count=COALESCE(${screen_count??null},screen_count), version=COALESCE(${version??null},version), status=COALESCE(${status??null},status), description=${description??null}, notes=${notes??null}, updated_by=${updated_by??null}, updated_at=NOW() WHERE id=${Number(req.params.id)}`);
+    }
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });

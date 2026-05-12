@@ -48,9 +48,13 @@ import {
   Eraser,
   Undo2,
   MousePointer2,
+  FileSpreadsheet,
+  CheckCheck,
+  Download,
 } from "lucide-react";
 import { useState, useRef, useCallback, useEffect, CSSProperties, ElementType } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
+import * as XLSX from "xlsx";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -1888,6 +1892,7 @@ interface UploadModalProps {
       drawingType: string;
       systemName: string;
       fileData: string;
+      rawFile: File;
       fileName: string;
       note: string;
       uploadedBy: string;
@@ -1931,6 +1936,8 @@ function UploadModal({
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [importFeedback, setImportFeedback] = useState<{ matched: number; unmatched: number } | null>(null);
+  const excelImportRef = useRef<HTMLInputElement>(null);
   const [erpProjects, setErpProjects] = useState<ErpProject[]>([]);
   const [projectSearch, setProjectSearch] = useState("");
   const [showProjectDrop, setShowProjectDrop] = useState(false);
@@ -1964,6 +1971,49 @@ function UploadModal({
       p.name.toLowerCase().includes(projectSearch.toLowerCase()) ||
       (p.erpnextName || "").toLowerCase().includes(projectSearch.toLowerCase()),
   );
+
+  const importTitlesFromExcel = async (file: File) => {
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const raw: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as string[][];
+
+      let drawingCol = -1;
+      let titleCol = -1;
+      let dataStart = -1;
+
+      for (let r = 0; r < Math.min(raw.length, 10); r++) {
+        const row = raw[r].map(c => String(c ?? "").toLowerCase().trim());
+        const di = row.findIndex(c => c.includes("drawing"));
+        const ti = row.findIndex(c => c.includes("description") || c.includes("title"));
+        if (di >= 0 && ti >= 0) { drawingCol = di; titleCol = ti; dataStart = r + 1; break; }
+      }
+      if (drawingCol < 0 || titleCol < 0) return;
+
+      const excelMap = new Map<string, string>();
+      for (let r = dataStart; r < raw.length; r++) {
+        const no = String(raw[r][drawingCol] ?? "").trim();
+        const title = String(raw[r][titleCol] ?? "").trim();
+        if (no) excelMap.set(no.toLowerCase(), title);
+      }
+
+      let matched = 0;
+      let unmatched = 0;
+      setFiles(prev => prev.map(entry => {
+        const key = entry.drawingNo.trim().toLowerCase();
+        if (excelMap.has(key)) {
+          matched++;
+          return { ...entry, title: excelMap.get(key) || entry.title };
+        }
+        unmatched++;
+        return entry;
+      }));
+      setImportFeedback({ matched, unmatched });
+      setTimeout(() => setImportFeedback(null), 4000);
+    } catch {}
+    if (excelImportRef.current) excelImportRef.current.value = "";
+  };
 
   const addFiles = useCallback((incoming: File[]) => {
     const pdfs = incoming.filter(
@@ -2054,8 +2104,10 @@ function UploadModal({
       title: string;
       project: string;
       department: string;
+      drawingType: string;
       systemName: string;
       fileData: string;
+      rawFile: File;
       fileName: string;
       note: string;
       uploadedBy: string;
@@ -2075,6 +2127,7 @@ function UploadModal({
         drawingType: effectiveDrawingType,
         systemName: resolveSystem(entry),
         fileData,
+        rawFile: entry.file,
         fileName: entry.file.name,
         note,
         uploadedBy: userName,
@@ -2371,17 +2424,51 @@ function UploadModal({
           {/* Per-file fields */}
           {files.length > 0 && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <input
+                ref={excelImportRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) importTitlesFromExcel(f); }}
+              />
+              <div className="flex items-center justify-between gap-2">
                 <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
                   {files.length} file{files.length !== 1 ? "s" : ""} selected
                 </p>
-                <button
-                  onClick={() => setFiles([])}
-                  className="text-xs text-red-500 hover:text-red-700"
-                >
-                  Clear all
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={downloadDrawingTemplate}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 transition-colors"
+                    title="Download sample Excel template"
+                  >
+                    <Download className="w-3 h-3" />
+                    Template
+                  </button>
+                  <button
+                    onClick={() => excelImportRef.current?.click()}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
+                    title="Import titles from Excel — matches by Drawing No."
+                  >
+                    <FileSpreadsheet className="w-3 h-3" />
+                    Import Titles
+                  </button>
+                  <button
+                    onClick={() => setFiles([])}
+                    className="text-xs text-red-500 hover:text-red-700"
+                  >
+                    Clear all
+                  </button>
+                </div>
               </div>
+              {importFeedback && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-xs">
+                  <CheckCheck className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                  <span className="text-emerald-700 font-medium">
+                    {importFeedback.matched} title{importFeedback.matched !== 1 ? "s" : ""} filled
+                    {importFeedback.unmatched > 0 ? ` · ${importFeedback.unmatched} not matched` : ""}
+                  </span>
+                </div>
+              )}
               {files.map((entry, idx) => (
                 <div
                   key={idx}
@@ -3859,6 +3946,246 @@ function SelectFilter({
   );
 }
 
+// ── Shared: download sample Excel template ───────────────────────────────────
+function downloadDrawingTemplate() {
+  const ws = XLSX.utils.aoa_to_sheet([
+    ["DRAWING NO", "DESCRIPTION"],
+    ["WTT-0528-300-00-00-00", "RO SKID-5.75MLD"],
+    ["WTT-0528-300-01-00-00", "RO SKID OVERALL FRAME"],
+    ["WTT-0528-300-01-01-00", "RO SKID FRAME01-STAGE01"],
+    ["WTT-0528-300-02-00-00", "RO SKID - A FEED LINE"],
+  ]);
+  ws["!cols"] = [{ wch: 36 }, { wch: 48 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Drawing Titles");
+  XLSX.writeFile(wb, "drawing_title_template.xlsx");
+}
+
+// ── Bulk Title Update Modal ───────────────────────────────────────────────────
+interface ExcelRow { drawingNo: string; title: string; }
+interface MatchRow extends ExcelRow { matched: boolean; drawingId?: string; }
+
+function BulkTitleUpdateModal({
+  drawings,
+  onClose,
+  onApplied,
+}: {
+  drawings: ProjectDrawing[];
+  onClose: () => void;
+  onApplied: (updates: { id: string; title: string }[]) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [rows, setRows] = useState<MatchRow[] | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [applying, setApplying] = useState(false);
+  const [done, setDone] = useState<{ updated: number; skipped: number } | null>(null);
+
+  const drawingMap = useCallback(() => {
+    const m = new Map<string, ProjectDrawing>();
+    for (const d of drawings) m.set(d.drawingNo.trim().toLowerCase(), d);
+    return m;
+  }, [drawings]);
+
+  const parseFile = async (file: File) => {
+    setParseError(null);
+    setRows(null);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const raw: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as string[][];
+
+      let drawingCol = -1;
+      let titleCol = -1;
+      let dataStart = -1;
+
+      for (let r = 0; r < Math.min(raw.length, 10); r++) {
+        const row = raw[r].map(c => String(c ?? "").toLowerCase().trim());
+        const di = row.findIndex(c => c.includes("drawing"));
+        const ti = row.findIndex(c => c.includes("description") || c.includes("title"));
+        if (di >= 0 && ti >= 0) {
+          drawingCol = di;
+          titleCol = ti;
+          dataStart = r + 1;
+          break;
+        }
+      }
+
+      if (drawingCol < 0 || titleCol < 0) {
+        setParseError("Could not find header row. Make sure the Excel has columns named 'Drawing No' and 'Description' or 'Title'.");
+        return;
+      }
+
+      const dMap = drawingMap();
+      const parsed: MatchRow[] = [];
+      for (let r = dataStart; r < raw.length; r++) {
+        const drawingNo = String(raw[r][drawingCol] ?? "").trim();
+        const title = String(raw[r][titleCol] ?? "").trim();
+        if (!drawingNo) continue;
+        const found = dMap.get(drawingNo.toLowerCase());
+        parsed.push({ drawingNo, title, matched: !!found, drawingId: found?.id });
+      }
+
+      if (parsed.length === 0) {
+        setParseError("No data rows found in the Excel file.");
+        return;
+      }
+      setRows(parsed);
+    } catch (e: any) {
+      setParseError("Failed to parse file: " + (e?.message ?? String(e)));
+    }
+  };
+
+  const handleApply = async () => {
+    if (!rows) return;
+    const toUpdate = rows.filter(r => r.matched && r.title && r.drawingId);
+    if (toUpdate.length === 0) return;
+    setApplying(true);
+    const succeeded: { id: string; title: string }[] = [];
+    for (const row of toUpdate) {
+      try {
+        const res = await fetch(`${BASE}/api/project-drawings/${row.drawingId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: row.title }),
+        });
+        if (res.ok) succeeded.push({ id: row.drawingId!, title: row.title });
+      } catch {}
+    }
+    setApplying(false);
+    setDone({ updated: succeeded.length, skipped: toUpdate.length - succeeded.length });
+    onApplied(succeeded);
+  };
+
+  const matched = rows ? rows.filter(r => r.matched && r.title).length : 0;
+  const unmatched = rows ? rows.filter(r => !r.matched).length : 0;
+  const noTitle = rows ? rows.filter(r => r.matched && !r.title).length : 0;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="flex items-start justify-between px-6 py-5 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
+              <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-gray-900">Bulk Title Update from Excel</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Upload Excel with Drawing No &amp; Description — titles will be updated where drawing numbers match</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          {done ? (
+            <div className="text-center py-10">
+              <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4">
+                <CheckCheck className="w-7 h-7 text-emerald-600" />
+              </div>
+              <p className="text-lg font-bold text-gray-900">{done.updated} drawing{done.updated !== 1 ? "s" : ""} updated</p>
+              {done.skipped > 0 && <p className="text-sm text-red-500 mt-1">{done.skipped} failed to update</p>}
+              <p className="text-sm text-gray-500 mt-2">Titles have been saved to the database.</p>
+            </div>
+          ) : (
+            <>
+              {/* File picker */}
+              <div className="space-y-2">
+                <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) parseFile(f); }} />
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  className="w-full flex flex-col items-center justify-center gap-2 py-8 border-2 border-dashed border-emerald-200 rounded-xl text-emerald-600 hover:border-emerald-400 hover:bg-emerald-50 transition-all"
+                >
+                  <FileSpreadsheet className="w-8 h-8" />
+                  <div className="text-center">
+                    <p className="font-semibold text-sm">{rows ? "Upload a different file" : "Click to upload Excel / CSV"}</p>
+                    <p className="text-xs text-emerald-400 mt-0.5">.xlsx · .xls · .csv · Must have Drawing No and Description columns</p>
+                  </div>
+                </button>
+                <button
+                  onClick={downloadDrawingTemplate}
+                  className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Download Sample Template
+                </button>
+              </div>
+
+              {parseError && (
+                <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                  <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-red-700">{parseError}</p>
+                </div>
+              )}
+
+              {rows && rows.length > 0 && (
+                <>
+                  {/* Summary */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
+                      <p className="text-2xl font-black text-emerald-700">{matched}</p>
+                      <p className="text-xs text-emerald-600 font-semibold mt-0.5">Will Update</p>
+                    </div>
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
+                      <p className="text-2xl font-black text-amber-700">{noTitle}</p>
+                      <p className="text-xs text-amber-600 font-semibold mt-0.5">Matched · No Title</p>
+                    </div>
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-center">
+                      <p className="text-2xl font-black text-slate-500">{unmatched}</p>
+                      <p className="text-xs text-slate-500 font-semibold mt-0.5">Not Found</p>
+                    </div>
+                  </div>
+
+                  {/* Preview table */}
+                  <div className="border border-gray-200 rounded-xl overflow-hidden">
+                    <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
+                      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">{rows.length} rows from Excel</p>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto divide-y divide-gray-100">
+                      {rows.map((row, i) => (
+                        <div key={i} className={`flex items-center gap-3 px-4 py-2.5 text-sm ${row.matched && row.title ? "bg-white" : "bg-gray-50/60"}`}>
+                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${row.matched && row.title ? "bg-emerald-500" : row.matched ? "bg-amber-400" : "bg-gray-300"}`} />
+                          <span className="font-mono text-xs text-gray-700 w-52 flex-shrink-0 truncate">{row.drawingNo}</span>
+                          <span className="flex-1 text-xs text-gray-600 truncate">{row.title || <span className="text-gray-300 italic">no title in excel</span>}</span>
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${row.matched && row.title ? "bg-emerald-100 text-emerald-700" : row.matched ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-500"}`}>
+                            {row.matched && row.title ? "Update" : row.matched ? "No title" : "Not found"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-gray-100 px-6 py-4 flex items-center justify-between flex-shrink-0">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+            {done ? "Close" : "Cancel"}
+          </button>
+          {!done && rows && matched > 0 && (
+            <button
+              onClick={handleApply}
+              disabled={applying}
+              className="flex items-center gap-2 px-5 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-60 transition-colors shadow-sm"
+            >
+              {applying ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCheck className="w-4 h-4" />}
+              {applying ? "Updating…" : `Apply ${matched} Title Update${matched !== 1 ? "s" : ""}`}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Tree Sidebar ──────────────────────────────────────────────────────────────
 interface TreeSystem { name: string; drawings: ProjectDrawing[]; }
 interface TreeDept { name: string; total: number; systems: TreeSystem[]; unsystemedDrawings: ProjectDrawing[]; }
@@ -3890,6 +4217,7 @@ function TreeSidebar({
   search,
   onSearchChange,
   onUpload,
+  onBulkTitle,
 }: {
   permittedDrawings: ProjectDrawing[];
   allProjectNames: string[];
@@ -3905,6 +4233,7 @@ function TreeSidebar({
   search: string;
   onSearchChange: (s: string) => void;
   onUpload: () => void;
+  onBulkTitle: () => void;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(
     () => new Set(selectedProject ? [`proj:${selectedProject}`] : [])
@@ -4140,13 +4469,19 @@ function TreeSidebar({
         )}
       </div>
 
-      {/* Upload button */}
-      <div className="px-3 py-3 border-t border-gray-200">
+      {/* Buttons */}
+      <div className="px-3 py-3 border-t border-gray-200 space-y-1.5">
         <button
           onClick={onUpload}
           className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
         >
           <Plus className="w-3.5 h-3.5" /> Upload Drawing
+        </button>
+        <button
+          onClick={onBulkTitle}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition-colors"
+        >
+          <FileSpreadsheet className="w-3.5 h-3.5" /> Bulk Title Update
         </button>
       </div>
     </div>
@@ -4177,6 +4512,7 @@ export default function ProjectDrawings() {
   const [uploadStep, setUploadStep] = useState<"uploading" | "analyzing" | null>(null);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [sendModal, setSendModal] = useState<ProjectDrawing | null>(null);
+  const [bulkTitleOpen, setBulkTitleOpen] = useState(false);
   const [validationMsg, setValidationMsg] = useState<string | null>(null);
   const showValidationError = (msg: string) => {
     setValidationMsg(msg);
@@ -4384,11 +4720,41 @@ export default function ProjectDrawings() {
         aiAnalysis: null,
       };
       try {
-        const res = await fetch(`${BASE}/api/project-drawings`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...newDrawing, fileData: data.fileData ?? "" }),
-        });
+        let res: Response;
+        if (data.rawFile) {
+          // Multipart upload — avoids JSON body size limits / nginx 413
+          const formData = new FormData();
+          formData.append("file", data.rawFile, data.fileName);
+          const meta = {
+            id: newDrawing.id,
+            drawingNo: newDrawing.drawingNo,
+            title: newDrawing.title,
+            project: newDrawing.project,
+            department: newDrawing.department,
+            drawingType: newDrawing.drawingType,
+            systemName: newDrawing.systemName,
+            uploadedAt: newDrawing.uploadedAt,
+            status: newDrawing.status,
+            revisionNo: newDrawing.revisionNo,
+            revisionLabel: newDrawing.revisionLabel,
+            fileName: newDrawing.fileName,
+            note: newDrawing.note,
+            uploadedBy: newDrawing.uploadedBy,
+            history: [],
+            viewLog: [],
+          };
+          formData.append("meta", JSON.stringify(meta));
+          res = await fetch(`${BASE}/api/project-drawings`, {
+            method: "POST",
+            body: formData,
+          });
+        } else {
+          res = await fetch(`${BASE}/api/project-drawings`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...newDrawing, fileData: data.fileData ?? "" }),
+          });
+        }
         if (res.ok) {
           if (data.fileData) setFileDataCache(prev => ({ ...prev, [id]: data.fileData }));
           saved.push(newDrawing);
@@ -4670,6 +5036,7 @@ export default function ProjectDrawings() {
           search={search}
           onSearchChange={setSearch}
           onUpload={() => setModal({ type: "upload" })}
+          onBulkTitle={() => setBulkTitleOpen(true)}
         />
 
         {/* Right: Main content */}
@@ -5165,6 +5532,21 @@ export default function ProjectDrawings() {
           onClose={() => setSendModal(null)}
           base={BASE}
           adminUser={user}
+        />
+      )}
+
+      {bulkTitleOpen && (
+        <BulkTitleUpdateModal
+          drawings={drawings}
+          onClose={() => setBulkTitleOpen(false)}
+          onApplied={(updates) => {
+            setDrawings(prev =>
+              prev.map(d => {
+                const u = updates.find(u => u.id === d.id);
+                return u ? { ...d, title: u.title } : d;
+              })
+            );
+          }}
         />
       )}
 
