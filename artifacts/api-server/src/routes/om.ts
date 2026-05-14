@@ -1,6 +1,7 @@
 import { Router } from "express";
-import { db, sql } from "@db";
-import { authHeader, isErpConfigured } from "../lib/erpnext";
+import { db } from "@workspace/db";
+import { sql } from "drizzle-orm";
+import { authHeader, isErpNextConfigured as isErpConfigured } from "../lib/erpnext";
 
 const router = Router();
 const ERPNEXT_URL = process.env.ERPNEXT_URL?.replace(/\/$/, "");

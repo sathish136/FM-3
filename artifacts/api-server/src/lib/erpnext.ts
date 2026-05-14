@@ -6,7 +6,7 @@ export function isErpNextConfigured(): boolean {
   return !!(ERPNEXT_URL && ERPNEXT_API_KEY && ERPNEXT_API_SECRET);
 }
 
-function authHeader(): string {
+export function authHeader(): string {
   return `token ${ERPNEXT_API_KEY}:${ERPNEXT_API_SECRET}`;
 }
 
