@@ -1,7 +1,8 @@
 import { Router } from "express";
-import { readdirSync, statSync, createReadStream, existsSync } from "fs";
+import { readdirSync, statSync, readFileSync, existsSync } from "fs";
 import { join, resolve as pathResolve, basename } from "path";
 import nodemailer from "nodemailer";
+import PizZip from "pizzip";
 
 const router = Router();
 
@@ -64,6 +65,78 @@ function mimeFor(filename: string): string {
   return "application/octet-stream";
 }
 
+/**
+ * For XLSX files (ZIP-based): use PizZip to replace "COMPANY NAME" in all
+ * XML text files inside the archive. Supports any length replacement.
+ */
+function processXlsx(filePath: string, customerName: string): Buffer {
+  const raw = readFileSync(filePath);
+  const zip = new PizZip(raw);
+
+  const textExtensions = [".xml", ".rels"];
+  Object.keys(zip.files).forEach((name) => {
+    if (!textExtensions.some((ext) => name.toLowerCase().endsWith(ext))) return;
+    const file = zip.file(name);
+    if (!file || file.dir) return;
+    try {
+      const content = file.asText();
+      if (!content.includes("COMPANY NAME")) return;
+      const updated = content.replace(/COMPANY NAME/gi, customerName.toUpperCase().trim());
+      zip.file(name, updated);
+    } catch {
+      // skip binary files inside the zip
+    }
+  });
+
+  return zip.generate({ type: "nodebuffer", compression: "DEFLATE" });
+}
+
+/**
+ * For old binary .doc (OLE2/CFB) files: the text is stored as raw ASCII bytes
+ * inside the compound file. We do a byte-level find-and-replace maintaining the
+ * EXACT same byte length so the OLE2 sector structure and piece-table offsets
+ * stay intact. Replacement is padded with spaces if shorter, or truncated if longer.
+ * "COMPANY NAME" is 12 ASCII characters — so the effective display limit is 12 chars.
+ */
+function processDoc(filePath: string, customerName: string): Buffer {
+  const buf = readFileSync(filePath);
+  const PLACEHOLDER = "COMPANY NAME"; // 12 chars
+  const search = Buffer.from(PLACEHOLDER, "ascii");
+  const len = search.length; // 12
+
+  // Pad or truncate to exactly 12 ASCII chars (maintains byte count = safe)
+  let replacement = customerName.toUpperCase().trim();
+  if (replacement.length < len) {
+    replacement = replacement.padEnd(len, " ");
+  } else {
+    replacement = replacement.slice(0, len);
+  }
+  const replBuf = Buffer.from(replacement, "ascii");
+
+  const result = Buffer.from(buf);
+  let pos = 0;
+  while ((pos = result.indexOf(search, pos)) !== -1) {
+    replBuf.copy(result, pos);
+    pos += len;
+  }
+  return result;
+}
+
+/**
+ * Build a modified copy of any supported file with COMPANY NAME replaced.
+ */
+function buildModifiedFile(filePath: string, customerName: string): Buffer {
+  const lower = filePath.toLowerCase();
+  if (lower.endsWith(".xlsx") || lower.endsWith(".docx")) {
+    return processXlsx(filePath, customerName);
+  }
+  if (lower.endsWith(".doc")) {
+    return processDoc(filePath, customerName);
+  }
+  // Fallback: serve as-is
+  return readFileSync(filePath);
+}
+
 // GET /api/proposal-wizard/flow-rates
 router.get("/proposal-wizard/flow-rates", (_req, res) => {
   const folders = getFlowRateFolders();
@@ -97,9 +170,16 @@ router.get("/proposal-wizard/download", (req, res) => {
   const customer = (customerName || "CUSTOMER").toUpperCase().trim();
   const renamedFilename = basename(filePath).replace(/COMPANY NAME/gi, customer);
 
-  res.setHeader("Content-Type", mimeFor(filename));
-  res.setHeader("Content-Disposition", `attachment; filename="${renamedFilename}"`);
-  createReadStream(filePath).pipe(res as any);
+  try {
+    const modifiedBuf = buildModifiedFile(filePath, customer);
+    res.setHeader("Content-Type", mimeFor(filename));
+    res.setHeader("Content-Disposition", `attachment; filename="${renamedFilename}"`);
+    res.setHeader("Content-Length", modifiedBuf.length);
+    res.end(modifiedBuf);
+  } catch (err) {
+    console.error("Error processing file for download:", err);
+    res.status(500).json({ error: "Failed to process file" });
+  }
 });
 
 // POST /api/proposal-wizard/send-email
@@ -130,11 +210,15 @@ router.post("/proposal-wizard/send-email", async (req, res) => {
 
   const customer = customerName.toUpperCase().trim();
 
-  const attachments = files.map((f) => ({
-    filename: f.replace(/COMPANY NAME/gi, customer),
-    path: join(dir, f),
-    contentType: mimeFor(f),
-  }));
+  const attachments = files.map((f) => {
+    const filePath = join(dir, f);
+    const content = buildModifiedFile(filePath, customer);
+    return {
+      filename: f.replace(/COMPANY NAME/gi, customer),
+      content,
+      contentType: mimeFor(f),
+    };
+  });
 
   const transporter = nodemailer.createTransport({
     service: "gmail",

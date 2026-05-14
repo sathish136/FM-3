@@ -309,42 +309,28 @@ export default function ProposalWizard() {
                   <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {flowRates.map((fr) => (
-                    <button
-                      key={fr}
-                      onClick={() => setSelectedFlowRate(fr)}
-                      className={cn(
-                        "relative flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 font-semibold transition-all",
-                        selectedFlowRate === fr
-                          ? "border-indigo-500 bg-indigo-50 text-indigo-700 shadow-md"
-                          : "border-gray-200 bg-white text-gray-700 hover:border-indigo-200 hover:bg-indigo-50/30"
-                      )}
+                <div className="space-y-3">
+                  <div className="relative">
+                    <Droplets className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-indigo-400 pointer-events-none" />
+                    <select
+                      value={selectedFlowRate}
+                      onChange={(e) => setSelectedFlowRate(e.target.value)}
+                      className="w-full pl-10 pr-10 py-3 text-sm border-2 border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-400 appearance-none cursor-pointer font-medium text-gray-700"
                     >
-                      {selectedFlowRate === fr && (
-                        <div className="absolute top-2 right-2 w-5 h-5 bg-indigo-500 rounded-full flex items-center justify-center">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-white" />
-                        </div>
-                      )}
-                      <div className={cn(
-                        "w-10 h-10 rounded-xl flex items-center justify-center",
-                        selectedFlowRate === fr ? "bg-indigo-100" : "bg-gray-100"
-                      )}>
-                        <Droplets className={cn("w-5 h-5", selectedFlowRate === fr ? "text-indigo-600" : "text-gray-500")} />
-                      </div>
-                      <div className="text-center">
-                        <p className="text-base font-bold">{kldLabel(fr)}</p>
-                        <p className="text-[11px] text-gray-400 font-normal">STP</p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
+                      <option value="">— Select flow rate —</option>
+                      {flowRates.map((fr) => (
+                        <option key={fr} value={fr}>{fr}</option>
+                      ))}
+                    </select>
+                    <ChevronRight className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none rotate-90" />
+                  </div>
 
-              {selectedFlowRate && (
-                <div className="mt-3 px-4 py-2.5 rounded-xl bg-indigo-50 border border-indigo-100 text-sm text-indigo-700 flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-indigo-500 shrink-0" />
-                  Selected: <strong>{selectedFlowRate}</strong>
+                  {selectedFlowRate && (
+                    <div className="px-4 py-3 rounded-xl bg-indigo-50 border border-indigo-100 text-sm text-indigo-700 flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-indigo-500 shrink-0" />
+                      <span>Selected: <strong>{selectedFlowRate}</strong> — 3 files ready</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
