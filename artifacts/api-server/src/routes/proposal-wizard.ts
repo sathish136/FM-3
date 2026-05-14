@@ -3,6 +3,8 @@ import { readdirSync, statSync, readFileSync, existsSync } from "fs";
 import { join, resolve as pathResolve, basename } from "path";
 import nodemailer from "nodemailer";
 import PizZip from "pizzip";
+import { db } from "@workspace/db";
+import { sql } from "drizzle-orm";
 
 const router = Router();
 
@@ -10,6 +12,8 @@ const PROPOSAL_ROOT = pathResolve(
   process.env.PROPOSAL_WIZARD_DIR ||
     join(process.cwd(), "..", "..", "Proposal", "BANGLADESH PROPOSALS"),
 );
+
+// ── helpers ────────────────────────────────────────────────────────────────
 
 function safeJoin(base: string, ...parts: string[]): string | null {
   const full = pathResolve(join(base, ...parts));
@@ -65,26 +69,55 @@ function mimeFor(filename: string): string {
   return "application/octet-stream";
 }
 
+/** Format counter as WTT-BAN-XXXX (zero-padded to 4 digits) */
+function formatWttNumber(n: number): string {
+  return `WTT-BAN-${String(n).padStart(4, "0")}`;
+}
+
 /**
- * For XLSX files (ZIP-based): use PizZip to replace "COMPANY NAME" in all
- * XML text files inside the archive. Supports any length replacement.
+ * Atomically increment the counter and return the NEW value.
+ * Row id=1 is the single counter row (seeded on first request).
  */
-function processXlsx(filePath: string, customerName: string): Buffer {
+async function nextCounter(customer: string, flowRate: string): Promise<number> {
+  const rows = await db.execute(sql`
+    UPDATE proposal_wizard_counter
+    SET counter = counter + 1,
+        last_used_at = NOW(),
+        last_customer = ${customer},
+        last_flow_rate = ${flowRate}
+    WHERE id = 1
+    RETURNING counter
+  `);
+  const value = (rows as any).rows?.[0]?.counter ?? (rows as any)[0]?.counter;
+  return Number(value);
+}
+
+/**
+ * For XLSX files (ZIP-based): replace COMPANY NAME and WTT-BAN-0001 in all
+ * XML entries inside the archive. Supports any-length company name.
+ */
+function processXlsx(filePath: string, customerName: string, wttNumber: string): Buffer {
   const raw = readFileSync(filePath);
   const zip = new PizZip(raw);
 
-  const textExtensions = [".xml", ".rels"];
   Object.keys(zip.files).forEach((name) => {
-    if (!textExtensions.some((ext) => name.toLowerCase().endsWith(ext))) return;
+    if (!name.toLowerCase().endsWith(".xml") && !name.toLowerCase().endsWith(".rels")) return;
     const file = zip.file(name);
     if (!file || file.dir) return;
     try {
-      const content = file.asText();
-      if (!content.includes("COMPANY NAME")) return;
-      const updated = content.replace(/COMPANY NAME/gi, customerName.toUpperCase().trim());
-      zip.file(name, updated);
+      let content = file.asText();
+      let changed = false;
+      if (content.includes("COMPANY NAME")) {
+        content = content.replace(/COMPANY NAME/gi, customerName.toUpperCase().trim());
+        changed = true;
+      }
+      if (content.includes("WTT-BAN-0001")) {
+        content = content.replace(/WTT-BAN-0001/g, wttNumber);
+        changed = true;
+      }
+      if (changed) zip.file(name, content);
     } catch {
-      // skip binary files inside the zip
+      // skip binary-only entries
     }
   });
 
@@ -92,50 +125,59 @@ function processXlsx(filePath: string, customerName: string): Buffer {
 }
 
 /**
- * For old binary .doc (OLE2/CFB) files: the text is stored as raw ASCII bytes
- * inside the compound file. We do a byte-level find-and-replace maintaining the
- * EXACT same byte length so the OLE2 sector structure and piece-table offsets
- * stay intact. Replacement is padded with spaces if shorter, or truncated if longer.
- * "COMPANY NAME" is 12 ASCII characters — so the effective display limit is 12 chars.
+ * For old binary .doc (OLE2/CFB) files:
+ * - COMPANY NAME (12 chars): pad/truncate to exact 12 bytes — maintains OLE2 sector integrity
+ * - WTT-BAN-0001 (13 chars): always 13 chars (WTT-BAN-XXXX) — perfect same-length swap
  */
-function processDoc(filePath: string, customerName: string): Buffer {
+function processDoc(filePath: string, customerName: string, wttNumber: string): Buffer {
   const buf = readFileSync(filePath);
-  const PLACEHOLDER = "COMPANY NAME"; // 12 chars
-  const search = Buffer.from(PLACEHOLDER, "ascii");
-  const len = search.length; // 12
-
-  // Pad or truncate to exactly 12 ASCII chars (maintains byte count = safe)
-  let replacement = customerName.toUpperCase().trim();
-  if (replacement.length < len) {
-    replacement = replacement.padEnd(len, " ");
-  } else {
-    replacement = replacement.slice(0, len);
-  }
-  const replBuf = Buffer.from(replacement, "ascii");
-
   const result = Buffer.from(buf);
+
+  // Replace COMPANY NAME (12-char fixed placeholder)
+  const cnSearch = Buffer.from("COMPANY NAME", "ascii");
+  let cnReplacement = customerName.toUpperCase().trim();
+  if (cnReplacement.length < 12) cnReplacement = cnReplacement.padEnd(12, " ");
+  else cnReplacement = cnReplacement.slice(0, 12);
+  const cnBuf = Buffer.from(cnReplacement, "ascii");
   let pos = 0;
-  while ((pos = result.indexOf(search, pos)) !== -1) {
-    replBuf.copy(result, pos);
-    pos += len;
+  while ((pos = result.indexOf(cnSearch, pos)) !== -1) {
+    cnBuf.copy(result, pos);
+    pos += 12;
   }
+
+  // Replace WTT-BAN-0001 (13 chars) with new number (always 13 chars — safe)
+  const wttSearch = Buffer.from("WTT-BAN-0001", "ascii");
+  const wttBuf = Buffer.from(wttNumber, "ascii"); // e.g. WTT-BAN-0002, always 12? No — WTT-BAN-XXXX = 12 chars
+  // WTT-BAN-0001 = 12 chars, WTT-BAN-XXXX = 12 chars → exact match ✓
+  pos = 0;
+  while ((pos = result.indexOf(wttSearch, pos)) !== -1) {
+    wttBuf.copy(result, pos);
+    pos += wttSearch.length;
+  }
+
   return result;
 }
 
-/**
- * Build a modified copy of any supported file with COMPANY NAME replaced.
- */
-function buildModifiedFile(filePath: string, customerName: string): Buffer {
+/** Build a modified copy of any supported file with replacements applied. */
+function buildModifiedFile(filePath: string, customerName: string, wttNumber: string): Buffer {
   const lower = filePath.toLowerCase();
   if (lower.endsWith(".xlsx") || lower.endsWith(".docx")) {
-    return processXlsx(filePath, customerName);
+    return processXlsx(filePath, customerName, wttNumber);
   }
   if (lower.endsWith(".doc")) {
-    return processDoc(filePath, customerName);
+    return processDoc(filePath, customerName, wttNumber);
   }
-  // Fallback: serve as-is
   return readFileSync(filePath);
 }
+
+/** Replace placeholders in a filename string. */
+function buildFilename(original: string, customerName: string, wttNumber: string): string {
+  return original
+    .replace(/COMPANY NAME/gi, customerName.toUpperCase().trim())
+    .replace(/WTT-BAN-0001/g, wttNumber);
+}
+
+// ── routes ─────────────────────────────────────────────────────────────────
 
 // GET /api/proposal-wizard/flow-rates
 router.get("/proposal-wizard/flow-rates", (_req, res) => {
@@ -156,9 +198,35 @@ router.get("/proposal-wizard/files", (req, res) => {
   res.json({ files: result });
 });
 
-// GET /api/proposal-wizard/download?flowRate=...&filename=...&customerName=...
-router.get("/proposal-wizard/download", (req, res) => {
-  const { flowRate, filename, customerName } = req.query as Record<string, string>;
+// GET /api/proposal-wizard/counter — peek at the current counter without incrementing
+router.get("/proposal-wizard/counter", async (_req, res) => {
+  try {
+    const rows = await db.execute(sql`SELECT counter FROM proposal_wizard_counter WHERE id = 1`);
+    const counter = Number((rows as any).rows?.[0]?.counter ?? (rows as any)[0]?.counter ?? 1);
+    res.json({ counter, next: formatWttNumber(counter + 1) });
+  } catch (err) {
+    res.status(500).json({ error: "Could not read counter" });
+  }
+});
+
+// POST /api/proposal-wizard/assign-number — increment counter once, return the new WTT number
+// Call this ONCE per proposal session; then pass the returned wttNumber to all file downloads.
+router.post("/proposal-wizard/assign-number", async (req, res) => {
+  const { customerName = "", flowRate = "" } = req.body as Record<string, string>;
+  try {
+    const counter = await nextCounter(customerName, flowRate);
+    res.json({ wttNumber: formatWttNumber(counter), counter });
+  } catch (err) {
+    console.error("assign-number error:", err);
+    res.status(500).json({ error: "Could not assign proposal number" });
+  }
+});
+
+// GET /api/proposal-wizard/download?flowRate=...&filename=...&customerName=...&wttNumber=WTT-BAN-0001
+// Pass wttNumber (from /assign-number) to reuse it without incrementing the counter.
+// If wttNumber is omitted, a new counter value is assigned (fallback for standalone use).
+router.get("/proposal-wizard/download", async (req, res) => {
+  const { flowRate, filename, customerName, wttNumber: wttParam } = req.query as Record<string, string>;
   if (!flowRate || !filename) return res.status(400).json({ error: "flowRate and filename required" });
 
   const dir = safeJoin(PROPOSAL_ROOT, flowRate);
@@ -168,10 +236,16 @@ router.get("/proposal-wizard/download", (req, res) => {
   if (!filePath || !existsSync(filePath)) return res.status(404).json({ error: "File not found" });
 
   const customer = (customerName || "CUSTOMER").toUpperCase().trim();
-  const renamedFilename = basename(filePath).replace(/COMPANY NAME/gi, customer);
 
   try {
-    const modifiedBuf = buildModifiedFile(filePath, customer);
+    // Use pre-assigned number if provided; otherwise mint a new one
+    const wttNumber = wttParam && /^WTT-BAN-\d{4}$/.test(wttParam)
+      ? wttParam
+      : formatWttNumber(await nextCounter(customer, flowRate));
+
+    const modifiedBuf = buildModifiedFile(filePath, customer, wttNumber);
+    const renamedFilename = buildFilename(basename(filePath), customer, wttNumber);
+
     res.setHeader("Content-Type", mimeFor(filename));
     res.setHeader("Content-Disposition", `attachment; filename="${renamedFilename}"`);
     res.setHeader("Content-Length", modifiedBuf.length);
@@ -184,12 +258,13 @@ router.get("/proposal-wizard/download", (req, res) => {
 
 // POST /api/proposal-wizard/send-email
 router.post("/proposal-wizard/send-email", async (req, res) => {
-  const { flowRate, customerName, toEmail, toName, notes } = req.body as {
+  const { flowRate, customerName, toEmail, toName, notes, wttNumber: wttParam } = req.body as {
     flowRate: string;
     customerName: string;
     toEmail: string;
     toName?: string;
     notes?: string;
+    wttNumber?: string;
   };
 
   if (!flowRate || !customerName || !toEmail) {
@@ -210,11 +285,16 @@ router.post("/proposal-wizard/send-email", async (req, res) => {
 
   const customer = customerName.toUpperCase().trim();
 
+  // Use pre-assigned number if provided; otherwise mint a new one
+  const wttNumber = wttParam && /^WTT-BAN-\d{4}$/.test(wttParam)
+    ? wttParam
+    : formatWttNumber(await nextCounter(customer, flowRate));
+
   const attachments = files.map((f) => {
     const filePath = join(dir, f);
-    const content = buildModifiedFile(filePath, customer);
+    const content = buildModifiedFile(filePath, customer, wttNumber);
     return {
-      filename: f.replace(/COMPANY NAME/gi, customer),
+      filename: buildFilename(f, customer, wttNumber),
       content,
       contentType: mimeFor(f),
     };
@@ -230,20 +310,21 @@ router.post("/proposal-wizard/send-email", async (req, res) => {
   await transporter.sendMail({
     from: `WTT International <${gmailUser}>`,
     to: toEmail,
-    subject: `Proposal Documents – ${customerName} – ${kld}`,
+    subject: `Proposal Documents – ${customerName} – ${kld} – ${wttNumber}`,
     html: `
       <p>Dear ${toName || customerName},</p>
       <p>Please find attached the proposal documents for your reference:</p>
       <ul>
-        ${files.map((f) => `<li>${f.replace(/COMPANY NAME/gi, customer)}</li>`).join("")}
+        ${files.map((f) => `<li>${buildFilename(f, customer, wttNumber)}</li>`).join("")}
       </ul>
+      <p><strong>Reference:</strong> ${wttNumber}</p>
       ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ""}
       <p>Regards,<br/>WTT International Private Limited</p>
     `,
     attachments,
   });
 
-  res.json({ success: true, message: `Email sent to ${toEmail}` });
+  res.json({ success: true, message: `Email sent to ${toEmail}`, wttNumber });
 });
 
 export default router;

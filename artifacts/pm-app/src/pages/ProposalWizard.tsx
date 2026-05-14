@@ -3,7 +3,7 @@ import { Layout } from "@/components/Layout";
 import {
   Building2, Droplets, ChevronLeft, ChevronRight, CheckCircle2,
   Download, Send, Loader2, FileSpreadsheet, FileText, Mail,
-  User, Phone, MessageSquare, ArrowLeft, Check,
+  User, Phone, MessageSquare, ArrowLeft, Hash,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -29,14 +29,19 @@ function FileCard({
   file,
   flowRate,
   customerName,
+  wttNumber,
   onDownload,
 }: {
   file: FileInfo;
   flowRate: string;
   customerName: string;
+  wttNumber: string;
   onDownload: (f: FileInfo) => void;
 }) {
-  const renamedFilename = file.filename.replace(/COMPANY NAME/gi, customerName.toUpperCase().trim() || "CUSTOMER");
+  const customer = customerName.toUpperCase().trim() || "CUSTOMER";
+  const renamedFilename = file.filename
+    .replace(/COMPANY NAME/gi, customer)
+    .replace(/WTT-BAN-0001/g, wttNumber);
 
   const bgColor = file.label === "Technical Spec"
     ? "bg-emerald-50 border-emerald-200"
@@ -78,23 +83,21 @@ function FileCard({
 function StepIndicator({ step }: { step: Step }) {
   const steps = [
     { n: 1, label: "Customer Details" },
-    { n: 2, label: "Select Flow Rate" },
+    { n: 2, label: "Flow Rate" },
     { n: 3, label: "Files & Send" },
   ];
   return (
-    <div className="flex items-center justify-center gap-0 mb-8">
+    <div className="flex items-center justify-center mb-8">
       {steps.map((s, i) => (
         <div key={s.n} className="flex items-center">
           <div className="flex flex-col items-center gap-1">
             <div className={cn(
-              "w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all",
-              step > s.n ? "bg-green-500 border-green-500 text-white"
-                : step === s.n ? "bg-indigo-600 border-indigo-600 text-white"
-                : "bg-white border-gray-300 text-gray-400"
+              "w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all",
+              step > s.n ? "bg-green-500 text-white" : step === s.n ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-400"
             )}>
-              {step > s.n ? <Check className="w-4 h-4" /> : s.n}
+              {step > s.n ? "✓" : s.n}
             </div>
-            <span className={cn("text-[11px] font-medium whitespace-nowrap", step === s.n ? "text-indigo-600" : "text-gray-400")}>
+            <span className={cn("text-[10px] font-medium", step === s.n ? "text-indigo-600" : "text-gray-400")}>
               {s.label}
             </span>
           </div>
@@ -122,6 +125,10 @@ export default function ProposalWizard() {
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
 
+  // WTT proposal number — assigned once per session when entering Step 3
+  const [wttNumber, setWttNumber] = useState("");
+  const [assigningNumber, setAssigningNumber] = useState(false);
+
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
@@ -145,6 +152,21 @@ export default function ProposalWizard() {
       .finally(() => setLoadingFiles(false));
   }, [selectedFlowRate]);
 
+  // Assign WTT number once when entering Step 3
+  useEffect(() => {
+    if (step !== 3 || wttNumber) return;
+    setAssigningNumber(true);
+    fetch(`${API}/proposal-wizard/assign-number`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customerName, flowRate: selectedFlowRate }),
+    })
+      .then((r) => r.json())
+      .then((d) => { if (d.wttNumber) setWttNumber(d.wttNumber); })
+      .catch(() => {})
+      .finally(() => setAssigningNumber(false));
+  }, [step]);
+
   const canNext = () => {
     if (step === 1) return customerName.trim().length > 0;
     if (step === 2) return selectedFlowRate !== "";
@@ -155,10 +177,13 @@ export default function ProposalWizard() {
     const url = `${API}/proposal-wizard/download?`
       + `flowRate=${encodeURIComponent(selectedFlowRate)}`
       + `&filename=${encodeURIComponent(file.filename)}`
-      + `&customerName=${encodeURIComponent(customerName)}`;
+      + `&customerName=${encodeURIComponent(customerName)}`
+      + (wttNumber ? `&wttNumber=${encodeURIComponent(wttNumber)}` : "");
     const a = document.createElement("a");
     a.href = url;
-    a.download = file.filename.replace(/COMPANY NAME/gi, customerName.toUpperCase().trim());
+    a.download = file.filename
+      .replace(/COMPANY NAME/gi, customerName.toUpperCase().trim())
+      .replace(/WTT-BAN-0001/g, wttNumber);
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -184,11 +209,12 @@ export default function ProposalWizard() {
           toEmail: toEmail.trim(),
           toName: toName.trim() || customerName,
           notes: notes.trim(),
+          wttNumber,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to send");
-      setSendResult({ ok: true, msg: `Email sent to ${toEmail}` });
+      setSendResult({ ok: true, msg: `Email sent to ${toEmail} · Ref: ${wttNumber}` });
     } catch (e: any) {
       setSendResult({ ok: false, msg: e.message });
     } finally {
@@ -196,10 +222,18 @@ export default function ProposalWizard() {
     }
   };
 
-  function kldLabel(folder: string) {
-    const match = folder.match(/(\d+)\s*KLD/i);
-    return match ? `${match[1]} KLD` : folder;
-  }
+  const handleNewProposal = () => {
+    setStep(1);
+    setCustomerName("");
+    setSelectedFlowRate("");
+    setFiles([]);
+    setSendResult(null);
+    setToEmail("");
+    setToName("");
+    setPhone("");
+    setNotes("");
+    setWttNumber(""); // reset so next proposal gets a fresh number
+  };
 
   return (
     <Layout>
@@ -297,7 +331,7 @@ export default function ProposalWizard() {
           {/* ── Step 2: Flow Rate Selection ── */}
           {step === 2 && (
             <div className="space-y-5">
-              <div className="text-center mb-6">
+              <div className="text-center mb-4">
                 <h2 className="text-lg font-bold text-gray-900">Select Flow Rate</h2>
                 <p className="text-sm text-gray-500 mt-1">
                   Preparing proposal for <span className="font-semibold text-indigo-600">{customerName}</span>
@@ -346,6 +380,27 @@ export default function ProposalWizard() {
                 </p>
               </div>
 
+              {/* WTT Proposal Reference Badge */}
+              <div className={cn(
+                "flex items-center gap-3 px-4 py-3 rounded-2xl border",
+                assigningNumber
+                  ? "bg-gray-50 border-gray-200"
+                  : "bg-indigo-50 border-indigo-200"
+              )}>
+                <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0">
+                  {assigningNumber
+                    ? <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />
+                    : <Hash className="w-4 h-4 text-indigo-600" />
+                  }
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-indigo-400 mb-0.5">Proposal Reference</p>
+                  <p className="text-base font-bold text-indigo-800 font-mono">
+                    {assigningNumber ? "Assigning…" : wttNumber || "—"}
+                  </p>
+                </div>
+              </div>
+
               {loadingFiles ? (
                 <div className="flex items-center justify-center py-10">
                   <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
@@ -360,13 +415,15 @@ export default function ProposalWizard() {
                       file={f}
                       flowRate={selectedFlowRate}
                       customerName={customerName}
+                      wttNumber={wttNumber || "WTT-BAN-0001"}
                       onDownload={handleDownload}
                     />
                   ))}
 
                   <button
                     onClick={handleDownloadAll}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-gray-300 text-sm font-semibold text-gray-600 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50/30 transition-colors mt-2"
+                    disabled={assigningNumber || !wttNumber}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-gray-300 text-sm font-semibold text-gray-600 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors mt-2"
                   >
                     <Download className="w-4 h-4" />
                     Download All 3 Files
@@ -394,7 +451,7 @@ export default function ProposalWizard() {
 
                     <button
                       onClick={handleSend}
-                      disabled={sending}
+                      disabled={sending || assigningNumber || !wttNumber}
                       className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold text-sm shadow-sm transition-colors"
                     >
                       {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
@@ -438,7 +495,7 @@ export default function ProposalWizard() {
               </button>
             ) : (
               <button
-                onClick={() => { setStep(1); setCustomerName(""); setSelectedFlowRate(""); setFiles([]); setSendResult(null); setToEmail(""); setToName(""); setPhone(""); setNotes(""); }}
+                onClick={handleNewProposal}
                 className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-semibold text-indigo-600 border-2 border-indigo-200 hover:bg-indigo-50 transition"
               >
                 <ArrowLeft className="w-4 h-4" />
