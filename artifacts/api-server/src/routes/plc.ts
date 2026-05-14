@@ -861,6 +861,25 @@ router.get("/plc/support-tickets/:id", async (req, res) => {
   }
 });
 
+router.post("/plc/support-tickets", async (req, res) => {
+  try {
+    const { project_number, project_name, title, priority, assigned_to, notes, created_by } = req.body;
+    const result = await db.execute(sql`
+      INSERT INTO plc_support_tickets
+        (project_number, project_name, title, priority, assigned_to, notes, created_by, status)
+      VALUES
+        (${project_number ?? null}, ${project_name ?? null}, ${title ?? null},
+         ${priority ?? "Medium"}, ${assigned_to ?? null}, ${notes ?? null},
+         ${created_by ?? null}, 'Open')
+      RETURNING *
+    `);
+    const rows = (result as any).rows ?? result;
+    res.status(201).json(rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 router.patch("/plc/support-tickets/:id", async (req, res) => {
   try {
     const id = Number(req.params.id);

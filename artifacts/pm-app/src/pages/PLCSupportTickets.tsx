@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import {
   Ticket, Search, RefreshCw, ExternalLink, ChevronRight,
   AlertCircle, Clock, CheckCircle2, Flame, ArrowUpCircle,
-  Minus, X, Save, User, StickyNote, Filter,
+  Minus, X, Save, User, StickyNote, Filter, Plus, Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -70,6 +70,8 @@ function fmt(dt: string | null | undefined) {
   catch { return dt; }
 }
 
+const BLANK_FORM = { project_number: "", project_name: "", title: "", priority: "Medium", assigned_to: "", notes: "", created_by: "" };
+
 export default function PLCSupportTickets() {
   const [, navigate] = useLocation();
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -83,6 +85,9 @@ export default function PLCSupportTickets() {
   const [editPriority, setEditPriority] = useState("");
   const [editAssigned, setEditAssigned] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
+  const [form, setForm] = useState({ ...BLANK_FORM });
+  const [creating, setCreating] = useState(false);
 
   const fetchTickets = useCallback(async () => {
     setLoading(true);
@@ -136,6 +141,24 @@ export default function PLCSupportTickets() {
     setSaving(false);
   };
 
+  const handleCreate = async () => {
+    if (!form.title.trim()) return;
+    setCreating(true);
+    try {
+      const res = await fetch(`${BASE}/api/plc/support-tickets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      if (res.ok) {
+        setShowCreate(false);
+        setForm({ ...BLANK_FORM });
+        await fetchTickets();
+      }
+    } catch { /* ignore */ }
+    setCreating(false);
+  };
+
   const counts = {
     total: tickets.length,
     open: tickets.filter(t => t.status === "Open").length,
@@ -154,16 +177,25 @@ export default function PLCSupportTickets() {
             </div>
             <div>
               <h1 className="text-lg font-semibold text-gray-900">Support Tickets</h1>
-              <p className="text-xs text-gray-500">Auto-linked from Online Support Calls — status synced automatically</p>
+              <p className="text-xs text-gray-500">Create tickets for the PLC team — status syncs when a site call is started</p>
             </div>
           </div>
-          <button
-            onClick={fetchTickets}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
-          >
-            <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={fetchTickets}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+            >
+              <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
+              Refresh
+            </button>
+            <button
+              onClick={() => { setForm({ ...BLANK_FORM }); setShowCreate(true); }}
+              className="flex items-center gap-2 px-4 py-1.5 text-sm font-semibold text-white bg-violet-600 hover:bg-violet-700 rounded-lg"
+            >
+              <Plus className="w-4 h-4" />
+              New Ticket
+            </button>
+          </div>
         </div>
 
         {/* Stats */}
@@ -223,7 +255,12 @@ export default function PLCSupportTickets() {
               <div className="flex flex-col items-center justify-center h-40 text-gray-400 gap-2">
                 <Ticket className="w-10 h-10 opacity-30" />
                 <p className="text-sm">No support tickets found</p>
-                <p className="text-xs">Tickets are created automatically when a site support call is logged</p>
+                <button
+                  onClick={() => { setForm({ ...BLANK_FORM }); setShowCreate(true); }}
+                  className="flex items-center gap-1.5 mt-1 text-xs font-medium text-violet-600 hover:text-violet-700 underline"
+                >
+                  <Plus className="w-3 h-3" /> Create the first ticket
+                </button>
               </div>
             ) : (
               <table className="w-full text-sm">
@@ -407,6 +444,139 @@ export default function PLCSupportTickets() {
           </div>
         )}
       </div>
+
+      {/* ── Create Ticket Modal ── */}
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden">
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-violet-600 flex items-center justify-center">
+                  <Plus className="w-4 h-4 text-white" />
+                </div>
+                <h2 className="font-semibold text-gray-900">New Support Ticket</h2>
+              </div>
+              <button onClick={() => setShowCreate(false)} className="p-1 hover:bg-gray-100 rounded-lg">
+                <X className="w-4 h-4 text-gray-500" />
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div className="px-6 py-5 space-y-4 overflow-y-auto max-h-[70vh]">
+              {/* Issue summary (required) */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                  Issue Summary <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={form.title}
+                  onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                  rows={3}
+                  placeholder="Describe the problem or support needed…"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
+                />
+              </div>
+
+              {/* Project row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Project No.</label>
+                  <input
+                    value={form.project_number}
+                    onChange={e => setForm(f => ({ ...f, project_number: e.target.value }))}
+                    placeholder="e.g. WTT-2025-042"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Project Name</label>
+                  <input
+                    value={form.project_name}
+                    onChange={e => setForm(f => ({ ...f, project_name: e.target.value }))}
+                    placeholder="Site / customer name"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  />
+                </div>
+              </div>
+
+              {/* Priority */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Priority</label>
+                <div className="flex gap-2">
+                  {["Critical", "High", "Medium", "Low"].map(p => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, priority: p }))}
+                      className={cn(
+                        "flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-colors",
+                        form.priority === p
+                          ? (PRIORITY_META[p]?.bg ?? "bg-gray-100") + " " + (PRIORITY_META[p]?.color ?? "text-gray-700") + " ring-2 ring-violet-400"
+                          : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50"
+                      )}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Assigned to / Created by */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Assign To</label>
+                  <input
+                    value={form.assigned_to}
+                    onChange={e => setForm(f => ({ ...f, assigned_to: e.target.value }))}
+                    placeholder="Name or email"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Created By</label>
+                  <input
+                    value={form.created_by}
+                    onChange={e => setForm(f => ({ ...f, created_by: e.target.value }))}
+                    placeholder="Your name"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  />
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Notes</label>
+                <textarea
+                  value={form.notes}
+                  onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                  rows={2}
+                  placeholder="Any additional context or urgency notes…"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
+                />
+              </div>
+            </div>
+
+            {/* Modal footer */}
+            <div className="px-6 py-4 border-t border-gray-200 flex gap-3">
+              <button
+                onClick={() => setShowCreate(false)}
+                className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreate}
+                disabled={creating || !form.title.trim()}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold text-white bg-violet-600 hover:bg-violet-700 rounded-xl disabled:opacity-50"
+              >
+                {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ticket className="w-4 h-4" />}
+                {creating ? "Creating…" : "Create Ticket"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
