@@ -429,6 +429,7 @@ async function buildServiceReportPDF(report: any): Promise<Buffer> {
     await db.execute(sql`ALTER TABLE plc_site_calls ADD COLUMN IF NOT EXISTS site_coordinator_name TEXT`);
     await db.execute(sql`ALTER TABLE plc_site_calls ADD COLUMN IF NOT EXISTS site_coordinator_phone TEXT`);
     await db.execute(sql`ALTER TABLE plc_site_calls ADD COLUMN IF NOT EXISTS customer_email TEXT`);
+    await db.execute(sql`ALTER TABLE plc_site_calls ADD COLUMN IF NOT EXISTS support_ticket_id INTEGER`);
 
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS plc_service_reports (
@@ -697,6 +698,7 @@ router.post("/plc/site-calls", async (req, res) => {
       attended_by, issue_details, spares_changed,
       electrical_issue, electrical_issue_desc, electrical_team,
       status, root_cause, action_taken, remarks, created_by,
+      support_ticket_id,
     } = req.body;
 
     const result = await db.execute(sql`
@@ -706,7 +708,7 @@ router.post("/plc/site-calls", async (req, res) => {
          call_received_at, work_started_at, work_completed_at,
          attended_by, issue_details, spares_changed,
          electrical_issue, electrical_issue_desc, electrical_team,
-         status, root_cause, action_taken, remarks, created_by)
+         status, root_cause, action_taken, remarks, created_by, support_ticket_id)
       VALUES
         (${call_no ?? null}, ${call_type ?? "Online Support"},
          ${project_number ?? null}, ${project_name ?? null},
@@ -720,26 +722,23 @@ router.post("/plc/site-calls", async (req, res) => {
          ${JSON.stringify(electrical_team ?? [])}::jsonb,
          ${status ?? "Open"},
          ${root_cause ?? null}, ${action_taken ?? null},
-         ${remarks ?? null}, ${created_by ?? null})
+         ${remarks ?? null}, ${created_by ?? null},
+         ${support_ticket_id ? Number(support_ticket_id) : null})
       RETURNING *
     `);
     const rows = (result as any).rows ?? result;
     const newCall = rows[0];
 
-    // Auto-create a linked support ticket
-    try {
-      const countRes = await db.execute(sql`SELECT COUNT(*) FROM plc_support_tickets`);
-      const count = Number(((countRes as any).rows ?? countRes)[0]?.count ?? 0) + 1;
-      const ticketNo = `TKT-${String(count).padStart(4, "0")}`;
-      await db.execute(sql`
-        INSERT INTO plc_support_tickets
-          (ticket_no, site_call_id, project_number, project_name, title, status, created_by)
-        VALUES
-          (${ticketNo}, ${newCall.id}, ${project_number ?? null}, ${project_name ?? null},
-           ${issue_details ?? null}, ${status ?? "Open"}, ${created_by ?? null})
-      `);
-    } catch (ticketErr) {
-      console.error("Support ticket auto-create failed:", ticketErr);
+    // If linked to a support ticket, mark it In Progress
+    if (support_ticket_id) {
+      try {
+        await db.execute(sql`
+          UPDATE plc_support_tickets SET status = 'In Progress', updated_at = NOW()
+          WHERE id = ${Number(support_ticket_id)}
+        `);
+      } catch (ticketErr) {
+        console.error("Support ticket status update failed:", ticketErr);
+      }
     }
 
     res.json(newCall);
@@ -786,13 +785,18 @@ router.patch("/plc/site-calls/:id", async (req, res) => {
       WHERE id = ${id}
     `);
 
-    // Sync status to linked support ticket
+    // Sync status to linked support ticket (via support_ticket_id on the site call)
     if (status) {
       try {
-        await db.execute(sql`
-          UPDATE plc_support_tickets SET status = ${status}, updated_at = NOW()
-          WHERE site_call_id = ${id}
-        `);
+        const callRow = await db.execute(sql`SELECT support_ticket_id FROM plc_site_calls WHERE id = ${id}`);
+        const ticketId = ((callRow as any).rows ?? callRow)[0]?.support_ticket_id;
+        if (ticketId) {
+          const ticketStatus = status === "Closed" ? "Closed" : status;
+          await db.execute(sql`
+            UPDATE plc_support_tickets SET status = ${ticketStatus}, updated_at = NOW()
+            WHERE id = ${Number(ticketId)}
+          `);
+        }
       } catch (ticketErr) {
         console.error("Support ticket status sync failed:", ticketErr);
       }

@@ -7,6 +7,7 @@ import {
   Plus, Search, Loader2, Trash2, Printer, X, Zap,
   ChevronDown, Clock, CircleCheck, Circle,
   Phone, Cpu, Wifi, User, PhoneCall, Mail, Send,
+  Ticket, AlertCircle, ChevronDown as ChevDown, RefreshCw,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -41,6 +42,19 @@ interface SiteCall {
   remarks?: string;
   created_by?: string;
   created_at?: string;
+  support_ticket_id?: number;
+}
+
+interface SupportTicket {
+  id: number;
+  ticket_no: string;
+  project_number: string | null;
+  project_name: string | null;
+  title: string | null;
+  priority: string;
+  status: string;
+  assigned_to: string | null;
+  created_at: string;
 }
 
 const STATUS_META: Record<Status, { color: string; bg: string; icon: typeof Circle }> = {
@@ -502,9 +516,10 @@ function PrintView({ call, onClose }: { call: SiteCall; onClose: () => void }) {
 
 // ─── Site Call Form Modal ─────────────────────────────────────────────────────
 function SiteCallModal({
-  initial, onClose, onSaved,
+  initial, fromTicket, onClose, onSaved,
 }: {
   initial?: SiteCall;
+  fromTicket?: SupportTicket;
   onClose: () => void;
   onSaved: (call?: SiteCall) => void;
 }) {
@@ -512,17 +527,21 @@ function SiteCallModal({
   const { toast } = useToast();
   const isEdit = !!initial?.id;
 
-  const [projectNumber,  setProjectNumber]  = useState(initial?.project_number ?? "");
-  const [projectName,    setProjectName]    = useState(initial?.project_name   ?? "");
+  const prefill = fromTicket ?? null;
+
+  const [projectNumber,  setProjectNumber]  = useState(initial?.project_number ?? prefill?.project_number ?? "");
+  const [projectName,    setProjectName]    = useState(initial?.project_name   ?? prefill?.project_name   ?? "");
   const [projectSearch,  setProjectSearch]  = useState(
-    initial?.project_number ? `${initial.project_number} - ${initial.project_name}` : ""
+    (initial?.project_number ?? prefill?.project_number)
+      ? `${initial?.project_number ?? prefill?.project_number} - ${initial?.project_name ?? prefill?.project_name}`
+      : ""
   );
   const [siteCoordName,  setSiteCoordName]  = useState(initial?.site_coordinator_name  ?? "");
   const [siteCoordPhone, setSiteCoordPhone] = useState(initial?.site_coordinator_phone ?? "");
   const [customerEmail,  setCustomerEmail]  = useState(initial?.customer_email ?? "");
   const [attendedBy,     setAttendedBy]     = useState<Employee[]>(Array.isArray(initial?.attended_by)    ? initial.attended_by    : []);
   const [electricalTeam, setElectricalTeam] = useState<Employee[]>(Array.isArray(initial?.electrical_team) ? initial.electrical_team : []);
-  const [issueDetails,   setIssueDetails]   = useState(initial?.issue_details      ?? "");
+  const [issueDetails,   setIssueDetails]   = useState(initial?.issue_details ?? prefill?.title ?? "");
   const [electricalIssue,  setElectricalIssue]  = useState(initial?.electrical_issue   ?? false);
   const [electricalDesc,   setElectricalDesc]   = useState(initial?.electrical_issue_desc ?? "");
   const [status,         setStatus]         = useState<Status>(initial?.status as Status ?? "Open");
@@ -573,6 +592,7 @@ function SiteCallModal({
         action_taken: actionTaken || undefined,
         remarks:      remarks     || undefined,
         created_by:   user?.email,
+        support_ticket_id: fromTicket?.id ?? initial?.support_ticket_id,
       };
 
       const url    = isEdit ? `${BASE}/api/plc/site-calls/${initial!.id}` : `${BASE}/api/plc/site-calls`;
@@ -828,18 +848,39 @@ function SiteCallModal({
   );
 }
 
+const PRIORITY_COLOR: Record<string, string> = {
+  Critical: "text-red-700 bg-red-50 border-red-200",
+  High:     "text-orange-700 bg-orange-50 border-orange-200",
+  Medium:   "text-amber-700 bg-amber-50 border-amber-200",
+  Low:      "text-gray-600 bg-gray-50 border-gray-200",
+};
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function PLCAutomation() {
-  const [calls,        setCalls]        = useState<SiteCall[]>([]);
-  const [loading,      setLoading]      = useState(true);
-  const [search,       setSearch]       = useState("");
-  const [statusFilter, setStatusFilter] = useState("All");
-  const [showForm,     setShowForm]     = useState(false);
-  const [editCall,     setEditCall]     = useState<SiteCall | undefined>();
-  const [printCall,    setPrintCall]    = useState<SiteCall | null>(null);
-  const [sentIds,      setSentIds]      = useState<Set<number>>(new Set());
-  const [sendingId,    setSendingId]    = useState<number | null>(null);
+  const [calls,          setCalls]          = useState<SiteCall[]>([]);
+  const [loading,        setLoading]        = useState(true);
+  const [search,         setSearch]         = useState("");
+  const [statusFilter,   setStatusFilter]   = useState("All");
+  const [showForm,       setShowForm]       = useState(false);
+  const [editCall,       setEditCall]       = useState<SiteCall | undefined>();
+  const [fromTicket,     setFromTicket]     = useState<SupportTicket | undefined>();
+  const [printCall,      setPrintCall]      = useState<SiteCall | null>(null);
+  const [sentIds,        setSentIds]        = useState<Set<number>>(new Set());
+  const [sendingId,      setSendingId]      = useState<number | null>(null);
+  const [pendingTickets, setPendingTickets] = useState<SupportTicket[]>([]);
+  const [ticketsOpen,    setTicketsOpen]    = useState(true);
+  const [loadingTickets, setLoadingTickets] = useState(true);
   const { toast } = useToast();
+
+  const loadTickets = useCallback(async () => {
+    setLoadingTickets(true);
+    try {
+      const r = await fetch(`${BASE}/api/plc/support-tickets?status=Open`);
+      const d = await r.json();
+      setPendingTickets(d.data ?? []);
+    } catch {}
+    setLoadingTickets(false);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -855,6 +896,7 @@ export default function PLCAutomation() {
   }, [search, statusFilter]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadTickets(); }, [loadTickets]);
 
   const del = async (id: number) => {
     if (!confirm("Delete this online support call?")) return;
@@ -966,6 +1008,93 @@ export default function PLCAutomation() {
           />
         </div>
 
+        {/* ── Pending Support Tickets Panel ── */}
+        {(pendingTickets.length > 0 || loadingTickets) && (
+          <div className="mb-5 bg-amber-50 border border-amber-200 rounded-2xl overflow-hidden">
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => setTicketsOpen(o => !o)}
+              onKeyDown={e => e.key === "Enter" && setTicketsOpen(o => !o)}
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-amber-100/60 transition-colors cursor-pointer select-none"
+            >
+              <div className="flex items-center gap-2">
+                <Ticket className="w-4 h-4 text-amber-700" />
+                <span className="font-semibold text-amber-800 text-sm">
+                  Pending Support Tickets
+                </span>
+                {!loadingTickets && (
+                  <span className="bg-amber-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                    {pendingTickets.length}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={e => { e.stopPropagation(); loadTickets(); }}
+                  onKeyDown={e => e.key === "Enter" && (e.stopPropagation(), loadTickets())}
+                  className="p-1 rounded hover:bg-amber-200 text-amber-600 cursor-pointer"
+                  title="Refresh tickets"
+                >
+                  <RefreshCw className={cn("w-3.5 h-3.5", loadingTickets && "animate-spin")} />
+                </span>
+                <ChevDown className={cn("w-4 h-4 text-amber-600 transition-transform", ticketsOpen && "rotate-180")} />
+              </div>
+            </div>
+
+            {ticketsOpen && (
+              <div className="border-t border-amber-200">
+                {loadingTickets ? (
+                  <div className="flex items-center justify-center py-6">
+                    <Loader2 className="w-5 h-5 animate-spin text-amber-500" />
+                  </div>
+                ) : (
+                  <div className="divide-y divide-amber-100">
+                    {pendingTickets.map(ticket => (
+                      <div key={ticket.id} className="px-4 py-3 flex items-start justify-between gap-3 hover:bg-amber-100/40 transition-colors">
+                        <div className="flex items-start gap-3 min-w-0">
+                          <div className="w-8 h-8 rounded-lg bg-amber-200 flex items-center justify-center shrink-0 mt-0.5">
+                            <AlertCircle className="w-4 h-4 text-amber-700" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono text-xs font-bold text-amber-800">{ticket.ticket_no}</span>
+                              <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-full border", PRIORITY_COLOR[ticket.priority] ?? "text-gray-600 bg-gray-50 border-gray-200")}>
+                                {ticket.priority}
+                              </span>
+                              {ticket.project_name && (
+                                <span className="text-xs text-gray-700 font-medium truncate">{ticket.project_name}</span>
+                              )}
+                            </div>
+                            {ticket.title && (
+                              <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">{ticket.title}</p>
+                            )}
+                            {ticket.assigned_to && (
+                              <p className="text-[10px] text-gray-400 mt-0.5">Assigned: {ticket.assigned_to}</p>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setFromTicket(ticket);
+                            setEditCall(undefined);
+                            setShowForm(true);
+                          }}
+                          className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold rounded-lg transition-colors"
+                        >
+                          <Plus className="w-3 h-3" /> Start Call
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* List */}
         {loading ? (
           <div className="flex items-center justify-center py-24">
@@ -1074,11 +1203,14 @@ export default function PLCAutomation() {
         {showForm && (
           <SiteCallModal
             initial={editCall}
-            onClose={() => { setShowForm(false); setEditCall(undefined); }}
+            fromTicket={fromTicket}
+            onClose={() => { setShowForm(false); setEditCall(undefined); setFromTicket(undefined); }}
             onSaved={saved => {
               setShowForm(false);
               setEditCall(undefined);
+              setFromTicket(undefined);
               load();
+              loadTickets();
               if (saved) setPrintCall(saved);
             }}
           />
