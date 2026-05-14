@@ -613,10 +613,10 @@ function SiteCallModal({
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/40 overflow-y-auto py-6">
-      <div className="relative w-full max-w-4xl mx-4 bg-white rounded-2xl shadow-2xl">
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+      <div className="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl flex flex-col" style={{ maxHeight: "95vh" }}>
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-purple-900 to-purple-700 rounded-t-2xl">
+        <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-purple-900 to-purple-700 rounded-t-2xl">
           <div className="flex items-center gap-3">
             <Wifi className="w-5 h-5 text-purple-200" />
             <div>
@@ -627,7 +627,7 @@ function SiteCallModal({
           <button onClick={onClose} className="text-purple-200 hover:text-white"><X className="w-5 h-5" /></button>
         </div>
 
-        <div className="p-6 space-y-7 max-h-[78vh] overflow-y-auto">
+        <div className="flex-1 p-6 space-y-7 overflow-y-auto min-h-0">
 
           {/* ── Project & Status ── */}
           <section>
