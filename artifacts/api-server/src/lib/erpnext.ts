@@ -1609,6 +1609,65 @@ export interface LatestActivity {
   sheet_name: string;
 }
 
+// ── Site Tickets (IT-WTT) ─────────────────────────────────────────────────────
+
+export interface ErpSiteTicket {
+  name: string;
+  date: string | null;
+  ticket_subject: string | null;
+  ticket_description: string | null;
+  expected_completion_date: string | null;
+  root_cause: string | null;
+  project: string | null;
+  project_name: string | null;
+  reference: string | null;
+  priority: string;
+  status: string;
+  assigned_person_name: string | null;
+  assigned_person_department: string | null;
+  supplier: string | null;
+  attach_image_1: string | null;
+  attach_image_2: string | null;
+  modified: string;
+}
+
+export async function fetchErpNextSiteTickets(departmentFilter = "It - WTT"): Promise<ErpSiteTicket[]> {
+  if (!ERPNEXT_URL) throw new Error("ERPNext not configured");
+
+  const fields = JSON.stringify([
+    "name", "date", "ticket_subject", "ticket_description",
+    "expected_completion_date", "root_cause",
+    "project", "project_name", "reference",
+    "priority", "status",
+    "assigned_person_name", "assigned_person_department",
+    "supplier", "attach_image_1", "attach_image_2", "modified",
+  ]);
+
+  const filters = JSON.stringify([
+    ["Site Ticket", "assigned_person_department", "like", `%${departmentFilter}%`],
+  ]);
+
+  const params = new URLSearchParams({
+    fields,
+    filters,
+    limit_page_length: "500",
+    order_by: "modified desc",
+  });
+
+  const url = `${ERPNEXT_URL}/api/resource/Site Ticket?${params}`;
+  const res = await fetch(url, {
+    headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`ERPNext Site Ticket API error ${res.status}: ${body}`);
+  }
+
+  const json = await res.json();
+  return (json.data || []) as ErpSiteTicket[];
+}
+
 export async function fetchLatestEmployeeActivities(): Promise<Record<string, LatestActivity>> {
   if (!ERPNEXT_URL) return {};
   try {

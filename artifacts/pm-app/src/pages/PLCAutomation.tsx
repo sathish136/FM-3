@@ -8,6 +8,7 @@ import {
   ChevronDown, Clock, CircleCheck, Circle,
   Phone, Cpu, Wifi, User, PhoneCall, Mail, Send,
   Ticket, AlertCircle, ChevronDown as ChevDown, RefreshCw,
+  CheckCheck, XCircle,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -867,20 +868,38 @@ export default function PLCAutomation() {
   const [printCall,      setPrintCall]      = useState<SiteCall | null>(null);
   const [sentIds,        setSentIds]        = useState<Set<number>>(new Set());
   const [sendingId,      setSendingId]      = useState<number | null>(null);
-  const [pendingTickets, setPendingTickets] = useState<SupportTicket[]>([]);
-  const [ticketsOpen,    setTicketsOpen]    = useState(true);
-  const [loadingTickets, setLoadingTickets] = useState(true);
+  const [pendingTickets,   setPendingTickets]   = useState<SupportTicket[]>([]);
+  const [ticketsOpen,      setTicketsOpen]      = useState(true);
+  const [loadingTickets,   setLoadingTickets]   = useState(true);
+  const [updatingTicketId, setUpdatingTicketId] = useState<number | null>(null);
   const { toast } = useToast();
 
   const loadTickets = useCallback(async () => {
     setLoadingTickets(true);
     try {
-      const r = await fetch(`${BASE}/api/plc/support-tickets?status=Open`);
+      const r = await fetch(`${BASE}/api/plc/support-tickets`);
       const d = await r.json();
       setPendingTickets(d.data ?? []);
     } catch {}
     setLoadingTickets(false);
   }, []);
+
+  const updateTicketStatus = async (ticket: SupportTicket, newStatus: string) => {
+    setUpdatingTicketId(ticket.id);
+    try {
+      const r = await fetch(`${BASE}/api/plc/support-tickets/${ticket.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!r.ok) throw new Error("Failed");
+      toast({ title: `Ticket ${ticket.ticket_no} marked ${newStatus}` });
+      loadTickets();
+    } catch {
+      toast({ title: "Update failed", variant: "destructive" });
+    }
+    setUpdatingTicketId(null);
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1052,42 +1071,75 @@ export default function PLCAutomation() {
                   </div>
                 ) : (
                   <div className="divide-y divide-amber-100">
-                    {pendingTickets.map(ticket => (
-                      <div key={ticket.id} className="px-4 py-3 flex items-start justify-between gap-3 hover:bg-amber-100/40 transition-colors">
-                        <div className="flex items-start gap-3 min-w-0">
-                          <div className="w-8 h-8 rounded-lg bg-amber-200 flex items-center justify-center shrink-0 mt-0.5">
-                            <AlertCircle className="w-4 h-4 text-amber-700" />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-mono text-xs font-bold text-amber-800">{ticket.ticket_no}</span>
-                              <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-full border", PRIORITY_COLOR[ticket.priority] ?? "text-gray-600 bg-gray-50 border-gray-200")}>
-                                {ticket.priority}
-                              </span>
-                              {ticket.project_name && (
-                                <span className="text-xs text-gray-700 font-medium truncate">{ticket.project_name}</span>
+                    {pendingTickets.map(ticket => {
+                      const isUpdating = updatingTicketId === ticket.id;
+                      const isClosed   = ticket.status === "Closed";
+                      return (
+                        <div key={ticket.id} className="px-4 py-3 flex items-start justify-between gap-3 hover:bg-amber-100/40 transition-colors">
+                          <div className="flex items-start gap-3 min-w-0">
+                            <div className="w-8 h-8 rounded-lg bg-amber-200 flex items-center justify-center shrink-0 mt-0.5">
+                              <AlertCircle className="w-4 h-4 text-amber-700" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono text-xs font-bold text-amber-800">{ticket.ticket_no}</span>
+                                <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-full border", PRIORITY_COLOR[ticket.priority] ?? "text-gray-600 bg-gray-50 border-gray-200")}>
+                                  {ticket.priority}
+                                </span>
+                                <span className={cn(
+                                  "text-[10px] font-semibold px-2 py-0.5 rounded-full",
+                                  ticket.status === "Closed"      ? "bg-green-100 text-green-700" :
+                                  ticket.status === "In Progress" ? "bg-amber-100 text-amber-700" :
+                                                                    "bg-red-100 text-red-700"
+                                )}>
+                                  {ticket.status}
+                                </span>
+                                {ticket.project_name && (
+                                  <span className="text-xs text-gray-700 font-medium truncate">{ticket.project_name}</span>
+                                )}
+                              </div>
+                              {ticket.title && (
+                                <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">{ticket.title}</p>
+                              )}
+                              {ticket.assigned_to && (
+                                <p className="text-[10px] text-gray-400 mt-0.5">Assigned: {ticket.assigned_to}</p>
                               )}
                             </div>
-                            {ticket.title && (
-                              <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">{ticket.title}</p>
+                          </div>
+                          <div className="shrink-0 flex items-center gap-1.5">
+                            {isUpdating ? (
+                              <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
+                            ) : isClosed ? (
+                              <button
+                                onClick={() => updateTicketStatus(ticket, "Open")}
+                                className="flex items-center gap-1 px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-semibold rounded-lg transition-colors"
+                                title="Reopen ticket"
+                              >
+                                <XCircle className="w-3 h-3" /> Reopen
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => updateTicketStatus(ticket, "Closed")}
+                                className="flex items-center gap-1 px-2.5 py-1.5 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 text-xs font-semibold rounded-lg transition-colors"
+                                title="Mark as closed"
+                              >
+                                <CheckCheck className="w-3 h-3" /> Close
+                              </button>
                             )}
-                            {ticket.assigned_to && (
-                              <p className="text-[10px] text-gray-400 mt-0.5">Assigned: {ticket.assigned_to}</p>
-                            )}
+                            <button
+                              onClick={() => {
+                                setFromTicket(ticket);
+                                setEditCall(undefined);
+                                setShowForm(true);
+                              }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold rounded-lg transition-colors"
+                            >
+                              <Plus className="w-3 h-3" /> Start Call
+                            </button>
                           </div>
                         </div>
-                        <button
-                          onClick={() => {
-                            setFromTicket(ticket);
-                            setEditCall(undefined);
-                            setShowForm(true);
-                          }}
-                          className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold rounded-lg transition-colors"
-                        >
-                          <Plus className="w-3 h-3" /> Start Call
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

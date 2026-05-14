@@ -6,6 +6,7 @@ import PDFDocument from "pdfkit";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { fetchErpNextSiteTickets } from "../lib/erpnext";
 
 const ERP_URL = (process.env.ERPNEXT_URL || "https://erp.wttint.com").replace(/\/$/, "");
 const ERP_AUTH = () => `token ${process.env.ERPNEXT_API_KEY || ""}:${process.env.ERPNEXT_API_SECRET || ""}`;
@@ -621,6 +622,22 @@ async function buildServiceReportPDF(report: any): Promise<Buffer> {
         ADD COLUMN IF NOT EXISTS images JSONB DEFAULT '[]'
     `);
 
+    // ERP sync columns
+    await db.execute(sql`ALTER TABLE plc_support_tickets ADD COLUMN IF NOT EXISTS erp_name TEXT`);
+    await db.execute(sql`ALTER TABLE plc_support_tickets ADD COLUMN IF NOT EXISTS erp_status TEXT`);
+    await db.execute(sql`ALTER TABLE plc_support_tickets ADD COLUMN IF NOT EXISTS ticket_date TEXT`);
+    await db.execute(sql`ALTER TABLE plc_support_tickets ADD COLUMN IF NOT EXISTS expected_completion_date TEXT`);
+    await db.execute(sql`ALTER TABLE plc_support_tickets ADD COLUMN IF NOT EXISTS root_cause TEXT`);
+    await db.execute(sql`ALTER TABLE plc_support_tickets ADD COLUMN IF NOT EXISTS ticket_description TEXT`);
+    await db.execute(sql`ALTER TABLE plc_support_tickets ADD COLUMN IF NOT EXISTS supplier TEXT`);
+    await db.execute(sql`ALTER TABLE plc_support_tickets ADD COLUMN IF NOT EXISTS reference TEXT`);
+    await db.execute(sql`ALTER TABLE plc_support_tickets ADD COLUMN IF NOT EXISTS assigned_person_name TEXT`);
+    await db.execute(sql`ALTER TABLE plc_support_tickets ADD COLUMN IF NOT EXISTS assigned_person_dept TEXT`);
+    await db.execute(sql`ALTER TABLE plc_support_tickets ADD COLUMN IF NOT EXISTS attach_image_1 TEXT`);
+    await db.execute(sql`ALTER TABLE plc_support_tickets ADD COLUMN IF NOT EXISTS attach_image_2 TEXT`);
+    await db.execute(sql`ALTER TABLE plc_support_tickets ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'local'`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS plc_support_tickets_erp_name_idx ON plc_support_tickets (erp_name) WHERE erp_name IS NOT NULL`);
+
     console.log("PLC site calls & service reports tables ready");
   } catch (e) {
     console.error("PLC table init error:", e);
@@ -893,10 +910,11 @@ router.post("/plc/support-tickets", async (req, res) => {
 router.patch("/plc/support-tickets/:id", async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { priority, notes, images } = req.body;
+    const { priority, notes, images, status } = req.body;
     await db.execute(sql`
       UPDATE plc_support_tickets SET
         priority   = COALESCE(${priority ?? null}, priority),
+        status     = COALESCE(${status ?? null}, status),
         notes      = COALESCE(${notes ?? null}, notes),
         images     = COALESCE(${images != null ? JSON.stringify(images) : null}::jsonb, images),
         updated_at = NOW()
@@ -913,6 +931,97 @@ router.delete("/plc/support-tickets/:id", async (req, res) => {
     await db.execute(sql`DELETE FROM plc_support_tickets WHERE id = ${Number(req.params.id)}`);
     res.json({ ok: true });
   } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// POST /api/plc/support-tickets/sync-erp  — pull IT-WTT site tickets from ERPNext
+router.post("/plc/support-tickets/sync-erp", async (req, res) => {
+  try {
+    const tickets = await fetchErpNextSiteTickets("It - WTT");
+
+    let inserted = 0;
+    let updated  = 0;
+
+    for (const t of tickets) {
+      const mapPriority = (p: string) => {
+        const l = (p || "").toLowerCase();
+        if (l === "high")   return "High";
+        if (l === "low")    return "Low";
+        if (l === "critical") return "Critical";
+        return "Medium";
+      };
+      const mapStatus = (s: string) => {
+        if (s === "Closed") return "Closed";
+        if (s === "In Progress") return "In Progress";
+        return "Open";
+      };
+
+      const existing = await db.execute(sql`
+        SELECT id FROM plc_support_tickets WHERE erp_name = ${t.name}
+      `);
+      const rows = (existing as any).rows ?? existing;
+
+      if (rows.length > 0) {
+        await db.execute(sql`
+          UPDATE plc_support_tickets SET
+            title                    = ${t.ticket_subject ?? null},
+            priority                 = ${mapPriority(t.priority)},
+            status                   = ${mapStatus(t.status)},
+            erp_status               = ${t.status ?? null},
+            ticket_date              = ${t.date ?? null},
+            expected_completion_date = ${t.expected_completion_date ?? null},
+            root_cause               = ${t.root_cause ?? null},
+            ticket_description       = ${t.ticket_description ?? null},
+            project_number           = ${t.project ?? null},
+            project_name             = ${t.project_name ?? null},
+            reference                = ${t.reference ?? null},
+            assigned_person_name     = ${t.assigned_person_name ?? null},
+            assigned_person_dept     = ${t.assigned_person_department ?? null},
+            supplier                 = ${t.supplier ?? null},
+            attach_image_1           = ${t.attach_image_1 ?? null},
+            attach_image_2           = ${t.attach_image_2 ?? null},
+            updated_at               = NOW()
+          WHERE erp_name = ${t.name}
+        `);
+        updated++;
+      } else {
+        await db.execute(sql`
+          INSERT INTO plc_support_tickets
+            (erp_name, ticket_no, source,
+             title, priority, status, erp_status,
+             ticket_date, expected_completion_date, root_cause, ticket_description,
+             project_number, project_name, reference,
+             assigned_person_name, assigned_person_dept,
+             supplier, attach_image_1, attach_image_2,
+             images)
+          VALUES
+            (${t.name}, ${t.name}, 'erp',
+             ${t.ticket_subject ?? null},
+             ${mapPriority(t.priority)},
+             ${mapStatus(t.status)},
+             ${t.status ?? null},
+             ${t.date ?? null},
+             ${t.expected_completion_date ?? null},
+             ${t.root_cause ?? null},
+             ${t.ticket_description ?? null},
+             ${t.project ?? null},
+             ${t.project_name ?? null},
+             ${t.reference ?? null},
+             ${t.assigned_person_name ?? null},
+             ${t.assigned_person_department ?? null},
+             ${t.supplier ?? null},
+             ${t.attach_image_1 ?? null},
+             ${t.attach_image_2 ?? null},
+             '[]'::jsonb)
+        `);
+        inserted++;
+      }
+    }
+
+    res.json({ ok: true, synced: tickets.length, inserted, updated });
+  } catch (e) {
+    console.error("ERP sync error:", e);
     res.status(500).json({ error: String(e) });
   }
 });
