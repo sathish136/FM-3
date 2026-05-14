@@ -10,7 +10,7 @@ import {
   BarChart2, ClipboardList, DollarSign, ClipboardCheck, BarChart,
   Languages, Globe, ScanLine, Database, Sparkles, Building2, Factory,
   Phone, UserPlus, Cpu, Wrench, Gauge, Tag, Library,
-  HardHat, MonitorSmartphone, ListOrdered,
+  HardHat, MonitorSmartphone, ListOrdered, Network,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -59,6 +59,7 @@ const ALL_PAGES: SearchEntry[] = [
   { path: "/plc-automation/instruments",     label: "Instruments",         icon: Activity,         group: "PLC & Automation",      keywords: "instrument tag calibration sensor" },
   { path: "/plc-automation/tags",            label: "PLC Tags",            icon: Tag,              group: "PLC & Automation",      keywords: "plc tag database ai ao di do" },
   { path: "/plc-automation/panel-inspection",label: "Panel Inspection",    icon: ClipboardCheck,   group: "PLC & Automation",      keywords: "panel inspection electrical checklist" },
+  { path: "/plc-automation/network-architecture", label: "Network Architecture", icon: Network,      group: "PLC & Automation",      keywords: "network architecture plc switch hmi profinet topology" },
   // ── Communication ───────────────────────────────────────────────────────────
   { path: "/email",                     label: "Email",                  icon: Mail,             group: "Communication",         keywords: "email inbox mail" },
   { path: "/smart-inbox",               label: "Smart Inbox (AI)",       icon: Bot,              group: "Communication",         keywords: "smart inbox ai email" },

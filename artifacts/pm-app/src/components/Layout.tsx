@@ -6,7 +6,7 @@ import {
   MonitorPlay, Table2, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp, ListChecks, ClipboardList, Truck, Package,
   Play, Square, Phone, ShieldOff, Loader2, Languages, Globe, Mic, Pause,
   ScanLine, Factory, Database, UserCheck,
-  Code2, Monitor, Gauge, Tag, Ticket, Cpu,
+  Code2, Monitor, Gauge, Tag, Ticket, Cpu, Network,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -310,6 +310,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { path: "/plc-automation/panel-inspection",   label: "Panel Inspection",    icon: ClipboardList,  color: "text-orange-400",  bgColor: "bg-orange-500/15"  },
       { path: "/plc-automation/support-tickets",    label: "Support Tickets",     icon: Ticket,         color: "text-violet-400",  bgColor: "bg-violet-500/15"  },
       { path: "/plc-automation/device-config",      label: "PLC Device Config",   icon: Cpu,            color: "text-sky-400",     bgColor: "bg-sky-500/15"     },
+      { path: "/plc-automation/network-architecture", label: "Network Architecture", icon: Network,        color: "text-blue-400",    bgColor: "bg-blue-500/15"    },
     ],
   },
   {

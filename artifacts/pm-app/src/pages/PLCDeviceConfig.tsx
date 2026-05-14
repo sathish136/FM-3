@@ -65,17 +65,28 @@ const EMPTY: FormState = {
   last_backup_date: "", backup_schedule: "", config_notes: "",
 };
 
+const CPU_MAKES = ["Beckhoff", "Siemens"];
 const CPU_TYPES = ["Compact", "Modular", "Rack", "DIN Rail", "Panel-Mount", "Other"];
+const PLC_MAKES = ["Siemens", "Beckhoff"];
 const PLC_TYPES = [
+  // Siemens series
   "Siemens S7-1200", "Siemens S7-1500", "Siemens S7-300", "Siemens S7-400",
-  "Allen Bradley CompactLogix", "Allen Bradley ControlLogix", "Allen Bradley MicroLogix",
-  "Mitsubishi FX", "Mitsubishi Q Series", "Schneider Modicon M221", "Schneider Modicon M241",
-  "ABB AC500", "Delta DVP", "Omron CP", "Omron CJ", "GE Fanuc", "Other",
+  "Siemens ET 200SP", "Siemens ET 200MP", "Siemens LOGO!",
+  // Beckhoff series
+  "Beckhoff CX2000 (Embedded PC)", "Beckhoff CX5000 (Embedded PC)", "Beckhoff CX9020",
+  "Beckhoff C6000 (Industrial PC)", "Beckhoff EK1100 (EtherCAT Coupler)",
+  "Beckhoff BK1120 (Bus Coupler)", "Beckhoff EL Series (I/O Terminals)",
+  "Other",
 ];
-const PROTOCOLS = ["Profinet", "Profibus DP", "Ethernet/IP", "Modbus TCP", "Modbus RTU", "DeviceNet", "CANopen", "OPC-UA", "BACnet", "Other"];
+const PROTOCOLS = ["Profinet", "Profibus DP", "Ethernet/IP", "Modbus TCP", "Modbus RTU", "DeviceNet", "CANopen", "OPC-UA", "BACnet", "EtherCAT", "Other"];
 const WIFI_SECURITY = ["WPA2-Personal", "WPA3-Personal", "WPA2-Enterprise", "WPA/WPA2", "WEP", "Open"];
 const CARRIERS = ["Airtel", "Jio", "BSNL", "Vi (Vodafone-Idea)", "MTNL", "Other"];
-const PROG_SOFTWARE = ["TIA Portal", "GX Works 2", "GX Works 3", "Studio 5000", "RSLogix 5000", "RSLogix 500", "EcoStruxure", "Sysmac Studio", "CX-Programmer", "Other"];
+const PROG_SOFTWARE = [
+  "TIA Portal",
+  "TwinCAT 3 (TC3)", "TwinCAT 2 (TC2)", "TwinCAT PLC", "TwinCAT HMI (TE2000)", "TwinCAT SCADA (TE2000)",
+  "Other",
+];
+const MODEM_MAKES = ["Teltonika", "Huawei", "Sierra Wireless", "Cradlepoint", "Peplink", "Cisco", "Digi", "Robustel", "Other"];
 const BACKUP_SCHEDULE = ["Daily", "Weekly", "Monthly", "After each change", "Manual"];
 const FILE_CATEGORIES = [
   { id: "modem_backup",   label: "Modem Backup Config", color: "text-amber-600" },
@@ -412,10 +423,8 @@ export default function PLCDeviceConfig() {
       const method = isNew ? "POST" : "PATCH";
       const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (!r.ok) throw new Error(await r.text());
-      const saved = await r.json();
-      if (isNew) { setIsNew(false); setSelected(saved); }
-      else { setSelected(saved); }
       await fetchConfigs();
+      closeDetail();
     } catch (e) { setError(String(e)); }
     finally { setSaving(false); }
   }
@@ -519,53 +528,55 @@ export default function PLCDeviceConfig() {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {configs.map(c => (
-                  <button key={c.id} onClick={() => openEdit(c)}
-                    className="text-left bg-white border border-gray-200 hover:border-blue-400 hover:shadow-md rounded-xl p-5 transition-all group">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center">
-                          <Cpu size={17} className="text-blue-700" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-gray-900 group-hover:text-blue-700 transition-colors">
-                            {c.project_name || "Unnamed Project"}
-                          </p>
+              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">#</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Project</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Site Location</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">CPU Make</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">PLC</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">PLC IP</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Access</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {configs.map((c, i) => (
+                      <tr key={c.id} onClick={() => openEdit(c)}
+                        className="border-b border-gray-100 last:border-0 hover:bg-blue-50 cursor-pointer transition-colors group">
+                        <td className="px-4 py-3 text-xs text-gray-400 font-mono">{i + 1}</td>
+                        <td className="px-4 py-3">
+                          <p className="font-semibold text-gray-900 group-hover:text-blue-700 transition-colors">{c.project_name || "Unnamed"}</p>
                           {c.project_number && <p className="text-xs text-blue-600 font-mono">{c.project_number}</p>}
-                        </div>
-                      </div>
-                      <ChevronRight size={15} className="text-gray-300 group-hover:text-blue-500 transition-colors mt-1" />
-                    </div>
-                    {c.site_location && (
-                      <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1.5">
-                        <MapPin size={11} className="text-gray-400 flex-none" /> {c.site_location}
-                      </div>
-                    )}
-                    {(c.plc_make || c.plc_model) && (
-                      <div className="flex items-center gap-1.5 text-xs text-gray-600 mb-1.5">
-                        <Server size={11} className="text-gray-400 flex-none" />
-                        {[c.plc_make, c.plc_model].filter(Boolean).join(" · ")}
-                      </div>
-                    )}
-                    {c.plc_ip && (
-                      <div className="flex items-center gap-1.5 text-xs text-gray-600 mb-2">
-                        <Network size={11} className="text-gray-400 flex-none" />
-                        <span className="font-mono">{c.plc_ip}</span>
-                      </div>
-                    )}
-                    <div className="flex gap-1.5 flex-wrap mt-2">
-                      {c.vpn_ip      && <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[10px] font-medium">VPN</span>}
-                      {c.anydesk_id  && <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[10px] font-medium">AnyDesk</span>}
-                      {c.modem_ip    && <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-medium">Modem</span>}
-                      {c.wifi_ssid   && <span className="px-1.5 py-0.5 bg-cyan-100 text-cyan-700 rounded text-[10px] font-medium">WiFi</span>}
-                      {c.scada_software && <span className="px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded text-[10px] font-medium">SCADA</span>}
-                    </div>
-                    <p className="text-[10px] text-gray-400 mt-3 border-t border-gray-100 pt-2">
-                      Updated {c.updated_at ? new Date(c.updated_at).toLocaleDateString() : "—"}
-                    </p>
-                  </button>
-                ))}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-600">
+                          {c.site_location ? (
+                            <span className="flex items-center gap-1"><MapPin size={10} className="text-gray-400" />{c.site_location}</span>
+                          ) : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-700">{c.cpu_make || "—"}</td>
+                        <td className="px-4 py-3 text-xs text-gray-700">
+                          {[c.plc_make, c.plc_model].filter(Boolean).join(" ") || "—"}
+                        </td>
+                        <td className="px-4 py-3 text-xs font-mono text-gray-700">{c.plc_ip || "—"}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex gap-1 flex-wrap">
+                            {c.vpn_ip      && <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[10px] font-medium">VPN</span>}
+                            {c.anydesk_id  && <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[10px] font-medium">AnyDesk</span>}
+                            {c.modem_ip    && <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-medium">Modem</span>}
+                            {c.wifi_ssid   && <span className="px-1.5 py-0.5 bg-cyan-100 text-cyan-700 rounded text-[10px] font-medium">WiFi</span>}
+                            {c.scada_software && <span className="px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded text-[10px] font-medium">SCADA</span>}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-400">
+                          {c.updated_at ? new Date(c.updated_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
@@ -630,7 +641,7 @@ export default function PLCDeviceConfig() {
                   <div>
                     <SectionHead icon={Cpu} title="CPU Details" />
                     <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-                      <Field label="CPU Make" value={form.cpu_make || ""} onChange={v => sf("cpu_make", v)} placeholder="e.g. Siemens" />
+                      <Field label="CPU Make" value={form.cpu_make || ""} onChange={v => sf("cpu_make", v)} options={CPU_MAKES} />
                       <Field label="CPU Model" value={form.cpu_model || ""} onChange={v => sf("cpu_model", v)} placeholder="e.g. S7-1214C DC/DC/DC" />
                       <Field label="CPU Type" value={form.cpu_type || ""} onChange={v => sf("cpu_type", v)} options={CPU_TYPES} />
                     </div>
@@ -644,7 +655,7 @@ export default function PLCDeviceConfig() {
                   <div>
                     <SectionHead icon={Cpu} title="PLC Identification" />
                     <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-                      <Field label="PLC Make" value={form.plc_make || ""} onChange={v => sf("plc_make", v)} placeholder="e.g. Siemens" />
+                      <Field label="PLC Make" value={form.plc_make || ""} onChange={v => sf("plc_make", v)} options={PLC_MAKES} />
                       <Field label="PLC Model" value={form.plc_model || ""} onChange={v => sf("plc_model", v)} placeholder="e.g. S7-1500" />
                       <Field label="PLC Type / Series" value={form.plc_type || ""} onChange={v => sf("plc_type", v)} options={PLC_TYPES} />
                       <Field label="Firmware Version" value={form.plc_version || ""} onChange={v => sf("plc_version", v)} placeholder="e.g. V2.9.2" />
@@ -740,7 +751,7 @@ export default function PLCDeviceConfig() {
                 <div>
                   <SectionHead icon={Router} title="Modem / SIM Details" />
                   <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-                    <Field label="Modem Make" value={form.modem_make || ""} onChange={v => sf("modem_make", v)} placeholder="e.g. Huawei" />
+                    <Field label="Modem Make" value={form.modem_make || ""} onChange={v => sf("modem_make", v)} options={MODEM_MAKES} />
                     <Field label="Modem Model" value={form.modem_model || ""} onChange={v => sf("modem_model", v)} placeholder="e.g. E3372h" />
                     <Field label="Modem IP Address" value={form.modem_ip || ""} onChange={v => sf("modem_ip", v)} placeholder="e.g. 192.168.8.1" />
                     <Field label="Modem Username" value={form.modem_username || ""} onChange={v => sf("modem_username", v)} placeholder="admin" />

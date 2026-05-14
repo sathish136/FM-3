@@ -2,14 +2,10 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { Layout } from "@/components/Layout";
 import {
   Database, Table2, Search, RefreshCw, Play, Download, X,
-  ChevronRight, ChevronDown, BarChart3, Code2, ListTree, Loader2,
-  AlertTriangle, HardDrive, Server, ArrowUpDown, ChevronUp, FileText,
-  Pencil, Check,
+  ChevronRight, ChevronDown, Code2, Loader2,
+  AlertTriangle, Server, ArrowUpDown, ChevronUp,
+  Pencil, Check, Filter, EyeOff, Eye,
 } from "lucide-react";
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer,
-  Cell, PieChart, Pie, Legend,
-} from "recharts";
 import * as XLSX from "xlsx";
 import { useDbLabels } from "@/lib/dbLabels";
 
@@ -32,25 +28,7 @@ type Tbl = {
   createdAt: string;
   modifiedAt: string;
 };
-type Col = {
-  name: string;
-  dataType: string;
-  maxLength: number | null;
-  precision: number | null;
-  scale: number | null;
-  nullable: string;
-  default: string | null;
-  position: number;
-  isPk: number;
-};
-
-type Tab = "data" | "schema" | "query" | "analytics";
-
-const COLORS = [
-  "#6366f1", "#8b5cf6", "#ec4899", "#f43f5e", "#f97316",
-  "#eab308", "#84cc16", "#22c55e", "#14b8a6", "#06b6d4",
-  "#0ea5e9", "#3b82f6", "#a855f7", "#d946ef", "#fb7185",
-];
+type Tab = "data" | "query";
 
 function fmtNum(n: any): string {
   const v = Number(n);
@@ -62,11 +40,31 @@ function fmtBytes(mb: any): string {
   if (v >= 1024) return (v / 1024).toFixed(2) + " GB";
   return v.toFixed(2) + " MB";
 }
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function fmtDateStr(s: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}[T ]/.test(s)) return null;
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return null;
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mon = MONTHS[d.getMonth()];
+  const yyyy = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${dd}-${mon}-${yyyy} ${hh}:${mm}:${ss}`;
+}
 function fmtCell(v: any): string {
   if (v === null || v === undefined) return "—";
-  if (v instanceof Date) return v.toISOString().replace("T", " ").slice(0, 19);
+  if (v instanceof Date) {
+    const d = v as Date;
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mon = MONTHS[d.getMonth()];
+    return `${dd}-${mon}-${d.getFullYear()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}:${String(d.getSeconds()).padStart(2,"0")}`;
+  }
   if (typeof v === "object") return JSON.stringify(v);
   const s = String(v);
+  const dt = fmtDateStr(s);
+  if (dt) return dt;
   return s.length > 200 ? s.slice(0, 200) + "…" : s;
 }
 
@@ -89,6 +87,9 @@ export default function SiteDb() {
   const [tableSearch, setTableSearch] = useState("");
   const [selectedTable, setSelectedTable] = useState<{ schema: string; name: string } | null>(null);
 
+  // ── UI state
+  const [dbSectionOpen, setDbSectionOpen] = useState(true);
+
   // ── Tab state
   const [tab, setTab] = useState<Tab>("data");
 
@@ -103,10 +104,11 @@ export default function SiteDb() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [loadingData, setLoadingData] = useState(false);
   const [dataErr, setDataErr] = useState<string | null>(null);
-
-  // ── Schema tab
-  const [columns, setColumns] = useState<Col[]>([]);
-  const [loadingCols, setLoadingCols] = useState(false);
+  const [colFilters, setColFilters] = useState<Record<string, string>>({});
+  const [showFilters, setShowFilters] = useState(false);
+  const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set());
+  const [showColPicker, setShowColPicker] = useState(false);
+  const colPickerRef = useRef<HTMLDivElement>(null);
 
   // ── Query tab
   const [queryText, setQueryText] = useState("SELECT TOP 100 * FROM sys.tables");
@@ -115,10 +117,6 @@ export default function SiteDb() {
   const [queryErr, setQueryErr] = useState<string | null>(null);
   const [queryRunning, setQueryRunning] = useState(false);
   const [queryMs, setQueryMs] = useState<number | null>(null);
-
-  // ── Analytics tab
-  const [stats, setStats] = useState<any>(null);
-  const [loadingStats, setLoadingStats] = useState(false);
 
   // ─── Load server health + databases on mount
   useEffect(() => { loadHealth(); loadDatabases(); }, []);
@@ -147,7 +145,6 @@ export default function SiteDb() {
     setTables([]);
     if (!selectedDb) return;
     loadTables();
-    if (tab === "analytics") loadStats();
   }, [selectedDb]);
 
   async function loadTables() {
@@ -160,12 +157,11 @@ export default function SiteDb() {
     } catch {} finally { setLoadingTables(false); }
   }
 
-  // ─── On table change → load data + columns
+  // ─── On table change → load data
   useEffect(() => {
     if (!selectedDb || !selectedTable) return;
-    setDataPage(1); setSortKey(""); setDataSearch("");
+    setDataPage(1); setSortKey(""); setDataSearch(""); setColFilters({});
     loadData(1, "", "", "asc");
-    loadColumns();
   }, [selectedTable]);
 
   // ─── Reload data when page/limit/search/sort change
@@ -192,42 +188,17 @@ export default function SiteDb() {
       if (j.error) { setDataErr(j.error); setDataRows([]); }
       else {
         setDataRows(j.rows || []);
-        setDataCols(j.columns || []);
+        const rawCols: string[] = j.columns || [];
+        const isDt = (c: string) => /date|time|timestamp|created|updated|modified/i.test(c);
+        const dtCols = rawCols.filter(isDt);
+        const restCols = rawCols.filter(c => !isDt(c));
+        setDataCols([...dtCols, ...restCols]);
         setDataTotal(j.total || 0);
       }
     } catch (e: any) {
       setDataErr(e.message); setDataRows([]);
     } finally { setLoadingData(false); }
   }
-
-  async function loadColumns() {
-    if (!selectedDb || !selectedTable) return;
-    setLoadingCols(true);
-    try {
-      const params = new URLSearchParams({
-        db: selectedDb,
-        schema: selectedTable.schema,
-        table: selectedTable.name,
-      });
-      const r = await fetch(`${BASE}/api/site-db/columns?${params}`);
-      const j = await r.json();
-      if (Array.isArray(j.columns)) setColumns(j.columns);
-    } catch {} finally { setLoadingCols(false); }
-  }
-
-  async function loadStats() {
-    if (!selectedDb) return;
-    setLoadingStats(true);
-    try {
-      const r = await fetch(`${BASE}/api/site-db/stats?db=${encodeURIComponent(selectedDb)}`);
-      const j = await r.json();
-      setStats(j);
-    } catch {} finally { setLoadingStats(false); }
-  }
-
-  useEffect(() => {
-    if (tab === "analytics" && selectedDb && !stats) loadStats();
-  }, [tab, selectedDb]);
 
   async function runQuery() {
     if (!selectedDb || !queryText.trim()) return;
@@ -279,6 +250,33 @@ export default function SiteDb() {
 
   const totalPages = Math.max(1, Math.ceil(dataTotal / dataLimit));
 
+  // reset hidden cols when table changes
+  useEffect(() => { setHiddenCols(new Set()); setShowColPicker(false); }, [selectedTable]);
+
+  // close col picker on outside click
+  useEffect(() => {
+    if (!showColPicker) return;
+    function handler(e: MouseEvent) {
+      if (colPickerRef.current && !colPickerRef.current.contains(e.target as Node)) {
+        setShowColPicker(false);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showColPicker]);
+
+  const visibleCols = useMemo(() => dataCols.filter(c => !hiddenCols.has(c)), [dataCols, hiddenCols]);
+
+  const filteredRows = useMemo(() => {
+    const activeFilters = Object.entries(colFilters).filter(([, v]) => v.trim() !== "");
+    if (!activeFilters.length) return dataRows;
+    return dataRows.filter(row =>
+      activeFilters.every(([col, val]) =>
+        fmtCell(row[col]).toLowerCase().includes(val.toLowerCase()),
+      ),
+    );
+  }, [dataRows, colFilters]);
+
   return (
     <Layout>
       <div className="flex h-[calc(100vh-64px)] bg-slate-50">
@@ -311,34 +309,47 @@ export default function SiteDb() {
           </div>
 
           {/* Databases section */}
-          <div className="p-3 border-b border-slate-200">
-            <div className="flex items-center justify-between mb-2">
+          <div className="border-b border-slate-200">
+            <div className="flex items-center justify-between px-3 pt-3 pb-2">
               <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
                 Databases ({filteredDbs.length})
               </div>
-              <button onClick={loadDatabases} className="p-1 hover:bg-slate-100 rounded">
-                <RefreshCw className={`w-3 h-3 text-slate-500 ${loadingDbs ? "animate-spin" : ""}`} />
-              </button>
+              <div className="flex items-center gap-1">
+                <button onClick={loadDatabases} className="p-1 hover:bg-slate-100 rounded" title="Refresh">
+                  <RefreshCw className={`w-3 h-3 text-slate-500 ${loadingDbs ? "animate-spin" : ""}`} />
+                </button>
+                <button
+                  onClick={() => setDbSectionOpen(v => !v)}
+                  className="p-1 hover:bg-slate-100 rounded"
+                  title={dbSectionOpen ? "Hide databases" : "Show databases"}
+                >
+                  {dbSectionOpen
+                    ? <EyeOff className="w-3 h-3 text-slate-400" />
+                    : <Eye className="w-3 h-3 text-slate-400" />}
+                </button>
+              </div>
             </div>
-            <div className="relative mb-2">
-              <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                value={dbSearch}
-                onChange={e => setDbSearch(e.target.value)}
-                placeholder="Search…"
-                className="w-full pl-7 pr-2 py-1.5 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-indigo-400"
-              />
-            </div>
-            <label className="flex items-center gap-1.5 text-[10px] text-slate-500 mb-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={includeSystem}
-                onChange={e => setIncludeSystem(e.target.checked)}
-                className="w-3 h-3"
-              />
-              Show system DBs
-            </label>
-            <div className="max-h-48 overflow-y-auto -mx-3 px-3 space-y-0.5">
+            {dbSectionOpen && (
+              <div className="px-3 pb-3">
+                <div className="relative mb-2">
+                  <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    value={dbSearch}
+                    onChange={e => setDbSearch(e.target.value)}
+                    placeholder="Search…"
+                    className="w-full pl-7 pr-2 py-1.5 text-xs border border-slate-200 rounded-md focus:outline-none focus:border-indigo-400"
+                  />
+                </div>
+                <label className="flex items-center gap-1.5 text-[10px] text-slate-500 mb-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includeSystem}
+                    onChange={e => setIncludeSystem(e.target.checked)}
+                    className="w-3 h-3"
+                  />
+                  Show system DBs
+                </label>
+                <div className="max-h-48 overflow-y-auto -mx-3 px-3 space-y-0.5">
               {filteredDbs.map(db => {
                 const isEditing = editingDb === db.name;
                 const label = displayDb(db.name);
@@ -414,7 +425,9 @@ export default function SiteDb() {
               {!filteredDbs.length && !loadingDbs && (
                 <div className="text-[11px] text-slate-400 py-3 text-center">No databases</div>
               )}
-            </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Tables section */}
@@ -499,28 +512,13 @@ export default function SiteDb() {
                   <span className="font-semibold text-slate-800">
                     {selectedTable.schema}.{selectedTable.name}
                   </span>
-                  <a
-                    href={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/site-db/analyze`}
-                    onClick={() => {
-                      try {
-                        sessionStorage.setItem("siteDbAnalyze:db", selectedDb);
-                        sessionStorage.setItem("siteDbAnalyze:schema", selectedTable.schema);
-                        sessionStorage.setItem("siteDbAnalyze:table", selectedTable.name);
-                      } catch {}
-                    }}
-                    className="ml-2 flex items-center gap-1 px-2 py-1 text-[11px] bg-violet-100 hover:bg-violet-200 text-violet-700 rounded-md font-semibold"
-                  >
-                    🧠 Analyze →
-                  </a>
                 </>
               )}
             </div>
             <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
               {([
                 { id: "data" as Tab, label: "Data", icon: Table2 },
-                { id: "schema" as Tab, label: "Schema", icon: ListTree },
                 { id: "query" as Tab, label: "Query", icon: Code2 },
-                { id: "analytics" as Tab, label: "Analytics", icon: BarChart3 },
               ]).map(t => (
                 <button
                   key={t.id}
@@ -574,8 +572,68 @@ export default function SiteDb() {
                     </select>
                     <div className="text-xs text-slate-500">
                       {fmtNum(dataTotal)} total
+                      {filteredRows.length < dataRows.length && (
+                        <span className="ml-1 text-indigo-600 font-medium">· {filteredRows.length} filtered</span>
+                      )}
                     </div>
                     <div className="ml-auto flex items-center gap-1">
+                      {/* Columns visibility picker */}
+                      <div className="relative" ref={colPickerRef}>
+                        <button
+                          onClick={() => setShowColPicker(v => !v)}
+                          className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md font-medium transition-colors ${
+                            hiddenCols.size > 0
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-slate-50 hover:bg-slate-100 text-slate-600"
+                          }`}
+                          title="Show/hide columns"
+                        >
+                          <EyeOff className="w-3 h-3" />
+                          {hiddenCols.size > 0 ? `${hiddenCols.size} hidden` : "Columns"}
+                        </button>
+                        {showColPicker && (
+                          <div className="absolute right-0 top-full mt-1 z-30 bg-white border border-slate-200 rounded-xl shadow-xl w-52 overflow-hidden">
+                            <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between">
+                              <span className="text-xs font-semibold text-slate-700">Visible columns</span>
+                              <button
+                                onClick={() => setHiddenCols(new Set())}
+                                className="text-[10px] text-indigo-600 hover:underline"
+                              >Show all</button>
+                            </div>
+                            <div className="max-h-72 overflow-y-auto py-1">
+                              {dataCols.map(c => (
+                                <label key={c} className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={!hiddenCols.has(c)}
+                                    onChange={() => setHiddenCols(prev => {
+                                      const next = new Set(prev);
+                                      next.has(c) ? next.delete(c) : next.add(c);
+                                      return next;
+                                    })}
+                                    className="accent-indigo-600"
+                                  />
+                                  <span className="text-xs text-slate-700 truncate">{c}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => { setShowFilters(v => !v); if (showFilters) setColFilters({}); }}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md font-medium transition-colors ${
+                          showFilters || Object.values(colFilters).some(v => v)
+                            ? "bg-indigo-100 text-indigo-700"
+                            : "bg-slate-50 hover:bg-slate-100 text-slate-600"
+                        }`}
+                        title="Column filters"
+                      >
+                        <Filter className="w-3 h-3" />
+                        {Object.values(colFilters).filter(v => v).length > 0
+                          ? `${Object.values(colFilters).filter(v => v).length} filter${Object.values(colFilters).filter(v => v).length > 1 ? "s" : ""}`
+                          : "Filter"}
+                      </button>
                       <button
                         onClick={() => exportRows(dataRows, `${selectedTable.schema}_${selectedTable.name}_p${dataPage}`)}
                         disabled={!dataRows.length}
@@ -607,14 +665,14 @@ export default function SiteDb() {
                       <table className="text-xs w-full border-collapse">
                         <thead className="sticky top-0 bg-slate-100 z-10">
                           <tr>
-                            {dataCols.map(c => (
+                            {visibleCols.map(c => (
                               <th
                                 key={c}
                                 onClick={() => {
                                   if (sortKey === c) setSortDir(sortDir === "asc" ? "desc" : "asc");
                                   else { setSortKey(c); setSortDir("asc"); }
                                 }}
-                                className="px-3 py-2 text-left font-semibold text-slate-700 border-b border-slate-300 cursor-pointer hover:bg-slate-200 select-none whitespace-nowrap"
+                                className="px-3 py-2 text-left font-semibold text-slate-700 border-b border-slate-300 cursor-pointer hover:bg-slate-200 select-none whitespace-nowrap group"
                               >
                                 <div className="flex items-center gap-1">
                                   {c}
@@ -623,15 +681,36 @@ export default function SiteDb() {
                                         ? <ChevronUp className="w-3 h-3" />
                                         : <ChevronDown className="w-3 h-3" />)
                                     : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                                  <button
+                                    onClick={e => { e.stopPropagation(); setHiddenCols(prev => { const n = new Set(prev); n.add(c); return n; }); }}
+                                    className="ml-auto opacity-0 group-hover:opacity-60 hover:!opacity-100 p-0.5 rounded hover:bg-slate-300"
+                                    title={`Hide ${c}`}
+                                  >
+                                    <EyeOff className="w-2.5 h-2.5" />
+                                  </button>
                                 </div>
                               </th>
                             ))}
                           </tr>
+                          {showFilters && (
+                            <tr className="bg-indigo-50/60">
+                              {visibleCols.map(c => (
+                                <th key={c} className="px-1.5 py-1 border-b border-indigo-200">
+                                  <input
+                                    value={colFilters[c] || ""}
+                                    onChange={e => setColFilters(prev => ({ ...prev, [c]: e.target.value }))}
+                                    placeholder="filter…"
+                                    className="w-full min-w-[60px] px-1.5 py-0.5 text-[10px] font-normal border border-indigo-200 rounded bg-white focus:outline-none focus:border-indigo-400 placeholder-slate-300"
+                                  />
+                                </th>
+                              ))}
+                            </tr>
+                          )}
                         </thead>
                         <tbody>
-                          {dataRows.map((row, i) => (
+                          {filteredRows.map((row, i) => (
                             <tr key={i} className="hover:bg-indigo-50/40">
-                              {dataCols.map(c => (
+                              {visibleCols.map(c => (
                                 <td
                                   key={c}
                                   className="px-3 py-1.5 border-b border-slate-100 text-slate-700 align-top whitespace-nowrap max-w-[400px] truncate"
@@ -642,10 +721,10 @@ export default function SiteDb() {
                               ))}
                             </tr>
                           ))}
-                          {!dataRows.length && (
+                          {!filteredRows.length && (
                             <tr>
                               <td colSpan={dataCols.length || 1} className="px-3 py-8 text-center text-slate-400">
-                                No rows
+                                {dataRows.length ? "No rows match the current filters" : "No rows"}
                               </td>
                             </tr>
                           )}
@@ -671,67 +750,6 @@ export default function SiteDb() {
                       <button onClick={() => setDataPage(p => Math.min(totalPages, p + 1))} disabled={dataPage >= totalPages} className="px-2 py-1 border border-slate-200 rounded disabled:opacity-30 hover:bg-slate-50">Next</button>
                       <button onClick={() => setDataPage(totalPages)} disabled={dataPage >= totalPages} className="px-2 py-1 border border-slate-200 rounded disabled:opacity-30 hover:bg-slate-50">Last</button>
                     </div>
-                  </div>
-                </div>
-              )
-            ) : tab === "schema" ? (
-              !selectedTable ? (
-                <EmptyState
-                  icon={<ListTree className="w-10 h-10 text-slate-300" />}
-                  title="No table selected"
-                  hint="Pick a table to view its schema."
-                />
-              ) : (
-                <div className="p-6 overflow-auto h-full">
-                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                    <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-                      <div className="text-sm font-semibold text-slate-800">
-                        {selectedTable.schema}.{selectedTable.name}
-                      </div>
-                      <div className="text-xs text-slate-500">{columns.length} columns</div>
-                    </div>
-                    {loadingCols ? (
-                      <div className="p-8 text-center text-slate-400 text-sm">
-                        <Loader2 className="w-4 h-4 inline animate-spin mr-2" /> Loading…
-                      </div>
-                    ) : (
-                      <table className="text-xs w-full">
-                        <thead className="bg-slate-50 text-slate-600">
-                          <tr>
-                            <th className="px-3 py-2 text-left font-semibold">#</th>
-                            <th className="px-3 py-2 text-left font-semibold">Column</th>
-                            <th className="px-3 py-2 text-left font-semibold">Type</th>
-                            <th className="px-3 py-2 text-left font-semibold">Length / Precision</th>
-                            <th className="px-3 py-2 text-left font-semibold">Nullable</th>
-                            <th className="px-3 py-2 text-left font-semibold">Default</th>
-                            <th className="px-3 py-2 text-left font-semibold">PK</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {columns.map(c => (
-                            <tr key={c.name} className="border-t border-slate-100">
-                              <td className="px-3 py-2 text-slate-500">{c.position}</td>
-                              <td className="px-3 py-2 font-medium text-slate-800">{c.name}</td>
-                              <td className="px-3 py-2"><code className="text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">{c.dataType}</code></td>
-                              <td className="px-3 py-2 text-slate-600">
-                                {c.maxLength ? c.maxLength : (c.precision != null ? `${c.precision}${c.scale != null ? `,${c.scale}` : ""}` : "—")}
-                              </td>
-                              <td className="px-3 py-2">
-                                {c.nullable === "YES"
-                                  ? <span className="text-amber-600">Yes</span>
-                                  : <span className="text-slate-400">No</span>}
-                              </td>
-                              <td className="px-3 py-2 text-slate-600">{c.default || "—"}</td>
-                              <td className="px-3 py-2">
-                                {c.isPk
-                                  ? <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-amber-100 text-amber-700">PK</span>
-                                  : ""}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
                   </div>
                 </div>
               )
@@ -814,84 +832,7 @@ export default function SiteDb() {
                   </div>
                 </div>
               </div>
-            ) : (
-              // ─── Analytics tab
-              <div className="p-6 overflow-auto h-full">
-                {loadingStats ? (
-                  <div className="flex items-center justify-center h-full text-slate-400">
-                    <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading stats…
-                  </div>
-                ) : !stats ? (
-                  <EmptyState
-                    icon={<BarChart3 className="w-10 h-10 text-slate-300" />}
-                    title="No analytics yet"
-                    hint="Select a database to view aggregated statistics."
-                  />
-                ) : (
-                  <div className="space-y-6">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      <StatCard icon={<Table2 className="w-5 h-5" />} label="Tables" value={fmtNum(stats.totals?.tables)} color="indigo" />
-                      <StatCard icon={<FileText className="w-5 h-5" />} label="Total Rows" value={fmtNum(stats.totals?.rows)} color="violet" />
-                      <StatCard icon={<HardDrive className="w-5 h-5" />} label="Total Size" value={fmtBytes(stats.totals?.sizeMB)} color="emerald" />
-                    </div>
-
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                      <ChartCard title="Top 15 Tables by Row Count">
-                        <ResponsiveContainer width="100%" height={320}>
-                          <BarChart data={(stats.topByRows || []).map((x: any) => ({ name: x.name, rows: Number(x.rowCount) }))} layout="vertical" margin={{ left: 80 }}>
-                            <XAxis type="number" tick={{ fontSize: 10 }} />
-                            <YAxis dataKey="name" type="category" tick={{ fontSize: 10 }} width={120} />
-                            <RTooltip formatter={(v: any) => fmtNum(v)} />
-                            <Bar dataKey="rows">
-                              {(stats.topByRows || []).map((_: any, i: number) => (
-                                <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                              ))}
-                            </Bar>
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </ChartCard>
-
-                      <ChartCard title="Top 15 Tables by Size (MB)">
-                        <ResponsiveContainer width="100%" height={320}>
-                          <BarChart data={(stats.topBySize || []).map((x: any) => ({ name: x.name, mb: Number(x.sizeMB) }))} layout="vertical" margin={{ left: 80 }}>
-                            <XAxis type="number" tick={{ fontSize: 10 }} />
-                            <YAxis dataKey="name" type="category" tick={{ fontSize: 10 }} width={120} />
-                            <RTooltip formatter={(v: any) => `${v} MB`} />
-                            <Bar dataKey="mb">
-                              {(stats.topBySize || []).map((_: any, i: number) => (
-                                <Cell key={i} fill={COLORS[(i + 4) % COLORS.length]} />
-                              ))}
-                            </Bar>
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </ChartCard>
-                    </div>
-
-                    <ChartCard title="Storage Distribution (Top 10)">
-                      <ResponsiveContainer width="100%" height={300}>
-                        <PieChart>
-                          <Pie
-                            data={(stats.topBySize || []).slice(0, 10).map((x: any) => ({ name: x.name, value: Number(x.sizeMB) }))}
-                            dataKey="value"
-                            nameKey="name"
-                            cx="50%"
-                            cy="50%"
-                            outerRadius={100}
-                            label={(e: any) => e.name}
-                          >
-                            {(stats.topBySize || []).slice(0, 10).map((_: any, i: number) => (
-                              <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                            ))}
-                          </Pie>
-                          <RTooltip formatter={(v: any) => `${v} MB`} />
-                          <Legend wrapperStyle={{ fontSize: 11 }} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </ChartCard>
-                  </div>
-                )}
-              </div>
-            )}
+            ) : null}
           </div>
         </main>
       </div>
@@ -910,30 +851,3 @@ function EmptyState({ icon, title, hint }: { icon: React.ReactNode; title: strin
   );
 }
 
-function StatCard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: string; color: string }) {
-  const colors: Record<string, string> = {
-    indigo: "from-indigo-500 to-indigo-600",
-    violet: "from-violet-500 to-violet-600",
-    emerald: "from-emerald-500 to-emerald-600",
-  };
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-3">
-      <div className={`w-11 h-11 rounded-lg bg-gradient-to-br ${colors[color]} flex items-center justify-center text-white`}>
-        {icon}
-      </div>
-      <div>
-        <div className="text-xs text-slate-500">{label}</div>
-        <div className="text-xl font-bold text-slate-800">{value}</div>
-      </div>
-    </div>
-  );
-}
-
-function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4">
-      <h3 className="text-sm font-semibold text-slate-700 mb-3">{title}</h3>
-      {children}
-    </div>
-  );
-}

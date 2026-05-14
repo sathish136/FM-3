@@ -2320,4 +2320,103 @@ router.post("/plc/panel-inspections/:id/send-email", async (req, res) => {
   } catch (e: any) { res.status(500).json({ error: e.message || String(e) }); }
 });
 
+// ─── Network Architecture ────────────────────────────────────────────────────
+
+router.use(async (_req, _res, next) => {
+  await db.execute(sql.raw(`
+    CREATE TABLE IF NOT EXISTS plc_network_architectures (
+      id SERIAL PRIMARY KEY,
+      project_number TEXT,
+      project_name TEXT,
+      site_location TEXT,
+      architecture_name TEXT,
+      description TEXT,
+      modules JSONB DEFAULT '[]'::jsonb,
+      connections JSONB DEFAULT '[]'::jsonb,
+      created_by TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `));
+  next();
+});
+
+router.get("/plc/network-architectures", async (req, res) => {
+  try {
+    const search = req.query.search as string | undefined;
+    let rows;
+    if (search?.trim()) {
+      rows = await db.execute(sql`
+        SELECT id, project_number, project_name, site_location, architecture_name, description, created_by, created_at, updated_at,
+               jsonb_array_length(COALESCE(modules,'[]'::jsonb)) AS module_count
+        FROM plc_network_architectures
+        WHERE project_name ILIKE ${"%" + search + "%"}
+           OR project_number ILIKE ${"%" + search + "%"}
+           OR architecture_name ILIKE ${"%" + search + "%"}
+           OR site_location ILIKE ${"%" + search + "%"}
+        ORDER BY updated_at DESC
+      `);
+    } else {
+      rows = await db.execute(sql`
+        SELECT id, project_number, project_name, site_location, architecture_name, description, created_by, created_at, updated_at,
+               jsonb_array_length(COALESCE(modules,'[]'::jsonb)) AS module_count
+        FROM plc_network_architectures ORDER BY updated_at DESC
+      `);
+    }
+    res.json({ data: rows.rows });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.get("/plc/network-architectures/:id", async (req, res) => {
+  try {
+    const r = await db.execute(sql`SELECT * FROM plc_network_architectures WHERE id = ${Number(req.params.id)}`);
+    if (!r.rows.length) return res.status(404).json({ error: "Not found" });
+    res.json(r.rows[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.post("/plc/network-architectures", async (req, res) => {
+  try {
+    const b = req.body;
+    const r = await db.execute(sql`
+      INSERT INTO plc_network_architectures
+        (project_number, project_name, site_location, architecture_name, description, modules, connections, created_by)
+      VALUES (
+        ${b.project_number || null}, ${b.project_name || null}, ${b.site_location || null},
+        ${b.architecture_name || null}, ${b.description || null},
+        ${JSON.stringify(b.modules || [])}::jsonb, ${JSON.stringify(b.connections || [])}::jsonb,
+        ${b.created_by || null}
+      ) RETURNING *
+    `);
+    res.json(r.rows[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.patch("/plc/network-architectures/:id", async (req, res) => {
+  try {
+    const b = req.body;
+    const r = await db.execute(sql`
+      UPDATE plc_network_architectures SET
+        project_number = ${b.project_number ?? null},
+        project_name = ${b.project_name ?? null},
+        site_location = ${b.site_location ?? null},
+        architecture_name = ${b.architecture_name ?? null},
+        description = ${b.description ?? null},
+        modules = ${JSON.stringify(b.modules || [])}::jsonb,
+        connections = ${JSON.stringify(b.connections || [])}::jsonb,
+        updated_at = NOW()
+      WHERE id = ${Number(req.params.id)} RETURNING *
+    `);
+    if (!r.rows.length) return res.status(404).json({ error: "Not found" });
+    res.json(r.rows[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete("/plc/network-architectures/:id", async (req, res) => {
+  try {
+    await db.execute(sql`DELETE FROM plc_network_architectures WHERE id = ${Number(req.params.id)}`);
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 export default router;
