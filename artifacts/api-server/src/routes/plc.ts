@@ -832,11 +832,16 @@ router.get("/plc/support-tickets", async (req, res) => {
     if (priority && priority !== "All") conditions.push(`t.priority = '${priority.replace(/'/g, "''")}'`);
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
     const result = await db.execute(sql`
-      SELECT t.*, s.call_no, s.call_type
+      SELECT t.*,
+             s.call_no, s.call_type, s.status AS call_status,
+             s.attended_by AS call_attended_by
       FROM plc_support_tickets t
       LEFT JOIN plc_site_calls s ON s.id = t.site_call_id
       ${sql.raw(where)}
-      ORDER BY t.created_at DESC LIMIT 200
+      ORDER BY
+        CASE t.status WHEN 'Open' THEN 1 WHEN 'In Progress' THEN 2 ELSE 3 END,
+        t.created_at DESC
+      LIMIT 300
     `);
     res.json({ data: (result as any).rows ?? result });
   } catch (e) {
