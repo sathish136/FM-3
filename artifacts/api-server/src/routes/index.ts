@@ -43,6 +43,7 @@ import { mobileRouter } from "./mobile";
 import workshopRouter from "./workshop";
 import plcRouter from "./plc";
 import omRouter from "./om";
+import proposalWizardRouter from "./proposal-wizard";
 
 const router: IRouter = Router();
 
@@ -90,5 +91,6 @@ router.use(mobileRouter);
 router.use(workshopRouter);
 router.use(plcRouter);
 router.use(omRouter);
+router.use(proposalWizardRouter);
 
 export default router;

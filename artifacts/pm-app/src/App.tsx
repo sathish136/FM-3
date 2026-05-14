@@ -99,6 +99,7 @@ import PLCNetworkArchitecture from "@/pages/PLCNetworkArchitecture";
 import OmChemicalConsumption from "@/pages/OmChemicalConsumption";
 import OmLabReport from "@/pages/OmLabReport";
 import OmSitePerformance from "@/pages/OmSitePerformance";
+import ProposalWizard from "@/pages/ProposalWizard";
 import { SlideshowProvider } from "@/contexts/SlideshowContext";
 import { RecordingProvider } from "@/contexts/RecordingContext";
 import { LiveMeetingProvider } from "@/contexts/LiveMeetingContext";
@@ -289,6 +290,7 @@ function ProtectedRoutes() {
       <Route path="/om/chemical-consumption" component={OmChemicalConsumption} />
       <Route path="/om/lab-reports"          component={OmLabReport} />
       <Route path="/om/site-performance"     component={OmSitePerformance} />
+      <Route path="/proposal-wizard"         component={ProposalWizard} />
       <Route component={NotFound} />
     </Switch>
   );
