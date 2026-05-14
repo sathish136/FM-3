@@ -616,6 +616,11 @@ async function buildServiceReportPDF(report: any): Promise<Buffer> {
       )
     `);
 
+    await db.execute(sql`
+      ALTER TABLE plc_support_tickets
+        ADD COLUMN IF NOT EXISTS images JSONB DEFAULT '[]'
+    `);
+
     console.log("PLC site calls & service reports tables ready");
   } catch (e) {
     console.error("PLC table init error:", e);
@@ -868,14 +873,14 @@ router.get("/plc/support-tickets/:id", async (req, res) => {
 
 router.post("/plc/support-tickets", async (req, res) => {
   try {
-    const { project_number, project_name, title, priority, assigned_to, notes, created_by } = req.body;
+    const { project_number, project_name, title, priority, notes, created_by, images } = req.body;
     const result = await db.execute(sql`
       INSERT INTO plc_support_tickets
-        (project_number, project_name, title, priority, assigned_to, notes, created_by, status)
+        (project_number, project_name, title, priority, notes, created_by, status, images)
       VALUES
         (${project_number ?? null}, ${project_name ?? null}, ${title ?? null},
-         ${priority ?? "Medium"}, ${assigned_to ?? null}, ${notes ?? null},
-         ${created_by ?? null}, 'Open')
+         ${priority ?? "Medium"}, ${notes ?? null}, ${created_by ?? null}, 'Open',
+         ${JSON.stringify(images ?? [])}::jsonb)
       RETURNING *
     `);
     const rows = (result as any).rows ?? result;
@@ -888,13 +893,13 @@ router.post("/plc/support-tickets", async (req, res) => {
 router.patch("/plc/support-tickets/:id", async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { priority, assigned_to, notes } = req.body;
+    const { priority, notes, images } = req.body;
     await db.execute(sql`
       UPDATE plc_support_tickets SET
-        priority    = COALESCE(${priority ?? null}, priority),
-        assigned_to = COALESCE(${assigned_to ?? null}, assigned_to),
-        notes       = COALESCE(${notes ?? null}, notes),
-        updated_at  = NOW()
+        priority   = COALESCE(${priority ?? null}, priority),
+        notes      = COALESCE(${notes ?? null}, notes),
+        images     = COALESCE(${images != null ? JSON.stringify(images) : null}::jsonb, images),
+        updated_at = NOW()
       WHERE id = ${id}
     `);
     res.json({ ok: true });
