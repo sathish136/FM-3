@@ -733,6 +733,19 @@ async function buildServiceReportPDF(report: any): Promise<Buffer> {
       )
     `);
 
+    // ── PLC Device Config History ─────────────────────────────────────────────
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS plc_device_config_history (
+        id              SERIAL PRIMARY KEY,
+        config_id       INTEGER NOT NULL,
+        changed_by      TEXT,
+        changed_by_name TEXT,
+        changed_by_photo TEXT,
+        changed_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+        changes         JSONB NOT NULL DEFAULT '[]'
+      )
+    `);
+
     console.log("PLC site calls & service reports tables ready");
   } catch (e) {
     console.error("PLC table init error:", e);
@@ -2011,11 +2024,30 @@ router.post("/plc/device-configs", async (req, res) => {
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
+// GET /api/plc/device-configs/:id/history
+router.get("/plc/device-configs/:id/history", async (req, res) => {
+  try {
+    const r = await db.execute(sql`
+      SELECT * FROM plc_device_config_history
+      WHERE config_id = ${Number(req.params.id)}
+      ORDER BY changed_at DESC
+      LIMIT 200
+    `);
+    res.json({ data: (r as any).rows ?? r });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
 // PATCH /api/plc/device-configs/:id
 router.patch("/plc/device-configs/:id", async (req, res) => {
   try {
     const b = req.body;
     const n = (v: any) => v || null;
+    const configId = Number(req.params.id);
+
+    // Fetch current record to diff changes
+    const oldR = await db.execute(sql`SELECT * FROM plc_device_configs WHERE id = ${configId}`);
+    const oldRow: any = ((oldR as any).rows ?? oldR)[0] || {};
+
     const r = await db.execute(sql`
       UPDATE plc_device_configs SET
         project_number=${n(b.project_number)}, project_name=${n(b.project_name)},
@@ -2040,10 +2072,56 @@ router.patch("/plc/device-configs/:id", async (req, res) => {
         hmi_make=${n(b.hmi_make)}, hmi_model=${n(b.hmi_model)}, hmi_ip=${n(b.hmi_ip)},
         last_backup_date=${n(b.last_backup_date)}, backup_schedule=${n(b.backup_schedule)},
         config_notes=${n(b.config_notes)}, updated_at=NOW()
-      WHERE id=${Number(req.params.id)} RETURNING *
+      WHERE id=${configId} RETURNING *
     `);
     const rows = (r as any).rows ?? r;
     if (!rows[0]) return res.status(404).json({ error: "Not found" });
+
+    // Diff old vs new and record in history
+    const FIELD_LABELS: Record<string, string> = {
+      project_number: "Project Number", project_name: "Project Name",
+      site_location: "Site Location", contact_name: "Contact Person", contact_phone: "Contact Phone",
+      cpu_make: "CPU Make", cpu_model: "CPU Model", cpu_type: "CPU Type",
+      plc_ip: "PLC IP", plc_make: "PLC Make", plc_model: "PLC Model",
+      plc_type: "PLC Type", plc_version: "Firmware Version",
+      plc_serial_no: "Serial Number", plc_rack: "Rack No.", plc_slot: "Slot No.",
+      comm_protocol: "Protocol", io_count: "I/O Count", expansion_modules: "Expansion Modules",
+      programming_software: "Programming Software", software_version: "Software Version", license_key: "License Key",
+      vpn_ip: "VPN IP", vpn_username: "VPN Username", vpn_password: "VPN Password",
+      anydesk_id: "AnyDesk ID", anydesk_password: "AnyDesk Password",
+      teamviewer_id: "TeamViewer ID", teamviewer_password: "TeamViewer Password",
+      rdp_ip: "RDP IP", rdp_username: "RDP Username", rdp_password: "RDP Password",
+      ssh_ip: "SSH IP", ssh_username: "SSH Username", ssh_password: "SSH Password",
+      modem_ip: "Modem IP", modem_username: "Modem Username", modem_password: "Modem Password",
+      modem_make: "Modem Make", modem_model: "Modem Model", modem_sim_no: "Modem SIM No.", carrier: "Carrier",
+      wifi_ssid: "WiFi SSID", wifi_password: "WiFi Password", wifi_ip: "WiFi IP",
+      wifi_router_make: "WiFi Router Make", wifi_security: "WiFi Security",
+      ip_subnet: "IP Subnet", ip_gateway: "IP Gateway",
+      scada_software: "SCADA Software", scada_version: "SCADA Version",
+      hmi_make: "HMI Make", hmi_model: "HMI Model", hmi_ip: "HMI IP",
+      last_backup_date: "Last Backup Date", backup_schedule: "Backup Schedule", config_notes: "Config Notes",
+    };
+    const sensitiveFields = new Set(["license_key","vpn_password","anydesk_password","teamviewer_password","rdp_password","ssh_password","modem_password","wifi_password"]);
+    const changes: { field: string; label: string; old_value: string; new_value: string }[] = [];
+    for (const [field, label] of Object.entries(FIELD_LABELS)) {
+      const oldVal = (oldRow[field] ?? "") as string;
+      const newVal = (n(b[field]) ?? "") as string;
+      if (String(oldVal) !== String(newVal)) {
+        changes.push({
+          field, label,
+          old_value: sensitiveFields.has(field) ? (oldVal ? "••••••" : "") : oldVal,
+          new_value: sensitiveFields.has(field) ? (newVal ? "••••••" : "") : newVal,
+        });
+      }
+    }
+    if (changes.length > 0) {
+      const changesJson = JSON.stringify(changes);
+      await db.execute(sql`
+        INSERT INTO plc_device_config_history (config_id, changed_by, changed_by_name, changed_by_photo, changes)
+        VALUES (${configId}, ${b._meta_changed_by ?? null}, ${b._meta_changed_by_name ?? null}, ${b._meta_changed_by_photo ?? null}, ${changesJson})
+      `);
+    }
+
     res.json(rows[0]);
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });

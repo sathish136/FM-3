@@ -5,7 +5,7 @@ import {
   Monitor, Network, ChevronRight, Server, AlertCircle,
   ChevronDown, Loader2, Download, Upload, FileText, X,
   Phone, MapPin, User, Key, Link, Terminal, LayoutGrid,
-  Archive, Calendar, Paperclip,
+  Archive, Calendar, Paperclip, Clock, ArrowRight, History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Layout } from "@/components/Layout";
@@ -19,6 +19,12 @@ interface ConfigFile {
   id: number; config_id: number; file_category: string;
   filename: string; original_name: string; size: number;
   uploaded_by?: string; uploaded_at: string;
+}
+interface HistoryChange { field: string; label: string; old_value: string; new_value: string; }
+interface HistoryEntry {
+  id: number; config_id: number;
+  changed_by?: string; changed_by_name?: string; changed_by_photo?: string;
+  changed_at: string; changes: HistoryChange[];
 }
 interface DeviceConfig {
   id: number;
@@ -365,6 +371,141 @@ function FilesTab({ configId, userName }: { configId: number | null; userName: s
   );
 }
 
+// ── History Panel ─────────────────────────────────────────────────────────────
+function UserAvatar({ name, email, photo, size = 32 }: { name?: string; email?: string; photo?: string; size?: number }) {
+  const [imgErr, setImgErr] = useState(false);
+  const initials = (name || email || "?").split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
+  const colors = ["bg-violet-500","bg-blue-500","bg-emerald-500","bg-amber-500","bg-rose-500","bg-cyan-500","bg-indigo-500"];
+  let h = 0;
+  for (let i = 0; i < (email || "").length; i++) h = (h * 31 + (email || "").charCodeAt(i)) >>> 0;
+  const bg = colors[h % colors.length];
+  const photoUrl = photo ? (photo.startsWith("http") ? photo : `https://erp.wttint.com${photo}`) : null;
+  if (photoUrl && !imgErr) {
+    return <img src={photoUrl} onError={() => setImgErr(true)} className="rounded-full object-cover shrink-0" style={{ width: size, height: size }} />;
+  }
+  return (
+    <div className={cn("rounded-full flex items-center justify-center shrink-0 text-white font-bold", bg)}
+      style={{ width: size, height: size, fontSize: size * 0.35 }}>
+      {initials}
+    </div>
+  );
+}
+
+function HistoryPanel({ configId, onRefreshNeeded }: { configId: number; onRefreshNeeded?: () => void }) {
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${BASE}/api/plc/device-configs/${configId}/history`);
+      const d = await r.json();
+      const rows = (d.data || []).map((row: any) => ({
+        ...row,
+        changes: typeof row.changes === "string" ? JSON.parse(row.changes) : (row.changes || []),
+      }));
+      setHistory(rows);
+    } catch {}
+    finally { setLoading(false); }
+  }, [configId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const toggle = (id: number) => setExpanded(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  const fmt = (dt: string) => {
+    const d = new Date(dt);
+    return d.toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true });
+  };
+
+  return (
+    <div className="w-80 shrink-0 border-l border-gray-200 bg-white flex flex-col overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
+        <div className="flex items-center gap-2">
+          <History size={14} className="text-indigo-500" />
+          <span className="text-sm font-semibold text-gray-800">Version History</span>
+        </div>
+        <button onClick={load} className="p-1 rounded text-gray-400 hover:text-indigo-500 transition-colors" title="Refresh">
+          <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {loading ? (
+          <div className="flex justify-center items-center h-24 text-gray-400">
+            <Loader2 size={18} className="animate-spin" />
+          </div>
+        ) : history.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-40 text-gray-400 px-4">
+            <Clock size={28} className="mb-2 opacity-30" />
+            <p className="text-xs text-center">No changes recorded yet. Edits you save will appear here.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {history.map(entry => {
+              const isOpen = expanded.has(entry.id);
+              const changes: HistoryChange[] = Array.isArray(entry.changes) ? entry.changes : [];
+              return (
+                <div key={entry.id} className="px-3 py-3">
+                  {/* Header row */}
+                  <div className="flex items-start gap-2.5">
+                    <UserAvatar
+                      name={entry.changed_by_name || undefined}
+                      email={entry.changed_by || undefined}
+                      photo={entry.changed_by_photo || undefined}
+                      size={30}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-800 truncate">
+                        {entry.changed_by_name || entry.changed_by || "Unknown"}
+                      </p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">{fmt(entry.changed_at)}</p>
+                      <p className="text-[10px] text-indigo-600 font-medium mt-0.5">
+                        {changes.length} field{changes.length !== 1 ? "s" : ""} changed
+                      </p>
+                    </div>
+                    {changes.length > 0 && (
+                      <button onClick={() => toggle(entry.id)}
+                        className="p-0.5 rounded text-gray-400 hover:text-indigo-500 transition-colors shrink-0 mt-0.5">
+                        <ChevronDown size={13} className={cn("transition-transform", isOpen && "rotate-180")} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Changed fields */}
+                  {isOpen && changes.length > 0 && (
+                    <div className="mt-2 ml-9 space-y-1.5">
+                      {changes.map((c, ci) => (
+                        <div key={ci} className="text-[10px] bg-gray-50 rounded-lg px-2 py-1.5 border border-gray-100">
+                          <p className="font-semibold text-gray-600 mb-0.5">{c.label}</p>
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <span className={cn("px-1.5 py-0.5 rounded font-mono max-w-[90px] truncate", c.old_value ? "bg-red-50 text-red-600 line-through" : "text-gray-400 italic")}>
+                              {c.old_value || "empty"}
+                            </span>
+                            <ArrowRight size={9} className="text-gray-400 shrink-0" />
+                            <span className={cn("px-1.5 py-0.5 rounded font-mono max-w-[90px] truncate", c.new_value ? "bg-green-50 text-green-700" : "text-gray-400 italic")}>
+                              {c.new_value || "empty"}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function PLCDeviceConfig() {
   const { user } = useAuth();
@@ -379,6 +520,8 @@ export default function PLCDeviceConfig() {
   const [activeTab, setActiveTab] = useState<Tab>("project");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyKey, setHistoryKey] = useState(0);
 
   const fetchConfigs = useCallback(async () => {
     setLoading(true);
@@ -410,7 +553,7 @@ export default function PLCDeviceConfig() {
     setError("");
   }
 
-  function closeDetail() { setSelected(null); setIsNew(false); setError(""); }
+  function closeDetail() { setSelected(null); setIsNew(false); setError(""); setShowHistory(false); }
 
   const sf = (k: keyof FormState, v: string) => setForm(p => ({ ...p, [k]: v }));
 
@@ -419,12 +562,21 @@ export default function PLCDeviceConfig() {
     try {
       const body: any = { ...form };
       Object.keys(body).forEach(k => { if (body[k] === "") body[k] = null; });
+      if (!isNew) {
+        body._meta_changed_by = user?.email ?? null;
+        body._meta_changed_by_name = (user as any)?.full_name || (user as any)?.fullName || user?.email || null;
+        body._meta_changed_by_photo = (user as any)?.photo || null;
+      }
       const url = isNew ? `${BASE}/api/plc/device-configs` : `${BASE}/api/plc/device-configs/${selected!.id}`;
       const method = isNew ? "POST" : "PATCH";
       const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (!r.ok) throw new Error(await r.text());
       await fetchConfigs();
-      closeDetail();
+      if (!isNew) {
+        setHistoryKey(k => k + 1);
+      } else {
+        closeDetail();
+      }
     } catch (e) { setError(String(e)); }
     finally { setSaving(false); }
   }
@@ -490,10 +642,22 @@ export default function PLCDeviceConfig() {
               {inDetail && (
                 <>
                   {!isNew && selected && (
-                    <button onClick={() => handleDelete(selected.id)} disabled={saving}
-                      className="flex items-center gap-2 px-3 py-2 border border-red-300 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium transition-colors">
-                      <Trash2 size={14} /> Delete
-                    </button>
+                    <>
+                      <button
+                        onClick={() => setShowHistory(h => !h)}
+                        className={cn(
+                          "flex items-center gap-2 px-3 py-2 border rounded-lg text-sm font-medium transition-colors",
+                          showHistory
+                            ? "border-indigo-400 bg-indigo-50 text-indigo-700"
+                            : "border-gray-300 text-gray-600 hover:bg-gray-50"
+                        )}>
+                        <History size={14} /> History
+                      </button>
+                      <button onClick={() => handleDelete(selected.id)} disabled={saving}
+                        className="flex items-center gap-2 px-3 py-2 border border-red-300 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium transition-colors">
+                        <Trash2 size={14} /> Delete
+                      </button>
+                    </>
                   )}
                   <button onClick={handleSave} disabled={saving}
                     className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50">
@@ -610,7 +774,8 @@ export default function PLCDeviceConfig() {
               </div>
             </div>
 
-            {/* Tab content */}
+            {/* Tab content + optional history panel */}
+            <div className="flex flex-1 overflow-hidden">
             <div className="flex-1 overflow-y-auto p-8 max-w-5xl">
 
               {/* PROJECT ─────────────────────────────────────────────────── */}
@@ -853,6 +1018,12 @@ export default function PLCDeviceConfig() {
                   </button>
                 </div>
               )}
+            </div>
+
+            {/* History panel — slides in from the right */}
+            {showHistory && !isNew && selected && (
+              <HistoryPanel key={historyKey} configId={selected.id} />
+            )}
             </div>
           </div>
         )}
