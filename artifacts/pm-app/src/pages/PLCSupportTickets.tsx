@@ -1,15 +1,20 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import {
   Ticket, Search, RefreshCw, ExternalLink, Plus, Loader2,
   AlertCircle, Clock, CheckCircle2, Flame, ArrowUpCircle,
   Minus, X, Save, User, StickyNote, ChevronDown, UserCheck,
-  Calendar, Hash,
+  Calendar, Hash, ChevronRight, Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Layout } from "@/components/Layout";
+import { useAuth } from "@/hooks/useAuth";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface Project { code: string; name: string; label: string; status?: string }
 
 interface SupportTicket {
   id: number;
@@ -31,7 +36,7 @@ interface SupportTicket {
   call_attended_by?: Array<{ name: string }> | null;
 }
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── Config ────────────────────────────────────────────────────────────────────
 
 const PRIORITY_CFG: Record<string, { color: string; bg: string; ring: string; icon: typeof Flame }> = {
   Critical: { color: "text-red-700",    bg: "bg-red-100",    ring: "ring-red-400",    icon: Flame         },
@@ -40,28 +45,120 @@ const PRIORITY_CFG: Record<string, { color: string; bg: string; ring: string; ic
   Low:      { color: "text-gray-500",   bg: "bg-gray-100",   ring: "ring-gray-300",   icon: Minus         },
 };
 
-const STATUS_CFG: Record<string, { label: string; col: string; header: string; badge: string; empty: string; icon: typeof CheckCircle2 }> = {
-  Open:          { label: "Open",        col: "bg-red-50 border-red-200",    header: "text-red-700 bg-red-100",    badge: "bg-red-600",    empty: "No open tickets", icon: AlertCircle  },
-  "In Progress": { label: "In Progress", col: "bg-amber-50 border-amber-200",header: "text-amber-800 bg-amber-100",badge: "bg-amber-500", empty: "None in progress", icon: Clock        },
-  Closed:        { label: "Closed",      col: "bg-green-50 border-green-200",header: "text-green-800 bg-green-100",badge: "bg-green-600",  empty: "No closed tickets", icon: CheckCircle2 },
+const STATUS_CFG: Record<string, {
+  label: string; col: string; header: string; badge: string; empty: string;
+  icon: typeof CheckCircle2;
+}> = {
+  Open:          { label: "Open",        col: "bg-red-50 border-red-200",    header: "text-red-700 bg-red-100",     badge: "bg-red-600",    empty: "No open tickets",  icon: AlertCircle  },
+  "In Progress": { label: "In Progress", col: "bg-amber-50 border-amber-200",header: "text-amber-800 bg-amber-100", badge: "bg-amber-500",  empty: "None in progress", icon: Clock        },
+  Closed:        { label: "Closed",      col: "bg-green-50 border-green-200",header: "text-green-800 bg-green-100", badge: "bg-green-600",  empty: "No closed tickets",icon: CheckCircle2 },
 };
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmt(dt: string | null | undefined) {
   if (!dt) return "—";
   try { return new Date(dt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }); }
   catch { return dt ?? "—"; }
 }
-
 function fmtDate(dt: string | null | undefined) {
   if (!dt) return "—";
   try { return new Date(dt).toLocaleDateString("en-IN", { day: "numeric", month: "short" }); }
   catch { return dt ?? "—"; }
 }
-
 function attendedNames(raw: Array<{ name: string }> | null | undefined): string {
   if (!raw || !Array.isArray(raw) || raw.length === 0) return "";
   return raw.map(e => e.name).filter(Boolean).join(", ");
 }
+
+// ── ERP Project Dropdown (self-contained) ─────────────────────────────────────
+
+function ProjectDropdown({
+  value, projectName, onChange,
+}: {
+  value: string;
+  projectName: string;
+  onChange: (p: Project) => void;
+}) {
+  const [open, setOpen]       = useState(false);
+  const [q, setQ]             = useState(value || projectName || "");
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [erpFailed, setErpFailed] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const picked = useRef(false);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`${BASE}/api/workshop/erp-projects`)
+      .then(r => r.json())
+      .then(d => { setProjects(d.projects ?? []); if (!(d.projects ?? []).length) setErpFailed(true); })
+      .catch(() => setErpFailed(true))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+
+  const filtered = q.trim() ? projects.filter(p => p.label.toLowerCase().includes(q.toLowerCase())) : projects;
+
+  const pick = (p: Project) => { picked.current = true; onChange(p); setQ(p.label); setOpen(false); };
+
+  const commitFreeText = () => {
+    if (picked.current) { picked.current = false; return; }
+    if (q.trim()) {
+      const parts = q.trim().split(" - ");
+      const code = parts.length > 1 ? parts[0].trim() : "";
+      const name = parts.length > 1 ? parts.slice(1).join(" - ").trim() : q.trim();
+      onChange({ code, name, label: q.trim() });
+    }
+    setOpen(false);
+  };
+
+  return (
+    <div className="relative" ref={ref}>
+      <div className="flex items-center border border-gray-300 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-violet-500 bg-white">
+        <input
+          className="flex-1 px-3 py-2.5 text-sm bg-white outline-none"
+          placeholder={erpFailed ? "Type: WTT-001 - Project Name…" : "Search ERP project…"}
+          value={q}
+          onChange={e => { setQ(e.target.value); setOpen(true); onChange({ code: "", name: e.target.value, label: e.target.value }); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(commitFreeText, 150)}
+          onKeyDown={e => { if (e.key === "Enter") commitFreeText(); }}
+        />
+        <button type="button" onClick={() => setOpen(v => !v)} className="px-3 text-gray-400 hover:text-gray-600">
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
+      </div>
+      {open && filtered.length > 0 && (
+        <div className="absolute z-[60] mt-1 w-full max-h-52 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-xl">
+          {filtered.map(p => (
+            <button key={p.code} type="button"
+              className="w-full text-left px-3 py-2.5 text-sm hover:bg-violet-50 border-b border-gray-50 last:border-0 flex items-center gap-2"
+              onMouseDown={() => { picked.current = true; }} onClick={() => pick(p)}
+            >
+              <span className="font-mono text-xs text-violet-700 shrink-0">{p.code}</span>
+              <span className="text-gray-800 truncate">{p.name}</span>
+              {p.status === "Completed" && (
+                <span className="ml-auto text-[10px] font-semibold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full shrink-0">Done</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+      {erpFailed && !open && (
+        <p className="text-[10px] text-amber-600 mt-1">ERP unavailable — type project details manually</p>
+      )}
+    </div>
+  );
+}
+
+// ── Priority Pill ─────────────────────────────────────────────────────────────
 
 function PriorityDot({ priority }: { priority: string }) {
   const c = PRIORITY_CFG[priority];
@@ -77,24 +174,20 @@ function PriorityDot({ priority }: { priority: string }) {
 // ── Ticket Card ───────────────────────────────────────────────────────────────
 
 function TicketCard({ ticket, onClick, active }: { ticket: SupportTicket; onClick: () => void; active: boolean }) {
-  const assigned = attendedNames(ticket.call_attended_by);
+  const callAssigned = attendedNames(ticket.call_attended_by);
   return (
     <div
       onClick={onClick}
       className={cn(
-        "bg-white rounded-xl border p-3 cursor-pointer hover:shadow-md transition-all group",
+        "bg-white rounded-xl border p-3 cursor-pointer hover:shadow-md transition-all",
         active ? "ring-2 ring-violet-500 border-violet-300 shadow-md" : "border-gray-200 hover:border-violet-300"
       )}
     >
-      {/* top row */}
       <div className="flex items-start justify-between gap-1 mb-2">
-        <span className="font-mono text-[10px] font-bold text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">
-          {ticket.ticket_no}
-        </span>
+        <span className="font-mono text-[10px] font-bold text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">{ticket.ticket_no}</span>
         <PriorityDot priority={ticket.priority} />
       </div>
 
-      {/* project */}
       {ticket.project_name && (
         <p className="text-[11px] font-semibold text-gray-700 truncate mb-0.5">{ticket.project_name}</p>
       )}
@@ -102,35 +195,35 @@ function TicketCard({ ticket, onClick, active }: { ticket: SupportTicket; onClic
         <p className="text-[10px] text-gray-400 mb-1">{ticket.project_number}</p>
       )}
 
-      {/* title */}
       <p className="text-xs text-gray-700 leading-snug line-clamp-2 mb-2">
         {ticket.title || <span className="text-gray-400 italic">No description</span>}
       </p>
 
-      {/* meta row */}
-      <div className="flex flex-col gap-1">
-        {/* created by */}
+      <div className="flex flex-col gap-0.5 mt-1">
         {ticket.created_by && (
           <div className="flex items-center gap-1">
             <User className="w-3 h-3 text-gray-400 shrink-0" />
-            <span className="text-[10px] text-gray-500 truncate">{ticket.created_by}</span>
+            <span className="text-[10px] text-gray-500 truncate">By: {ticket.created_by}</span>
           </div>
         )}
-        {/* assigned from site call */}
-        {assigned && (
+        {ticket.assigned_to && (
           <div className="flex items-center gap-1">
-            <UserCheck className="w-3 h-3 text-violet-400 shrink-0" />
-            <span className="text-[10px] text-violet-600 font-medium truncate">{assigned}</span>
+            <UserCheck className="w-3 h-3 text-blue-400 shrink-0" />
+            <span className="text-[10px] text-blue-600 font-medium truncate">→ {ticket.assigned_to}</span>
           </div>
         )}
-        {/* linked call */}
+        {callAssigned && (
+          <div className="flex items-center gap-1">
+            <CheckCircle2 className="w-3 h-3 text-violet-400 shrink-0" />
+            <span className="text-[10px] text-violet-600 font-medium truncate">{callAssigned}</span>
+          </div>
+        )}
         {ticket.call_no && (
           <div className="flex items-center gap-1">
-            <Hash className="w-3 h-3 text-blue-400 shrink-0" />
-            <span className="text-[10px] text-blue-500 truncate">{ticket.call_no}</span>
+            <Hash className="w-3 h-3 text-gray-300 shrink-0" />
+            <span className="text-[10px] text-gray-400 truncate">{ticket.call_no}</span>
           </div>
         )}
-        {/* date */}
         <div className="flex items-center gap-1">
           <Calendar className="w-3 h-3 text-gray-300 shrink-0" />
           <span className="text-[10px] text-gray-400">{fmtDate(ticket.created_at)}</span>
@@ -140,54 +233,58 @@ function TicketCard({ ticket, onClick, active }: { ticket: SupportTicket; onClic
   );
 }
 
-// ── Kanban Column ──────────────────────────────────────────────────────────────
+// ── Kanban Column ─────────────────────────────────────────────────────────────
 
-function Column({
-  status, tickets, selected, onSelect,
-}: {
-  status: string;
-  tickets: SupportTicket[];
-  selected: SupportTicket | null;
-  onSelect: (t: SupportTicket) => void;
+function Column({ status, tickets, selected, onSelect }: {
+  status: string; tickets: SupportTicket[]; selected: SupportTicket | null; onSelect: (t: SupportTicket) => void;
 }) {
   const cfg = STATUS_CFG[status]!;
   const Icon = cfg.icon;
   return (
-    <div className={cn("flex flex-col rounded-2xl border overflow-hidden min-h-0", cfg.col)}>
-      <div className={cn("flex items-center gap-2 px-3 py-2.5 border-b border-black/5", cfg.header)}>
+    <div className={cn("flex flex-col rounded-2xl border overflow-hidden min-h-0 h-full", cfg.col)}>
+      <div className={cn("flex items-center gap-2 px-3 py-2.5 shrink-0 border-b border-black/5", cfg.header)}>
         <Icon className="w-4 h-4" />
         <span className="font-semibold text-sm">{cfg.label}</span>
-        <span className={cn("ml-auto text-white text-xs font-bold px-2 py-0.5 rounded-full", cfg.badge)}>
-          {tickets.length}
-        </span>
+        <span className={cn("ml-auto text-white text-xs font-bold px-2 py-0.5 rounded-full", cfg.badge)}>{tickets.length}</span>
       </div>
       <div className="flex-1 overflow-y-auto p-2 space-y-2">
-        {tickets.length === 0 ? (
-          <p className="text-center text-xs text-gray-400 py-6 italic">{cfg.empty}</p>
-        ) : (
-          tickets.map(t => (
-            <TicketCard
-              key={t.id}
-              ticket={t}
-              active={selected?.id === t.id}
-              onClick={() => onSelect(t)}
-            />
-          ))
-        )}
+        {tickets.length === 0
+          ? <p className="text-center text-xs text-gray-400 py-6 italic">{cfg.empty}</p>
+          : tickets.map(t => <TicketCard key={t.id} ticket={t} active={selected?.id === t.id} onClick={() => onSelect(t)} />)
+        }
       </div>
     </div>
   );
 }
 
-// ── Create Modal ───────────────────────────────────────────────────────────────
+// ── Create Modal ──────────────────────────────────────────────────────────────
 
-const BLANK = { project_number: "", project_name: "", title: "", priority: "Medium", assigned_to: "", notes: "", created_by: "" };
+const BLANK = { project_number: "", project_name: "", title: "", priority: "Medium", assigned_to: "", notes: "" };
 
-function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+function CreateModal({ createdBy, onClose, onCreated }: {
+  createdBy: string; onClose: () => void; onCreated: () => void;
+}) {
   const [form, setForm] = useState({ ...BLANK });
   const [saving, setSaving] = useState(false);
-  const f = (k: keyof typeof BLANK) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+  const [existingTickets, setExistingTickets] = useState<SupportTicket[]>([]);
+  const [checkingTickets, setCheckingTickets] = useState(false);
+
+  const setField = (k: keyof typeof BLANK) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm(prev => ({ ...prev, [k]: e.target.value }));
+
+  const onProjectPick = async (p: Project) => {
+    setForm(prev => ({ ...prev, project_number: p.code, project_name: p.name }));
+    if (!p.name && !p.code) { setExistingTickets([]); return; }
+    setCheckingTickets(true);
+    try {
+      const q = p.name || p.code;
+      const res = await fetch(`${BASE}/api/plc/support-tickets?search=${encodeURIComponent(q)}`);
+      const json = await res.json();
+      const all: SupportTicket[] = json.data ?? [];
+      setExistingTickets(all.filter(t => t.status !== "Closed"));
+    } catch { setExistingTickets([]); }
+    setCheckingTickets(false);
+  };
 
   const submit = async () => {
     if (!form.title.trim()) return;
@@ -196,7 +293,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
       const res = await fetch(`${BASE}/api/plc/support-tickets`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, created_by: createdBy }),
       });
       if (res.ok) { onCreated(); onClose(); }
     } catch { /* ignore */ }
@@ -204,89 +301,139 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-violet-600 flex items-center justify-center">
-              <Plus className="w-4 h-4 text-white" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-violet-600 flex items-center justify-center shadow-sm">
+              <Plus className="w-5 h-5 text-white" />
             </div>
-            <span className="font-semibold text-gray-900">New Support Ticket</span>
+            <div>
+              <h2 className="font-bold text-gray-900 text-base">New Support Ticket</h2>
+              <p className="text-xs text-gray-500">Raise a request for the PLC team</p>
+            </div>
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4 text-gray-500" /></button>
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
         </div>
 
-        <div className="px-5 py-4 space-y-3 overflow-y-auto max-h-[65vh]">
+        {/* Body */}
+        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+
+          {/* Created by (auto, read-only) */}
+          <div className="flex items-center gap-2 px-3 py-2 bg-violet-50 border border-violet-100 rounded-xl">
+            <User className="w-4 h-4 text-violet-500 shrink-0" />
+            <div>
+              <p className="text-[10px] text-violet-500 font-semibold uppercase tracking-wide">Created By</p>
+              <p className="text-sm font-semibold text-violet-800">{createdBy || "Unknown User"}</p>
+            </div>
+            <span className="ml-auto text-[10px] text-violet-400 bg-violet-100 px-2 py-0.5 rounded-full">Auto</span>
+          </div>
+
+          {/* Issue Summary */}
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">
               Issue Summary <span className="text-red-500">*</span>
             </label>
             <textarea
-              value={form.title} onChange={f("title")} rows={3}
-              placeholder="Describe the problem or support needed…"
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
+              value={form.title} onChange={setField("title")} rows={4}
+              placeholder="Describe the problem clearly — what failed, when it started, what error or symptom is visible…"
+              className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Project No.</label>
-              <input value={form.project_number} onChange={f("project_number")} placeholder="e.g. WTT-2025-042"
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Project Name</label>
-              <input value={form.project_name} onChange={f("project_name")} placeholder="Site / customer name"
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500" />
-            </div>
+          {/* Project — ERP dropdown */}
+          <div>
+            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">Project</label>
+            <ProjectDropdown
+              value={form.project_number}
+              projectName={form.project_name}
+              onChange={onProjectPick}
+            />
+            {/* existing open tickets for this project */}
+            {checkingTickets && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-gray-400">
+                <Loader2 className="w-3 h-3 animate-spin" /> Checking existing tickets…
+              </div>
+            )}
+            {!checkingTickets && existingTickets.length > 0 && (
+              <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <Info className="w-4 h-4 text-amber-600 shrink-0" />
+                  <p className="text-xs font-semibold text-amber-800">{existingTickets.length} active ticket(s) already exist for this project</p>
+                </div>
+                <div className="space-y-1.5">
+                  {existingTickets.map(t => (
+                    <div key={t.id} className="flex items-center gap-2 bg-white border border-amber-100 rounded-lg px-3 py-2">
+                      <span className="font-mono text-[10px] font-bold text-violet-600 shrink-0">{t.ticket_no}</span>
+                      <span className={cn(
+                        "text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0",
+                        t.status === "Open" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+                      )}>{t.status}</span>
+                      <PriorityDot priority={t.priority} />
+                      <span className="text-xs text-gray-600 truncate">{t.title || "—"}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-amber-600 mt-2">You can still create a new ticket if this is a different issue.</p>
+              </div>
+            )}
           </div>
 
+          {/* Priority */}
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Priority</label>
-            <div className="flex gap-1.5">
+            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">Priority</label>
+            <div className="grid grid-cols-4 gap-2">
               {["Critical", "High", "Medium", "Low"].map(p => {
                 const c = PRIORITY_CFG[p];
                 return (
                   <button key={p} type="button" onClick={() => setForm(prev => ({ ...prev, priority: p }))}
                     className={cn(
-                      "flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-all",
-                      form.priority === p ? `${c.bg} ${c.color} ring-2 ${c.ring}` : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50"
+                      "py-2.5 rounded-xl text-xs font-bold border-2 transition-all flex flex-col items-center gap-1",
+                      form.priority === p
+                        ? `${c.bg} ${c.color} border-transparent ring-2 ${c.ring}`
+                        : "bg-white text-gray-400 border-gray-200 hover:border-gray-300"
                     )}
-                  >{p}</button>
+                  >
+                    <c.icon className="w-4 h-4" />
+                    {p}
+                  </button>
                 );
               })}
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Created By</label>
-              <input value={form.created_by} onChange={f("created_by")} placeholder="Your name"
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Assign To</label>
-              <input value={form.assigned_to} onChange={f("assigned_to")} placeholder="PLC team member"
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500" />
-            </div>
+          {/* Assign To */}
+          <div>
+            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">
+              Assign To <span className="text-gray-400 font-normal normal-case">(PLC team member)</span>
+            </label>
+            <input value={form.assigned_to} onChange={setField("assigned_to")} placeholder="Name of PLC engineer responsible…"
+              className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500"
+            />
           </div>
 
+          {/* Notes */}
           <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Notes</label>
-            <textarea value={form.notes} onChange={f("notes")} rows={2}
-              placeholder="Any additional context…"
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
+            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-1.5">
+              Notes <span className="text-gray-400 font-normal normal-case">(optional)</span>
+            </label>
+            <textarea value={form.notes} onChange={setField("notes")} rows={3}
+              placeholder="Any additional context, urgency details, contact info, previous call references…"
+              className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
             />
           </div>
         </div>
 
-        <div className="px-5 py-4 border-t border-gray-200 flex gap-3">
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-200 flex gap-3 shrink-0 bg-gray-50 rounded-b-2xl">
           <button onClick={onClose}
-            className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50">
+            className="flex-1 py-3 text-sm font-semibold text-gray-600 border border-gray-300 rounded-xl hover:bg-gray-100">
             Cancel
           </button>
           <button onClick={submit} disabled={saving || !form.title.trim()}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold text-white bg-violet-600 hover:bg-violet-700 rounded-xl disabled:opacity-50">
+            className="flex-[2] flex items-center justify-center gap-2 py-3 text-sm font-bold text-white bg-violet-600 hover:bg-violet-700 rounded-xl disabled:opacity-50 shadow-sm">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ticket className="w-4 h-4" />}
             {saving ? "Creating…" : "Create Ticket"}
           </button>
@@ -298,19 +445,23 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
 
 // ── Detail Drawer ─────────────────────────────────────────────────────────────
 
-function DetailDrawer({
-  ticket, onClose, onSaved,
-}: {
+function DetailDrawer({ ticket, onClose, onSaved }: {
   ticket: SupportTicket;
   onClose: () => void;
-  onSaved: (updated: Partial<SupportTicket>) => void;
+  onSaved: (updates: Partial<SupportTicket>) => void;
 }) {
   const [, navigate] = useLocation();
   const [editPriority, setEditPriority] = useState(ticket.priority);
   const [editAssigned, setEditAssigned] = useState(ticket.assigned_to ?? "");
-  const [editNotes, setEditNotes] = useState(ticket.notes ?? "");
+  const [editNotes,    setEditNotes]    = useState(ticket.notes ?? "");
   const [saving, setSaving] = useState(false);
-  const assigned = attendedNames(ticket.call_attended_by);
+  const callAssigned = attendedNames(ticket.call_attended_by);
+
+  useEffect(() => {
+    setEditPriority(ticket.priority);
+    setEditAssigned(ticket.assigned_to ?? "");
+    setEditNotes(ticket.notes ?? "");
+  }, [ticket.id, ticket.priority, ticket.assigned_to, ticket.notes]);
 
   const save = async () => {
     setSaving(true);
@@ -325,70 +476,83 @@ function DetailDrawer({
     setSaving(false);
   };
 
+  const statusColor = ticket.status === "Open"
+    ? "text-red-700 bg-red-100"
+    : ticket.status === "In Progress"
+    ? "text-amber-700 bg-amber-100"
+    : "text-green-700 bg-green-100";
+
+  const StatusIcon = ticket.status === "Open" ? AlertCircle : ticket.status === "In Progress" ? Clock : CheckCircle2;
+
   return (
-    <div className="flex flex-col h-full border-l border-gray-200 bg-white">
-      {/* Drawer header */}
-      <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between shrink-0 bg-gray-50">
-        <div>
+    <div className="flex flex-col h-full bg-white">
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-gray-200 flex items-start justify-between shrink-0 bg-gray-50">
+        <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-mono font-bold text-violet-700 text-sm">{ticket.ticket_no}</span>
-            <PriorityDot priority={editPriority} />
-            <span className={cn(
-              "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold",
-              ticket.status === "Open" ? "text-red-700 bg-red-100" :
-              ticket.status === "In Progress" ? "text-amber-700 bg-amber-100" : "text-green-700 bg-green-100"
-            )}>
-              {ticket.status === "Open" ? <AlertCircle className="w-2.5 h-2.5" /> :
-               ticket.status === "In Progress" ? <Clock className="w-2.5 h-2.5" /> :
-               <CheckCircle2 className="w-2.5 h-2.5" />}
-              {ticket.status}
+            <span className="font-mono font-bold text-violet-700">{ticket.ticket_no}</span>
+            <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold", statusColor)}>
+              <StatusIcon className="w-2.5 h-2.5" /> {ticket.status}
             </span>
+            <PriorityDot priority={editPriority} />
           </div>
-          <p className="text-[10px] text-gray-400 mt-0.5">{fmt(ticket.updated_at)}</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">Updated {fmt(ticket.updated_at)}</p>
         </div>
-        <button onClick={onClose} className="p-1.5 hover:bg-gray-200 rounded-lg">
+        <button onClick={onClose} className="p-1.5 hover:bg-gray-200 rounded-lg shrink-0 ml-2">
           <X className="w-4 h-4 text-gray-500" />
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+
         {/* Project */}
         {(ticket.project_name || ticket.project_number) && (
           <section>
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Project</p>
             <p className="font-semibold text-gray-800 text-sm">{ticket.project_name || "—"}</p>
-            {ticket.project_number && <p className="text-xs text-gray-400">{ticket.project_number}</p>}
+            {ticket.project_number && <p className="text-xs text-gray-400 font-mono">{ticket.project_number}</p>}
           </section>
         )}
 
         {/* Issue */}
         <section>
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Issue</p>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Issue Summary</p>
           <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{ticket.title || "—"}</p>
         </section>
 
-        {/* Who & When */}
-        <section className="bg-gray-50 rounded-xl p-3 space-y-2">
-          <div className="flex items-center gap-2">
-            <User className="w-3.5 h-3.5 text-gray-400" />
-            <div>
-              <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Created By</p>
-              <p className="text-xs font-medium text-gray-700">{ticket.created_by || "—"}</p>
-            </div>
-          </div>
-          {assigned && (
-            <div className="flex items-center gap-2">
-              <UserCheck className="w-3.5 h-3.5 text-violet-400" />
+        {/* People */}
+        <section className="bg-gray-50 rounded-xl p-3 space-y-2.5">
+          {ticket.created_by && (
+            <div className="flex items-start gap-2">
+              <User className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
               <div>
-                <p className="text-[10px] text-violet-500 uppercase tracking-wide font-semibold">Handled By (Site Call)</p>
-                <p className="text-xs font-medium text-violet-700">{assigned}</p>
+                <p className="text-[10px] text-gray-400 uppercase tracking-wide font-bold">Created By</p>
+                <p className="text-xs font-semibold text-gray-700">{ticket.created_by}</p>
               </div>
             </div>
           )}
-          <div className="flex items-center gap-2">
-            <Calendar className="w-3.5 h-3.5 text-gray-400" />
+          {ticket.assigned_to && (
+            <div className="flex items-start gap-2">
+              <UserCheck className="w-3.5 h-3.5 text-blue-400 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-[10px] text-blue-500 uppercase tracking-wide font-bold">Assigned To</p>
+                <p className="text-xs font-semibold text-blue-700">{ticket.assigned_to}</p>
+              </div>
+            </div>
+          )}
+          {callAssigned && (
+            <div className="flex items-start gap-2">
+              <CheckCircle2 className="w-3.5 h-3.5 text-violet-400 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-[10px] text-violet-500 uppercase tracking-wide font-bold">Handled By (Site Call)</p>
+                <p className="text-xs font-semibold text-violet-700">{callAssigned}</p>
+              </div>
+            </div>
+          )}
+          <div className="flex items-start gap-2">
+            <Calendar className="w-3.5 h-3.5 text-gray-300 mt-0.5 shrink-0" />
             <div>
-              <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Created</p>
+              <p className="text-[10px] text-gray-400 uppercase tracking-wide font-bold">Created</p>
               <p className="text-xs text-gray-600">{fmt(ticket.created_at)}</p>
             </div>
           </div>
@@ -398,22 +562,20 @@ function DetailDrawer({
         {ticket.site_call_id && (
           <section>
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Linked Site Call</p>
-            <div className="flex items-center justify-between p-2.5 bg-blue-50 border border-blue-200 rounded-xl">
+            <div className="flex items-center justify-between p-2.5 bg-blue-50 border border-blue-100 rounded-xl">
               <div>
                 <p className="font-mono font-bold text-blue-800 text-sm">{ticket.call_no || `SC-${ticket.site_call_id}`}</p>
                 <p className="text-[10px] text-blue-500">{ticket.call_status ?? ticket.call_type ?? "Online Support"}</p>
               </div>
-              <button
-                onClick={() => navigate("/plc-automation/site-calls")}
-                className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 px-2 py-1 rounded-lg hover:bg-blue-100"
-              >
+              <button onClick={() => navigate("/plc-automation/site-calls")}
+                className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 px-2 py-1 rounded-lg hover:bg-blue-100">
                 View <ExternalLink className="w-3 h-3" />
               </button>
             </div>
           </section>
         )}
 
-        {/* Priority selector */}
+        {/* Edit: Priority */}
         <section>
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Priority</p>
           <div className="flex gap-1.5">
@@ -432,33 +594,37 @@ function DetailDrawer({
           </div>
         </section>
 
-        {/* Assign to */}
+        {/* Edit: Assign To */}
         <section>
-          <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
-            <span className="flex items-center gap-1"><User className="w-3 h-3" /> Assign To</span>
+          <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+            <span className="flex items-center gap-1"><UserCheck className="w-3 h-3" /> Assign To (Manual)</span>
           </label>
           <input value={editAssigned} onChange={e => setEditAssigned(e.target.value)}
-            placeholder="Name or email…"
+            placeholder="PLC engineer name…"
             className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500"
           />
+          {callAssigned && (
+            <p className="text-[10px] text-violet-500 mt-1 flex items-center gap-1">
+              <ChevronRight className="w-3 h-3" /> Site call handled by: <strong>{callAssigned}</strong>
+            </p>
+          )}
         </section>
 
-        {/* Notes */}
+        {/* Edit: Notes */}
         <section>
-          <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+          <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
             <span className="flex items-center gap-1"><StickyNote className="w-3 h-3" /> Notes</span>
           </label>
           <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} rows={3}
-            placeholder="Follow-up actions, context…"
+            placeholder="Follow-up actions, observations…"
             className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
           />
         </section>
 
-        {/* Status note */}
         {!ticket.site_call_id && (
           <div className="p-3 bg-violet-50 border border-violet-100 rounded-xl">
             <p className="text-xs text-violet-700 leading-relaxed">
-              Status will automatically update when the PLC team starts a site call linked to this ticket.
+              Status will update automatically when the PLC team starts a site call linked to this ticket.
             </p>
           </div>
         )}
@@ -467,7 +633,7 @@ function DetailDrawer({
       {/* Save */}
       <div className="px-4 py-3 border-t border-gray-200 shrink-0">
         <button onClick={save} disabled={saving}
-          className="w-full flex items-center justify-center gap-2 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold rounded-xl disabled:opacity-50">
+          className="w-full flex items-center justify-center gap-2 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold rounded-xl disabled:opacity-50">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           {saving ? "Saving…" : "Save Changes"}
         </button>
@@ -479,12 +645,15 @@ function DetailDrawer({
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function PLCSupportTickets() {
+  const { user } = useAuth();
   const [tickets, setTickets]     = useState<SupportTicket[]>([]);
   const [loading, setLoading]     = useState(true);
   const [search, setSearch]       = useState("");
   const [showClosed, setShowClosed] = useState(false);
   const [selected, setSelected]   = useState<SupportTicket | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+
+  const createdBy = user?.full_name || user?.email || "";
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -500,20 +669,15 @@ export default function PLCSupportTickets() {
 
   useEffect(() => { load(); }, [load]);
 
-  const byStatus = (status: string) => tickets.filter(t => t.status === status);
-
-  const counts = {
-    open:       byStatus("Open").length,
-    inProgress: byStatus("In Progress").length,
-    closed:     byStatus("Closed").length,
-  };
+  const byStatus = (s: string) => tickets.filter(t => t.status === s);
+  const counts = { open: byStatus("Open").length, inProgress: byStatus("In Progress").length, closed: byStatus("Closed").length };
 
   return (
     <Layout>
       <div className="flex flex-col h-full bg-gray-50 overflow-hidden">
 
-        {/* ── Top bar ── */}
-        <div className="bg-white border-b border-gray-200 px-5 py-3 flex-shrink-0">
+        {/* Top bar */}
+        <div className="bg-white border-b border-gray-200 px-5 py-3 shrink-0">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-xl bg-violet-600 flex items-center justify-center shadow-sm">
@@ -523,50 +687,33 @@ export default function PLCSupportTickets() {
                 <h1 className="text-base font-bold text-gray-900 leading-tight">Support Tickets</h1>
                 <p className="text-[11px] text-gray-500">PLC team tracking board</p>
               </div>
-              {/* quick stats */}
-              <div className="hidden sm:flex items-center gap-2 ml-3">
-                <span className="text-xs font-semibold text-red-700 bg-red-100 px-2 py-0.5 rounded-full">
-                  {counts.open} Open
-                </span>
-                <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
-                  {counts.inProgress} In Progress
-                </span>
-                <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
-                  {counts.closed} Closed
-                </span>
+              <div className="hidden sm:flex items-center gap-2 ml-2">
+                <span className="text-xs font-semibold text-red-700 bg-red-100 px-2 py-0.5 rounded-full">{counts.open} Open</span>
+                <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">{counts.inProgress} In Progress</span>
+                <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">{counts.closed} Closed</span>
               </div>
             </div>
-
             <div className="flex items-center gap-2">
-              {/* search */}
               <div className="relative hidden md:block">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                <input
-                  value={search} onChange={e => setSearch(e.target.value)}
-                  placeholder="Search…"
-                  className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 w-44"
-                />
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…"
+                  className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 w-44" />
               </div>
               <button onClick={load} className="p-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-500">
                 <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
               </button>
-              <button
-                onClick={() => setShowCreate(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold rounded-lg"
-              >
+              <button onClick={() => setShowCreate(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold rounded-lg">
                 <Plus className="w-4 h-4" /> New Ticket
               </button>
             </div>
           </div>
         </div>
 
-        {/* ── Board ── */}
+        {/* Board */}
         <div className="flex flex-1 overflow-hidden">
-          {/* Kanban columns */}
-          <div className={cn(
-            "flex gap-3 p-3 overflow-hidden flex-1",
-            !showClosed ? "grid-cols-2" : "grid-cols-3"
-          )}>
+          <div className="flex gap-3 p-3 overflow-hidden flex-1">
+
             {/* Open */}
             <div className="flex flex-col flex-1 min-w-0 min-h-0">
               <Column status="Open" tickets={byStatus("Open")} selected={selected} onSelect={setSelected} />
@@ -577,18 +724,26 @@ export default function PLCSupportTickets() {
               <Column status="In Progress" tickets={byStatus("In Progress")} selected={selected} onSelect={setSelected} />
             </div>
 
-            {/* Closed — toggle */}
-            <div className={cn("flex flex-col min-w-0 min-h-0 transition-all", showClosed ? "flex-1" : "w-9")}>
+            {/* Closed — collapsible */}
+            <div className={cn("flex flex-col min-w-0 min-h-0 transition-all duration-200", showClosed ? "flex-1" : "w-9 shrink-0")}>
               {showClosed ? (
-                <Column status="Closed" tickets={byStatus("Closed")} selected={selected} onSelect={setSelected} />
+                <div className="flex flex-col h-full min-h-0">
+                  <div className="flex items-center justify-between mb-0">
+                    <div className="flex-1 min-h-0">
+                      <Column status="Closed" tickets={byStatus("Closed")} selected={selected} onSelect={setSelected} />
+                    </div>
+                  </div>
+                  <button onClick={() => setShowClosed(false)}
+                    className="mt-2 text-[10px] text-green-600 hover:text-green-800 underline text-center shrink-0">
+                    Collapse closed
+                  </button>
+                </div>
               ) : (
-                <button
-                  onClick={() => setShowClosed(true)}
-                  className="h-full w-9 flex flex-col items-center justify-center gap-3 bg-green-50 border border-green-200 rounded-2xl hover:bg-green-100 transition-colors"
-                  title={`Show ${counts.closed} closed tickets`}
-                >
+                <button onClick={() => setShowClosed(true)}
+                  className="h-full w-9 flex flex-col items-center justify-center gap-2 bg-green-50 border border-green-200 rounded-2xl hover:bg-green-100 transition-colors"
+                  title={`Show ${counts.closed} closed tickets`}>
                   <ChevronDown className="w-4 h-4 text-green-600 -rotate-90" />
-                  <span className="text-[10px] font-bold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">{counts.closed}</span>
+                  <span className="text-[10px] font-bold text-green-700">{counts.closed}</span>
                   <span className="text-[9px] font-bold text-green-600 uppercase tracking-widest [writing-mode:vertical-lr]">Closed</span>
                 </button>
               )}
@@ -613,6 +768,7 @@ export default function PLCSupportTickets() {
         {/* Create modal */}
         {showCreate && (
           <CreateModal
+            createdBy={createdBy}
             onClose={() => setShowCreate(false)}
             onCreated={() => load()}
           />
