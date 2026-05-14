@@ -2118,7 +2118,7 @@ router.patch("/plc/device-configs/:id", async (req, res) => {
       const changesJson = JSON.stringify(changes);
       await db.execute(sql`
         INSERT INTO plc_device_config_history (config_id, changed_by, changed_by_name, changed_by_photo, changes)
-        VALUES (${configId}, ${b._meta_changed_by ?? null}, ${b._meta_changed_by_name ?? null}, ${b._meta_changed_by_photo ?? null}, ${changesJson})
+        VALUES (${configId}, ${b._meta_changed_by ?? null}, ${b._meta_changed_by_name ?? null}, ${b._meta_changed_by_photo ?? null}, ${changesJson}::jsonb)
       `);
     }
 
