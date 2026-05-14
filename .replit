@@ -115,6 +115,10 @@ AI_INTEGRATIONS_OPENAI_BASE_URL = "https://api.openai.com/v1"
 PORT = "3000"
 GMAIL_USER = "noreply@wttint.com"
 GMAIL_APP_PASSWORD = "Aw@rd%25@FM"
+SITE_DB_HOST = "mssql.wttindia.com"
+SITE_DB_USER = "sa"
+SITE_DB_PORT = "1433"
+SITE_DB_PASSWORD = "Jm4#9Fv@8dL2tQz!0Wf7Rp5Z&6xHgK8Y1Kw@3TnT^yB"
 
 [nix]
 channel = "stable-25_05"

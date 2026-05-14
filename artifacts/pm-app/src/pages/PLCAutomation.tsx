@@ -530,6 +530,12 @@ function SiteCallModal({
 
   const prefill = fromTicket ?? null;
 
+  const nowLocal = () => {
+    const d = new Date();
+    d.setSeconds(0, 0);
+    return d.toISOString().slice(0, 16);
+  };
+
   const [projectNumber,  setProjectNumber]  = useState(initial?.project_number ?? prefill?.project_number ?? "");
   const [projectName,    setProjectName]    = useState(initial?.project_name   ?? prefill?.project_name   ?? "");
   const [projectSearch,  setProjectSearch]  = useState(
@@ -549,8 +555,9 @@ function SiteCallModal({
   const [rootCause,      setRootCause]      = useState(initial?.root_cause    ?? "");
   const [actionTaken,    setActionTaken]    = useState(initial?.action_taken  ?? "");
   const [remarks,        setRemarks]        = useState(initial?.remarks       ?? "");
-  const [callReceivedAt, setCallReceivedAt] = useState(initial?.call_received_at  ?? "");
-  const [workStartedAt,  setWorkStartedAt]  = useState(initial?.work_started_at   ?? "");
+  const autoNow = !isEdit && !!prefill ? nowLocal() : "";
+  const [callReceivedAt, setCallReceivedAt] = useState(initial?.call_received_at  ?? autoNow);
+  const [workStartedAt,  setWorkStartedAt]  = useState(initial?.work_started_at   ?? autoNow);
   const [workCompletedAt, setWorkCompletedAt] = useState(initial?.work_completed_at ?? "");
   const [spares, setSpares] = useState<Spare[]>(
     Array.isArray(initial?.spares_changed) && initial.spares_changed.length > 0
@@ -861,7 +868,7 @@ export default function PLCAutomation() {
   const [calls,          setCalls]          = useState<SiteCall[]>([]);
   const [loading,        setLoading]        = useState(true);
   const [search,         setSearch]         = useState("");
-  const [statusFilter,   setStatusFilter]   = useState("All");
+  const [statusFilter,   setStatusFilter]   = useState("Open");
   const [showForm,       setShowForm]       = useState(false);
   const [editCall,       setEditCall]       = useState<SiteCall | undefined>();
   const [fromTicket,     setFromTicket]     = useState<SupportTicket | undefined>();
@@ -877,9 +884,9 @@ export default function PLCAutomation() {
   const loadTickets = useCallback(async () => {
     setLoadingTickets(true);
     try {
-      const r = await fetch(`${BASE}/api/plc/support-tickets`);
+      const r = await fetch(`${BASE}/api/plc/support-tickets?status=Open`);
       const d = await r.json();
-      setPendingTickets(d.data ?? []);
+      setPendingTickets((d.data ?? []).filter((t: SupportTicket) => t.status !== "Closed"));
     } catch {}
     setLoadingTickets(false);
   }, []);
@@ -1107,25 +1114,7 @@ export default function PLCAutomation() {
                             </div>
                           </div>
                           <div className="shrink-0 flex items-center gap-1.5">
-                            {isUpdating ? (
-                              <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
-                            ) : isClosed ? (
-                              <button
-                                onClick={() => updateTicketStatus(ticket, "Open")}
-                                className="flex items-center gap-1 px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-semibold rounded-lg transition-colors"
-                                title="Reopen ticket"
-                              >
-                                <XCircle className="w-3 h-3" /> Reopen
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => updateTicketStatus(ticket, "Closed")}
-                                className="flex items-center gap-1 px-2.5 py-1.5 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 text-xs font-semibold rounded-lg transition-colors"
-                                title="Mark as closed"
-                              >
-                                <CheckCheck className="w-3 h-3" /> Close
-                              </button>
-                            )}
+                            {isUpdating && <Loader2 className="w-4 h-4 animate-spin text-amber-500" />}
                             <button
                               onClick={() => {
                                 setFromTicket(ticket);

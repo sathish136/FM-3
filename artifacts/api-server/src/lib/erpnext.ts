@@ -1668,6 +1668,43 @@ export async function fetchErpNextSiteTickets(departmentFilter = "It - WTT"): Pr
   return (json.data || []) as ErpSiteTicket[];
 }
 
+export interface ErpTicketComment {
+  name: string;
+  comment_by: string;
+  content: string;
+  creation: string;
+  comment_type?: string;
+}
+
+export async function fetchErpNextTicketComments(ticketName: string): Promise<ErpTicketComment[]> {
+  if (!ERPNEXT_URL) return [];
+  try {
+    const fields = JSON.stringify(["name", "comment_by", "content", "creation", "comment_type"]);
+    // Fetch all comment types — filter client-side to actual user comments
+    const filters = JSON.stringify([
+      ["Comment", "reference_doctype", "=", "Site Ticket"],
+      ["Comment", "reference_name",   "=", ticketName],
+    ]);
+    const params = new URLSearchParams({ fields, filters, limit_page_length: "200", order_by: "creation asc" });
+    const res = await fetch(`${ERPNEXT_URL}/api/resource/Comment?${params}`, {
+      headers: { Authorization: authHeader() },
+    });
+    if (!res.ok) {
+      console.warn(`[ERP comments] ${ticketName} → HTTP ${res.status}`);
+      return [];
+    }
+    const json = await res.json();
+    const all: ErpTicketComment[] = json.data || [];
+    // Keep only user-written comments (exclude system activity logs)
+    return all.filter(c => {
+      const ct = (c.comment_type || "").toLowerCase();
+      return ct === "comment" || ct === "" || !ct;
+    });
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchLatestEmployeeActivities(): Promise<Record<string, LatestActivity>> {
   if (!ERPNEXT_URL) return {};
   try {

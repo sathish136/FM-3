@@ -61,6 +61,7 @@ interface SupportTicket {
   call_status: string | null;
   call_attended_by?: Array<{ name: string }> | null;
   images?: TicketImage[] | null;
+  erp_comments?: Array<{ name: string; comment_by: string; content: string; creation: string }> | null;
 }
 
 const PRIORITY_CFG: Record<string, { color: string; bg: string; ring: string; border: string; icon: typeof Flame }> = {
@@ -389,6 +390,38 @@ function TicketDetailPage({ ticket, onBack, onSaved }: {
                   placeholder="Follow-up actions, observations, internal notes…"
                   className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1a3068]/30 focus:border-[#1a3068] resize-none" />
               </div>
+
+              {/* ERP Comments */}
+              {isErp && ticket.erp_comments && ticket.erp_comments.length > 0 && (
+                <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1">
+                    <StickyNote className="w-3 h-3" /> ERP Comments ({ticket.erp_comments.length})
+                  </p>
+                  <div className="space-y-3">
+                    {ticket.erp_comments.map((c, i) => (
+                      <div key={c.name || i} className="flex gap-3">
+                        <div className="w-7 h-7 rounded-full bg-[#1a3068] flex items-center justify-center shrink-0 mt-0.5">
+                          <span className="text-[10px] font-bold text-white">
+                            {(c.comment_by || "?").slice(0, 1).toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-bold text-[#1a3068]">{c.comment_by || "Unknown"}</span>
+                            <span className="text-[10px] text-gray-400">
+                              {c.creation ? new Date(c.creation).toLocaleString("en-IN", { day: "numeric", month: "short", year: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""}
+                            </span>
+                          </div>
+                          <div
+                            className="text-sm text-gray-700 bg-gray-50 rounded-xl px-3 py-2 border border-gray-100 whitespace-pre-wrap leading-relaxed"
+                            dangerouslySetInnerHTML={{ __html: c.content || "" }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Images (local tickets) */}
               {!isErp && (
@@ -720,7 +753,7 @@ function CreateModal({ createdBy, onClose, onCreated }: { createdBy: string; onC
 }
 
 // ── Table Row ─────────────────────────────────────────────────────────────────
-function TicketRow({ ticket, onClick, active }: { ticket: SupportTicket; onClick: () => void; active: boolean }) {
+function TicketRow({ ticket, onClick, onDelete, active }: { ticket: SupportTicket; onClick: () => void; onDelete: (e: React.MouseEvent) => void; active: boolean }) {
   const callAssigned = attendedNames(ticket.call_attended_by);
   const assignedDisplay = ticket.assigned_person_name || callAssigned || ticket.assigned_to || "";
   const hasImages = (ticket.images && ticket.images.length > 0) || ticket.attach_image_1 || ticket.attach_image_2;
@@ -792,6 +825,15 @@ function TicketRow({ ticket, onClick, active }: { ticket: SupportTicket; onClick
           </div>
         ) : <span className="text-gray-200 text-xs">—</span>}
       </td>
+      <td className="px-4 py-3 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
+        <button
+          onClick={onDelete}
+          className="p-1.5 rounded-lg text-gray-300 hover:text-red-600 hover:bg-red-50 transition-colors"
+          title="Delete ticket"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </td>
     </tr>
   );
 }
@@ -816,7 +858,7 @@ export default function PLCSupportTickets() {
   const [tickets, setTickets]           = useState<SupportTicket[]>([]);
   const [loading, setLoading]           = useState(true);
   const [search,  setSearch]            = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("All");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("Open");
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("All");
   const [sortBy, setSortBy]             = useState<SortOption>("created_at_desc");
   const [selected, setSelected]         = useState<SupportTicket | null>(null);
@@ -858,14 +900,17 @@ export default function PLCSupportTickets() {
     closed:     tickets.filter(t => t.status === "Closed").length,
   };
 
+  const ticketDate = (t: SupportTicket) =>
+    new Date(t.ticket_date || t.created_at).getTime();
+
   const filtered = [...tickets]
     .filter(t => statusFilter === "All" || t.status === statusFilter)
     .filter(t => priorityFilter === "All" || t.priority === priorityFilter)
     .sort((a, b) => {
-      if (sortBy === "created_at_asc")  return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      if (sortBy === "created_at_asc")  return ticketDate(a) - ticketDate(b);
       if (sortBy === "priority_desc")   return (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9);
       if (sortBy === "status_asc")      return (a.status ?? "").localeCompare(b.status ?? "");
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime(); // default desc
+      return ticketDate(b) - ticketDate(a); // newest first (default)
     });
 
   // ── when a ticket is selected, show full-page detail (no modal) ──
@@ -1012,12 +1057,20 @@ export default function PLCSupportTickets() {
                   <th className="px-4 py-2.5 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-center whitespace-nowrap">
                     <ImageIcon className="w-3 h-3 inline" />
                   </th>
+                  <th className="px-4 py-2.5 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-center whitespace-nowrap">Action</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-50">
                 {filtered.map(t => (
                   <TicketRow key={t.id} ticket={t} active={selected?.id === t.id}
-                    onClick={() => setSelected(t)} />
+                    onClick={() => setSelected(t)}
+                    onDelete={async (e) => {
+                      e.stopPropagation();
+                      if (!confirm(`Delete ticket ${t.erp_name || t.ticket_no}?`)) return;
+                      await fetch(`${BASE}/api/plc/support-tickets/${t.id}`, { method: "DELETE" });
+                      if (selected?.id === t.id) setSelected(null);
+                      load();
+                    }} />
                 ))}
               </tbody>
             </table>

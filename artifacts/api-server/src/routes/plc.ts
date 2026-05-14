@@ -6,7 +6,7 @@ import PDFDocument from "pdfkit";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { fetchErpNextSiteTickets } from "../lib/erpnext";
+import { fetchErpNextSiteTickets, fetchErpNextTicketComments } from "../lib/erpnext";
 
 const ERP_URL = (process.env.ERPNEXT_URL || "https://erp.wttint.com").replace(/\/$/, "");
 const ERP_AUTH = () => `token ${process.env.ERPNEXT_API_KEY || ""}:${process.env.ERPNEXT_API_SECRET || ""}`;
@@ -637,6 +637,101 @@ async function buildServiceReportPDF(report: any): Promise<Buffer> {
     await db.execute(sql`ALTER TABLE plc_support_tickets ADD COLUMN IF NOT EXISTS attach_image_2 TEXT`);
     await db.execute(sql`ALTER TABLE plc_support_tickets ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'local'`);
     await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS plc_support_tickets_erp_name_idx ON plc_support_tickets (erp_name) WHERE erp_name IS NOT NULL`);
+    await db.execute(sql`ALTER TABLE plc_support_tickets ADD COLUMN IF NOT EXISTS erp_comments JSONB DEFAULT '[]'`);
+
+    // ── PLC Device Configs ────────────────────────────────────────────────────
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS plc_device_configs (
+        id               SERIAL PRIMARY KEY,
+        project_number   TEXT,
+        project_name     TEXT,
+        site_location    TEXT,
+        contact_name     TEXT,
+        contact_phone    TEXT,
+        cpu_make         TEXT,
+        cpu_model        TEXT,
+        cpu_type         TEXT,
+        plc_ip           TEXT,
+        plc_make         TEXT,
+        plc_model        TEXT,
+        plc_type         TEXT,
+        plc_version      TEXT,
+        plc_serial_no    TEXT,
+        plc_rack         TEXT,
+        plc_slot         TEXT,
+        comm_protocol    TEXT,
+        io_count         TEXT,
+        expansion_modules TEXT,
+        programming_software TEXT,
+        software_version TEXT,
+        license_key      TEXT,
+        vpn_ip           TEXT,
+        vpn_username     TEXT,
+        vpn_password     TEXT,
+        anydesk_id       TEXT,
+        anydesk_password TEXT,
+        teamviewer_id    TEXT,
+        teamviewer_password TEXT,
+        rdp_ip           TEXT,
+        rdp_username     TEXT,
+        rdp_password     TEXT,
+        ssh_ip           TEXT,
+        ssh_username     TEXT,
+        ssh_password     TEXT,
+        modem_ip         TEXT,
+        modem_username   TEXT,
+        modem_password   TEXT,
+        modem_make       TEXT,
+        modem_model      TEXT,
+        modem_sim_no     TEXT,
+        carrier          TEXT,
+        wifi_ssid        TEXT,
+        wifi_password    TEXT,
+        wifi_ip          TEXT,
+        wifi_router_make TEXT,
+        wifi_security    TEXT,
+        ip_subnet        TEXT,
+        ip_gateway       TEXT,
+        scada_software   TEXT,
+        scada_version    TEXT,
+        hmi_make         TEXT,
+        hmi_model        TEXT,
+        hmi_ip           TEXT,
+        last_backup_date TEXT,
+        backup_schedule  TEXT,
+        config_notes     TEXT,
+        created_by       TEXT,
+        created_at       TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at       TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    // add new columns to existing installs
+    const newCols: [string, string][] = [
+      ["site_location","TEXT"],["contact_name","TEXT"],["contact_phone","TEXT"],
+      ["comm_protocol","TEXT"],["io_count","TEXT"],["expansion_modules","TEXT"],
+      ["programming_software","TEXT"],["software_version","TEXT"],["license_key","TEXT"],
+      ["rdp_ip","TEXT"],["rdp_username","TEXT"],["rdp_password","TEXT"],
+      ["ssh_ip","TEXT"],["ssh_username","TEXT"],["ssh_password","TEXT"],
+      ["carrier","TEXT"],["wifi_security","TEXT"],["ip_subnet","TEXT"],["ip_gateway","TEXT"],
+      ["last_backup_date","TEXT"],["backup_schedule","TEXT"],
+    ];
+    for (const [col, type] of newCols) {
+      await db.execute(sql.raw(`ALTER TABLE plc_device_configs ADD COLUMN IF NOT EXISTS ${col} ${type}`));
+    }
+
+    // ── PLC Device Config Files ───────────────────────────────────────────────
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS plc_config_files (
+        id            SERIAL PRIMARY KEY,
+        config_id     INTEGER NOT NULL,
+        file_category TEXT NOT NULL DEFAULT 'general',
+        filename      TEXT NOT NULL,
+        original_name TEXT NOT NULL,
+        size          INTEGER,
+        uploaded_by   TEXT,
+        uploaded_at   TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
 
     console.log("PLC site calls & service reports tables ready");
   } catch (e) {
@@ -935,6 +1030,29 @@ router.delete("/plc/support-tickets/:id", async (req, res) => {
   }
 });
 
+// GET /api/plc/support-tickets/debug-comments/:name — inspect raw ERP comments for a ticket
+router.get("/plc/support-tickets/debug-comments/:name", async (req, res) => {
+  try {
+    const ERP_URL_D = (process.env.ERPNEXT_URL || "https://erp.wttint.com").replace(/\/$/, "");
+    const ERP_KEY   = process.env.ERPNEXT_API_KEY  || "";
+    const ERP_SEC   = process.env.ERPNEXT_API_SECRET || "";
+    const ticketName = req.params.name;
+    const fields  = JSON.stringify(["name", "comment_by", "content", "creation", "comment_type"]);
+    const filters = JSON.stringify([
+      ["Comment", "reference_doctype", "=", "Site Ticket"],
+      ["Comment", "reference_name",   "=", ticketName],
+    ]);
+    const params = new URLSearchParams({ fields, filters, limit_page_length: "200", order_by: "creation asc" });
+    const r = await fetch(`${ERP_URL_D}/api/resource/Comment?${params}`, {
+      headers: { Authorization: `token ${ERP_KEY}:${ERP_SEC}` },
+    });
+    const raw = await r.json();
+    res.json({ status: r.status, ticket: ticketName, raw });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 // POST /api/plc/support-tickets/sync-erp  — pull IT-WTT site tickets from ERPNext
 router.post("/plc/support-tickets/sync-erp", async (req, res) => {
   try {
@@ -962,6 +1080,10 @@ router.post("/plc/support-tickets/sync-erp", async (req, res) => {
       `);
       const rows = (existing as any).rows ?? existing;
 
+      // Fetch comments for this ticket
+      const comments = await fetchErpNextTicketComments(t.name);
+      const commentsJson = JSON.stringify(comments);
+
       if (rows.length > 0) {
         await db.execute(sql`
           UPDATE plc_support_tickets SET
@@ -981,6 +1103,7 @@ router.post("/plc/support-tickets/sync-erp", async (req, res) => {
             supplier                 = ${t.supplier ?? null},
             attach_image_1           = ${t.attach_image_1 ?? null},
             attach_image_2           = ${t.attach_image_2 ?? null},
+            erp_comments             = ${commentsJson}::jsonb,
             updated_at               = NOW()
           WHERE erp_name = ${t.name}
         `);
@@ -994,7 +1117,7 @@ router.post("/plc/support-tickets/sync-erp", async (req, res) => {
              project_number, project_name, reference,
              assigned_person_name, assigned_person_dept,
              supplier, attach_image_1, attach_image_2,
-             images)
+             images, erp_comments)
           VALUES
             (${t.name}, ${t.name}, 'erp',
              ${t.ticket_subject ?? null},
@@ -1013,7 +1136,8 @@ router.post("/plc/support-tickets/sync-erp", async (req, res) => {
              ${t.supplier ?? null},
              ${t.attach_image_1 ?? null},
              ${t.attach_image_2 ?? null},
-             '[]'::jsonb)
+             '[]'::jsonb,
+             ${commentsJson}::jsonb)
         `);
         inserted++;
       }
@@ -1809,6 +1933,182 @@ async function ensurePanelInspTable() {
     )
   `);
 }
+// ─────────────────────────────────────────────────────────────────────────────
+// PLC Device Config CRUD
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/plc/device-configs
+router.get("/plc/device-configs", async (req, res) => {
+  try {
+    const { search } = req.query as { search?: string };
+    let rows;
+    if (search && search.trim()) {
+      const q = `%${search.trim()}%`;
+      const r = await db.execute(sql`
+        SELECT * FROM plc_device_configs
+        WHERE project_name ILIKE ${q} OR project_number ILIKE ${q} OR cpu_make ILIKE ${q} OR plc_make ILIKE ${q}
+        ORDER BY updated_at DESC
+      `);
+      rows = (r as any).rows ?? r;
+    } else {
+      const r = await db.execute(sql`SELECT * FROM plc_device_configs ORDER BY updated_at DESC`);
+      rows = (r as any).rows ?? r;
+    }
+    res.json({ data: rows });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// GET /api/plc/device-configs/:id
+router.get("/plc/device-configs/:id", async (req, res) => {
+  try {
+    const r = await db.execute(sql`SELECT * FROM plc_device_configs WHERE id = ${Number(req.params.id)}`);
+    const rows = (r as any).rows ?? r;
+    if (!rows[0]) return res.status(404).json({ error: "Not found" });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// POST /api/plc/device-configs
+router.post("/plc/device-configs", async (req, res) => {
+  try {
+    const b = req.body;
+    const n = (v: any) => v || null;
+    const r = await db.execute(sql`
+      INSERT INTO plc_device_configs (
+        project_number, project_name, site_location, contact_name, contact_phone,
+        cpu_make, cpu_model, cpu_type,
+        plc_ip, plc_make, plc_model, plc_type, plc_version, plc_serial_no, plc_rack, plc_slot,
+        comm_protocol, io_count, expansion_modules, programming_software, software_version, license_key,
+        vpn_ip, vpn_username, vpn_password, anydesk_id, anydesk_password,
+        teamviewer_id, teamviewer_password, rdp_ip, rdp_username, rdp_password,
+        ssh_ip, ssh_username, ssh_password,
+        modem_ip, modem_username, modem_password, modem_make, modem_model, modem_sim_no, carrier,
+        wifi_ssid, wifi_password, wifi_ip, wifi_router_make, wifi_security, ip_subnet, ip_gateway,
+        scada_software, scada_version, hmi_make, hmi_model, hmi_ip,
+        last_backup_date, backup_schedule, config_notes, created_by
+      ) VALUES (
+        ${n(b.project_number)}, ${n(b.project_name)}, ${n(b.site_location)}, ${n(b.contact_name)}, ${n(b.contact_phone)},
+        ${n(b.cpu_make)}, ${n(b.cpu_model)}, ${n(b.cpu_type)},
+        ${n(b.plc_ip)}, ${n(b.plc_make)}, ${n(b.plc_model)}, ${n(b.plc_type)}, ${n(b.plc_version)},
+        ${n(b.plc_serial_no)}, ${n(b.plc_rack)}, ${n(b.plc_slot)},
+        ${n(b.comm_protocol)}, ${n(b.io_count)}, ${n(b.expansion_modules)},
+        ${n(b.programming_software)}, ${n(b.software_version)}, ${n(b.license_key)},
+        ${n(b.vpn_ip)}, ${n(b.vpn_username)}, ${n(b.vpn_password)},
+        ${n(b.anydesk_id)}, ${n(b.anydesk_password)},
+        ${n(b.teamviewer_id)}, ${n(b.teamviewer_password)},
+        ${n(b.rdp_ip)}, ${n(b.rdp_username)}, ${n(b.rdp_password)},
+        ${n(b.ssh_ip)}, ${n(b.ssh_username)}, ${n(b.ssh_password)},
+        ${n(b.modem_ip)}, ${n(b.modem_username)}, ${n(b.modem_password)},
+        ${n(b.modem_make)}, ${n(b.modem_model)}, ${n(b.modem_sim_no)}, ${n(b.carrier)},
+        ${n(b.wifi_ssid)}, ${n(b.wifi_password)}, ${n(b.wifi_ip)}, ${n(b.wifi_router_make)},
+        ${n(b.wifi_security)}, ${n(b.ip_subnet)}, ${n(b.ip_gateway)},
+        ${n(b.scada_software)}, ${n(b.scada_version)}, ${n(b.hmi_make)}, ${n(b.hmi_model)}, ${n(b.hmi_ip)},
+        ${n(b.last_backup_date)}, ${n(b.backup_schedule)}, ${n(b.config_notes)}, ${n(b.created_by)}
+      ) RETURNING *
+    `);
+    const rows = (r as any).rows ?? r;
+    res.status(201).json(rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// PATCH /api/plc/device-configs/:id
+router.patch("/plc/device-configs/:id", async (req, res) => {
+  try {
+    const b = req.body;
+    const n = (v: any) => v || null;
+    const r = await db.execute(sql`
+      UPDATE plc_device_configs SET
+        project_number=${n(b.project_number)}, project_name=${n(b.project_name)},
+        site_location=${n(b.site_location)}, contact_name=${n(b.contact_name)}, contact_phone=${n(b.contact_phone)},
+        cpu_make=${n(b.cpu_make)}, cpu_model=${n(b.cpu_model)}, cpu_type=${n(b.cpu_type)},
+        plc_ip=${n(b.plc_ip)}, plc_make=${n(b.plc_make)}, plc_model=${n(b.plc_model)},
+        plc_type=${n(b.plc_type)}, plc_version=${n(b.plc_version)},
+        plc_serial_no=${n(b.plc_serial_no)}, plc_rack=${n(b.plc_rack)}, plc_slot=${n(b.plc_slot)},
+        comm_protocol=${n(b.comm_protocol)}, io_count=${n(b.io_count)}, expansion_modules=${n(b.expansion_modules)},
+        programming_software=${n(b.programming_software)}, software_version=${n(b.software_version)}, license_key=${n(b.license_key)},
+        vpn_ip=${n(b.vpn_ip)}, vpn_username=${n(b.vpn_username)}, vpn_password=${n(b.vpn_password)},
+        anydesk_id=${n(b.anydesk_id)}, anydesk_password=${n(b.anydesk_password)},
+        teamviewer_id=${n(b.teamviewer_id)}, teamviewer_password=${n(b.teamviewer_password)},
+        rdp_ip=${n(b.rdp_ip)}, rdp_username=${n(b.rdp_username)}, rdp_password=${n(b.rdp_password)},
+        ssh_ip=${n(b.ssh_ip)}, ssh_username=${n(b.ssh_username)}, ssh_password=${n(b.ssh_password)},
+        modem_ip=${n(b.modem_ip)}, modem_username=${n(b.modem_username)}, modem_password=${n(b.modem_password)},
+        modem_make=${n(b.modem_make)}, modem_model=${n(b.modem_model)}, modem_sim_no=${n(b.modem_sim_no)}, carrier=${n(b.carrier)},
+        wifi_ssid=${n(b.wifi_ssid)}, wifi_password=${n(b.wifi_password)},
+        wifi_ip=${n(b.wifi_ip)}, wifi_router_make=${n(b.wifi_router_make)},
+        wifi_security=${n(b.wifi_security)}, ip_subnet=${n(b.ip_subnet)}, ip_gateway=${n(b.ip_gateway)},
+        scada_software=${n(b.scada_software)}, scada_version=${n(b.scada_version)},
+        hmi_make=${n(b.hmi_make)}, hmi_model=${n(b.hmi_model)}, hmi_ip=${n(b.hmi_ip)},
+        last_backup_date=${n(b.last_backup_date)}, backup_schedule=${n(b.backup_schedule)},
+        config_notes=${n(b.config_notes)}, updated_at=NOW()
+      WHERE id=${Number(req.params.id)} RETURNING *
+    `);
+    const rows = (r as any).rows ?? r;
+    if (!rows[0]) return res.status(404).json({ error: "Not found" });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// DELETE /api/plc/device-configs/:id
+router.delete("/plc/device-configs/:id", async (req, res) => {
+  try {
+    await db.execute(sql`DELETE FROM plc_device_configs WHERE id = ${Number(req.params.id)}`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// ── Device Config File Uploads ──────────────────────────────────────────────
+const cfgFilesDir = path.join(process.cwd(), "uploads", "plc-config-files");
+fs.mkdirSync(cfgFilesDir, { recursive: true });
+const cfgFileStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, cfgFilesDir),
+  filename: (_req, file, cb) => {
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, `${unique}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_")}`);
+  },
+});
+const cfgUpload = multer({ storage: cfgFileStorage, limits: { fileSize: 100 * 1024 * 1024 } });
+
+router.get("/plc/device-configs/:id/files", async (req, res) => {
+  try {
+    const r = await db.execute(sql`SELECT * FROM plc_config_files WHERE config_id=${Number(req.params.id)} ORDER BY uploaded_at DESC`);
+    res.json({ data: (r as any).rows ?? r });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.post("/plc/device-configs/:id/files", cfgUpload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file" });
+    const { uploaded_by, file_category } = req.body;
+    const r = await db.execute(sql`
+      INSERT INTO plc_config_files (config_id, file_category, filename, original_name, size, uploaded_by)
+      VALUES (${Number(req.params.id)}, ${file_category||"general"}, ${req.file.filename}, ${req.file.originalname}, ${req.file.size}, ${uploaded_by||null})
+      RETURNING *
+    `);
+    res.json(((r as any).rows ?? r)[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.get("/plc/device-configs/:id/files/:fileId/download", async (req, res) => {
+  try {
+    const r = await db.execute(sql`SELECT * FROM plc_config_files WHERE id=${Number(req.params.fileId)} AND config_id=${Number(req.params.id)}`);
+    const rows = (r as any).rows ?? r;
+    if (!rows[0]) return res.status(404).json({ error: "Not found" });
+    const filePath = path.join(cfgFilesDir, rows[0].filename);
+    res.download(filePath, rows[0].original_name);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.delete("/plc/device-configs/:id/files/:fileId", async (req, res) => {
+  try {
+    const r = await db.execute(sql`DELETE FROM plc_config_files WHERE id=${Number(req.params.fileId)} AND config_id=${Number(req.params.id)} RETURNING filename`);
+    const rows = (r as any).rows ?? r;
+    if (rows[0]) {
+      try { fs.unlinkSync(path.join(cfgFilesDir, rows[0].filename)); } catch {}
+    }
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
 ensurePanelInspTable().catch(() => {});
 
 router.get("/plc/panel-inspections", async (req, res) => {

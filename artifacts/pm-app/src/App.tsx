@@ -94,6 +94,7 @@ import PLCInstruments from "@/pages/PLCInstruments";
 import PLCTags from "@/pages/PLCTags";
 import PLCPanelInspection from "@/pages/PLCPanelInspection";
 import PLCSupportTickets from "@/pages/PLCSupportTickets";
+import PLCDeviceConfig from "@/pages/PLCDeviceConfig";
 import { SlideshowProvider } from "@/contexts/SlideshowContext";
 import { RecordingProvider } from "@/contexts/RecordingContext";
 import { LiveMeetingProvider } from "@/contexts/LiveMeetingContext";
@@ -279,6 +280,7 @@ function ProtectedRoutes() {
       <Route path="/plc-automation/tags"            component={PLCTags}             />
       <Route path="/plc-automation/panel-inspection"   component={PLCPanelInspection}  />
       <Route path="/plc-automation/support-tickets"   component={PLCSupportTickets}   />
+      <Route path="/plc-automation/device-config"      component={PLCDeviceConfig}      />
       <Route component={NotFound} />
     </Switch>
   );
