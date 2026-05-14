@@ -7,6 +7,7 @@ import {
   Play, Square, Phone, ShieldOff, Loader2, Languages, Globe, Mic, Pause,
   ScanLine, Factory, Database, UserCheck,
   Code2, Monitor, Gauge, Tag, Ticket, Cpu, Network,
+  FlaskConical, TestTubes,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -303,6 +304,14 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     ],
   },
   {
+    label: "O&M",
+    items: [
+      { path: "/om/chemical-consumption", label: "Chemical Consumption", icon: FlaskConical, color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
+      { path: "/om/lab-reports",          label: "Lab Reports",          icon: TestTubes,    color: "text-blue-400",    bgColor: "bg-blue-500/15"    },
+      { path: "/om/site-performance",     label: "Site Performance",     icon: BarChart3,    color: "text-indigo-400",  bgColor: "bg-indigo-500/15"  },
+    ],
+  },
+  {
     label: "PLC & Automation",
     items: [
       { path: "/plc-automation/device-config",       label: "PLC Device Config",     icon: Cpu,            color: "text-sky-400",     bgColor: "bg-sky-500/15"     },
@@ -408,6 +417,9 @@ const PATH_TO_MODULE: Record<string, string> = {
   "/workshop/welder":               "workshop",
   "/workshop/fitter":               "workshop",
   "/proposal-library":               "proposal-library",
+  "/om/chemical-consumption":            "om-chemical-consumption",
+  "/om/lab-reports":                     "om-lab-reports",
+  "/om/site-performance":                "om-site-performance",
   "/plc-automation/site-calls":          "plc-site-calls",
   "/plc-automation/service-reports":     "plc-service-reports",
   "/plc-automation/panel-inspection":    "plc-panel-inspection",

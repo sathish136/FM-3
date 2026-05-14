@@ -42,6 +42,7 @@ import waterNewsRouter from "./water-news";
 import { mobileRouter } from "./mobile";
 import workshopRouter from "./workshop";
 import plcRouter from "./plc";
+import omRouter from "./om";
 
 const router: IRouter = Router();
 
@@ -88,5 +89,6 @@ router.use("/water-news", waterNewsRouter);
 router.use(mobileRouter);
 router.use(workshopRouter);
 router.use(plcRouter);
+router.use(omRouter);
 
 export default router;
