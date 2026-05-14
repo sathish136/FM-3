@@ -195,7 +195,6 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     items: [
       { path: "/purchase-dashboard",  label: "Purchase Dashboard",  icon: BarChart3,  color: "text-blue-400",    bgColor: "bg-blue-500/15" },
       { path: "/stores-dashboard",    label: "Stores Dashboard",    icon: Warehouse,  color: "text-teal-400",    bgColor: "bg-teal-500/15" },
-      { path: "/process-proposal",    label: "Process & Proposal",  icon: Layers,     color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
       { path: "/finance-dashboard",   label: "Finance Dashboard",   icon: Receipt,    color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
       { path: "/hrms/analytics",      label: "HR Analytics",        icon: BarChart3,  color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
       { path: "/hrms/task-summary",   label: "Task Summary",        icon: ListChecks, color: "text-lime-400",    bgColor: "bg-lime-500/15" },
@@ -256,7 +255,6 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { path: "/purchase-dashboard",   label: "Purchase Dashboard",   icon: BarChart3,    color: "text-blue-400",   bgColor: "bg-blue-500/15" },
       { path: "/stores-dashboard",     label: "Stores Dashboard",     icon: Warehouse,    color: "text-teal-400",   bgColor: "bg-teal-500/15" },
       { path: "/stock-reports",        label: "Stock Reports",        icon: Package,      color: "text-cyan-400",   bgColor: "bg-cyan-500/15" },
-      { path: "/process-proposal",      label: "Process & Proposal",       icon: Layers,    color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
       { path: "/finance-dashboard",     label: "Finance Dashboard",        icon: Receipt,   color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
     ],
   },
@@ -268,10 +266,17 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     ],
   },
   {
+    label: "Proposal",
+    items: [
+      { path: "/proposal-library",  label: "Proposal Library",    icon: FileText, color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
+      { path: "/proposals",         label: "Proposal Requests",   icon: ClipboardList, color: "text-violet-400", bgColor: "bg-violet-500/15" },
+      { path: "/process-proposal",  label: "Process & Proposal",  icon: Layers,   color: "text-sky-400",     bgColor: "bg-sky-500/15"    },
+    ],
+  },
+  {
     label: "Marketing & CRM",
     items: [
       { path: "/marketing",         label: "Marketing",        icon: Megaphone, color: "text-violet-400", bgColor: "bg-violet-500/15" },
-      { path: "/proposal-library",  label: "Proposal Library", icon: FileText,  color: "text-indigo-400", bgColor: "bg-indigo-500/15" },
       { path: "/sales-dashboard",   label: "Sales Dashboard",  icon: BarChart3, color: "text-emerald-400",bgColor: "bg-emerald-500/15" },
       { path: "/leads",            label: "Leads",           icon: Target,    color: "text-rose-400",   bgColor: "bg-rose-500/15" },
       { path: "/vc-card-scanner",  label: "VC Card Scanner", icon: ScanLine,  color: "text-amber-400",  bgColor: "bg-amber-500/15" },
@@ -417,6 +422,7 @@ const PATH_TO_MODULE: Record<string, string> = {
   "/workshop/welder":               "workshop",
   "/workshop/fitter":               "workshop",
   "/proposal-library":               "proposal-library",
+  "/proposals":                      "proposals",
   "/om/chemical-consumption":            "om-chemical-consumption",
   "/om/lab-reports":                     "om-lab-reports",
   "/om/site-performance":                "om-site-performance",
