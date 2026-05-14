@@ -311,11 +311,6 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { path: "/plc-automation/support-tickets",     label: "Support Tickets",       icon: Ticket,         color: "text-violet-400",  bgColor: "bg-violet-500/15"  },
       { path: "/plc-automation/device-config",       label: "PLC Device Config",     icon: Cpu,            color: "text-sky-400",     bgColor: "bg-sky-500/15"     },
       { path: "/plc-automation/network-architecture",label: "Network Architecture",  icon: Network,        color: "text-blue-400",    bgColor: "bg-blue-500/15"    },
-      { path: "/plc-automation/plc-programs",        label: "PLC Programs",          icon: Code2,          color: "text-indigo-400",  bgColor: "bg-indigo-500/15"  },
-      { path: "/plc-automation/hmi-programs",        label: "HMI Programs",          icon: Monitor,        color: "text-purple-400",  bgColor: "bg-purple-500/15"  },
-      { path: "/plc-automation/pid-design",          label: "PID Design",            icon: Gauge,          color: "text-rose-400",    bgColor: "bg-rose-500/15"    },
-      { path: "/plc-automation/instruments",         label: "Instruments",           icon: Activity,       color: "text-amber-400",   bgColor: "bg-amber-500/15"   },
-      { path: "/plc-automation/tags",                label: "PLC Tags",              icon: Tag,            color: "text-teal-400",    bgColor: "bg-teal-500/15"    },
     ],
   },
   {
