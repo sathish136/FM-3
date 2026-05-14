@@ -6,7 +6,7 @@ import {
   MonitorPlay, Table2, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp, ListChecks, ClipboardList, Truck, Package,
   Play, Square, Phone, ShieldOff, Loader2, Languages, Globe, Mic, Pause,
   ScanLine, Factory, Database, UserCheck,
-  Code2, Monitor, Gauge, Tag,
+  Code2, Monitor, Gauge, Tag, Ticket,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -312,7 +312,8 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { path: "/plc-automation/pid-design",      label: "PID Design",            icon: GitBranch,     color: "text-orange-400",  bgColor: "bg-orange-500/15"  },
       { path: "/plc-automation/instruments",      label: "Instrument Details",    icon: Gauge,          color: "text-teal-400",    bgColor: "bg-teal-500/15"    },
       { path: "/plc-automation/tags",            label: "PLC Tags",              icon: Tag,            color: "text-indigo-400",  bgColor: "bg-indigo-500/15"  },
-      { path: "/plc-automation/panel-inspection",label: "Panel Inspection",      icon: ClipboardList,  color: "text-orange-400",  bgColor: "bg-orange-500/15"  },
+      { path: "/plc-automation/panel-inspection",   label: "Panel Inspection",    icon: ClipboardList,  color: "text-orange-400",  bgColor: "bg-orange-500/15"  },
+      { path: "/plc-automation/support-tickets",    label: "Support Tickets",     icon: Ticket,         color: "text-violet-400",  bgColor: "bg-violet-500/15"  },
     ],
   },
   {
@@ -417,6 +418,7 @@ const PATH_TO_MODULE: Record<string, string> = {
   "/plc-automation/instruments":     "plc-automation-instruments",
   "/plc-automation/tags":             "plc-automation-tags",
   "/plc-automation/panel-inspection": "plc-automation-panel-inspection",
+  "/plc-automation/support-tickets":  "plc-automation-support-tickets",
   "/cctv":                  "cctv",
   "/mis-report":            "mis-report",
   "/payment-tracker":       "payment-tracker",

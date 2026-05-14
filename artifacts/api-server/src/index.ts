@@ -1,9 +1,4 @@
-import { config as loadEnv } from "dotenv";
-import { resolve, dirname } from "path";
-import { fileURLToPath } from "url";
-// Explicitly resolve .env relative to this file so it works regardless of CWD
-const __dirname = dirname(fileURLToPath(import.meta.url));
-loadEnv({ path: resolve(__dirname, "../../.env") });
+import "dotenv/config";
 import { createServer } from "http";
 import app from "./app";
 import { setupTranscribeWS } from "./transcribe-ws";
@@ -20,7 +15,13 @@ process.on("unhandledRejection", (reason) => {
   console.error("Unhandled rejection (server kept alive):", reason);
 });
 
-const rawPort = process.env["PORT"] || "8080";
+const rawPort = process.env["PORT"];
+
+if (!rawPort) {
+  throw new Error(
+    "PORT environment variable is required but was not provided.",
+  );
+}
 
 const port = Number(rawPort);
 

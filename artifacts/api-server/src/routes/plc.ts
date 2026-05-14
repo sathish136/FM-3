@@ -596,6 +596,25 @@ async function buildServiceReportPDF(report: any): Promise<Buffer> {
       )
     `);
 
+    // ── Support Tickets ───────────────────────────────────────────────────────
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS plc_support_tickets (
+        id              SERIAL PRIMARY KEY,
+        ticket_no       TEXT,
+        site_call_id    INTEGER,
+        project_number  TEXT,
+        project_name    TEXT,
+        title           TEXT,
+        priority        TEXT NOT NULL DEFAULT 'Medium',
+        status          TEXT NOT NULL DEFAULT 'Open',
+        assigned_to     TEXT,
+        notes           TEXT,
+        created_by      TEXT,
+        created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+
     console.log("PLC site calls & service reports tables ready");
   } catch (e) {
     console.error("PLC table init error:", e);
@@ -705,7 +724,25 @@ router.post("/plc/site-calls", async (req, res) => {
       RETURNING *
     `);
     const rows = (result as any).rows ?? result;
-    res.json(rows[0]);
+    const newCall = rows[0];
+
+    // Auto-create a linked support ticket
+    try {
+      const countRes = await db.execute(sql`SELECT COUNT(*) FROM plc_support_tickets`);
+      const count = Number(((countRes as any).rows ?? countRes)[0]?.count ?? 0) + 1;
+      const ticketNo = `TKT-${String(count).padStart(4, "0")}`;
+      await db.execute(sql`
+        INSERT INTO plc_support_tickets
+          (ticket_no, site_call_id, project_number, project_name, title, status, created_by)
+        VALUES
+          (${ticketNo}, ${newCall.id}, ${project_number ?? null}, ${project_name ?? null},
+           ${issue_details ?? null}, ${status ?? "Open"}, ${created_by ?? null})
+      `);
+    } catch (ticketErr) {
+      console.error("Support ticket auto-create failed:", ticketErr);
+    }
+
+    res.json(newCall);
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -748,6 +785,19 @@ router.patch("/plc/site-calls/:id", async (req, res) => {
         updated_at              = NOW()
       WHERE id = ${id}
     `);
+
+    // Sync status to linked support ticket
+    if (status) {
+      try {
+        await db.execute(sql`
+          UPDATE plc_support_tickets SET status = ${status}, updated_at = NOW()
+          WHERE site_call_id = ${id}
+        `);
+      } catch (ticketErr) {
+        console.error("Support ticket status sync failed:", ticketErr);
+      }
+    }
+
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: String(e) });
@@ -757,6 +807,77 @@ router.patch("/plc/site-calls/:id", async (req, res) => {
 router.delete("/plc/site-calls/:id", async (req, res) => {
   try {
     await db.execute(sql`DELETE FROM plc_site_calls WHERE id = ${Number(req.params.id)}`);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── Support Tickets ─────────────────────────────────────────────────────────
+
+router.get("/plc/support-tickets", async (req, res) => {
+  try {
+    const { search, status, priority } = req.query as { search?: string; status?: string; priority?: string };
+    const conditions: string[] = [];
+    if (search && search.trim()) {
+      conditions.push(`(t.project_name ILIKE '%${search.replace(/'/g, "''")}%'
+        OR t.ticket_no ILIKE '%${search.replace(/'/g, "''")}%'
+        OR t.title ILIKE '%${search.replace(/'/g, "''")}%')`);
+    }
+    if (status && status !== "All") conditions.push(`t.status = '${status.replace(/'/g, "''")}'`);
+    if (priority && priority !== "All") conditions.push(`t.priority = '${priority.replace(/'/g, "''")}'`);
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const result = await db.execute(sql`
+      SELECT t.*, s.call_no, s.call_type
+      FROM plc_support_tickets t
+      LEFT JOIN plc_site_calls s ON s.id = t.site_call_id
+      ${sql.raw(where)}
+      ORDER BY t.created_at DESC LIMIT 200
+    `);
+    res.json({ data: (result as any).rows ?? result });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get("/plc/support-tickets/:id", async (req, res) => {
+  try {
+    const result = await db.execute(sql`
+      SELECT t.*, s.call_no, s.call_type, s.issue_details AS call_issue_details,
+             s.status AS call_status, s.attended_by, s.work_started_at, s.work_completed_at
+      FROM plc_support_tickets t
+      LEFT JOIN plc_site_calls s ON s.id = t.site_call_id
+      WHERE t.id = ${Number(req.params.id)}
+    `);
+    const rows = (result as any).rows ?? result;
+    if (!rows[0]) return res.status(404).json({ error: "Not found" });
+    res.json(rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.patch("/plc/support-tickets/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { priority, assigned_to, notes } = req.body;
+    await db.execute(sql`
+      UPDATE plc_support_tickets SET
+        priority    = COALESCE(${priority ?? null}, priority),
+        assigned_to = COALESCE(${assigned_to ?? null}, assigned_to),
+        notes       = COALESCE(${notes ?? null}, notes),
+        updated_at  = NOW()
+      WHERE id = ${id}
+    `);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.delete("/plc/support-tickets/:id", async (req, res) => {
+  try {
+    await db.execute(sql`DELETE FROM plc_support_tickets WHERE id = ${Number(req.params.id)}`);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: String(e) });
