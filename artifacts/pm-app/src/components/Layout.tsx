@@ -305,11 +305,11 @@ const navGroups: { label: string; items: NavItem[] }[] = [
   {
     label: "PLC & Automation",
     items: [
+      { path: "/plc-automation/device-config",       label: "PLC Device Config",     icon: Cpu,            color: "text-sky-400",     bgColor: "bg-sky-500/15"     },
       { path: "/plc-automation/site-calls",          label: "Online Support Calls", icon: Phone,          color: "text-cyan-400",    bgColor: "bg-cyan-500/15"    },
       { path: "/plc-automation/service-reports",     label: "Service Reports",       icon: ClipboardList,  color: "text-blue-400",    bgColor: "bg-blue-500/15"    },
       { path: "/plc-automation/panel-inspection",    label: "Panel Inspection",      icon: ClipboardList,  color: "text-orange-400",  bgColor: "bg-orange-500/15"  },
       { path: "/plc-automation/support-tickets",     label: "Support Tickets",       icon: Ticket,         color: "text-violet-400",  bgColor: "bg-violet-500/15"  },
-      { path: "/plc-automation/device-config",       label: "PLC Device Config",     icon: Cpu,            color: "text-sky-400",     bgColor: "bg-sky-500/15"     },
       { path: "/plc-automation/network-architecture",label: "Network Architecture",  icon: Network,        color: "text-blue-400",    bgColor: "bg-blue-500/15"    },
     ],
   },
