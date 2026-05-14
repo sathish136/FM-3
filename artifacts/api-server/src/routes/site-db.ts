@@ -248,11 +248,14 @@ router.get("/site-db/data", async (req, res) => {
   const schema = safeIdent(String(req.query.schema || "dbo"));
   const table = safeIdent(String(req.query.table || ""));
   const page = Math.max(1, parseInt(String(req.query.page || "1"), 10));
-  const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit || "50"), 10)));
+  const limit = Math.min(5000, Math.max(1, parseInt(String(req.query.limit || "50"), 10)));
   const offset = (page - 1) * limit;
   const search = String(req.query.search || "").trim();
   const sortRaw = String(req.query.sort || "").trim();
   const dir = String(req.query.dir || "asc").toLowerCase() === "desc" ? "DESC" : "ASC";
+  const dateColRaw = String(req.query.dateCol || "").trim();
+  const dateFrom = String(req.query.dateFrom || "").trim();
+  const dateTo = String(req.query.dateTo || "").trim();
 
   if (!db || !req.query.table) return res.status(400).json({ error: "db, table required" });
 
@@ -271,7 +274,9 @@ router.get("/site-db/data", async (req, res) => {
       `);
     const allCols: { COLUMN_NAME: string; DATA_TYPE: string }[] = colInfo.recordset || [];
 
-    let whereClause = "";
+    const conditions: string[] = [];
+
+    // Text search filter
     if (search) {
       const textCols = allCols.filter(c =>
         ["nvarchar", "varchar", "text", "ntext", "char", "nchar"].includes(
@@ -280,9 +285,18 @@ router.get("/site-db/data", async (req, res) => {
       );
       if (textCols.length) {
         const ors = textCols.map(c => `${safeIdent(c.COLUMN_NAME)} LIKE @search`).join(" OR ");
-        whereClause = `WHERE (${ors})`;
+        conditions.push(`(${ors})`);
       }
     }
+
+    // Date range filter
+    const safeDateCol = dateColRaw && /^[A-Za-z0-9_]+$/.test(dateColRaw) ? safeIdent(dateColRaw) : null;
+    if (safeDateCol) {
+      if (dateFrom) conditions.push(`${safeDateCol} >= @dateFrom`);
+      if (dateTo)   conditions.push(`${safeDateCol} < DATEADD(day, 1, CAST(@dateTo AS date))`);
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
     let orderBy = "";
     if (sortRaw && /^[A-Za-z0-9_]+$/.test(sortRaw)) {
@@ -295,6 +309,8 @@ router.get("/site-db/data", async (req, res) => {
 
     const dataReq = pool.request();
     if (search) dataReq.input("search", sql.NVarChar, `%${search}%`);
+    if (safeDateCol && dateFrom) dataReq.input("dateFrom", sql.NVarChar, dateFrom);
+    if (safeDateCol && dateTo)   dataReq.input("dateTo",   sql.NVarChar, dateTo);
     dataReq.input("offset", sql.Int, offset);
     dataReq.input("limit", sql.Int, limit);
 
@@ -307,6 +323,8 @@ router.get("/site-db/data", async (req, res) => {
 
     const countReq = pool.request();
     if (search) countReq.input("search", sql.NVarChar, `%${search}%`);
+    if (safeDateCol && dateFrom) countReq.input("dateFrom", sql.NVarChar, dateFrom);
+    if (safeDateCol && dateTo)   countReq.input("dateTo",   sql.NVarChar, dateTo);
     const countR = await countReq.query(`
       SELECT COUNT(*) AS total FROM ${schema}.${table} ${whereClause}
     `);
