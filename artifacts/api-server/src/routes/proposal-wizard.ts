@@ -103,68 +103,73 @@ function isValidTtf(filePath: string): boolean {
   } catch { return false; }
 }
 
-/** Try to find a font file in the Nix store by glob pattern (no recursion, fast). */
-function findInNixStore(glob: string): string | null {
+/**
+ * Find the truetype directory for a Nix store font package.
+ *
+ * Does ONE fast `ls /nix/store/ | grep <pkgHint>` (top-level listing only,
+ * no deep recursion) then checks the known font sub-paths in each match.
+ * Returns the first directory that actually contains .ttf files.
+ *
+ * This replaces the old per-file glob approach (`ls /nix/store/*pkg*\/file`)
+ * which had to expand the entire /nix/store listing for every font file —
+ * timing out and leaving most fonts uninstalled.
+ */
+function findNixFontDir(pkgHint: string): string | null {
   try {
-    const result = execSync(`ls /nix/store/${glob} 2>/dev/null | head -1`, { stdio: "pipe", timeout: 5_000 });
-    const line = result.toString().trim();
-    return line || null;
+    const pkgList = execSync(
+      `ls /nix/store/ 2>/dev/null | grep -m 15 "${pkgHint}"`,
+      { stdio: "pipe", timeout: 12_000 },
+    ).toString().trim();
+    if (!pkgList) return null;
+
+    for (const pkgDir of pkgList.split("\n").filter(Boolean)) {
+      for (const sub of ["share/fonts/truetype", "share/fonts", "share/fonts/opentype"]) {
+        const dir = `/nix/store/${pkgDir}/${sub}`;
+        try {
+          const files = readdirSync(dir);
+          if (files.some(f => f.toLowerCase().endsWith(".ttf"))) return dir;
+        } catch { /* not found, try next */ }
+      }
+    }
+    return null;
   } catch { return null; }
 }
 
-(function installAssetsOnce() {
+// Defer font installation so it never blocks server startup / port binding.
+setImmediate(function installAssetsOnce() {
   try {
     const fontsDir = join(homedir(), ".fonts");
     mkdirSync(fontsDir, { recursive: true });
 
-    // Metric-compatible replacements for the most common Microsoft fonts.
-    // In the Replit/NixOS environment, font downloads via curl produce HTML
-    // error pages (network restriction). We source fonts from Nix store
-    // packages installed at project setup, with curl as a fallback.
-    const FONT_SPECS: { name: string; nixGlob: string; url: string }[] = [
-      // Liberation (metric-compatible with Times New Roman, Arial, Courier New)
-      { name: "LiberationSans-Regular.ttf",     nixGlob: "*liberation-fonts-*/share/fonts/truetype/LiberationSans-Regular.ttf",     url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSans-Regular.ttf" },
-      { name: "LiberationSans-Bold.ttf",         nixGlob: "*liberation-fonts-*/share/fonts/truetype/LiberationSans-Bold.ttf",         url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSans-Bold.ttf" },
-      { name: "LiberationSans-Italic.ttf",       nixGlob: "*liberation-fonts-*/share/fonts/truetype/LiberationSans-Italic.ttf",       url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSans-Italic.ttf" },
-      { name: "LiberationSans-BoldItalic.ttf",   nixGlob: "*liberation-fonts-*/share/fonts/truetype/LiberationSans-BoldItalic.ttf",   url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSans-BoldItalic.ttf" },
-      { name: "LiberationSerif-Regular.ttf",     nixGlob: "*liberation-fonts-*/share/fonts/truetype/LiberationSerif-Regular.ttf",     url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSerif-Regular.ttf" },
-      { name: "LiberationSerif-Bold.ttf",        nixGlob: "*liberation-fonts-*/share/fonts/truetype/LiberationSerif-Bold.ttf",        url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSerif-Bold.ttf" },
-      { name: "LiberationSerif-Italic.ttf",      nixGlob: "*liberation-fonts-*/share/fonts/truetype/LiberationSerif-Italic.ttf",      url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSerif-Italic.ttf" },
-      { name: "LiberationSerif-BoldItalic.ttf",  nixGlob: "*liberation-fonts-*/share/fonts/truetype/LiberationSerif-BoldItalic.ttf",  url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSerif-BoldItalic.ttf" },
-      { name: "LiberationMono-Regular.ttf",      nixGlob: "*liberation-fonts-*/share/fonts/truetype/LiberationMono-Regular.ttf",      url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationMono-Regular.ttf" },
-      { name: "LiberationMono-Bold.ttf",         nixGlob: "*liberation-fonts-*/share/fonts/truetype/LiberationMono-Bold.ttf",         url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationMono-Bold.ttf" },
-      // Carlito (metric-compatible with Calibri — default Office font)
-      { name: "Carlito-Regular.ttf",    nixGlob: "*carlito-*/share/fonts/truetype/Carlito-Regular.ttf",    url: "https://fonts.gstatic.com/s/carlito/v3/3Jn9SDPw3m-pk039BDct5jY.ttf" },
-      { name: "Carlito-Bold.ttf",       nixGlob: "*carlito-*/share/fonts/truetype/Carlito-Bold.ttf",       url: "https://fonts.gstatic.com/s/carlito/v3/3Jn4SDPw3m-pk039DDMl4jYe.ttf" },
-      { name: "Carlito-Italic.ttf",     nixGlob: "*carlito-*/share/fonts/truetype/Carlito-Italic.ttf",     url: "https://fonts.gstatic.com/s/carlito/v3/3Jn7SDPw3m-pk039BDct_gYe.ttf" },
-      { name: "Carlito-BoldItalic.ttf", nixGlob: "*carlito-*/share/fonts/truetype/Carlito-BoldItalic.ttf", url: "https://fonts.gstatic.com/s/carlito/v3/3Jn2SDPw3m-pk039DDMl2Q5e.ttf" },
-      // Caladea (metric-compatible with Cambria)
-      { name: "Caladea-Regular.ttf",    nixGlob: "*caladea-*/share/fonts/truetype/Caladea-Regular.ttf",    url: "https://fonts.gstatic.com/s/caladea/v7/i7dSIFl3byGNHa3hNJ6-WkJn.ttf" },
-      { name: "Caladea-Bold.ttf",       nixGlob: "*caladea-*/share/fonts/truetype/Caladea-Bold.ttf",       url: "https://fonts.gstatic.com/s/caladea/v7/i7dNIFl3byGNHa3hMJ6pWoHi.ttf" },
-      { name: "Caladea-Italic.ttf",     nixGlob: "*caladea-*/share/fonts/truetype/Caladea-Italic.ttf",     url: "https://fonts.gstatic.com/s/caladea/v7/i7dVIFl3byGNHa3hBJ6-WkJe.ttf" },
-      { name: "Caladea-BoldItalic.ttf", nixGlob: "*caladea-*/share/fonts/truetype/Caladea-BoldItalic.ttf", url: "https://fonts.gstatic.com/s/caladea/v7/i7dQIFl3byGNHa3hMJ6pWkJe.ttf" },
+    // Font packages to install.  For each package we do ONE nix-store lookup,
+    // then batch-copy every TTF whose name starts with `prefix`.
+    // Carlito is metrically identical to Calibri; Caladea to Cambria.
+    const FONT_PACKAGES: { pkgHint: string; prefix: string }[] = [
+      { pkgHint: "liberation-fonts", prefix: "Liberation" },
+      { pkgHint: "carlito",          prefix: "Carlito" },
+      { pkgHint: "caladea",          prefix: "Caladea" },
     ];
 
     let installed = 0;
-    for (const { name, nixGlob, url } of FONT_SPECS) {
-      const dest = join(fontsDir, name);
-      if (isValidTtf(dest)) continue; // Already have a valid copy
 
-      // Strategy 1: copy from Nix store (fast, offline, reliable in Replit)
-      const nixPath = findInNixStore(nixGlob);
-      if (nixPath && isValidTtf(nixPath)) {
-        try { copyFileSync(nixPath, dest); installed++; continue; } catch {}
+    for (const { pkgHint, prefix } of FONT_PACKAGES) {
+      const nixDir = findNixFontDir(pkgHint);
+      if (!nixDir) {
+        console.warn(`[proposal-wizard] Nix font dir not found for: ${pkgHint}`);
+        continue;
       }
 
-      // Strategy 2: download via curl (requires network access)
-      try {
-        execSync(`curl -sL --max-time 20 -o "${dest}" "${url}"`, { timeout: 25_000, stdio: "pipe" });
-        if (isValidTtf(dest)) { installed++; continue; }
-        // If curl returned an HTML error page, delete the bad file
-        try { unlinkSync(dest); } catch {}
-      } catch {}
+      let pkgFiles: string[];
+      try { pkgFiles = readdirSync(nixDir); } catch { continue; }
 
-      console.warn(`[proposal-wizard] Could not obtain font: ${name}`);
+      for (const filename of pkgFiles) {
+        if (!filename.startsWith(prefix) || !filename.toLowerCase().endsWith(".ttf")) continue;
+        const dest = join(fontsDir, filename);
+        if (isValidTtf(dest)) continue; // Already cached
+        const src = join(nixDir, filename);
+        if (!isValidTtf(src)) continue;
+        try { copyFileSync(src, dest); installed++; } catch {}
+      }
     }
 
     if (installed > 0) {
@@ -174,14 +179,14 @@ function findInNixStore(glob: string): string | null {
     // Rebuild fontconfig cache so LibreOffice (which uses fontconfig) finds our fonts
     try { execSync(`fc-cache -f "${fontsDir}"`, { stdio: "pipe", timeout: 15_000 }); } catch {}
 
-    // Rebuild the LO base profile (font directory only — substitution is done via XML patching)
+    // Rebuild the LO base profile with the updated fonts dir
     buildLoBaseProfile(fontsDir);
     console.log("[proposal-wizard] LibreOffice base profile ready.");
 
   } catch (e) {
     console.warn("[proposal-wizard] Asset install error:", e);
   }
-})();
+});
 
 // ── Logo base64 ─────────────────────────────────────────────────────────────
 let LOGO_B64 = "";
