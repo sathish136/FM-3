@@ -335,7 +335,7 @@ function buildFilename(original: string, customerName: string, wttNumber: string
  */
 function convertToPdf(content: Buffer, originalFilename: string): { buf: Buffer; filename: string } {
   const ext = extname(originalFilename).toLowerCase();
-  if (ext !== ".docx" && ext !== ".doc" && ext !== ".xlsx") {
+  if (ext !== ".docx" && ext !== ".doc") {
     return { buf: content, filename: originalFilename };
   }
   const uid = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
