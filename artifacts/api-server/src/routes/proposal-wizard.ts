@@ -978,6 +978,37 @@ function docToDocx(
         changed = true;
       }
 
+      // ── Font size -1pt ────────────────────────────────────────────────────
+      // LibreOffice's .doc→.docx conversion adds ~1pt to all font sizes.
+      // Compensate by subtracting 2 half-points (= 1pt) from every w:sz / w:szCs value.
+      if (content.includes("w:sz")) {
+        const before = content;
+        content = content.replace(/(<w:szCs?\s+w:val=")(\d+)(")/g, (_, pre, val, suf) => {
+          const n = parseInt(val, 10);
+          return `${pre}${Math.max(n - 2, 8)}${suf}`; // floor at 4pt (half=8)
+        });
+        if (content !== before) changed = true;
+      }
+
+      // ── Header logo centering ─────────────────────────────────────────────
+      // LO's .doc→.docx conversion loses centre alignment on image paragraphs.
+      if (/word\/header\d*\.xml$/i.test(name) && content.includes("<w:drawing>")) {
+        const fixed = content.replace(
+          /(<w:p[ >][^]*?<\/w:p>)/g,
+          (para) => {
+            if (!para.includes("<w:drawing>")) return para;
+            if (/<w:jc\s/.test(para)) {
+              return para.replace(/<w:jc\s[^/]*\/>/g, '<w:jc w:val="center"/>');
+            }
+            if (para.includes("<w:pPr>")) {
+              return para.replace("<w:pPr>", '<w:pPr><w:jc w:val="center"/>');
+            }
+            return para.replace(/(<w:p(?:\s[^>]*)?>)/, '$1<w:pPr><w:jc w:val="center"/></w:pPr>');
+          },
+        );
+        if (fixed !== content) { content = fixed; changed = true; }
+      }
+
       if (changed) zip.file(name, content);
     });
 
