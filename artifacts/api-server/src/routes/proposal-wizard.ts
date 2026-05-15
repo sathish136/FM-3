@@ -162,6 +162,7 @@ function processXlsx(
   filePath: string,
   customerName: string,
   wttNumber: string,
+  city = "",
 ): Buffer {
   const raw = readFileSync(filePath);
   const zip = new PizZip(raw);
@@ -187,14 +188,20 @@ function processXlsx(
         content = content.replace(/01\.Jan\.2026/g, dateL);
         changed = true;
       }
-      // Strip highlight and background-shading formatting from DOCX runs
-      if (name.endsWith(".xml") && (content.includes("w:highlight") || content.includes("w:shd"))) {
-        content = content
-          .replace(/<w:highlight\b[^>]*\/?>/gi, "")
-          .replace(/<\/w:highlight>/gi, "")
-          .replace(/<w:shd\b[^>]*\/?>/gi, "")
-          .replace(/<\/w:shd>/gi, "");
+      // Replace CITY placeholder
+      if (city && content.includes("CITY")) {
+        content = content.replace(/\bCITY\b/g, city.toUpperCase().trim());
         changed = true;
+      }
+      // Strip ALL highlight and background-shading formatting from DOCX runs
+      if (name.endsWith(".xml")) {
+        const before = content;
+        content = content
+          .replace(/<w:highlight[^>]*>/gi, "")
+          .replace(/<\/w:highlight>/gi, "")
+          .replace(/<w:shd[^>]*>/gi, "")
+          .replace(/<\/w:shd>/gi, "");
+        if (content !== before) changed = true;
       }
       if (changed) zip.file(name, content);
     } catch {
@@ -253,10 +260,11 @@ function buildModifiedFile(
   filePath: string,
   customerName: string,
   wttNumber: string,
+  city = "",
 ): Buffer {
   const lower = filePath.toLowerCase();
   if (lower.endsWith(".xlsx") || lower.endsWith(".docx")) {
-    return processXlsx(filePath, customerName, wttNumber);
+    return processXlsx(filePath, customerName, wttNumber, city);
   }
   if (lower.endsWith(".doc")) {
     return processDoc(filePath, customerName, wttNumber);
@@ -421,7 +429,7 @@ router.post("/proposal-wizard/send-email", async (req, res) => { try {
 
   const attachments = files.map((f) => {
     const filePath = join(dir, f);
-    const content = buildModifiedFile(filePath, customer, wttNumber);
+    const content = buildModifiedFile(filePath, customer, wttNumber, city || "");
     return {
       filename: buildFilename(f, customer, wttNumber),
       content,
@@ -510,7 +518,7 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
 
     const attachments = files.map((f) => {
       const filePath = join(dir, f);
-      const content = buildModifiedFile(filePath, customer, wttNumber);
+      const content = buildModifiedFile(filePath, customer, wttNumber, city || "");
       return {
         filename: buildFilename(f, customer, wttNumber),
         content,

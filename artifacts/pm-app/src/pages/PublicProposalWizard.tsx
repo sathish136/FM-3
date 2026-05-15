@@ -44,12 +44,14 @@ export default function PublicProposalWizard() {
       .catch(() => {});
   }, []);
 
+  const phoneValid = /^\+?[\d\s\-().]{7,15}$/.test(form.phone.trim());
+
   const canSubmit =
     form.customerName.trim() &&
     form.flowRate &&
     form.contactPerson.trim() &&
     form.email.trim().includes("@") &&
-    form.phone.trim() &&
+    phoneValid &&
     form.city.trim();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -220,9 +222,14 @@ export default function PublicProposalWizard() {
                 onChange={(e) => update({ phone: e.target.value })}
                 placeholder="+880 17..."
                 required
-                className="w-full pl-10 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={`w-full pl-10 py-2.5 text-sm border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                  form.phone && !phoneValid ? "border-red-400 bg-red-50" : "border-gray-200"
+                }`}
               />
             </div>
+            {form.phone && !phoneValid && (
+              <p className="text-xs text-red-500 mt-1">Enter a valid phone number (7–15 digits)</p>
+            )}
           </div>
         </div>
 
