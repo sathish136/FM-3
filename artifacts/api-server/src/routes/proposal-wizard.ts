@@ -40,6 +40,7 @@ function buildLoBaseProfile(fontsDir?: string): void {
   }
 
   // Font substitution pairs: [Microsoft font, metric-compatible replacement]
+  // Carlito is metrically identical to Calibri; Caladea to Cambria.
   const substitutions: [string, string][] = [
     ["Times New Roman",  "Liberation Serif"],
     ["Arial",            "Liberation Sans"],
@@ -62,21 +63,53 @@ function buildLoBaseProfile(fontsDir?: string): void {
     ["Century Gothic",   "Liberation Sans"],
   ];
 
-  const itemsXml = substitutions
+  // ── CORRECT LibreOffice XCU format for font substitution ────────────────
+  // Font substitution is a "set" node in OOR — each entry must be a <node>
+  // (not a <prop>) under /org.openoffice.VCL/Settings/FontSubstitutions.
+  // Using <prop> directly inside a set causes "bad set node" warnings and
+  // the entire substitution table is silently ignored, making LO fall back
+  // to DejaVu fonts which have very different metrics (36 pages → 39 pages).
+  const subsNodes = substitutions
     .map(([from, to]) =>
-      `<item oor:path="/org.openoffice.VCL/FontSubstitutions">\n` +
-      `  <prop oor:name="${from}" oor:op="fuse"><value>${to}</value></prop>\n` +
-      `</item>`,
+      `      <node oor:name="${from}" oor:op="fuse">\n` +
+      `        <prop oor:name="ReplaceFont"><value>${to}</value></prop>\n` +
+      `        <prop oor:name="Always"><value>true</value></prop>\n` +
+      `      </node>`,
     )
     .join("\n");
 
-  const xcu = `<?xml version="1.0" encoding="UTF-8"?>\n` +
+  const xcu =
+    `<?xml version="1.0" encoding="UTF-8"?>\n` +
     `<oor:items xmlns:oor="http://openoffice.org/2001/registry"\n` +
     `           xmlns:xs="http://www.w3.org/2001/XMLSchema"\n` +
     `           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">\n` +
-    itemsXml + `\n</oor:items>\n`;
+    `  <item oor:path="/org.openoffice.VCL/Settings">\n` +
+    `    <node oor:name="FontSubstitutions" oor:op="fuse">\n` +
+    subsNodes + `\n` +
+    `    </node>\n` +
+    `  </item>\n` +
+    `</oor:items>\n`;
 
   writeFileSync(join(userDir, "registrymodifications.xcu"), xcu, "utf8");
+}
+
+/** Check if a file is a valid TrueType font (magic bytes 0x00 0x01 0x00 0x00 or "OTTO") */
+function isValidTtf(filePath: string): boolean {
+  try {
+    const buf = readFileSync(filePath);
+    if (buf.length < 50_000) return false; // Real TTFs are at least 50 KB
+    const magic = buf.readUInt32BE(0);
+    return magic === 0x00010000 || magic === 0x4F54544F; // TrueType or OpenType
+  } catch { return false; }
+}
+
+/** Try to find a font file in the Nix store by glob pattern (no recursion, fast). */
+function findInNixStore(glob: string): string | null {
+  try {
+    const result = execSync(`ls /nix/store/${glob} 2>/dev/null | head -1`, { stdio: "pipe", timeout: 5_000 });
+    const line = result.toString().trim();
+    return line || null;
+  } catch { return null; }
 }
 
 (function installAssetsOnce() {
@@ -85,49 +118,63 @@ function buildLoBaseProfile(fontsDir?: string): void {
     mkdirSync(fontsDir, { recursive: true });
 
     // Metric-compatible replacements for the most common Microsoft fonts.
-    // These use exact character-width metrics so text reflow is minimised
-    // and page counts match what Word produces.
-    const FONT_DOWNLOADS: { name: string; url: string }[] = [
+    // In the Replit/NixOS environment, font downloads via curl produce HTML
+    // error pages (network restriction). We source fonts from Nix store
+    // packages installed at project setup, with curl as a fallback.
+    const FONT_SPECS: { name: string; nixGlob: string; url: string }[] = [
       // Liberation (metric-compatible with Times New Roman, Arial, Courier New)
-      { name: "LiberationSans-Regular.ttf",      url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSans-Regular.ttf" },
-      { name: "LiberationSans-Bold.ttf",          url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSans-Bold.ttf" },
-      { name: "LiberationSans-Italic.ttf",        url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSans-Italic.ttf" },
-      { name: "LiberationSans-BoldItalic.ttf",    url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSans-BoldItalic.ttf" },
-      { name: "LiberationSerif-Regular.ttf",      url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSerif-Regular.ttf" },
-      { name: "LiberationSerif-Bold.ttf",         url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSerif-Bold.ttf" },
-      { name: "LiberationSerif-Italic.ttf",       url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSerif-Italic.ttf" },
-      { name: "LiberationSerif-BoldItalic.ttf",   url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSerif-BoldItalic.ttf" },
-      { name: "LiberationMono-Regular.ttf",       url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationMono-Regular.ttf" },
-      { name: "LiberationMono-Bold.ttf",          url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationMono-Bold.ttf" },
+      { name: "LiberationSans-Regular.ttf",     nixGlob: "*liberation-fonts-*/share/fonts/truetype/LiberationSans-Regular.ttf",     url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSans-Regular.ttf" },
+      { name: "LiberationSans-Bold.ttf",         nixGlob: "*liberation-fonts-*/share/fonts/truetype/LiberationSans-Bold.ttf",         url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSans-Bold.ttf" },
+      { name: "LiberationSans-Italic.ttf",       nixGlob: "*liberation-fonts-*/share/fonts/truetype/LiberationSans-Italic.ttf",       url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSans-Italic.ttf" },
+      { name: "LiberationSans-BoldItalic.ttf",   nixGlob: "*liberation-fonts-*/share/fonts/truetype/LiberationSans-BoldItalic.ttf",   url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSans-BoldItalic.ttf" },
+      { name: "LiberationSerif-Regular.ttf",     nixGlob: "*liberation-fonts-*/share/fonts/truetype/LiberationSerif-Regular.ttf",     url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSerif-Regular.ttf" },
+      { name: "LiberationSerif-Bold.ttf",        nixGlob: "*liberation-fonts-*/share/fonts/truetype/LiberationSerif-Bold.ttf",        url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSerif-Bold.ttf" },
+      { name: "LiberationSerif-Italic.ttf",      nixGlob: "*liberation-fonts-*/share/fonts/truetype/LiberationSerif-Italic.ttf",      url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSerif-Italic.ttf" },
+      { name: "LiberationSerif-BoldItalic.ttf",  nixGlob: "*liberation-fonts-*/share/fonts/truetype/LiberationSerif-BoldItalic.ttf",  url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSerif-BoldItalic.ttf" },
+      { name: "LiberationMono-Regular.ttf",      nixGlob: "*liberation-fonts-*/share/fonts/truetype/LiberationMono-Regular.ttf",      url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationMono-Regular.ttf" },
+      { name: "LiberationMono-Bold.ttf",         nixGlob: "*liberation-fonts-*/share/fonts/truetype/LiberationMono-Bold.ttf",         url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationMono-Bold.ttf" },
       // Carlito (metric-compatible with Calibri — default Office font)
-      { name: "Carlito-Regular.ttf",              url: "https://fonts.gstatic.com/s/carlito/v3/3Jn9SDPw3m-pk039BDct5jY.ttf" },
-      { name: "Carlito-Bold.ttf",                 url: "https://fonts.gstatic.com/s/carlito/v3/3Jn4SDPw3m-pk039DDMl4jYe.ttf" },
-      { name: "Carlito-Italic.ttf",               url: "https://fonts.gstatic.com/s/carlito/v3/3Jn7SDPw3m-pk039BDct_gYe.ttf" },
-      { name: "Carlito-BoldItalic.ttf",           url: "https://fonts.gstatic.com/s/carlito/v3/3Jn2SDPw3m-pk039DDMl2Q5e.ttf" },
+      { name: "Carlito-Regular.ttf",    nixGlob: "*carlito-*/share/fonts/truetype/Carlito-Regular.ttf",    url: "https://fonts.gstatic.com/s/carlito/v3/3Jn9SDPw3m-pk039BDct5jY.ttf" },
+      { name: "Carlito-Bold.ttf",       nixGlob: "*carlito-*/share/fonts/truetype/Carlito-Bold.ttf",       url: "https://fonts.gstatic.com/s/carlito/v3/3Jn4SDPw3m-pk039DDMl4jYe.ttf" },
+      { name: "Carlito-Italic.ttf",     nixGlob: "*carlito-*/share/fonts/truetype/Carlito-Italic.ttf",     url: "https://fonts.gstatic.com/s/carlito/v3/3Jn7SDPw3m-pk039BDct_gYe.ttf" },
+      { name: "Carlito-BoldItalic.ttf", nixGlob: "*carlito-*/share/fonts/truetype/Carlito-BoldItalic.ttf", url: "https://fonts.gstatic.com/s/carlito/v3/3Jn2SDPw3m-pk039DDMl2Q5e.ttf" },
       // Caladea (metric-compatible with Cambria)
-      { name: "Caladea-Regular.ttf",              url: "https://fonts.gstatic.com/s/caladea/v7/i7dSIFl3byGNHa3hNJ6-WkJn.ttf" },
-      { name: "Caladea-Bold.ttf",                 url: "https://fonts.gstatic.com/s/caladea/v7/i7dNIFl3byGNHa3hMJ6pWoHi.ttf" },
-      { name: "Caladea-Italic.ttf",               url: "https://fonts.gstatic.com/s/caladea/v7/i7dVIFl3byGNHa3hBJ6-WkJe.ttf" },
-      { name: "Caladea-BoldItalic.ttf",           url: "https://fonts.gstatic.com/s/caladea/v7/i7dQIFl3byGNHa3hMJ6pWkJe.ttf" },
+      { name: "Caladea-Regular.ttf",    nixGlob: "*caladea-*/share/fonts/truetype/Caladea-Regular.ttf",    url: "https://fonts.gstatic.com/s/caladea/v7/i7dSIFl3byGNHa3hNJ6-WkJn.ttf" },
+      { name: "Caladea-Bold.ttf",       nixGlob: "*caladea-*/share/fonts/truetype/Caladea-Bold.ttf",       url: "https://fonts.gstatic.com/s/caladea/v7/i7dNIFl3byGNHa3hMJ6pWoHi.ttf" },
+      { name: "Caladea-Italic.ttf",     nixGlob: "*caladea-*/share/fonts/truetype/Caladea-Italic.ttf",     url: "https://fonts.gstatic.com/s/caladea/v7/i7dVIFl3byGNHa3hBJ6-WkJe.ttf" },
+      { name: "Caladea-BoldItalic.ttf", nixGlob: "*caladea-*/share/fonts/truetype/Caladea-BoldItalic.ttf", url: "https://fonts.gstatic.com/s/caladea/v7/i7dQIFl3byGNHa3hMJ6pWkJe.ttf" },
     ];
 
-    const missing = FONT_DOWNLOADS.filter(f => !existsSync(join(fontsDir, f.name)));
+    let installed = 0;
+    for (const { name, nixGlob, url } of FONT_SPECS) {
+      const dest = join(fontsDir, name);
+      if (isValidTtf(dest)) continue; // Already have a valid copy
 
-    if (missing.length > 0) {
-      console.log(`[proposal-wizard] Downloading ${missing.length} metric-compatible fonts…`);
-      for (const { name, url } of missing) {
-        const dest = join(fontsDir, name);
-        try {
-          execSync(`curl -sL --max-time 20 -o "${dest}" "${url}"`, { timeout: 25_000, stdio: "pipe" });
-        } catch (e) {
-          console.warn(`[proposal-wizard] Font download failed: ${name}`, (e as any)?.message);
-        }
+      // Strategy 1: copy from Nix store (fast, offline, reliable in Replit)
+      const nixPath = findInNixStore(nixGlob);
+      if (nixPath && isValidTtf(nixPath)) {
+        try { copyFileSync(nixPath, dest); installed++; continue; } catch {}
       }
-      try { execSync(`fc-cache -f "${fontsDir}"`, { stdio: "pipe" }); } catch {}
-      console.log("[proposal-wizard] Font cache refreshed.");
+
+      // Strategy 2: download via curl (requires network access)
+      try {
+        execSync(`curl -sL --max-time 20 -o "${dest}" "${url}"`, { timeout: 25_000, stdio: "pipe" });
+        if (isValidTtf(dest)) { installed++; continue; }
+        // If curl returned an HTML error page, delete the bad file
+        try { unlinkSync(dest); } catch {}
+      } catch {}
+
+      console.warn(`[proposal-wizard] Could not obtain font: ${name}`);
     }
 
-    // Rebuild the LO base profile (font substitution table + fonts)
+    if (installed > 0) {
+      console.log(`[proposal-wizard] Installed ${installed} metric-compatible fonts.`);
+    }
+
+    // Rebuild fontconfig cache so LibreOffice (which uses fontconfig) finds our fonts
+    try { execSync(`fc-cache -f "${fontsDir}"`, { stdio: "pipe", timeout: 15_000 }); } catch {}
+
+    // Rebuild the LO base profile (font directory only — substitution is done via XML patching)
     buildLoBaseProfile(fontsDir);
     console.log("[proposal-wizard] LibreOffice base profile ready.");
 
@@ -637,6 +684,56 @@ function buildFilename(original: string, customerName: string, wttNumber: string
 }
 
 /**
+ * Font substitution map: Microsoft Office fonts → metric-compatible free alternatives.
+ * Carlito is dimension-identical to Calibri (same glyph widths), so substituting it
+ * preserves all text reflow and page breaks. Caladea is identical to Cambria.
+ */
+const FONT_SUBSTITUTIONS: [string, string][] = [
+  ["Calibri",          "Carlito"],
+  ["Cambria Math",     "Caladea"],
+  ["Cambria",          "Caladea"],
+  ["Times New Roman",  "Liberation Serif"],
+  ["Arial Narrow",     "Liberation Sans Narrow"],
+  ["Arial",            "Liberation Sans"],
+  ["Courier New",      "Liberation Mono"],
+  ["Consolas",         "Liberation Mono"],
+  ["Symbol",           "Liberation Serif"],
+];
+
+/**
+ * Patch Microsoft font names in DOCX XML files to their metric-compatible free
+ * equivalents. This is the most reliable approach because LibreOffice's own
+ * font-substitution XCU format varies between versions and may be silently ignored.
+ */
+function patchFontsInDocx(docxBuf: Buffer): Buffer {
+  const zip = new PizZip(docxBuf);
+  let anyChanged = false;
+
+  Object.keys(zip.files).forEach((name) => {
+    if (!name.toLowerCase().endsWith(".xml")) return;
+    const file = zip.file(name);
+    if (!file || (file as any).dir) return;
+    let content = file.asText();
+    let changed = false;
+
+    for (const [msFont, freeFont] of FONT_SUBSTITUTIONS) {
+      // Font names appear as attribute values in w:rFonts, w:font, etc.
+      // We only replace exact-match quoted occurrences to avoid partial matches.
+      const quoted = `"${msFont}"`;
+      if (content.includes(quoted)) {
+        content = content.split(quoted).join(`"${freeFont}"`);
+        changed = true;
+      }
+    }
+
+    if (changed) { zip.file(name, content); anyChanged = true; }
+  });
+
+  if (!anyChanged) return docxBuf;
+  return zip.generate({ type: "nodebuffer", compression: "DEFLATE" });
+}
+
+/**
  * Convert a buffer (docx/xlsx) to PDF using LibreOffice headless.
  * Returns the PDF buffer, or the original buffer if conversion fails.
  */
@@ -655,7 +752,9 @@ function convertToPdf(content: Buffer, originalFilename: string): { buf: Buffer;
     execSync(`cp -r "${baseProfile}" "${loProfile}"`, { stdio: "pipe" });
   } catch { /* base profile may not exist — proceed without it */ }
   try {
-    writeFileSync(tmpIn, content);
+    // Patch Microsoft font names → metric-compatible free fonts before conversion
+    const patched = patchFontsInDocx(content);
+    writeFileSync(tmpIn, patched);
     execSync(
       `libreoffice --headless "-env:UserInstallation=file://${loProfile}" --convert-to pdf --outdir "${tmpdir()}" "${tmpIn}"`,
       { timeout: 90_000, stdio: "pipe" },
@@ -754,6 +853,17 @@ function docToPdf(
       if (content.includes('w:val="yellow"')) {
         content = content.replace(/<w:highlight w:val="yellow"\/>/g, "");
         changed = true;
+      }
+
+      // ── Font substitution: Microsoft → metric-compatible free fonts ─────────
+      // Must be done in XML rather than relying on LO's XCU substitution table
+      // because the XCU format varies between LO versions and is often ignored.
+      for (const [msFont, freeFont] of FONT_SUBSTITUTIONS) {
+        const quoted = `"${msFont}"`;
+        if (content.includes(quoted)) {
+          content = content.split(quoted).join(`"${freeFont}"`);
+          changed = true;
+        }
       }
 
       // ── Fix header logo centering ────────────────────────────────────────
