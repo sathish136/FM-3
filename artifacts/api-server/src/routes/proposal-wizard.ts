@@ -791,144 +791,15 @@ function docToPdf(
   city: string,
   renamedFilename: string,
 ): { buf: Buffer; filename: string } {
-  const uid = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  const baseProfile = "/tmp/lo_base_profile";
-  const loProfile1 = join(tmpdir(), `lo_p1_${uid}`);
-  const loProfile2 = join(tmpdir(), `lo_p2_${uid}`);
-  const tmpOrig    = join(tmpdir(), `wtt_${uid}_orig.doc`);
-  const tmpDocx    = join(tmpdir(), `wtt_${uid}_orig.docx`);
-  const tmpMod     = join(tmpdir(), `wtt_${uid}_mod.docx`);
-  const tmpPdf     = join(tmpdir(), `wtt_${uid}_mod.pdf`);
+  // Step 1: produce the approved DOCX (same code path the user signed off on)
+  const { buf: docxBuf } = docToDocx(filePath, customerName, wttNumber, city, renamedFilename);
 
-  try {
-    // ── Stage 1: .doc → .docx ───────────────────────────────────────────────
-    try { execSync(`cp -r "${baseProfile}" "${loProfile1}"`, { stdio: "pipe" }); } catch {}
-    writeFileSync(tmpOrig, readFileSync(filePath));
-    execSync(
-      `libreoffice --headless "-env:UserInstallation=file://${loProfile1}" --convert-to docx --outdir "${tmpdir()}" "${tmpOrig}"`,
-      { timeout: 90_000, stdio: "pipe" },
-    );
-
-    // ── Stage 2: XML text replacements inside the .docx ─────────────────────
-    const dateL  = todayLong();
-    const dateS  = todayShort();
-    const cnUpper = customerName.toUpperCase().trim();
-    const cityUpper = city ? city.toUpperCase().trim() : "";
-
-    const docxRaw = readFileSync(tmpDocx);
-    const zip = new PizZip(docxRaw);
-
-    Object.keys(zip.files).forEach((name) => {
-      if (!name.toLowerCase().endsWith(".xml") && !name.toLowerCase().endsWith(".rels")) return;
-      const file = zip.file(name);
-      if (!file || (file as any).dir) return;
-      let content = file.asText();
-      let changed = false;
-
-      if (content.includes("COMPANY NAME")) {
-        content = content.replace(/COMPANY NAME/g, cnUpper);
-        changed = true;
-      }
-      if (content.includes("WTT-BAN-0001")) {
-        content = content.replace(/WTT-BAN-0001/g, wttNumber);
-        changed = true;
-      }
-      if (content.includes("01.Jan.2026")) {
-        content = content.replace(/01\.Jan\.2026/g, dateL);
-        changed = true;
-      }
-      if (content.includes("01-Jan-26")) {
-        content = content.replace(/01-Jan-26/g, dateS);
-        changed = true;
-      }
-      if (content.includes("1-Jan-26")) {
-        content = content.replace(/1-Jan-26/g, dateS);
-        changed = true;
-      }
-      if (cityUpper && content.includes("CITY")) {
-        content = content.replace(/\bCITY\b/g, cityUpper);
-        changed = true;
-      }
-      // Remove yellow highlight in docx run properties
-      if (content.includes('w:val="yellow"')) {
-        content = content.replace(/<w:highlight w:val="yellow"\/>/g, "");
-        changed = true;
-      }
-
-      // ── Font substitution: Microsoft → metric-compatible free fonts ─────────
-      for (const [msFont, freeFont] of FONT_SUBSTITUTIONS) {
-        const quoted = `"${msFont}"`;
-        if (content.includes(quoted)) {
-          content = content.split(quoted).join(`"${freeFont}"`);
-          changed = true;
-        }
-      }
-
-      // ── Font size -1pt ────────────────────────────────────────────────────
-      // LO's .doc→.docx conversion inflates font sizes by ~1pt; compensate.
-      if (content.includes("w:sz")) {
-        const before = content;
-        content = content.replace(/(<w:szCs?\s+w:val=")(\d+)(")/g, (_, pre, val, suf) => {
-          return `${pre}${Math.max(parseInt(val, 10) - 2, 8)}${suf}`;
-        });
-        if (content !== before) changed = true;
-      }
-
-      // ── Fix header logo centering ────────────────────────────────────────
-      // LibreOffice's .doc → .docx conversion sometimes loses center
-      // alignment on image paragraphs in headers. Re-apply it here.
-      if (/word\/header\d*\.xml$/i.test(name) && content.includes("<w:drawing>")) {
-        // Replace every <w:jc> inside a paragraph that also contains a drawing
-        // with center, and inject one if the <w:pPr> block is missing it.
-        const fixed = content.replace(
-          /(<w:p[ >][^]*?<\/w:p>)/g,
-          (para) => {
-            if (!para.includes("<w:drawing>")) return para;
-            // Has existing <w:jc …/>?
-            if (/<w:jc\s/.test(para)) {
-              return para.replace(/<w:jc\s[^/]*\/>/g, '<w:jc w:val="center"/>');
-            }
-            // Has <w:pPr> but no <w:jc>?
-            if (para.includes("<w:pPr>")) {
-              return para.replace("<w:pPr>", '<w:pPr><w:jc w:val="center"/>');
-            }
-            // No <w:pPr> at all — insert one after the opening <w:p…> tag
-            return para.replace(/(<w:p(?:\s[^>]*)?>)/, '$1<w:pPr><w:jc w:val="center"/></w:pPr>');
-          },
-        );
-        if (fixed !== content) { content = fixed; changed = true; }
-      }
-
-      if (changed) zip.file(name, content);
-    });
-
-    writeFileSync(tmpMod, zip.generate({ type: "nodebuffer", compression: "DEFLATE" }));
-
-    // ── Stage 3: .docx → PDF ─────────────────────────────────────────────────
-    try { execSync(`cp -r "${baseProfile}" "${loProfile2}"`, { stdio: "pipe" }); } catch {}
-    execSync(
-      `libreoffice --headless "-env:UserInstallation=file://${loProfile2}" --convert-to pdf --outdir "${tmpdir()}" "${tmpMod}"`,
-      { timeout: 90_000, stdio: "pipe" },
-    );
-
-    const pdfBuf = readFileSync(tmpPdf);
-    console.log(`[proposal-wizard] docToPdf: ${basename(filePath)} → PDF (${pdfBuf.length} bytes)`);
-    return {
-      buf: pdfBuf,
-      filename: renamedFilename.replace(/\.docx?$/i, ".pdf"),
-    };
-  } catch (err) {
-    console.error("[proposal-wizard] docToPdf failed, falling back to original .doc:", (err as any)?.message ?? err);
-    return {
-      buf: readFileSync(filePath),
-      filename: renamedFilename,
-    };
-  } finally {
-    for (const f of [tmpOrig, tmpDocx, tmpMod, tmpPdf]) {
-      try { unlinkSync(f); } catch {}
-    }
-    try { execSync(`rm -rf "${loProfile1}" "${loProfile2}"`, { stdio: "pipe" }); } catch {}
-  }
+  // Step 2: render that exact DOCX → PDF, no extra transformations
+  const { buf: pdfBuf, filename: pdfFilename } = convertToPdf(
+    docxBuf,
+    renamedFilename.replace(/\.doc$/i, ".docx"),
+  );
+  return { buf: pdfBuf, filename: pdfFilename };
 }
 
 /**
