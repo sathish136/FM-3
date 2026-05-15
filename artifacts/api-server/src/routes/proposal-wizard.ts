@@ -1,12 +1,67 @@
 import { Router } from "express";
-import { readdirSync, statSync, readFileSync, existsSync, writeFileSync, unlinkSync } from "fs";
+import { readdirSync, statSync, readFileSync, existsSync, writeFileSync, unlinkSync, mkdirSync, copyFileSync } from "fs";
 import { join, resolve as pathResolve, basename, extname } from "path";
 import { execSync } from "child_process";
-import { tmpdir } from "os";
+import { tmpdir, homedir } from "os";
 import nodemailer from "nodemailer";
 import PizZip from "pizzip";
 import { db, pool } from "@workspace/db";
 import { sql } from "drizzle-orm";
+
+// ── Font + Logo install (runs once at module load) ──────────────────────────
+
+(function installAssetsOnce() {
+  try {
+    // Ensure Roboto fonts are available to LibreOffice
+    const fontsDir = join(homedir(), ".fonts");
+    const loFontsDir = join(homedir(), ".config", "libreoffice", "4", "user", "fonts");
+    mkdirSync(fontsDir, { recursive: true });
+    mkdirSync(loFontsDir, { recursive: true });
+
+    const robotoFiles = [
+      { src: join(fontsDir, "Roboto-Regular.ttf"), loSrc: join(loFontsDir, "Roboto-Regular.ttf") },
+      { src: join(fontsDir, "Roboto-Bold.ttf"),    loSrc: join(loFontsDir, "Roboto-Bold.ttf")    },
+      { src: join(fontsDir, "Roboto-Italic.ttf"),  loSrc: join(loFontsDir, "Roboto-Italic.ttf")  },
+    ];
+
+    let anyMissing = false;
+    for (const f of robotoFiles) {
+      if (!existsSync(f.src)) { anyMissing = true; break; }
+    }
+
+    if (anyMissing) {
+      console.log("[proposal-wizard] Downloading Roboto fonts…");
+      const baseUrl = "https://github.com/google/fonts/raw/main/apache/roboto/static";
+      for (const name of ["Roboto-Regular.ttf", "Roboto-Bold.ttf", "Roboto-Italic.ttf"]) {
+        try {
+          execSync(`curl -sL -o "${join(fontsDir, name)}" "${baseUrl}/${name}"`, { timeout: 30_000, stdio: "pipe" });
+        } catch {}
+      }
+      try { execSync(`fc-cache -f "${fontsDir}"`, { stdio: "pipe" }); } catch {}
+    }
+
+    // Copy into LibreOffice user fonts dir
+    for (const f of robotoFiles) {
+      if (existsSync(f.src) && !existsSync(f.loSrc)) {
+        try { copyFileSync(f.src, f.loSrc); } catch {}
+      }
+    }
+  } catch (e) {
+    console.warn("[proposal-wizard] Asset install error:", e);
+  }
+})();
+
+// ── Logo base64 ─────────────────────────────────────────────────────────────
+let LOGO_B64 = "";
+try {
+  const logoPath = join(process.cwd(), "..", "..", "artifacts", "pm-app", "public", "wtt-logo.png");
+  LOGO_B64 = readFileSync(logoPath).toString("base64");
+} catch {
+  // fallback: try relative to CWD
+  try {
+    LOGO_B64 = readFileSync(join(process.cwd(), "../../artifacts/pm-app/public/wtt-logo.png")).toString("base64");
+  } catch {}
+}
 
 const router = Router();
 
@@ -127,6 +182,9 @@ function buildEmailHtml(
 ): string {
   const today = new Date();
   const dateStr = today.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+  const logoImg = LOGO_B64
+    ? `<img src="data:image/png;base64,${LOGO_B64}" alt="WTT International" style="display:block;height:80px;width:auto;margin:0 auto 8px auto">`
+    : `<div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:1px;text-align:center">WTT INTERNATIONAL</div>`;
 
   const attachmentRows = filenames.map((f, i) => {
     const isPdf = f.toLowerCase().endsWith(".pdf");
@@ -139,7 +197,7 @@ function buildEmailHtml(
     const label = f.replace(/\.[^/.]+$/, "");
     return `
       <tr>
-        <td style="padding:10px 14px;border-bottom:1px solid #e8edf2;font-size:13px;color:#2d3748;vertical-align:middle">
+        <td style="padding:10px 14px;border-bottom:1px solid #e8edf2;font-size:13px;color:#2d3748;vertical-align:middle;font-family:'Roboto',Arial,sans-serif">
           <span style="display:inline-block;width:22px;height:22px;background:#ebf4ff;border-radius:50%;text-align:center;line-height:22px;font-size:11px;font-weight:700;color:#2b6cb0;margin-right:10px;vertical-align:middle">${i + 1}</span>
           ${icon}
           <span style="vertical-align:middle">${label}</span>
@@ -149,39 +207,53 @@ function buildEmailHtml(
 
   return `<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f0f4f8;font-family:'Segoe UI',Arial,sans-serif">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+</head>
+<body style="margin:0;padding:0;background:#f0f4f8;font-family:'Roboto',Arial,sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f4f8;padding:30px 0">
   <tr><td align="center">
   <table width="620" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.09)">
 
-    <!-- Header banner -->
+    <!-- Header: logo centered + dark band -->
     <tr>
-      <td style="background:linear-gradient(135deg,#1a365d 0%,#2b6cb0 100%);padding:32px 36px 28px">
+      <td style="background:#1a365d;padding:0">
+        <!-- White logo band -->
         <table width="100%" cellpadding="0" cellspacing="0">
           <tr>
-            <td>
-              <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:1px">WTT INTERNATIONAL</div>
-              <div style="font-size:11px;color:#bee3f8;margin-top:4px;letter-spacing:.5px">WATER TREATMENT TECHNOLOGIES</div>
-            </td>
-            <td align="right" style="vertical-align:top">
-              <div style="background:rgba(255,255,255,0.15);border-radius:6px;padding:6px 14px;display:inline-block">
-                <div style="font-size:10px;color:#bee3f8;letter-spacing:.5px">PROPOSAL NO.</div>
-                <div style="font-size:15px;font-weight:700;color:#ffffff;margin-top:2px">${wttNumber}</div>
-              </div>
+            <td align="center" style="background:#ffffff;padding:18px 36px 14px">
+              ${logoImg}
+              <div style="font-size:10px;color:#64748b;letter-spacing:1.5px;text-transform:uppercase;font-family:'Roboto',Arial,sans-serif">Water Loving Technology</div>
             </td>
           </tr>
-        </table>
-      </td>
-    </tr>
-
-    <!-- Date bar -->
-    <tr>
-      <td style="background:#ebf8ff;padding:10px 36px;border-bottom:1px solid #bee3f8">
-        <table width="100%" cellpadding="0" cellspacing="0">
+          <!-- Blue accent bar -->
           <tr>
-            <td style="font-size:12px;color:#2c5282;font-weight:600">Proposal Documents</td>
-            <td align="right" style="font-size:12px;color:#4a5568">Date: ${dateStr}</td>
+            <td style="background:linear-gradient(90deg,#1a365d 0%,#2b6cb0 100%);padding:10px 36px">
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="font-size:13px;font-weight:700;color:#ffffff;font-family:'Roboto',Arial,sans-serif;letter-spacing:.5px">Proposal Documents</td>
+                  <td align="right">
+                    <div style="background:rgba(255,255,255,0.15);border-radius:5px;padding:4px 12px;display:inline-block">
+                      <div style="font-size:9px;color:#bee3f8;letter-spacing:1px;font-family:'Roboto',Arial,sans-serif">PROPOSAL NO.</div>
+                      <div style="font-size:14px;font-weight:700;color:#ffffff;font-family:'Roboto',Arial,sans-serif">${wttNumber}</div>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- Date bar -->
+          <tr>
+            <td style="background:#ebf8ff;padding:8px 36px;border-bottom:1px solid #bee3f8">
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="font-size:12px;color:#2c5282;font-weight:500;font-family:'Roboto',Arial,sans-serif">WTT International Private Limited</td>
+                  <td align="right" style="font-size:12px;color:#4a5568;font-family:'Roboto',Arial,sans-serif">Date: ${dateStr}</td>
+                </tr>
+              </table>
+            </td>
           </tr>
         </table>
       </td>
@@ -189,11 +261,11 @@ function buildEmailHtml(
 
     <!-- Body -->
     <tr>
-      <td style="padding:32px 36px 24px">
-        <p style="margin:0 0 6px;font-size:15px;color:#2d3748">Dear Sir / Madam,</p>
-        <p style="margin:0 0 20px;font-size:13px;color:#718096">Greetings from <strong style="color:#2b6cb0">WTT International</strong>!</p>
+      <td style="padding:28px 36px 20px;font-family:'Roboto',Arial,sans-serif">
+        <p style="margin:0 0 6px;font-size:15px;color:#2d3748;font-family:'Roboto',Arial,sans-serif">Dear Sir / Madam,</p>
+        <p style="margin:0 0 18px;font-size:13px;color:#718096;font-family:'Roboto',Arial,sans-serif">Greetings from <strong style="color:#2b6cb0">WTT International</strong>!</p>
 
-        <p style="margin:0 0 20px;font-size:14px;color:#4a5568;line-height:1.75">
+        <p style="margin:0 0 18px;font-size:14px;color:#4a5568;line-height:1.8;font-family:'Roboto',Arial,sans-serif">
           With reference to the discussions your good selves had with our team, we are pleased to attach herewith the proposal documents for the supply of a
           <strong style="color:#1a365d">Sewage Treatment Plant</strong> of capacity
           <span style="background:#ebf8ff;color:#2b6cb0;font-weight:700;padding:2px 8px;border-radius:4px">${flowKld} M³/Day</span>
@@ -202,41 +274,41 @@ function buildEmailHtml(
         </p>
 
         <!-- Attachments box -->
-        <div style="background:#f7fafc;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:24px">
-          <div style="background:#edf2f7;padding:10px 14px;border-bottom:1px solid #e2e8f0">
-            <span style="font-size:12px;font-weight:700;color:#4a5568;letter-spacing:.5px;text-transform:uppercase">Enclosed Documents</span>
+        <div style="background:#f7fafc;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:22px">
+          <div style="background:#edf2f7;padding:9px 14px;border-bottom:1px solid #e2e8f0">
+            <span style="font-size:11px;font-weight:700;color:#4a5568;letter-spacing:.8px;text-transform:uppercase;font-family:'Roboto',Arial,sans-serif">Enclosed Documents</span>
           </div>
           <table width="100%" cellpadding="0" cellspacing="0">
             ${attachmentRows}
           </table>
         </div>
 
-        <p style="margin:0 0 24px;font-size:14px;color:#4a5568;line-height:1.75">
+        <p style="margin:0 0 22px;font-size:14px;color:#4a5568;line-height:1.8;font-family:'Roboto',Arial,sans-serif">
           We trust that the above documents meet your requirements. Please feel free to reach out for any clarifications or further information. We look forward to the opportunity of working with you.
         </p>
 
-        <p style="margin:0;font-size:14px;color:#4a5568">Warm Regards,</p>
+        <p style="margin:0;font-size:14px;color:#4a5568;font-family:'Roboto',Arial,sans-serif">Warm Regards,</p>
       </td>
     </tr>
 
     <!-- Signature -->
     <tr>
-      <td style="padding:0 36px 32px">
+      <td style="padding:0 36px 30px;font-family:'Roboto',Arial,sans-serif">
         <table cellpadding="0" cellspacing="0" style="border-left:4px solid #2b6cb0;padding-left:16px">
-          <tr><td style="font-size:16px;font-weight:700;color:#1a365d;padding-bottom:3px">Raja A</td></tr>
-          <tr><td style="font-size:12px;color:#2b6cb0;font-weight:600;padding-bottom:6px">AGM – Proposals &amp; Business Development</td></tr>
-          <tr><td style="font-size:12px;color:#718096;padding-bottom:2px">&#128222; +91 78450 09909</td></tr>
-          <tr><td style="font-size:12px;color:#718096;padding-bottom:2px">&#9993; raja.a@wttint.com</td></tr>
-          <tr><td style="font-size:12px;color:#718096">&#127760; www.wttindia.com</td></tr>
+          <tr><td style="font-size:16px;font-weight:700;color:#1a365d;padding-bottom:2px;font-family:'Roboto',Arial,sans-serif">Raja A</td></tr>
+          <tr><td style="font-size:12px;color:#2b6cb0;font-weight:500;padding-bottom:6px;font-family:'Roboto',Arial,sans-serif">AGM – Proposals &amp; Business Development</td></tr>
+          <tr><td style="font-size:12px;color:#718096;padding-bottom:2px;font-family:'Roboto',Arial,sans-serif">&#128222; +91 78450 09909</td></tr>
+          <tr><td style="font-size:12px;color:#718096;padding-bottom:2px;font-family:'Roboto',Arial,sans-serif">&#9993; raja.a@wttint.com</td></tr>
+          <tr><td style="font-size:12px;color:#718096;font-family:'Roboto',Arial,sans-serif">&#127760; www.wttindia.com</td></tr>
         </table>
       </td>
     </tr>
 
     <!-- Footer -->
     <tr>
-      <td style="background:#1a365d;padding:16px 36px">
-        <p style="margin:0;font-size:11px;color:#90cdf4;text-align:center">
-          WTT International Pvt. Ltd. &nbsp;|&nbsp; Water Treatment Technologies &nbsp;|&nbsp; This email and attachments are confidential.
+      <td style="background:#1a365d;padding:14px 36px">
+        <p style="margin:0;font-size:11px;color:#90cdf4;text-align:center;font-family:'Roboto',Arial,sans-serif;letter-spacing:.3px">
+          WTT International Pvt. Ltd. &nbsp;|&nbsp; Water Loving Technology &nbsp;|&nbsp; This email and its attachments are confidential.
         </p>
       </td>
     </tr>
