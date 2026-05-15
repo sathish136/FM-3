@@ -1066,12 +1066,13 @@ router.post("/proposal-wizard/send-email", async (req, res) => { try {
     const filePath = join(dir, f);
     const renamedOrig = buildFilename(f, customer, wttNumber);
     if (f.toLowerCase().endsWith(".doc")) {
-      const { buf, filename } = docToPdf(filePath, customer, wttNumber, city || "", renamedOrig);
-      return { filename, content: buf, contentType: "application/pdf" };
+      // Convert .doc → .docx (applies substitutions cleanly) and send as Word document
+      const { buf, filename } = docToDocx(filePath, customer, wttNumber, city || "", renamedOrig);
+      return { filename, content: buf, contentType: mimeFor(filename) };
     }
-    const raw = buildModifiedFile(filePath, customer, wttNumber, city || "");
-    const { buf, filename } = convertToPdf(raw, renamedOrig);
-    return { filename, content: buf, contentType: filename.endsWith(".pdf") ? "application/pdf" : mimeFor(f) };
+    // .docx / .xlsx — apply substitutions, send in original format (no PDF conversion)
+    const buf = buildModifiedFile(filePath, customer, wttNumber, city || "");
+    return { filename: renamedOrig, content: buf, contentType: mimeFor(renamedOrig) };
   });
 
   const transporter = nodemailer.createTransport({
@@ -1156,12 +1157,13 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
       const filePath = join(dir, f);
       const renamedOrig = buildFilename(f, customer, wttNumber);
       if (f.toLowerCase().endsWith(".doc")) {
-        const { buf, filename } = docToPdf(filePath, customer, wttNumber, city || "", renamedOrig);
-        return { filename, content: buf, contentType: "application/pdf" };
+        // Convert .doc → .docx (applies substitutions cleanly) and send as Word document
+        const { buf, filename } = docToDocx(filePath, customer, wttNumber, city || "", renamedOrig);
+        return { filename, content: buf, contentType: mimeFor(filename) };
       }
-      const raw = buildModifiedFile(filePath, customer, wttNumber, city || "");
-      const { buf, filename } = convertToPdf(raw, renamedOrig);
-      return { filename, content: buf, contentType: filename.endsWith(".pdf") ? "application/pdf" : mimeFor(f) };
+      // .docx / .xlsx — apply substitutions, send in original format (no PDF conversion)
+      const buf = buildModifiedFile(filePath, customer, wttNumber, city || "");
+      return { filename: renamedOrig, content: buf, contentType: mimeFor(renamedOrig) };
     });
 
     const transporter = nodemailer.createTransport({
@@ -1247,12 +1249,13 @@ router.post("/proposal-wizard/requests/:id/resend", async (req, res) => {
       const filePath = join(dir, f);
       const renamedOrig = buildFilename(f, customer, wttNumber);
       if (f.toLowerCase().endsWith(".doc")) {
-        const { buf, filename } = docToPdf(filePath, customer, wttNumber, city, renamedOrig);
-        return { filename, content: buf, contentType: "application/pdf" };
+        // Convert .doc → .docx (applies substitutions cleanly) and send as Word document
+        const { buf, filename } = docToDocx(filePath, customer, wttNumber, city, renamedOrig);
+        return { filename, content: buf, contentType: mimeFor(filename) };
       }
-      const raw = buildModifiedFile(filePath, customer, wttNumber, city);
-      const { buf, filename } = convertToPdf(raw, renamedOrig);
-      return { filename, content: buf, contentType: filename.endsWith(".pdf") ? "application/pdf" : mimeFor(f) };
+      // .docx / .xlsx — apply substitutions, send in original format (no PDF conversion)
+      const buf = buildModifiedFile(filePath, customer, wttNumber, city);
+      return { filename: renamedOrig, content: buf, contentType: mimeFor(renamedOrig) };
     });
 
     const transporter = nodemailer.createTransport({
