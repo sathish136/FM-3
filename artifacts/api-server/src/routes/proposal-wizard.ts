@@ -856,14 +856,22 @@ function docToPdf(
       }
 
       // ── Font substitution: Microsoft → metric-compatible free fonts ─────────
-      // Must be done in XML rather than relying on LO's XCU substitution table
-      // because the XCU format varies between LO versions and is often ignored.
       for (const [msFont, freeFont] of FONT_SUBSTITUTIONS) {
         const quoted = `"${msFont}"`;
         if (content.includes(quoted)) {
           content = content.split(quoted).join(`"${freeFont}"`);
           changed = true;
         }
+      }
+
+      // ── Font size -1pt ────────────────────────────────────────────────────
+      // LO's .doc→.docx conversion inflates font sizes by ~1pt; compensate.
+      if (content.includes("w:sz")) {
+        const before = content;
+        content = content.replace(/(<w:szCs?\s+w:val=")(\d+)(")/g, (_, pre, val, suf) => {
+          return `${pre}${Math.max(parseInt(val, 10) - 2, 8)}${suf}`;
+        });
+        if (content !== before) changed = true;
       }
 
       // ── Fix header logo centering ────────────────────────────────────────
@@ -1182,11 +1190,12 @@ router.post("/proposal-wizard/send-email", async (req, res) => { try {
     const filePath = join(dir, f);
     const renamedOrig = buildFilename(f, customer, wttNumber);
     if (f.toLowerCase().endsWith(".doc")) {
-      const { buf, filename } = docToDocx(filePath, customer, wttNumber, city || "", renamedOrig);
-      return { filename, content: buf, contentType: mimeFor(filename) };
+      const { buf, filename } = docToPdf(filePath, customer, wttNumber, city || "", renamedOrig);
+      return { filename, content: buf, contentType: "application/pdf" };
     }
-    const buf = buildModifiedFile(filePath, customer, wttNumber, city || "");
-    return { filename: renamedOrig, content: buf, contentType: mimeFor(f) };
+    const raw = buildModifiedFile(filePath, customer, wttNumber, city || "");
+    const { buf, filename } = convertToPdf(raw, renamedOrig);
+    return { filename, content: buf, contentType: filename.endsWith(".pdf") ? "application/pdf" : mimeFor(f) };
   });
 
   const transporter = nodemailer.createTransport({
@@ -1271,11 +1280,12 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
       const filePath = join(dir, f);
       const renamedOrig = buildFilename(f, customer, wttNumber);
       if (f.toLowerCase().endsWith(".doc")) {
-        const { buf, filename } = docToDocx(filePath, customer, wttNumber, city || "", renamedOrig);
-        return { filename, content: buf, contentType: mimeFor(filename) };
+        const { buf, filename } = docToPdf(filePath, customer, wttNumber, city || "", renamedOrig);
+        return { filename, content: buf, contentType: "application/pdf" };
       }
-      const buf = buildModifiedFile(filePath, customer, wttNumber, city || "");
-      return { filename: renamedOrig, content: buf, contentType: mimeFor(f) };
+      const raw = buildModifiedFile(filePath, customer, wttNumber, city || "");
+      const { buf, filename } = convertToPdf(raw, renamedOrig);
+      return { filename, content: buf, contentType: filename.endsWith(".pdf") ? "application/pdf" : mimeFor(f) };
     });
 
     const transporter = nodemailer.createTransport({
@@ -1361,11 +1371,12 @@ router.post("/proposal-wizard/requests/:id/resend", async (req, res) => {
       const filePath = join(dir, f);
       const renamedOrig = buildFilename(f, customer, wttNumber);
       if (f.toLowerCase().endsWith(".doc")) {
-        const { buf, filename } = docToDocx(filePath, customer, wttNumber, city, renamedOrig);
-        return { filename, content: buf, contentType: mimeFor(filename) };
+        const { buf, filename } = docToPdf(filePath, customer, wttNumber, city, renamedOrig);
+        return { filename, content: buf, contentType: "application/pdf" };
       }
-      const buf = buildModifiedFile(filePath, customer, wttNumber, city);
-      return { filename: renamedOrig, content: buf, contentType: mimeFor(f) };
+      const raw = buildModifiedFile(filePath, customer, wttNumber, city);
+      const { buf, filename } = convertToPdf(raw, renamedOrig);
+      return { filename, content: buf, contentType: filename.endsWith(".pdf") ? "application/pdf" : mimeFor(f) };
     });
 
     const transporter = nodemailer.createTransport({
