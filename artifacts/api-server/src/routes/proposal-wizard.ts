@@ -10,42 +10,127 @@ import { sql } from "drizzle-orm";
 
 // ── Font + Logo install (runs once at module load) ──────────────────────────
 
+/**
+ * Build a LibreOffice base profile at /tmp/lo_base_profile with:
+ *  - Font substitution table mapping Microsoft font names → metric-compatible
+ *    free alternatives (Liberation, Carlito, Caladea).
+ *
+ * Each conversion job copies this profile to a fresh temp dir so that
+ * concurrent conversions never collide on the same LO lock file.
+ */
+function buildLoBaseProfile(fontsDir?: string): void {
+  const baseProfile = "/tmp/lo_base_profile";
+  const userDir = join(baseProfile, "user");
+  const loFontsDir = join(userDir, "fonts");
+  mkdirSync(userDir, { recursive: true });
+  mkdirSync(loFontsDir, { recursive: true });
+
+  // Copy downloaded metric-compatible fonts directly into the LO profile so
+  // LibreOffice finds them without depending on the system fontconfig cache.
+  if (fontsDir) {
+    try {
+      const ttfs = readdirSync(fontsDir).filter(n => n.toLowerCase().endsWith(".ttf"));
+      for (const ttf of ttfs) {
+        const dest = join(loFontsDir, ttf);
+        if (!existsSync(dest)) {
+          try { copyFileSync(join(fontsDir, ttf), dest); } catch {}
+        }
+      }
+    } catch {}
+  }
+
+  // Font substitution pairs: [Microsoft font, metric-compatible replacement]
+  const substitutions: [string, string][] = [
+    ["Times New Roman",  "Liberation Serif"],
+    ["Arial",            "Liberation Sans"],
+    ["Arial Narrow",     "Liberation Sans Narrow"],
+    ["Courier New",      "Liberation Mono"],
+    ["Calibri",          "Carlito"],
+    ["Cambria",          "Caladea"],
+    ["Cambria Math",     "Caladea"],
+    ["Consolas",         "Liberation Mono"],
+    ["Segoe UI",         "Liberation Sans"],
+    ["Tahoma",           "Liberation Sans"],
+    ["Verdana",          "Liberation Sans"],
+    ["Georgia",          "Liberation Serif"],
+    ["Trebuchet MS",     "Liberation Sans"],
+    ["Impact",           "Liberation Sans"],
+    ["Comic Sans MS",    "Liberation Sans"],
+    ["Palatino Linotype","Liberation Serif"],
+    ["Book Antiqua",     "Liberation Serif"],
+    ["Garamond",         "Liberation Serif"],
+    ["Century Gothic",   "Liberation Sans"],
+  ];
+
+  const itemsXml = substitutions
+    .map(([from, to]) =>
+      `<item oor:path="/org.openoffice.VCL/FontSubstitutions">\n` +
+      `  <prop oor:name="${from}" oor:op="fuse"><value>${to}</value></prop>\n` +
+      `</item>`,
+    )
+    .join("\n");
+
+  const xcu = `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<oor:items xmlns:oor="http://openoffice.org/2001/registry"\n` +
+    `           xmlns:xs="http://www.w3.org/2001/XMLSchema"\n` +
+    `           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">\n` +
+    itemsXml + `\n</oor:items>\n`;
+
+  writeFileSync(join(userDir, "registrymodifications.xcu"), xcu, "utf8");
+}
+
 (function installAssetsOnce() {
   try {
-    // Ensure Roboto fonts are available to LibreOffice
     const fontsDir = join(homedir(), ".fonts");
-    const loFontsDir = join(homedir(), ".config", "libreoffice", "4", "user", "fonts");
     mkdirSync(fontsDir, { recursive: true });
-    mkdirSync(loFontsDir, { recursive: true });
 
-    const robotoFiles = [
-      { src: join(fontsDir, "Roboto-Regular.ttf"), loSrc: join(loFontsDir, "Roboto-Regular.ttf") },
-      { src: join(fontsDir, "Roboto-Bold.ttf"),    loSrc: join(loFontsDir, "Roboto-Bold.ttf")    },
-      { src: join(fontsDir, "Roboto-Italic.ttf"),  loSrc: join(loFontsDir, "Roboto-Italic.ttf")  },
+    // Metric-compatible replacements for the most common Microsoft fonts.
+    // These use exact character-width metrics so text reflow is minimised
+    // and page counts match what Word produces.
+    const FONT_DOWNLOADS: { name: string; url: string }[] = [
+      // Liberation (metric-compatible with Times New Roman, Arial, Courier New)
+      { name: "LiberationSans-Regular.ttf",      url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSans-Regular.ttf" },
+      { name: "LiberationSans-Bold.ttf",          url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSans-Bold.ttf" },
+      { name: "LiberationSans-Italic.ttf",        url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSans-Italic.ttf" },
+      { name: "LiberationSans-BoldItalic.ttf",    url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSans-BoldItalic.ttf" },
+      { name: "LiberationSerif-Regular.ttf",      url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSerif-Regular.ttf" },
+      { name: "LiberationSerif-Bold.ttf",         url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSerif-Bold.ttf" },
+      { name: "LiberationSerif-Italic.ttf",       url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSerif-Italic.ttf" },
+      { name: "LiberationSerif-BoldItalic.ttf",   url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationSerif-BoldItalic.ttf" },
+      { name: "LiberationMono-Regular.ttf",       url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationMono-Regular.ttf" },
+      { name: "LiberationMono-Bold.ttf",          url: "https://github.com/liberationfonts/liberation-fonts/raw/main/src/LiberationMono-Bold.ttf" },
+      // Carlito (metric-compatible with Calibri — default Office font)
+      { name: "Carlito-Regular.ttf",              url: "https://fonts.gstatic.com/s/carlito/v3/3Jn9SDPw3m-pk039BDct5jY.ttf" },
+      { name: "Carlito-Bold.ttf",                 url: "https://fonts.gstatic.com/s/carlito/v3/3Jn4SDPw3m-pk039DDMl4jYe.ttf" },
+      { name: "Carlito-Italic.ttf",               url: "https://fonts.gstatic.com/s/carlito/v3/3Jn7SDPw3m-pk039BDct_gYe.ttf" },
+      { name: "Carlito-BoldItalic.ttf",           url: "https://fonts.gstatic.com/s/carlito/v3/3Jn2SDPw3m-pk039DDMl2Q5e.ttf" },
+      // Caladea (metric-compatible with Cambria)
+      { name: "Caladea-Regular.ttf",              url: "https://fonts.gstatic.com/s/caladea/v7/i7dSIFl3byGNHa3hNJ6-WkJn.ttf" },
+      { name: "Caladea-Bold.ttf",                 url: "https://fonts.gstatic.com/s/caladea/v7/i7dNIFl3byGNHa3hMJ6pWoHi.ttf" },
+      { name: "Caladea-Italic.ttf",               url: "https://fonts.gstatic.com/s/caladea/v7/i7dVIFl3byGNHa3hBJ6-WkJe.ttf" },
+      { name: "Caladea-BoldItalic.ttf",           url: "https://fonts.gstatic.com/s/caladea/v7/i7dQIFl3byGNHa3hMJ6pWkJe.ttf" },
     ];
 
-    let anyMissing = false;
-    for (const f of robotoFiles) {
-      if (!existsSync(f.src)) { anyMissing = true; break; }
-    }
+    const missing = FONT_DOWNLOADS.filter(f => !existsSync(join(fontsDir, f.name)));
 
-    if (anyMissing) {
-      console.log("[proposal-wizard] Downloading Roboto fonts…");
-      const baseUrl = "https://github.com/google/fonts/raw/main/apache/roboto/static";
-      for (const name of ["Roboto-Regular.ttf", "Roboto-Bold.ttf", "Roboto-Italic.ttf"]) {
+    if (missing.length > 0) {
+      console.log(`[proposal-wizard] Downloading ${missing.length} metric-compatible fonts…`);
+      for (const { name, url } of missing) {
+        const dest = join(fontsDir, name);
         try {
-          execSync(`curl -sL -o "${join(fontsDir, name)}" "${baseUrl}/${name}"`, { timeout: 30_000, stdio: "pipe" });
-        } catch {}
+          execSync(`curl -sL --max-time 20 -o "${dest}" "${url}"`, { timeout: 25_000, stdio: "pipe" });
+        } catch (e) {
+          console.warn(`[proposal-wizard] Font download failed: ${name}`, (e as any)?.message);
+        }
       }
       try { execSync(`fc-cache -f "${fontsDir}"`, { stdio: "pipe" }); } catch {}
+      console.log("[proposal-wizard] Font cache refreshed.");
     }
 
-    // Copy into LibreOffice user fonts dir
-    for (const f of robotoFiles) {
-      if (existsSync(f.src) && !existsSync(f.loSrc)) {
-        try { copyFileSync(f.src, f.loSrc); } catch {}
-      }
-    }
+    // Rebuild the LO base profile (font substitution table + fonts)
+    buildLoBaseProfile(fontsDir);
+    console.log("[proposal-wizard] LibreOffice base profile ready.");
+
   } catch (e) {
     console.warn("[proposal-wizard] Asset install error:", e);
   }
