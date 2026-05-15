@@ -338,26 +338,30 @@ function convertToPdf(content: Buffer, originalFilename: string): { buf: Buffer;
   if (ext !== ".docx" && ext !== ".doc" && ext !== ".xlsx") {
     return { buf: content, filename: originalFilename };
   }
-  const tmpIn = join(tmpdir(), `wtt_${Date.now()}_${Math.random().toString(36).slice(2)}${ext}`);
+  const uid = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const tmpIn = join(tmpdir(), `wtt_${uid}${ext}`);
   const pdfName = basename(tmpIn, ext) + ".pdf";
   const tmpOut = join(tmpdir(), pdfName);
+  const loProfile = join(tmpdir(), `lo_profile_${uid}`);
   try {
     writeFileSync(tmpIn, content);
     execSync(
-      `libreoffice --headless --convert-to pdf --outdir "${tmpdir()}" "${tmpIn}"`,
-      { timeout: 60_000, stdio: "pipe" },
+      `libreoffice --headless "-env:UserInstallation=file://${loProfile}" --convert-to pdf --outdir "${tmpdir()}" "${tmpIn}"`,
+      { timeout: 90_000, stdio: "pipe" },
     );
     const pdfBuf = readFileSync(tmpOut);
+    console.log(`[proposal-wizard] Converted ${originalFilename} → PDF (${pdfBuf.length} bytes)`);
     return {
       buf: pdfBuf,
       filename: originalFilename.replace(/\.(docx?|xlsx)$/i, ".pdf"),
     };
   } catch (err) {
-    console.error("[proposal-wizard] PDF conversion failed, sending original:", err);
+    console.error("[proposal-wizard] PDF conversion failed, sending original:", (err as any)?.message ?? err);
     return { buf: content, filename: originalFilename };
   } finally {
     try { unlinkSync(tmpIn); } catch {}
     try { unlinkSync(tmpOut); } catch {}
+    try { execSync(`rm -rf "${loProfile}"`, { stdio: "pipe" }); } catch {}
   }
 }
 
