@@ -117,51 +117,38 @@ function kldFromFolder(folder: string): string {
 
 // ── Mail Content template ──────────────────────────────────────────────────
 
-const MAIL_CONTENT_PATH = join(PROPOSAL_ROOT, "Mail Content.docx");
-
-function getEmailTemplate(): string {
-  try {
-    const buf = readFileSync(MAIL_CONTENT_PATH);
-    const zip = new PizZip(buf);
-    const docXml = zip.file("word/document.xml")?.asText() ?? "";
-    // Strip XML tags, decode entities, collapse whitespace
-    let text = docXml
-      .replace(/<w:p[ >]/g, "\n<w:p>")   // paragraph → newline
-      .replace(/<w:br[^>]*\/>/g, "\n")    // line break
-      .replace(/<[^>]+>/g, "")            // strip all tags
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&quot;/g, '"')
-      .replace(/&#[0-9]+;/g, "")
-      .replace(/[ \t]+/g, " ")
-      .replace(/\n /g, "\n")
-      .trim();
-    return text;
-  } catch {
-    // Fallback if file not found
-    return `Dear Sir,\n\nGreetings from WTT INTERNATIONAL !!!\n\nWith reference to the discussions your good selves had with our Team, we are attaching herewith the following documents for the supply of Sewage Treatment Plant of capacity FLOW M3/Day for M/s. COMPANY NAME.\n\n1. PROPOSAL(T&C)-(REV-00)-COMPANY NAME-(WTT-BAN-0001)\n2. OPEX-(REV-00)-COMPANY NAME-(WTT-BAN-0001)\n3. TECHNICAL SPECIFICATION-(REV-00)-COMPANY NAME-(WTT-BAN-0001)\n\nKindly revert back for any other clarifications.\n\nThanks & Regards\nRAJA A\nAGM – PROPOSAL\n7845009909\nraja.a@wttint.com`;
-  }
-}
-
 function buildEmailHtml(
   customerName: string,
   flowKld: string,
   wttNumber: string,
   filenames: string[],
 ): string {
-  const template = getEmailTemplate()
-    .replace(/COMPANY NAME/gi, customerName)
-    .replace(/\bFLOW\b/g, flowKld)
-    .replace(/WTT-BAN-0001/g, wttNumber);
-
-  const lines = template.split("\n");
-  const htmlLines = lines.map((l) => `<p style="margin:4px 0">${l.trim() || "&nbsp;"}</p>`).join("\n");
+  const attachmentList = filenames
+    .map((f, i) => {
+      const nameWithoutExt = f.replace(/\.[^/.]+$/, "");
+      return `<p style="margin:2px 0">${i + 1}. ${nameWithoutExt}</p>`;
+    })
+    .join("\n");
 
   return `
-    <div style="font-family:Arial,sans-serif;font-size:14px;color:#333;max-width:700px">
-      ${htmlLines}
-    </div>
+<div style="font-family:Arial,sans-serif;font-size:14px;color:#333;max-width:700px;line-height:1.6">
+  <p style="margin:4px 0">Dear Sir,</p>
+  <p style="margin:12px 0">&nbsp;</p>
+  <p style="margin:4px 0">Greetings from WTT INTERNATIONAL!!!</p>
+  <p style="margin:12px 0">&nbsp;</p>
+  <p style="margin:4px 0">With reference to the discussions your good selves had with our Team, we are attaching herewith the following document for the supply of Sewage Treatment Plant of capacity <strong>${flowKld} M3/Day</strong> with Foundational limit during Phase-1, Progressive limit during Phase-2 and ZLD based Treatment scheme during Phase-3 for M/s. <strong>${customerName}</strong>.</p>
+  <p style="margin:12px 0">&nbsp;</p>
+  ${attachmentList}
+  <p style="margin:12px 0">&nbsp;</p>
+  <p style="margin:4px 0">Kindly revert back for any other clarifications.</p>
+  <p style="margin:12px 0">&nbsp;</p>
+  <p style="margin:4px 0">Thanks &amp; Regards</p>
+  <p style="margin:12px 0">&nbsp;</p>
+  <p style="margin:4px 0"><strong>RAJA A</strong></p>
+  <p style="margin:4px 0">AGM – PROPOSAL</p>
+  <p style="margin:4px 0">7845009909</p>
+  <p style="margin:4px 0">raja.a@wttint.com</p>
+</div>
   `;
 }
 

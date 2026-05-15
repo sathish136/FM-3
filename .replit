@@ -119,6 +119,8 @@ SITE_DB_HOST = "mssql.wttindia.com"
 SITE_DB_USER = "sa"
 SITE_DB_PORT = "1433"
 SITE_DB_PASSWORD = "Jm4#9Fv@8dL2tQz!0Wf7Rp5Z&6xHgK8Y1Kw@3TnT^yB"
+PROPOSAL_SMTP_USER = "raja.a@wttint.com"
+PROPOSAL_SMTP_PASSWORD = "N(237463960826oy"
 
 [nix]
 channel = "stable-25_05"
