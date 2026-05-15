@@ -268,7 +268,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
   {
     label: "Proposal",
     items: [
-      { path: "/proposal-wizard",   label: "Proposal Wizard",     icon: Sparkles,      color: "text-violet-400",  bgColor: "bg-violet-500/15" },
+      { path: "/proposal-wizard-internal",   label: "Proposal Wizard",     icon: Sparkles,      color: "text-violet-400",  bgColor: "bg-violet-500/15" },
       { path: "/proposal-library",  label: "Proposal Library",    icon: FileText,      color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
       { path: "/proposals",         label: "Proposal Requests",   icon: ClipboardList, color: "text-blue-400",    bgColor: "bg-blue-500/15"   },
       { path: "/process-proposal",  label: "Process & Proposal",  icon: Layers,        color: "text-sky-400",     bgColor: "bg-sky-500/15"    },
@@ -422,7 +422,7 @@ const PATH_TO_MODULE: Record<string, string> = {
   "/workshop":                      "workshop",
   "/workshop/welder":               "workshop",
   "/workshop/fitter":               "workshop",
-  "/proposal-wizard":                "proposal-wizard",
+  "/proposal-wizard-internal":       "proposal-wizard-internal",
   "/proposal-library":               "proposal-library",
   "/proposals":                      "proposals",
   "/om/chemical-consumption":            "om-chemical-consumption",

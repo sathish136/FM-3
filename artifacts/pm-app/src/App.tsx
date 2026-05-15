@@ -80,6 +80,7 @@ import SiteDb from "@/pages/SiteDb";
 import SiteDbAnalytics from "@/pages/SiteDbAnalytics";
 import SiteDbSystem from "@/pages/SiteDbSystem";
 import ProposalRequest from "@/pages/ProposalRequest";
+import PublicProposalWizard from "@/pages/PublicProposalWizard";
 import ProposalAdmin from "@/pages/ProposalAdmin";
 import AgentManagement from "@/pages/AgentManagement";
 import HrmsWorkMonitor from "@/pages/HrmsWorkMonitor";
@@ -290,7 +291,7 @@ function ProtectedRoutes() {
       <Route path="/om/chemical-consumption" component={OmChemicalConsumption} />
       <Route path="/om/lab-reports"          component={OmLabReport} />
       <Route path="/om/site-performance"     component={OmSitePerformance} />
-      <Route path="/proposal-wizard"         component={ProposalWizard} />
+      <Route path="/proposal-wizard-internal" component={ProposalWizard} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -310,6 +311,7 @@ function App() {
                 <Route path="/pptx-viewer" component={PptxPreviewPage} />
                 <Route path="/emp-agent" component={EmpAgent} />
                 <Route path="/proposal-request" component={ProposalRequest} />
+                <Route path="/proposal-wizard" component={PublicProposalWizard} />
                 <Route path="/proposal-pdf" component={ProposalPDFView} />
                 <Route component={ProtectedRoutes} />
               </Switch>

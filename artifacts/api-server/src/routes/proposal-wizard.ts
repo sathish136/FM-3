@@ -3,7 +3,7 @@ import { readdirSync, statSync, readFileSync, existsSync } from "fs";
 import { join, resolve as pathResolve, basename } from "path";
 import nodemailer from "nodemailer";
 import PizZip from "pizzip";
-import { db } from "@workspace/db";
+import { db, pool } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
 const router = Router();
@@ -12,6 +12,22 @@ const PROPOSAL_ROOT = pathResolve(
   process.env.PROPOSAL_WIZARD_DIR ||
     join(process.cwd(), "..", "..", "Proposal", "BANGLADESH PROPOSALS"),
 );
+
+// ── date helpers ───────────────────────────────────────────────────────────
+
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+function todayShort(): string {
+  const d = new Date();
+  return `${String(d.getDate()).padStart(2,"0")}-${MONTHS[d.getMonth()]}-${String(d.getFullYear()).slice(2)}`;
+  // e.g. "15-May-26"  (9 chars, same as placeholder "01-Jan-26")
+}
+
+function todayLong(): string {
+  const d = new Date();
+  return `${String(d.getDate()).padStart(2,"0")}.${MONTHS[d.getMonth()]}.${d.getFullYear()}`;
+  // e.g. "15.May.2026"  (11 chars, same as placeholder "01.Jan.2026")
+}
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -76,7 +92,6 @@ function formatWttNumber(n: number): string {
 
 /**
  * Atomically increment the counter and return the NEW value.
- * Row id=1 is the single counter row (seeded on first request).
  */
 async function nextCounter(customer: string, flowRate: string): Promise<number> {
   const rows = await db.execute(sql`
@@ -93,12 +108,77 @@ async function nextCounter(customer: string, flowRate: string): Promise<number> 
 }
 
 /**
- * For XLSX files (ZIP-based): replace COMPANY NAME and WTT-BAN-0001 in all
- * XML entries inside the archive. Supports any-length company name.
+ * Extract KLD number from folder name, e.g. "300KLD - STP" → "300"
  */
-function processXlsx(filePath: string, customerName: string, wttNumber: string): Buffer {
+function kldFromFolder(folder: string): string {
+  const m = folder.match(/(\d+)\s*KLD/i);
+  return m ? m[1] : folder;
+}
+
+// ── Mail Content template ──────────────────────────────────────────────────
+
+const MAIL_CONTENT_PATH = join(PROPOSAL_ROOT, "Mail Content.docx");
+
+function getEmailTemplate(): string {
+  try {
+    const buf = readFileSync(MAIL_CONTENT_PATH);
+    const zip = new PizZip(buf);
+    const docXml = zip.file("word/document.xml")?.asText() ?? "";
+    // Strip XML tags, decode entities, collapse whitespace
+    let text = docXml
+      .replace(/<w:p[ >]/g, "\n<w:p>")   // paragraph → newline
+      .replace(/<w:br[^>]*\/>/g, "\n")    // line break
+      .replace(/<[^>]+>/g, "")            // strip all tags
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#[0-9]+;/g, "")
+      .replace(/[ \t]+/g, " ")
+      .replace(/\n /g, "\n")
+      .trim();
+    return text;
+  } catch {
+    // Fallback if file not found
+    return `Dear Sir,\n\nGreetings from WTT INTERNATIONAL !!!\n\nWith reference to the discussions your good selves had with our Team, we are attaching herewith the following documents for the supply of Sewage Treatment Plant of capacity FLOW M3/Day for M/s. COMPANY NAME.\n\n1. PROPOSAL(T&C)-(REV-00)-COMPANY NAME-(WTT-BAN-0001)\n2. OPEX-(REV-00)-COMPANY NAME-(WTT-BAN-0001)\n3. TECHNICAL SPECIFICATION-(REV-00)-COMPANY NAME-(WTT-BAN-0001)\n\nKindly revert back for any other clarifications.\n\nThanks & Regards\nRAJA A\nAGM – PROPOSAL\n7845009909\nraja.a@wttint.com`;
+  }
+}
+
+function buildEmailHtml(
+  customerName: string,
+  flowKld: string,
+  wttNumber: string,
+  filenames: string[],
+): string {
+  const template = getEmailTemplate()
+    .replace(/COMPANY NAME/gi, customerName)
+    .replace(/\bFLOW\b/g, flowKld)
+    .replace(/WTT-BAN-0001/g, wttNumber);
+
+  const lines = template.split("\n");
+  const htmlLines = lines.map((l) => `<p style="margin:4px 0">${l.trim() || "&nbsp;"}</p>`).join("\n");
+
+  return `
+    <div style="font-family:Arial,sans-serif;font-size:14px;color:#333;max-width:700px">
+      ${htmlLines}
+    </div>
+  `;
+}
+
+// ── document processing ────────────────────────────────────────────────────
+
+/**
+ * For XLSX files (ZIP-based): replace COMPANY NAME, WTT-BAN-0001, and date
+ * strings in all XML entries. Supports any-length company name.
+ */
+function processXlsx(
+  filePath: string,
+  customerName: string,
+  wttNumber: string,
+): Buffer {
   const raw = readFileSync(filePath);
   const zip = new PizZip(raw);
+  const dateL = todayLong(); // 11 chars e.g. "15.May.2026"
 
   Object.keys(zip.files).forEach((name) => {
     if (!name.toLowerCase().endsWith(".xml") && !name.toLowerCase().endsWith(".rels")) return;
@@ -115,6 +195,11 @@ function processXlsx(filePath: string, customerName: string, wttNumber: string):
         content = content.replace(/WTT-BAN-0001/g, wttNumber);
         changed = true;
       }
+      // Replace date placeholder "01.Jan.2026" with today (same 11-char length)
+      if (content.includes("01.Jan.2026")) {
+        content = content.replace(/01\.Jan\.2026/g, dateL);
+        changed = true;
+      }
       if (changed) zip.file(name, content);
     } catch {
       // skip binary-only entries
@@ -126,40 +211,53 @@ function processXlsx(filePath: string, customerName: string, wttNumber: string):
 
 /**
  * For old binary .doc (OLE2/CFB) files:
- * - COMPANY NAME (12 chars): pad/truncate to exact 12 bytes — maintains OLE2 sector integrity
- * - WTT-BAN-0001 (13 chars): always 13 chars (WTT-BAN-XXXX) — perfect same-length swap
+ * - COMPANY NAME (12 chars): pad/truncate to exact 12 bytes
+ * - WTT-BAN-0001 (12 chars): always 12 chars (WTT-BAN-XXXX) — perfect same-length
+ * - Date "01-Jan-26" (9 chars): replaced with today DD-Mon-YY (9 chars)
+ * - Date "01.Jan.2026" (11 chars): replaced with today DD.Mon.YYYY (11 chars)
  */
-function processDoc(filePath: string, customerName: string, wttNumber: string): Buffer {
+function processDoc(
+  filePath: string,
+  customerName: string,
+  wttNumber: string,
+): Buffer {
   const buf = readFileSync(filePath);
   const result = Buffer.from(buf);
 
+  function replaceAll(search: string, replacement: string): void {
+    const searchBuf = Buffer.from(search, "ascii");
+    const replBuf = Buffer.from(replacement, "ascii");
+    let pos = 0;
+    while ((pos = result.indexOf(searchBuf, pos)) !== -1) {
+      replBuf.copy(result, pos);
+      pos += searchBuf.length;
+    }
+  }
+
   // Replace COMPANY NAME (12-char fixed placeholder)
-  const cnSearch = Buffer.from("COMPANY NAME", "ascii");
   let cnReplacement = customerName.toUpperCase().trim();
   if (cnReplacement.length < 12) cnReplacement = cnReplacement.padEnd(12, " ");
   else cnReplacement = cnReplacement.slice(0, 12);
-  const cnBuf = Buffer.from(cnReplacement, "ascii");
-  let pos = 0;
-  while ((pos = result.indexOf(cnSearch, pos)) !== -1) {
-    cnBuf.copy(result, pos);
-    pos += 12;
-  }
+  replaceAll("COMPANY NAME", cnReplacement);
 
-  // Replace WTT-BAN-0001 (13 chars) with new number (always 13 chars — safe)
-  const wttSearch = Buffer.from("WTT-BAN-0001", "ascii");
-  const wttBuf = Buffer.from(wttNumber, "ascii"); // e.g. WTT-BAN-0002, always 12? No — WTT-BAN-XXXX = 12 chars
-  // WTT-BAN-0001 = 12 chars, WTT-BAN-XXXX = 12 chars → exact match ✓
-  pos = 0;
-  while ((pos = result.indexOf(wttSearch, pos)) !== -1) {
-    wttBuf.copy(result, pos);
-    pos += wttSearch.length;
-  }
+  // Replace WTT-BAN-0001 (12 chars) with new number (WTT-BAN-XXXX, always 12 chars)
+  replaceAll("WTT-BAN-0001", wttNumber);
+
+  // Replace date "01-Jan-26" (9 chars) → today in DD-Mon-YY format (9 chars)
+  replaceAll("01-Jan-26", todayShort());
+
+  // Replace date "01.Jan.2026" (11 chars) → today in DD.Mon.YYYY format (11 chars)
+  replaceAll("01.Jan.2026", todayLong());
 
   return result;
 }
 
-/** Build a modified copy of any supported file with replacements applied. */
-function buildModifiedFile(filePath: string, customerName: string, wttNumber: string): Buffer {
+/** Build a modified copy of any supported file with all replacements applied. */
+function buildModifiedFile(
+  filePath: string,
+  customerName: string,
+  wttNumber: string,
+): Buffer {
   const lower = filePath.toLowerCase();
   if (lower.endsWith(".xlsx") || lower.endsWith(".docx")) {
     return processXlsx(filePath, customerName, wttNumber);
@@ -175,6 +273,44 @@ function buildFilename(original: string, customerName: string, wttNumber: string
   return original
     .replace(/COMPANY NAME/gi, customerName.toUpperCase().trim())
     .replace(/WTT-BAN-0001/g, wttNumber);
+}
+
+/**
+ * Record the sent proposal in the proposal_requests table so it appears
+ * in the /proposals tracking dashboard.
+ */
+async function recordProposalRequest(params: {
+  wttNumber: string;
+  customerName: string;
+  contactPerson: string;
+  email: string;
+  phone: string;
+  flowRate: string;
+  country: string;
+  city: string;
+}): Promise<void> {
+  try {
+    await pool.query(
+      `INSERT INTO proposal_requests
+         (proposal_no, company_name, city, country, contact_person, email, phone, system_option, flow_rate, status, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8,'sent',$9)
+       ON CONFLICT (proposal_no) DO NOTHING`,
+      [
+        params.wttNumber,
+        params.customerName,
+        params.city || "Bangladesh",
+        params.country || "Bangladesh",
+        params.contactPerson || params.customerName,
+        params.email,
+        params.phone || "",
+        kldFromFolder(params.flowRate),
+        `Bangladesh Wizard — ${params.wttNumber}`,
+      ],
+    );
+  } catch (err) {
+    // Non-fatal — log but don't fail the email send
+    console.error("[proposal-wizard] recordProposalRequest error:", err);
+  }
 }
 
 // ── routes ─────────────────────────────────────────────────────────────────
@@ -198,19 +334,18 @@ router.get("/proposal-wizard/files", (req, res) => {
   res.json({ files: result });
 });
 
-// GET /api/proposal-wizard/counter — peek at the current counter without incrementing
+// GET /api/proposal-wizard/counter — peek without incrementing
 router.get("/proposal-wizard/counter", async (_req, res) => {
   try {
     const rows = await db.execute(sql`SELECT counter FROM proposal_wizard_counter WHERE id = 1`);
     const counter = Number((rows as any).rows?.[0]?.counter ?? (rows as any)[0]?.counter ?? 1);
     res.json({ counter, next: formatWttNumber(counter + 1) });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: "Could not read counter" });
   }
 });
 
-// POST /api/proposal-wizard/assign-number — increment counter once, return the new WTT number
-// Call this ONCE per proposal session; then pass the returned wttNumber to all file downloads.
+// POST /api/proposal-wizard/assign-number — increment once, return the new WTT number
 router.post("/proposal-wizard/assign-number", async (req, res) => {
   const { customerName = "", flowRate = "" } = req.body as Record<string, string>;
   try {
@@ -223,8 +358,6 @@ router.post("/proposal-wizard/assign-number", async (req, res) => {
 });
 
 // GET /api/proposal-wizard/download?flowRate=...&filename=...&customerName=...&wttNumber=WTT-BAN-0001
-// Pass wttNumber (from /assign-number) to reuse it without incrementing the counter.
-// If wttNumber is omitted, a new counter value is assigned (fallback for standalone use).
 router.get("/proposal-wizard/download", async (req, res) => {
   const { flowRate, filename, customerName, wttNumber: wttParam } = req.query as Record<string, string>;
   if (!flowRate || !filename) return res.status(400).json({ error: "flowRate and filename required" });
@@ -238,7 +371,6 @@ router.get("/proposal-wizard/download", async (req, res) => {
   const customer = (customerName || "CUSTOMER").toUpperCase().trim();
 
   try {
-    // Use pre-assigned number if provided; otherwise mint a new one
     const wttNumber = wttParam && /^WTT-BAN-\d{4}$/.test(wttParam)
       ? wttParam
       : formatWttNumber(await nextCounter(customer, flowRate));
@@ -256,15 +388,18 @@ router.get("/proposal-wizard/download", async (req, res) => {
   }
 });
 
-// POST /api/proposal-wizard/send-email
+// POST /api/proposal-wizard/send-email  (internal staff tool — accepts wttNumber param)
 router.post("/proposal-wizard/send-email", async (req, res) => {
-  const { flowRate, customerName, toEmail, toName, notes, wttNumber: wttParam } = req.body as {
+  const { flowRate, customerName, toEmail, toName, notes, wttNumber: wttParam, phone, city, country } = req.body as {
     flowRate: string;
     customerName: string;
     toEmail: string;
     toName?: string;
     notes?: string;
     wttNumber?: string;
+    phone?: string;
+    city?: string;
+    country?: string;
   };
 
   if (!flowRate || !customerName || !toEmail) {
@@ -284,8 +419,6 @@ router.post("/proposal-wizard/send-email", async (req, res) => {
   if (files.length === 0) return res.status(404).json({ error: "No files found for flow rate" });
 
   const customer = customerName.toUpperCase().trim();
-
-  // Use pre-assigned number if provided; otherwise mint a new one
   const wttNumber = wttParam && /^WTT-BAN-\d{4}$/.test(wttParam)
     ? wttParam
     : formatWttNumber(await nextCounter(customer, flowRate));
@@ -305,26 +438,106 @@ router.post("/proposal-wizard/send-email", async (req, res) => {
     auth: { user: gmailUser, pass: gmailPass },
   });
 
-  const kld = flowRate.replace(/[^0-9A-Za-z\s]/g, "").trim();
+  const kld = kldFromFolder(flowRate);
+  const emailHtml = buildEmailHtml(customer, kld, wttNumber, attachments.map((a) => a.filename));
 
   await transporter.sendMail({
     from: `WTT International <${gmailUser}>`,
     to: toEmail,
-    subject: `Proposal Documents – ${customerName} – ${kld} – ${wttNumber}`,
-    html: `
-      <p>Dear ${toName || customerName},</p>
-      <p>Please find attached the proposal documents for your reference:</p>
-      <ul>
-        ${files.map((f) => `<li>${buildFilename(f, customer, wttNumber)}</li>`).join("")}
-      </ul>
-      <p><strong>Reference:</strong> ${wttNumber}</p>
-      ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ""}
-      <p>Regards,<br/>WTT International Private Limited</p>
-    `,
+    subject: `Proposal Documents – ${customerName} – ${kld} KLD – ${wttNumber}`,
+    html: emailHtml,
     attachments,
   });
 
+  // Record in proposal_requests for tracking
+  await recordProposalRequest({
+    wttNumber,
+    customerName: customer,
+    contactPerson: toName || customer,
+    email: toEmail,
+    phone: phone || "",
+    flowRate,
+    country: country || "Bangladesh",
+    city: city || "Bangladesh",
+  });
+
   res.json({ success: true, message: `Email sent to ${toEmail}`, wttNumber });
+});
+
+// POST /api/proposal-wizard/send-public  (public-facing wizard — no auth needed)
+router.post("/proposal-wizard/send-public", async (req, res) => {
+  const {
+    flowRate, customerName, toEmail, contactPerson, phone, city, country, notes,
+  } = req.body as {
+    flowRate: string;
+    customerName: string;
+    toEmail: string;
+    contactPerson?: string;
+    phone?: string;
+    city?: string;
+    country?: string;
+    notes?: string;
+  };
+
+  if (!flowRate || !customerName || !toEmail) {
+    return res.status(400).json({ error: "flowRate, customerName and toEmail required" });
+  }
+
+  const gmailUser = process.env.GMAIL_USER;
+  const gmailPass = process.env.GMAIL_APP_PASSWORD;
+  if (!gmailUser || !gmailPass) {
+    return res.status(503).json({ error: "Email not configured. Please contact WTT directly." });
+  }
+
+  const dir = safeJoin(PROPOSAL_ROOT, flowRate);
+  if (!dir) return res.status(400).json({ error: "Invalid flow rate" });
+
+  const files = getFilesInFolder(flowRate);
+  if (files.length === 0) return res.status(404).json({ error: "No files found for selected flow rate" });
+
+  const customer = customerName.toUpperCase().trim();
+  const counter = await nextCounter(customer, flowRate);
+  const wttNumber = formatWttNumber(counter);
+  const kld = kldFromFolder(flowRate);
+
+  const attachments = files.map((f) => {
+    const filePath = join(dir, f);
+    const content = buildModifiedFile(filePath, customer, wttNumber);
+    return {
+      filename: buildFilename(f, customer, wttNumber),
+      content,
+      contentType: mimeFor(f),
+    };
+  });
+
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: { user: gmailUser, pass: gmailPass },
+  });
+
+  const emailHtml = buildEmailHtml(customer, kld, wttNumber, attachments.map((a) => a.filename));
+
+  await transporter.sendMail({
+    from: `WTT International <${gmailUser}>`,
+    to: toEmail,
+    subject: `Proposal – ${customerName} – ${kld} KLD STP – ${wttNumber}`,
+    html: emailHtml,
+    attachments,
+  });
+
+  // Record for tracking in /proposals dashboard
+  await recordProposalRequest({
+    wttNumber,
+    customerName: customer,
+    contactPerson: contactPerson || customer,
+    email: toEmail,
+    phone: phone || "",
+    flowRate,
+    country: country || "Bangladesh",
+    city: city || "Bangladesh",
+  });
+
+  res.json({ success: true, wttNumber, message: `Proposal sent to ${toEmail}` });
 });
 
 export default router;
