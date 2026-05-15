@@ -924,6 +924,80 @@ function docToPdf(
 }
 
 /**
+ * Convert a .doc file to a clean .docx by:
+ *   Stage 1 — LibreOffice converts .doc → .docx (avoids binary corruption)
+ *   Stage 2 — XML text replacements (company name, WTT number, date, city)
+ * Returns the modified .docx buffer (no PDF step).
+ */
+function docToDocx(
+  filePath: string,
+  customerName: string,
+  wttNumber: string,
+  city: string,
+  renamedFilename: string,
+): { buf: Buffer; filename: string } {
+  const uid = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const baseProfile = "/tmp/lo_base_profile";
+  const loProfile1 = join(tmpdir(), `lo_p1_${uid}`);
+  const tmpOrig = join(tmpdir(), `wtt_${uid}_orig.doc`);
+  const tmpDocx = join(tmpdir(), `wtt_${uid}_orig.docx`);
+  const tmpMod  = join(tmpdir(), `wtt_${uid}_mod.docx`);
+
+  try {
+    // Stage 1: .doc → .docx via LibreOffice
+    try { execSync(`cp -r "${baseProfile}" "${loProfile1}"`, { stdio: "pipe" }); } catch {}
+    writeFileSync(tmpOrig, readFileSync(filePath));
+    execSync(
+      `libreoffice --headless "-env:UserInstallation=file://${loProfile1}" --convert-to docx --outdir "${tmpdir()}" "${tmpOrig}"`,
+      { timeout: 90_000, stdio: "pipe" },
+    );
+
+    // Stage 2: XML text replacements inside the .docx
+    const dateL    = todayLong();
+    const dateS    = todayShort();
+    const cnUpper  = customerName.toUpperCase().trim();
+    const cityUpper = city ? city.toUpperCase().trim() : "";
+
+    const zip = new PizZip(readFileSync(tmpDocx));
+
+    Object.keys(zip.files).forEach((name) => {
+      if (!name.toLowerCase().endsWith(".xml") && !name.toLowerCase().endsWith(".rels")) return;
+      const file = zip.file(name);
+      if (!file || (file as any).dir) return;
+      let content = file.asText();
+      let changed = false;
+
+      if (content.includes("COMPANY NAME")) { content = content.replace(/COMPANY NAME/g, cnUpper); changed = true; }
+      if (content.includes("WTT-BAN-0001")) { content = content.replace(/WTT-BAN-0001/g, wttNumber); changed = true; }
+      if (content.includes("01.Jan.2026"))  { content = content.replace(/01\.Jan\.2026/g, dateL); changed = true; }
+      if (content.includes("01-Jan-26"))    { content = content.replace(/01-Jan-26/g, dateS); changed = true; }
+      if (content.includes("1-Jan-26"))     { content = content.replace(/1-Jan-26/g, dateS); changed = true; }
+      if (cityUpper && content.includes("CITY")) { content = content.replace(/\bCITY\b/g, cityUpper); changed = true; }
+      if (content.includes('w:val="yellow"')) {
+        content = content.replace(/<w:highlight w:val="yellow"\/>/g, "");
+        changed = true;
+      }
+
+      if (changed) zip.file(name, content);
+    });
+
+    const docxBuf = zip.generate({ type: "nodebuffer", compression: "DEFLATE" });
+    writeFileSync(tmpMod, docxBuf);
+
+    const outFilename = renamedFilename.replace(/\.doc$/i, ".docx");
+    console.log(`[proposal-wizard] docToDocx: ${basename(filePath)} → ${outFilename} (${docxBuf.length} bytes)`);
+    return { buf: docxBuf, filename: outFilename };
+  } catch (err) {
+    console.error("[proposal-wizard] docToDocx failed:", (err as any)?.message ?? err);
+    // Last resort: return the raw .doc (better than a corrupted binary-patched file)
+    return { buf: readFileSync(filePath), filename: renamedFilename };
+  } finally {
+    for (const f of [tmpOrig, tmpDocx, tmpMod]) { try { unlinkSync(f); } catch {} }
+    try { execSync(`rm -rf "${loProfile1}"`, { stdio: "pipe" }); } catch {}
+  }
+}
+
+/**
  * Record the sent proposal in the proposal_requests table so it appears
  * in the /proposals tracking dashboard.
  */
@@ -1076,6 +1150,10 @@ router.post("/proposal-wizard/send-email", async (req, res) => { try {
   const attachments = files.map((f) => {
     const filePath = join(dir, f);
     const renamedOrig = buildFilename(f, customer, wttNumber);
+    if (f.toLowerCase().endsWith(".doc")) {
+      const { buf, filename } = docToDocx(filePath, customer, wttNumber, city || "", renamedOrig);
+      return { filename, content: buf, contentType: mimeFor(filename) };
+    }
     const buf = buildModifiedFile(filePath, customer, wttNumber, city || "");
     return { filename: renamedOrig, content: buf, contentType: mimeFor(f) };
   });
@@ -1161,6 +1239,10 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
     const attachments = files.map((f) => {
       const filePath = join(dir, f);
       const renamedOrig = buildFilename(f, customer, wttNumber);
+      if (f.toLowerCase().endsWith(".doc")) {
+        const { buf, filename } = docToDocx(filePath, customer, wttNumber, city || "", renamedOrig);
+        return { filename, content: buf, contentType: mimeFor(filename) };
+      }
       const buf = buildModifiedFile(filePath, customer, wttNumber, city || "");
       return { filename: renamedOrig, content: buf, contentType: mimeFor(f) };
     });
@@ -1247,6 +1329,10 @@ router.post("/proposal-wizard/requests/:id/resend", async (req, res) => {
     const attachments = files.map((f) => {
       const filePath = join(dir, f);
       const renamedOrig = buildFilename(f, customer, wttNumber);
+      if (f.toLowerCase().endsWith(".doc")) {
+        const { buf, filename } = docToDocx(filePath, customer, wttNumber, city, renamedOrig);
+        return { filename, content: buf, contentType: mimeFor(filename) };
+      }
       const buf = buildModifiedFile(filePath, customer, wttNumber, city);
       return { filename: renamedOrig, content: buf, contentType: mimeFor(f) };
     });
