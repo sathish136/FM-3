@@ -1076,18 +1076,8 @@ router.post("/proposal-wizard/send-email", async (req, res) => { try {
   const attachments = files.map((f) => {
     const filePath = join(dir, f);
     const renamedOrig = buildFilename(f, customer, wttNumber);
-    // .doc files: two-stage pipeline (doc→docx→pdf) to avoid binary-patch corruption
-    if (f.toLowerCase().endsWith(".doc")) {
-      const { buf, filename } = docToPdf(filePath, customer, wttNumber, city || "", renamedOrig);
-      return { filename, content: buf, contentType: filename.endsWith(".pdf") ? "application/pdf" : mimeFor(f) };
-    }
-    const raw = buildModifiedFile(filePath, customer, wttNumber, city || "");
-    const { buf, filename } = convertToPdf(raw, renamedOrig);
-    return {
-      filename,
-      content: buf,
-      contentType: filename.endsWith(".pdf") ? "application/pdf" : mimeFor(f),
-    };
+    const buf = buildModifiedFile(filePath, customer, wttNumber, city || "");
+    return { filename: renamedOrig, content: buf, contentType: mimeFor(f) };
   });
 
   const transporter = nodemailer.createTransport({
@@ -1171,18 +1161,8 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
     const attachments = files.map((f) => {
       const filePath = join(dir, f);
       const renamedOrig = buildFilename(f, customer, wttNumber);
-      // .doc files: two-stage pipeline (doc→docx→pdf) to avoid binary-patch corruption
-      if (f.toLowerCase().endsWith(".doc")) {
-        const { buf, filename } = docToPdf(filePath, customer, wttNumber, city || "", renamedOrig);
-        return { filename, content: buf, contentType: filename.endsWith(".pdf") ? "application/pdf" : mimeFor(f) };
-      }
-      const raw = buildModifiedFile(filePath, customer, wttNumber, city || "");
-      const { buf, filename } = convertToPdf(raw, renamedOrig);
-      return {
-        filename,
-        content: buf,
-        contentType: filename.endsWith(".pdf") ? "application/pdf" : mimeFor(f),
-      };
+      const buf = buildModifiedFile(filePath, customer, wttNumber, city || "");
+      return { filename: renamedOrig, content: buf, contentType: mimeFor(f) };
     });
 
     const transporter = nodemailer.createTransport({
@@ -1267,13 +1247,8 @@ router.post("/proposal-wizard/requests/:id/resend", async (req, res) => {
     const attachments = files.map((f) => {
       const filePath = join(dir, f);
       const renamedOrig = buildFilename(f, customer, wttNumber);
-      if (f.toLowerCase().endsWith(".doc")) {
-        const { buf, filename } = docToPdf(filePath, customer, wttNumber, city, renamedOrig);
-        return { filename, content: buf, contentType: filename.endsWith(".pdf") ? "application/pdf" : mimeFor(f) };
-      }
-      const raw = buildModifiedFile(filePath, customer, wttNumber, city);
-      const { buf, filename } = convertToPdf(raw, renamedOrig);
-      return { filename, content: buf, contentType: filename.endsWith(".pdf") ? "application/pdf" : mimeFor(f) };
+      const buf = buildModifiedFile(filePath, customer, wttNumber, city);
+      return { filename: renamedOrig, content: buf, contentType: mimeFor(f) };
     });
 
     const transporter = nodemailer.createTransport({
