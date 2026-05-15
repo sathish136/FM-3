@@ -389,7 +389,7 @@ router.get("/proposal-wizard/download", async (req, res) => {
 });
 
 // POST /api/proposal-wizard/send-email  (internal staff tool — accepts wttNumber param)
-router.post("/proposal-wizard/send-email", async (req, res) => {
+router.post("/proposal-wizard/send-email", async (req, res) => { try {
   const { flowRate, customerName, toEmail, toName, notes, wttNumber: wttParam, phone, city, country } = req.body as {
     flowRate: string;
     customerName: string;
@@ -462,82 +462,99 @@ router.post("/proposal-wizard/send-email", async (req, res) => {
   });
 
   res.json({ success: true, message: `Email sent to ${toEmail}`, wttNumber });
+  } catch (err: any) {
+    console.error("send-email error:", err);
+    const msg = err?.message || String(err);
+    if (msg.includes("534") || msg.includes("WebLoginRequired") || msg.includes("Invalid login")) {
+      return res.status(503).json({ error: "Email delivery failed: Gmail credentials need to be refreshed. Please contact admin." });
+    }
+    res.status(500).json({ error: msg || "Failed to send email" });
+  }
 });
 
 // POST /api/proposal-wizard/send-public  (public-facing wizard — no auth needed)
 router.post("/proposal-wizard/send-public", async (req, res) => {
-  const {
-    flowRate, customerName, toEmail, contactPerson, phone, city, country, notes,
-  } = req.body as {
-    flowRate: string;
-    customerName: string;
-    toEmail: string;
-    contactPerson?: string;
-    phone?: string;
-    city?: string;
-    country?: string;
-    notes?: string;
-  };
-
-  if (!flowRate || !customerName || !toEmail) {
-    return res.status(400).json({ error: "flowRate, customerName and toEmail required" });
-  }
-
-  const gmailUser = process.env.GMAIL_USER;
-  const gmailPass = process.env.GMAIL_APP_PASSWORD;
-  if (!gmailUser || !gmailPass) {
-    return res.status(503).json({ error: "Email not configured. Please contact WTT directly." });
-  }
-
-  const dir = safeJoin(PROPOSAL_ROOT, flowRate);
-  if (!dir) return res.status(400).json({ error: "Invalid flow rate" });
-
-  const files = getFilesInFolder(flowRate);
-  if (files.length === 0) return res.status(404).json({ error: "No files found for selected flow rate" });
-
-  const customer = customerName.toUpperCase().trim();
-  const counter = await nextCounter(customer, flowRate);
-  const wttNumber = formatWttNumber(counter);
-  const kld = kldFromFolder(flowRate);
-
-  const attachments = files.map((f) => {
-    const filePath = join(dir, f);
-    const content = buildModifiedFile(filePath, customer, wttNumber);
-    return {
-      filename: buildFilename(f, customer, wttNumber),
-      content,
-      contentType: mimeFor(f),
+  try {
+    const {
+      flowRate, customerName, toEmail, contactPerson, phone, city, country, notes,
+    } = req.body as {
+      flowRate: string;
+      customerName: string;
+      toEmail: string;
+      contactPerson?: string;
+      phone?: string;
+      city?: string;
+      country?: string;
+      notes?: string;
     };
-  });
 
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: { user: gmailUser, pass: gmailPass },
-  });
+    if (!flowRate || !customerName || !toEmail) {
+      return res.status(400).json({ error: "flowRate, customerName and toEmail required" });
+    }
 
-  const emailHtml = buildEmailHtml(customer, kld, wttNumber, attachments.map((a) => a.filename));
+    const gmailUser = process.env.GMAIL_USER;
+    const gmailPass = process.env.GMAIL_APP_PASSWORD;
+    if (!gmailUser || !gmailPass) {
+      return res.status(503).json({ error: "Email not configured. Please contact WTT directly." });
+    }
 
-  await transporter.sendMail({
-    from: `WTT International <${gmailUser}>`,
-    to: toEmail,
-    subject: `Proposal – ${customerName} – ${kld} KLD STP – ${wttNumber}`,
-    html: emailHtml,
-    attachments,
-  });
+    const dir = safeJoin(PROPOSAL_ROOT, flowRate);
+    if (!dir) return res.status(400).json({ error: "Invalid flow rate" });
 
-  // Record for tracking in /proposals dashboard
-  await recordProposalRequest({
-    wttNumber,
-    customerName: customer,
-    contactPerson: contactPerson || customer,
-    email: toEmail,
-    phone: phone || "",
-    flowRate,
-    country: country || "Bangladesh",
-    city: city || "Bangladesh",
-  });
+    const files = getFilesInFolder(flowRate);
+    if (files.length === 0) return res.status(404).json({ error: "No files found for selected flow rate" });
 
-  res.json({ success: true, wttNumber, message: `Proposal sent to ${toEmail}` });
+    const customer = customerName.toUpperCase().trim();
+    const counter = await nextCounter(customer, flowRate);
+    const wttNumber = formatWttNumber(counter);
+    const kld = kldFromFolder(flowRate);
+
+    const attachments = files.map((f) => {
+      const filePath = join(dir, f);
+      const content = buildModifiedFile(filePath, customer, wttNumber);
+      return {
+        filename: buildFilename(f, customer, wttNumber),
+        content,
+        contentType: mimeFor(f),
+      };
+    });
+
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: { user: gmailUser, pass: gmailPass },
+    });
+
+    const emailHtml = buildEmailHtml(customer, kld, wttNumber, attachments.map((a) => a.filename));
+
+    await transporter.sendMail({
+      from: `WTT International <${gmailUser}>`,
+      to: toEmail,
+      subject: `Proposal – ${customerName} – ${kld} KLD STP – ${wttNumber}`,
+      html: emailHtml,
+      attachments,
+    });
+
+    // Record for tracking in /proposals dashboard
+    await recordProposalRequest({
+      wttNumber,
+      customerName: customer,
+      contactPerson: contactPerson || customer,
+      email: toEmail,
+      phone: phone || "",
+      flowRate,
+      country: country || "Bangladesh",
+      city: city || "Bangladesh",
+    });
+
+    res.json({ success: true, wttNumber, message: `Proposal sent to ${toEmail}` });
+  } catch (err: any) {
+    console.error("send-public error:", err);
+    const msg = err?.message || String(err);
+    if (msg.includes("534") || msg.includes("WebLoginRequired") || msg.includes("Invalid login")) {
+      return res.status(503).json({ error: "Email delivery failed: Gmail credentials need to be refreshed. Please contact WTT." });
+    }
+    res.status(500).json({ error: msg || "Failed to send proposal" });
+  }
 });
 
 export default router;
