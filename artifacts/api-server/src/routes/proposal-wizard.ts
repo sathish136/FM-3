@@ -469,7 +469,7 @@ function buildFilename(original: string, customerName: string, wttNumber: string
  */
 function convertToPdf(content: Buffer, originalFilename: string): { buf: Buffer; filename: string } {
   const ext = extname(originalFilename).toLowerCase();
-  if (ext !== ".docx" && ext !== ".doc") {
+  if (ext !== ".docx") {
     return { buf: content, filename: originalFilename };
   }
   const uid = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -477,7 +477,6 @@ function convertToPdf(content: Buffer, originalFilename: string): { buf: Buffer;
   const pdfName = basename(tmpIn, ext) + ".pdf";
   const tmpOut = join(tmpdir(), pdfName);
   const loProfile = join(tmpdir(), `lo_profile_${uid}`);
-  // Seed the temp profile with font substitution rules (Calibri→Carlito, Cambria→Caladea, etc.)
   const baseProfile = "/tmp/lo_base_profile";
   try {
     execSync(`cp -r "${baseProfile}" "${loProfile}"`, { stdio: "pipe" });
@@ -501,6 +500,117 @@ function convertToPdf(content: Buffer, originalFilename: string): { buf: Buffer;
     try { unlinkSync(tmpIn); } catch {}
     try { unlinkSync(tmpOut); } catch {}
     try { execSync(`rm -rf "${loProfile}"`, { stdio: "pipe" }); } catch {}
+  }
+}
+
+/**
+ * Two-stage pipeline for .doc → PDF:
+ *   1. Convert original .doc → .docx via LibreOffice (clean ZIP/XML — no binary patching)
+ *   2. Apply all text substitutions directly in the docx XML (COMPANY NAME, WTT #, dates, city)
+ *   3. Convert modified .docx → PDF via LibreOffice
+ *
+ * This avoids the "BrokenPackageRequest" error caused by manually patching the Word97
+ * binary FIB header after variable-length text replacements.
+ */
+function docToPdf(
+  filePath: string,
+  customerName: string,
+  wttNumber: string,
+  city: string,
+  renamedFilename: string,
+): { buf: Buffer; filename: string } {
+  const uid = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const baseProfile = "/tmp/lo_base_profile";
+  const loProfile1 = join(tmpdir(), `lo_p1_${uid}`);
+  const loProfile2 = join(tmpdir(), `lo_p2_${uid}`);
+  const tmpOrig    = join(tmpdir(), `wtt_${uid}_orig.doc`);
+  const tmpDocx    = join(tmpdir(), `wtt_${uid}_orig.docx`);
+  const tmpMod     = join(tmpdir(), `wtt_${uid}_mod.docx`);
+  const tmpPdf     = join(tmpdir(), `wtt_${uid}_mod.pdf`);
+
+  try {
+    // ── Stage 1: .doc → .docx ───────────────────────────────────────────────
+    try { execSync(`cp -r "${baseProfile}" "${loProfile1}"`, { stdio: "pipe" }); } catch {}
+    writeFileSync(tmpOrig, readFileSync(filePath));
+    execSync(
+      `libreoffice --headless "-env:UserInstallation=file://${loProfile1}" --convert-to docx --outdir "${tmpdir()}" "${tmpOrig}"`,
+      { timeout: 90_000, stdio: "pipe" },
+    );
+
+    // ── Stage 2: XML text replacements inside the .docx ─────────────────────
+    const dateL  = todayLong();
+    const dateS  = todayShort();
+    const cnUpper = customerName.toUpperCase().trim();
+    const cityUpper = city ? city.toUpperCase().trim() : "";
+
+    const docxRaw = readFileSync(tmpDocx);
+    const zip = new PizZip(docxRaw);
+
+    Object.keys(zip.files).forEach((name) => {
+      if (!name.toLowerCase().endsWith(".xml") && !name.toLowerCase().endsWith(".rels")) return;
+      const file = zip.file(name);
+      if (!file || (file as any).dir) return;
+      let content = file.asText();
+      let changed = false;
+
+      if (content.includes("COMPANY NAME")) {
+        content = content.replace(/COMPANY NAME/g, cnUpper);
+        changed = true;
+      }
+      if (content.includes("WTT-BAN-0001")) {
+        content = content.replace(/WTT-BAN-0001/g, wttNumber);
+        changed = true;
+      }
+      if (content.includes("01.Jan.2026")) {
+        content = content.replace(/01\.Jan\.2026/g, dateL);
+        changed = true;
+      }
+      if (content.includes("01-Jan-26")) {
+        content = content.replace(/01-Jan-26/g, dateS);
+        changed = true;
+      }
+      if (content.includes("1-Jan-26")) {
+        content = content.replace(/1-Jan-26/g, dateS);
+        changed = true;
+      }
+      if (cityUpper && content.includes("CITY")) {
+        content = content.replace(/\bCITY\b/g, cityUpper);
+        changed = true;
+      }
+      // Remove yellow highlight in docx run properties
+      if (content.includes('w:val="yellow"')) {
+        content = content.replace(/<w:highlight w:val="yellow"\/>/g, "");
+        changed = true;
+      }
+      if (changed) zip.file(name, content);
+    });
+
+    writeFileSync(tmpMod, zip.generate({ type: "nodebuffer", compression: "DEFLATE" }));
+
+    // ── Stage 3: .docx → PDF ─────────────────────────────────────────────────
+    try { execSync(`cp -r "${baseProfile}" "${loProfile2}"`, { stdio: "pipe" }); } catch {}
+    execSync(
+      `libreoffice --headless "-env:UserInstallation=file://${loProfile2}" --convert-to pdf --outdir "${tmpdir()}" "${tmpMod}"`,
+      { timeout: 90_000, stdio: "pipe" },
+    );
+
+    const pdfBuf = readFileSync(tmpPdf);
+    console.log(`[proposal-wizard] docToPdf: ${basename(filePath)} → PDF (${pdfBuf.length} bytes)`);
+    return {
+      buf: pdfBuf,
+      filename: renamedFilename.replace(/\.docx?$/i, ".pdf"),
+    };
+  } catch (err) {
+    console.error("[proposal-wizard] docToPdf failed, falling back to original .doc:", (err as any)?.message ?? err);
+    return {
+      buf: readFileSync(filePath),
+      filename: renamedFilename,
+    };
+  } finally {
+    for (const f of [tmpOrig, tmpDocx, tmpMod, tmpPdf]) {
+      try { unlinkSync(f); } catch {}
+    }
+    try { execSync(`rm -rf "${loProfile1}" "${loProfile2}"`, { stdio: "pipe" }); } catch {}
   }
 }
 
@@ -654,8 +764,13 @@ router.post("/proposal-wizard/send-email", async (req, res) => { try {
 
   const attachments = files.map((f) => {
     const filePath = join(dir, f);
-    const raw = buildModifiedFile(filePath, customer, wttNumber, city || "");
     const renamedOrig = buildFilename(f, customer, wttNumber);
+    // .doc files: two-stage pipeline (doc→docx→pdf) to avoid binary-patch corruption
+    if (f.toLowerCase().endsWith(".doc")) {
+      const { buf, filename } = docToPdf(filePath, customer, wttNumber, city || "", renamedOrig);
+      return { filename, content: buf, contentType: filename.endsWith(".pdf") ? "application/pdf" : mimeFor(f) };
+    }
+    const raw = buildModifiedFile(filePath, customer, wttNumber, city || "");
     const { buf, filename } = convertToPdf(raw, renamedOrig);
     return {
       filename,
@@ -745,8 +860,13 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
 
     const attachments = files.map((f) => {
       const filePath = join(dir, f);
-      const raw = buildModifiedFile(filePath, customer, wttNumber, city || "");
       const renamedOrig = buildFilename(f, customer, wttNumber);
+      // .doc files: two-stage pipeline (doc→docx→pdf) to avoid binary-patch corruption
+      if (f.toLowerCase().endsWith(".doc")) {
+        const { buf, filename } = docToPdf(filePath, customer, wttNumber, city || "", renamedOrig);
+        return { filename, content: buf, contentType: filename.endsWith(".pdf") ? "application/pdf" : mimeFor(f) };
+      }
+      const raw = buildModifiedFile(filePath, customer, wttNumber, city || "");
       const { buf, filename } = convertToPdf(raw, renamedOrig);
       return {
         filename,
