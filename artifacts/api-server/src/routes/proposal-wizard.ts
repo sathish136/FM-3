@@ -218,16 +218,24 @@ function processXlsx(
  * - WTT-BAN-0001 (12 chars): always 12 chars (WTT-BAN-XXXX) — perfect same-length
  * - Date "01-Jan-26" (9 chars): replaced with today DD-Mon-YY (9 chars)
  * - Date "01.Jan.2026" (11 chars): replaced with today DD.Mon.YYYY (11 chars)
+ * - CITY: variable-length splice; FIB ccpText updated to reflect char delta
+ * - Yellow highlight (sprmCHighlight=0x2A0C, value=0x07): cleared to 0x00
+ *
+ * OLE2 layout assumptions (validated against template files):
+ *   - FIB (Word 97) starts at raw offset 512 (first sector of WordDocument stream)
+ *   - ccpText is at FIB+76 (raw offset 588), csw=14, cslw offset derives to 64+12=76
+ *   - Text block starts at fcMin=2048; "\rCITY," address pattern at raw ~2592
  */
 function processDoc(
   filePath: string,
   customerName: string,
   wttNumber: string,
+  city = "",
 ): Buffer {
   const buf = readFileSync(filePath);
-  const result = Buffer.from(buf);
+  let result = Buffer.from(buf);
 
-  function replaceAll(search: string, replacement: string): void {
+  function replaceAllInPlace(search: string, replacement: string): void {
     const searchBuf = Buffer.from(search, "ascii");
     const replBuf = Buffer.from(replacement, "ascii");
     let pos = 0;
@@ -241,16 +249,56 @@ function processDoc(
   let cnReplacement = customerName.toUpperCase().trim();
   if (cnReplacement.length < 12) cnReplacement = cnReplacement.padEnd(12, " ");
   else cnReplacement = cnReplacement.slice(0, 12);
-  replaceAll("COMPANY NAME", cnReplacement);
+  replaceAllInPlace("COMPANY NAME", cnReplacement);
 
   // Replace WTT-BAN-0001 (12 chars) with new number (WTT-BAN-XXXX, always 12 chars)
-  replaceAll("WTT-BAN-0001", wttNumber);
+  replaceAllInPlace("WTT-BAN-0001", wttNumber);
 
   // Replace date "01-Jan-26" (9 chars) → today in DD-Mon-YY format (9 chars)
-  replaceAll("01-Jan-26", todayShort());
+  replaceAllInPlace("01-Jan-26", todayShort());
 
   // Replace date "01.Jan.2026" (11 chars) → today in DD.Mon.YYYY format (11 chars)
-  replaceAll("01.Jan.2026", todayLong());
+  replaceAllInPlace("01.Jan.2026", todayLong());
+
+  // Replace CITY placeholder — search for "\rCITY," to avoid matching "CAPACITY"
+  if (city) {
+    const cityUpper = city.toUpperCase().trim();
+    const searchPat = Buffer.from("\x0dCITY,", "binary"); // CR + CITY + comma = 6 bytes
+    const replPat   = Buffer.from("\x0d" + cityUpper + ",", "binary");
+    const cityPos   = result.indexOf(searchPat);
+    if (cityPos !== -1) {
+      const delta = replPat.length - searchPat.length;
+      if (delta === 0) {
+        replPat.copy(result, cityPos);
+      } else {
+        // Splice: rebuild buffer with variable-length city name
+        result = Buffer.concat([
+          result.subarray(0, cityPos),
+          replPat,
+          result.subarray(cityPos + searchPat.length),
+        ]);
+        // Update ccpText in the Word 97 FIB so the character count stays correct.
+        // FIB starts at raw offset 512 (sector 0); ccpText is at FIB+76 = raw 588.
+        // (csw=14 → FibRgW97 ends at FIB+61; cslw at FIB+62; FibRgLw97 at FIB+64;
+        //  ccpText is the 4th long in FibRgLw97 = FIB+64+3*4 = FIB+76.)
+        const CCPTEXT_RAW = 588;
+        const ccpText = result.readInt32LE(CCPTEXT_RAW);
+        result.writeInt32LE(ccpText + delta, CCPTEXT_RAW);
+      }
+    }
+  }
+
+  // Remove yellow highlighting: sprmCHighlight opcode 0x2A0C stored as [0x0C, 0x2A],
+  // followed by value byte 0x07 (yellow). Replace with 0x00 (no highlight).
+  {
+    const hlSearch = Buffer.from([0x0c, 0x2a, 0x07]);
+    const hlReplace = Buffer.from([0x0c, 0x2a, 0x00]);
+    let pos = 0;
+    while ((pos = result.indexOf(hlSearch, pos)) !== -1) {
+      hlReplace.copy(result, pos);
+      pos += 3;
+    }
+  }
 
   return result;
 }
@@ -267,7 +315,7 @@ function buildModifiedFile(
     return processXlsx(filePath, customerName, wttNumber, city);
   }
   if (lower.endsWith(".doc")) {
-    return processDoc(filePath, customerName, wttNumber);
+    return processDoc(filePath, customerName, wttNumber, city);
   }
   return readFileSync(filePath);
 }
