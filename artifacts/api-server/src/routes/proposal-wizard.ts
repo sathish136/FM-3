@@ -254,6 +254,14 @@ function buildEmailHtml(
  * For XLSX files (ZIP-based): replace COMPANY NAME, WTT-BAN-0001, and date
  * strings in all XML entries. Supports any-length company name.
  */
+/** Excel date serial for a JS Date (days since Dec 30 1899, Excel's epoch). */
+function excelSerial(d = new Date()): number {
+  return Math.floor((d.getTime() - Date.UTC(1899, 11, 30)) / 86_400_000);
+}
+
+// Template date serial = Jan 1, 2026 = 46023 (hardcoded in both OPEX & Technical Spec).
+const TEMPLATE_DATE_SERIAL = 46023;
+
 function processXlsx(
   filePath: string,
   customerName: string,
@@ -263,6 +271,7 @@ function processXlsx(
   const raw = readFileSync(filePath);
   const zip = new PizZip(raw);
   const dateL = todayLong(); // 11 chars e.g. "15.May.2026"
+  const todaySerial = String(excelSerial());
 
   Object.keys(zip.files).forEach((name) => {
     if (!name.toLowerCase().endsWith(".xml") && !name.toLowerCase().endsWith(".rels")) return;
@@ -292,6 +301,16 @@ function processXlsx(
       // Replace date placeholder "1-Jan-26" (no leading zero)
       if (content.includes("1-Jan-26")) {
         content = content.replace(/1-Jan-26/g, todayShort());
+        changed = true;
+      }
+      // Replace Excel date serial 46023 (Jan 1 2026 — the template placeholder)
+      // with today's serial so date-formatted cells display today's date.
+      const serialPattern = new RegExp(`<v>${TEMPLATE_DATE_SERIAL}</v>`, "g");
+      if (serialPattern.test(content)) {
+        content = content.replace(
+          new RegExp(`<v>${TEMPLATE_DATE_SERIAL}</v>`, "g"),
+          `<v>${todaySerial}</v>`,
+        );
         changed = true;
       }
       // Replace CITY placeholder
