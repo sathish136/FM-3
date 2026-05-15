@@ -351,11 +351,22 @@ function processDoc(
     }
   }
 
-  // Replace COMPANY NAME (12-char fixed placeholder)
-  let cnReplacement = customerName.toUpperCase().trim();
-  if (cnReplacement.length < 12) cnReplacement = cnReplacement.padEnd(12, " ");
-  else cnReplacement = cnReplacement.slice(0, 12);
-  replaceAllInPlace("COMPANY NAME", cnReplacement);
+  // Replace COMPANY NAME (12-char placeholder) — variable-length splice so no trailing spaces
+  {
+    const cnSearch = Buffer.from("COMPANY NAME", "ascii");
+    const cnRepl   = Buffer.from(customerName.toUpperCase().trim(), "ascii");
+    const delta    = cnRepl.length - cnSearch.length;
+    let pos = 0;
+    while ((pos = result.indexOf(cnSearch, pos)) !== -1) {
+      result = Buffer.concat([result.subarray(0, pos), cnRepl, result.subarray(pos + cnSearch.length)]);
+      if (delta !== 0) {
+        const CCPTEXT_RAW = 588;
+        const ccpText = result.readInt32LE(CCPTEXT_RAW);
+        result.writeInt32LE(ccpText + delta, CCPTEXT_RAW);
+      }
+      pos += cnRepl.length;
+    }
+  }
 
   // Replace WTT-BAN-0001 (12 chars) with new number (WTT-BAN-XXXX, always 12 chars)
   replaceAllInPlace("WTT-BAN-0001", wttNumber);
@@ -447,6 +458,11 @@ function convertToPdf(content: Buffer, originalFilename: string): { buf: Buffer;
   const pdfName = basename(tmpIn, ext) + ".pdf";
   const tmpOut = join(tmpdir(), pdfName);
   const loProfile = join(tmpdir(), `lo_profile_${uid}`);
+  // Seed the temp profile with font substitution rules (Calibri→Carlito, Cambria→Caladea, etc.)
+  const baseProfile = "/tmp/lo_base_profile";
+  try {
+    execSync(`cp -r "${baseProfile}" "${loProfile}"`, { stdio: "pipe" });
+  } catch { /* base profile may not exist — proceed without it */ }
   try {
     writeFileSync(tmpIn, content);
     execSync(
