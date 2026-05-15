@@ -172,235 +172,6 @@ function kldFromFolder(folder: string): string {
   return m ? m[1] : folder;
 }
 
-// ── Cover Letter PDF ────────────────────────────────────────────────────────
-
-/**
- * Build a cover-letter HTML page styled to match the WTT Word template:
- * logo centred, Roboto font loaded from locally-installed TTF files so
- * LibreOffice headless can render it without network access.
- */
-function buildCoverLetterHtml(
-  customerName: string,
-  city: string,
-  country: string,
-  wttNumber: string,
-  flowKld: string,
-): string {
-  const dateShort  = todayShort();  // 15-May-26
-  const dateLong   = todayLong();   // 15.May.2026
-  const fontsDir   = join(homedir(), ".fonts");
-  const robotoR    = join(fontsDir, "Roboto-Regular.ttf");
-  const robotoB    = join(fontsDir, "Roboto-Bold.ttf");
-  const robotoI    = join(fontsDir, "Roboto-Italic.ttf");
-
-  // @font-face with local file:// URIs so LibreOffice picks them up
-  const fontFaces = `
-    @font-face { font-family:'Roboto'; src:url('file://${robotoR}') format('truetype'); font-weight:400; font-style:normal; }
-    @font-face { font-family:'Roboto'; src:url('file://${robotoB}') format('truetype'); font-weight:700; font-style:normal; }
-    @font-face { font-family:'Roboto'; src:url('file://${robotoI}') format('truetype'); font-weight:400; font-style:italic; }
-  `;
-
-  const logoTag = LOGO_B64
-    ? `<img src="data:image/png;base64,${LOGO_B64}" alt="WTT" style="height:100px;width:auto;display:block;margin:0 auto 4px auto">`
-    : `<div style="font-size:22px;font-weight:700;color:#1a365d;text-align:center">WTT INTERNATIONAL</div>`;
-
-  const toCity    = (city    || "").toUpperCase().trim() || "—";
-  const toCountry = (country || "BANGLADESH").toUpperCase().trim();
-  const refNo     = `${dateLong}/${wttNumber}/NP-STP/${flowKld}K/R0/TCP`;
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<style>
-  ${fontFaces}
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body {
-    font-family: 'Roboto', Arial, sans-serif;
-    font-size: 11pt;
-    color: #111;
-    background: #fff;
-    width: 210mm;
-  }
-  .page {
-    width: 210mm;
-    min-height: 297mm;
-    padding: 20mm 22mm 18mm 22mm;
-    position: relative;
-  }
-  /* header stripe at very top */
-  .stripe-top {
-    height: 6px;
-    background: linear-gradient(90deg, #003087 0%, #00a9e0 100%);
-    margin-bottom: 18pt;
-  }
-  .logo-block {
-    text-align: center;
-    margin-bottom: 14pt;
-  }
-  .wlt-tag {
-    font-size: 8pt;
-    color: #64748b;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    text-align: center;
-    margin-bottom: 16pt;
-  }
-  .date-line {
-    text-align: right;
-    font-size: 11pt;
-    margin-bottom: 18pt;
-  }
-  .to-block {
-    font-size: 11pt;
-    line-height: 1.7;
-    margin-bottom: 14pt;
-  }
-  .to-block .label { font-weight: 400; }
-  .to-block .name  { font-weight: 700; padding-left: 16pt; }
-  .to-block .addr  { padding-left: 16pt; }
-  .ref-line {
-    font-size: 11pt;
-    margin-bottom: 18pt;
-  }
-  .salute { font-size: 11pt; margin-bottom: 14pt; }
-  .para {
-    font-size: 11pt;
-    line-height: 1.8;
-    text-align: justify;
-    text-indent: 24pt;
-    margin-bottom: 14pt;
-  }
-  .closing { font-size: 11pt; margin-top: 20pt; margin-bottom: 52pt; }
-  .sig-name  { font-size: 11pt; font-weight: 700; }
-  .sig-title { font-size: 10.5pt; }
-  /* watermark */
-  .watermark {
-    position: absolute;
-    bottom: 60mm;
-    left: 0; right: 0;
-    text-align: center;
-    font-size: 28pt;
-    font-style: italic;
-    color: rgba(0,0,0,0.07);
-    pointer-events: none;
-    font-family: 'Roboto', Arial, sans-serif;
-  }
-  .page-num {
-    position: absolute;
-    bottom: 14mm;
-    left: 22mm;
-    font-size: 10pt;
-    color: #333;
-  }
-  /* stripe at bottom */
-  .stripe-bottom {
-    position: absolute;
-    bottom: 0; left: 0; right: 0;
-    height: 6px;
-    background: linear-gradient(90deg, #003087 0%, #00a9e0 100%);
-  }
-</style>
-</head>
-<body>
-<div class="stripe-top"></div>
-<div class="page">
-
-  <!-- Logo centred -->
-  <div class="logo-block">${logoTag}</div>
-  <div class="wlt-tag">Water Loving Technology</div>
-
-  <!-- Date -->
-  <div class="date-line">${dateShort}</div>
-
-  <!-- To block -->
-  <div class="to-block">
-    <span class="label">To</span><br>
-    <span class="name">M/S. ${customerName},</span><br>
-    <span class="addr">${toCity},</span><br>
-    <span class="addr">${toCountry}.</span>
-  </div>
-
-  <!-- Reference -->
-  <div class="ref-line">[Proposal No: ${refNo}]</div>
-
-  <!-- Salutation -->
-  <div class="salute">Dear Sir,</div>
-
-  <!-- Body -->
-  <p class="para">
-    WTT International Private Limited (WTT) is pleased to provide
-    <strong>M/s. ${customerName}</strong> with the Techno Commercial Proposal for supply of
-    engineering &amp; materials for <strong>Sewage Treatment Plant of capacity
-    ${flowKld} M³/Day with Foundational limit during Phase-1, Progressive limit during
-    Phase-2, and ZLD based Treatment scheme during Phase-3.</strong>
-    In developing this offer WTT worked with you in an effort to understand your
-    project and business needs. The attached proposal outlines the solutions we feel
-    will best meet these objectives.
-  </p>
-
-  <p class="para">
-    We greatly appreciate your consideration of WTT for this project.
-    Our measure of success is how well we deliver solutions that help our client to
-    meet their critical business objectives. We hope to have the opportunity to
-    demonstrate this with your good selves.
-  </p>
-
-  <!-- Closing -->
-  <div class="closing">Yours Sincerely,</div>
-  <div class="sig-name">D. Venkatesh</div>
-  <div class="sig-title">Managing Director</div>
-
-  <!-- Watermark -->
-  <div class="watermark">Water Loving Technology</div>
-
-  <!-- Page number -->
-  <div class="page-num">Page | 1</div>
-
-  <div class="stripe-bottom"></div>
-</div>
-</body>
-</html>`;
-}
-
-/**
- * Generate a cover letter PDF via LibreOffice headless (HTML → PDF).
- * Returns null on failure so the email still sends without it.
- */
-function generateCoverLetterPdf(
-  customerName: string,
-  city: string,
-  country: string,
-  wttNumber: string,
-  flowKld: string,
-): Buffer | null {
-  const uid     = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  const tmpHtml = join(tmpdir(), `wtt_cl_${uid}.html`);
-  const tmpPdf  = join(tmpdir(), `wtt_cl_${uid}.pdf`);
-  const loProf  = join(tmpdir(), `lo_cl_${uid}`);
-  const baseProfile = "/tmp/lo_base_profile";
-
-  try {
-    writeFileSync(tmpHtml, buildCoverLetterHtml(customerName, city, country, wttNumber, flowKld), "utf8");
-    try { execSync(`cp -r "${baseProfile}" "${loProf}"`, { stdio: "pipe" }); } catch {}
-    execSync(
-      `libreoffice --headless "-env:UserInstallation=file://${loProf}" --convert-to pdf --outdir "${tmpdir()}" "${tmpHtml}"`,
-      { timeout: 90_000, stdio: "pipe" },
-    );
-    if (!existsSync(tmpPdf)) return null;
-    const buf = readFileSync(tmpPdf);
-    console.log(`[proposal-wizard] cover letter PDF: ${buf.length} bytes`);
-    return buf;
-  } catch (err) {
-    console.error("[proposal-wizard] cover letter PDF failed:", (err as any)?.message ?? err);
-    return null;
-  } finally {
-    try { unlinkSync(tmpHtml); } catch {}
-    try { unlinkSync(tmpPdf);  } catch {}
-    try { execSync(`rm -rf "${loProf}"`, { stdio: "pipe" }); } catch {}
-  }
-}
-
 // ── Mail Content template ──────────────────────────────────────────────────
 
 function buildEmailHtml(
@@ -883,6 +654,32 @@ function docToPdf(
         content = content.replace(/<w:highlight w:val="yellow"\/>/g, "");
         changed = true;
       }
+
+      // ── Fix header logo centering ────────────────────────────────────────
+      // LibreOffice's .doc → .docx conversion sometimes loses center
+      // alignment on image paragraphs in headers. Re-apply it here.
+      if (/word\/header\d*\.xml$/i.test(name) && content.includes("<w:drawing>")) {
+        // Replace every <w:jc> inside a paragraph that also contains a drawing
+        // with center, and inject one if the <w:pPr> block is missing it.
+        const fixed = content.replace(
+          /(<w:p[ >][^]*?<\/w:p>)/g,
+          (para) => {
+            if (!para.includes("<w:drawing>")) return para;
+            // Has existing <w:jc …/>?
+            if (/<w:jc\s/.test(para)) {
+              return para.replace(/<w:jc\s[^/]*\/>/g, '<w:jc w:val="center"/>');
+            }
+            // Has <w:pPr> but no <w:jc>?
+            if (para.includes("<w:pPr>")) {
+              return para.replace("<w:pPr>", '<w:pPr><w:jc w:val="center"/>');
+            }
+            // No <w:pPr> at all — insert one after the opening <w:p…> tag
+            return para.replace(/(<w:p(?:\s[^>]*)?>)/, '$1<w:pPr><w:jc w:val="center"/></w:pPr>');
+          },
+        );
+        if (fixed !== content) { content = fixed; changed = true; }
+      }
+
       if (changed) zip.file(name, content);
     });
 
@@ -1065,7 +862,7 @@ router.post("/proposal-wizard/send-email", async (req, res) => { try {
 
   const kld = kldFromFolder(flowRate);
 
-  const docAttachments = files.map((f) => {
+  const attachments = files.map((f) => {
     const filePath = join(dir, f);
     const renamedOrig = buildFilename(f, customer, wttNumber);
     // .doc files: two-stage pipeline (doc→docx→pdf) to avoid binary-patch corruption
@@ -1081,13 +878,6 @@ router.post("/proposal-wizard/send-email", async (req, res) => { try {
       contentType: filename.endsWith(".pdf") ? "application/pdf" : mimeFor(f),
     };
   });
-
-  // Prepend the programmatic cover letter PDF (centred logo, Roboto font)
-  const clBuf = generateCoverLetterPdf(customer, city || "", country || "Bangladesh", wttNumber, kld);
-  const coverLetterAttachment = clBuf
-    ? [{ filename: `Cover-Letter-${wttNumber}.pdf`, content: clBuf, contentType: "application/pdf" }]
-    : [];
-  const attachments = [...coverLetterAttachment, ...docAttachments];
 
   const transporter = nodemailer.createTransport({
     host: "smtp.office365.com",
@@ -1167,7 +957,7 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
     const wttNumber = formatWttNumber(counter);
     const kld = kldFromFolder(flowRate);
 
-    const docAttachments = files.map((f) => {
+    const attachments = files.map((f) => {
       const filePath = join(dir, f);
       const renamedOrig = buildFilename(f, customer, wttNumber);
       // .doc files: two-stage pipeline (doc→docx→pdf) to avoid binary-patch corruption
@@ -1183,13 +973,6 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
         contentType: filename.endsWith(".pdf") ? "application/pdf" : mimeFor(f),
       };
     });
-
-    // Prepend the programmatic cover letter PDF (centred logo, Roboto font)
-    const clBuf = generateCoverLetterPdf(customer, city || "", country || "Bangladesh", wttNumber, kld);
-    const coverLetterAttachment = clBuf
-      ? [{ filename: `Cover-Letter-${wttNumber}.pdf`, content: clBuf, contentType: "application/pdf" }]
-      : [];
-    const attachments = [...coverLetterAttachment, ...docAttachments];
 
     const transporter = nodemailer.createTransport({
       host: "smtp.office365.com",
