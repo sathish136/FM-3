@@ -186,21 +186,37 @@ function buildEmailHtml(
     ? `<img src="data:image/png;base64,${LOGO_B64}" alt="WTT International" style="display:block;height:80px;width:auto;margin:0 auto 8px auto">`
     : `<div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:1px;text-align:center">WTT INTERNATIONAL</div>`;
 
-  const attachmentRows = filenames.map((f, i) => {
+  // Sort: PDFs first, then XLS/XLSX, then other
+  const sortedFilenames = [...filenames].sort((a, b) => {
+    const rank = (f: string) => {
+      if (f.toLowerCase().endsWith(".pdf")) return 0;
+      if (f.toLowerCase().endsWith(".xlsx") || f.toLowerCase().endsWith(".xls")) return 1;
+      return 2;
+    };
+    return rank(a) - rank(b);
+  });
+
+  const attachmentRows = sortedFilenames.map((f, i) => {
     const isPdf = f.toLowerCase().endsWith(".pdf");
     const isXls = f.toLowerCase().endsWith(".xlsx") || f.toLowerCase().endsWith(".xls");
-    const icon = isPdf
-      ? `<span style="display:inline-block;background:#e53e3e;color:#fff;font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;letter-spacing:.5px;margin-right:10px;vertical-align:middle">PDF</span>`
-      : isXls
-      ? `<span style="display:inline-block;background:#276749;color:#fff;font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;letter-spacing:.5px;margin-right:10px;vertical-align:middle">XLS</span>`
-      : `<span style="display:inline-block;background:#2b6cb0;color:#fff;font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;letter-spacing:.5px;margin-right:10px;vertical-align:middle">DOC</span>`;
+    const typeTag = isPdf ? "PDF" : isXls ? "XLS" : "DOC";
+    const tagBg = isPdf ? "#c53030" : isXls ? "#276749" : "#2b6cb0";
+    const rowBg = i % 2 === 0 ? "#ffffff" : "#f9fafb";
     const label = f.replace(/\.[^/.]+$/, "");
     return `
       <tr>
-        <td style="padding:10px 14px;border-bottom:1px solid #e8edf2;font-size:13px;color:#2d3748;vertical-align:middle;font-family:'Roboto',Arial,sans-serif">
-          <span style="display:inline-block;width:22px;height:22px;background:#ebf4ff;border-radius:50%;text-align:center;line-height:22px;font-size:11px;font-weight:700;color:#2b6cb0;margin-right:10px;vertical-align:middle">${i + 1}</span>
-          ${icon}
-          <span style="vertical-align:middle">${label}</span>
+        <td style="padding:11px 16px;border-bottom:1px solid #e8edf2;font-size:13px;color:#2d3748;vertical-align:middle;font-family:'Roboto',Arial,sans-serif;background:${rowBg}">
+          <table cellpadding="0" cellspacing="0" style="width:100%">
+            <tr>
+              <td style="width:28px;vertical-align:middle">
+                <span style="display:inline-block;width:22px;height:22px;background:#ebf4ff;border-radius:50%;text-align:center;line-height:22px;font-size:11px;font-weight:700;color:#2b6cb0">${i + 1}</span>
+              </td>
+              <td style="width:46px;vertical-align:middle;padding-left:6px">
+                <span style="display:inline-block;background:${tagBg};color:#fff;font-size:9px;font-weight:700;padding:3px 6px;border-radius:4px;letter-spacing:.8px">${typeTag}</span>
+              </td>
+              <td style="vertical-align:middle;padding-left:8px;font-size:12.5px;color:#2d3748;line-height:1.4">${label}</td>
+            </tr>
+          </table>
         </td>
       </tr>`;
   }).join("\n");
@@ -215,7 +231,7 @@ function buildEmailHtml(
 <body style="margin:0;padding:0;background:#f0f4f8;font-family:'Roboto',Arial,sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f4f8;padding:30px 0">
   <tr><td align="center">
-  <table width="620" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.09)">
+  <table width="100%" cellpadding="0" cellspacing="0" style="max-width:700px;width:100%;background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.09)">
 
     <!-- Header: logo centered + dark band -->
     <tr>
@@ -890,7 +906,7 @@ router.post("/proposal-wizard/send-email", async (req, res) => { try {
   const emailHtml = buildEmailHtml(customer, kld, wttNumber, attachments.map((a) => a.filename));
 
   await transporter.sendMail({
-    from: `WTT International <${smtpUser}>`,
+    from: `WTT INTERNATIONAL <${smtpUser}>`,
     to: toEmail,
     subject: `Proposal Documents – ${customerName} – ${kld} KLD – ${wttNumber}`,
     html: emailHtml,
@@ -985,7 +1001,7 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
     const emailHtml = buildEmailHtml(customer, kld, wttNumber, attachments.map((a) => a.filename));
 
     await transporter.sendMail({
-      from: `WTT International <${smtpUser}>`,
+      from: `WTT INTERNATIONAL <${smtpUser}>`,
       to: toEmail,
       subject: `Proposal – ${customerName} – ${kld} KLD STP – ${wttNumber}`,
       html: emailHtml,
@@ -1012,6 +1028,84 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
       return res.status(503).json({ error: "Email delivery failed: Gmail credentials need to be refreshed. Please contact WTT." });
     }
     res.status(500).json({ error: msg || "Failed to send proposal" });
+  }
+});
+
+// POST /api/proposal-wizard/requests/:id/resend — resend email for existing record
+router.post("/proposal-wizard/requests/:id/resend", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "invalid id" });
+
+    const r = await pool.query("SELECT * FROM proposal_requests WHERE id = $1", [id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: "proposal not found" });
+    const p = r.rows[0];
+
+    const smtpUser = process.env.PROPOSAL_SMTP_USER;
+    const smtpPass = process.env.PROPOSAL_SMTP_PASSWORD;
+    if (!smtpUser || !smtpPass) {
+      return res.status(503).json({ error: "Email not configured. Contact admin." });
+    }
+
+    // Find the folder matching this flow_rate
+    const folders = getFlowRateFolders();
+    const flowRateFolder = folders.find((f) => {
+      const kld = kldFromFolder(f);
+      return kld === String(p.flow_rate);
+    }) || folders.find((f) => f.toLowerCase().includes(String(p.flow_rate).toLowerCase()));
+
+    if (!flowRateFolder) {
+      return res.status(404).json({ error: `No template files found for flow rate ${p.flow_rate} KLD` });
+    }
+
+    const dir = safeJoin(PROPOSAL_ROOT, flowRateFolder);
+    if (!dir) return res.status(400).json({ error: "Invalid flow rate folder" });
+
+    const files = getFilesInFolder(flowRateFolder);
+    if (files.length === 0) return res.status(404).json({ error: "No files found for selected flow rate" });
+
+    const customer = String(p.company_name).toUpperCase().trim();
+    const wttNumber = String(p.proposal_no);
+    const kld = kldFromFolder(flowRateFolder);
+    const city = String(p.city || "Bangladesh");
+
+    const attachments = files.map((f) => {
+      const filePath = join(dir, f);
+      const renamedOrig = buildFilename(f, customer, wttNumber);
+      if (f.toLowerCase().endsWith(".doc")) {
+        const { buf, filename } = docToPdf(filePath, customer, wttNumber, city, renamedOrig);
+        return { filename, content: buf, contentType: filename.endsWith(".pdf") ? "application/pdf" : mimeFor(f) };
+      }
+      const raw = buildModifiedFile(filePath, customer, wttNumber, city);
+      const { buf, filename } = convertToPdf(raw, renamedOrig);
+      return { filename, content: buf, contentType: filename.endsWith(".pdf") ? "application/pdf" : mimeFor(f) };
+    });
+
+    const transporter = nodemailer.createTransport({
+      host: "smtp.office365.com",
+      port: 587,
+      secure: false,
+      requireTLS: true,
+      auth: { user: smtpUser, pass: smtpPass },
+    });
+
+    const emailHtml = buildEmailHtml(customer, kld, wttNumber, attachments.map((a) => a.filename));
+
+    await transporter.sendMail({
+      from: `WTT INTERNATIONAL <${smtpUser}>`,
+      to: String(p.email),
+      subject: `Proposal – ${p.company_name} – ${kld} KLD STP – ${wttNumber}`,
+      html: emailHtml,
+      attachments,
+    });
+
+    // Update status to sent
+    await pool.query("UPDATE proposal_requests SET status = 'sent', updated_at = NOW() WHERE id = $1", [id]);
+
+    res.json({ success: true, message: `Proposal resent to ${p.email}`, wttNumber });
+  } catch (err: any) {
+    console.error("resend error:", err);
+    res.status(500).json({ error: err?.message || "Failed to resend proposal" });
   }
 });
 

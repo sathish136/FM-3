@@ -96,16 +96,16 @@ export default function PublicProposalWizard() {
           <p className="text-gray-500 text-sm mb-6">
             Your proposal documents have been sent to <strong>{form.email}</strong>. Please check your inbox (and spam folder).
           </p>
-          <div className="bg-indigo-50 rounded-2xl px-6 py-4 mb-6 border border-indigo-100">
-            <p className="text-xs text-indigo-500 font-medium uppercase tracking-wide mb-1">Your Proposal Reference</p>
-            <p className="text-2xl font-bold text-indigo-700 tracking-wider font-mono">{result.wttNumber}</p>
+          <div className="bg-blue-50 rounded-2xl px-6 py-4 mb-6 border border-blue-100">
+            <p className="text-xs text-blue-500 font-medium uppercase tracking-wide mb-1">Your Proposal Reference</p>
+            <p className="text-2xl font-bold text-blue-700 tracking-wider font-mono">{result.wttNumber}</p>
           </div>
           <p className="text-xs text-gray-400 mb-6">
             Please quote this reference number in all future correspondence with WTT International.
           </p>
           <button
             onClick={() => { setResult(null); setForm(INIT); }}
-            className="text-sm text-indigo-600 hover:underline font-medium"
+            className="text-sm text-blue-600 hover:underline font-medium"
           >
             Submit another request →
           </button>
@@ -118,14 +118,14 @@ export default function PublicProposalWizard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/30 flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/30 flex flex-col items-center justify-center py-6 px-4">
 
       {/* Logo */}
-      <div className="flex flex-col items-center mb-8 text-center">
+      <div className="flex flex-col items-center mb-6 text-center">
         <img
           src={LOGO_URL}
           alt="WTT International"
-          className="h-28 object-contain mb-4"
+          className="h-24 object-contain mb-4"
         />
         <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Bangladesh Proposal Request</h1>
         <p className="text-sm text-gray-500 mt-1.5 max-w-sm">
@@ -133,7 +133,7 @@ export default function PublicProposalWizard() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-lg border border-gray-100 p-8 w-full max-w-xl space-y-5">
+      <form onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-lg border border-gray-100 p-6 sm:p-8 w-full max-w-xl space-y-5">
 
         {/* Flow Rate */}
         <div>
@@ -141,12 +141,12 @@ export default function PublicProposalWizard() {
             Select Flow Rate <span className="text-red-500">*</span>
           </label>
           <div className="relative">
-            <Droplets className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-indigo-400 pointer-events-none" />
+            <Droplets className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-400 pointer-events-none" />
             <select
               value={form.flowRate}
               onChange={(e) => update({ flowRate: e.target.value })}
               required
-              className="w-full pl-10 pr-10 py-3 text-sm border-2 border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-400 appearance-none cursor-pointer font-medium text-gray-700"
+              className="w-full pl-10 pr-10 py-3 text-sm border-2 border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 appearance-none cursor-pointer font-medium text-gray-700"
             >
               <option value="">— Choose STP capacity —</option>
               {flowRates.map((fr) => (
@@ -172,7 +172,7 @@ export default function PublicProposalWizard() {
                 onChange={(e) => update({ customerName: e.target.value })}
                 placeholder="M/s. Company Name"
                 required
-                className="w-full pl-10 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full pl-10 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -187,7 +187,7 @@ export default function PublicProposalWizard() {
                 onChange={(e) => update({ contactPerson: e.target.value })}
                 placeholder="Full name"
                 required
-                className="w-full pl-10 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full pl-10 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -206,7 +206,7 @@ export default function PublicProposalWizard() {
                 onChange={(e) => update({ email: e.target.value })}
                 placeholder="you@company.com"
                 required
-                className="w-full pl-10 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full pl-10 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -222,7 +222,7 @@ export default function PublicProposalWizard() {
                 onChange={(e) => update({ phone: e.target.value })}
                 placeholder="+880 17..."
                 required
-                className={`w-full pl-10 py-2.5 text-sm border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                className={`w-full pl-10 py-2.5 text-sm border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   form.phone && !phoneValid ? "border-red-400 bg-red-50" : "border-gray-200"
                 }`}
               />
@@ -245,7 +245,7 @@ export default function PublicProposalWizard() {
               onChange={(e) => update({ city: e.target.value })}
               placeholder="Dhaka"
               required
-              className="w-full pl-10 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full pl-10 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
         </div>
@@ -260,7 +260,7 @@ export default function PublicProposalWizard() {
               onChange={(e) => update({ remarks: e.target.value })}
               placeholder="Brief requirement or message..."
               rows={3}
-              className="w-full pl-10 pr-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+              className="w-full pl-10 pr-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             />
           </div>
         </div>
@@ -274,7 +274,7 @@ export default function PublicProposalWizard() {
         <button
           type="submit"
           disabled={!canSubmit || sending}
-          className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-sm shadow-md transition-colors"
+          className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-sm shadow-md transition-colors"
         >
           {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           {sending ? "Preparing & Sending…" : "Send My Proposal Documents"}

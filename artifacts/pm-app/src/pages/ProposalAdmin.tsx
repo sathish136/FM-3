@@ -2,11 +2,10 @@ import { useState, useEffect, type ReactNode } from "react";
 import { Layout } from "@/components/Layout";
 import {
   FileText, RefreshCw, Eye, CheckCircle2, Clock,
-  Search, Download, Loader2, Building2, MapPin, Mail,
+  Search, Loader2, Building2, MapPin, Mail,
   Phone, User, Droplets, Layers, SlidersHorizontal,
-  X, ExternalLink, AlertCircle,
+  X, ExternalLink, AlertCircle, Trash2, Send, AlertTriangle,
 } from "lucide-react";
-
 
 const API = "/api";
 
@@ -62,44 +61,55 @@ function formatDate(iso: string) {
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-function DetailPanel({ proposal, onClose, onStatusChange }: {
+function ConfirmDialog({ title, message, onConfirm, onCancel, loading }: {
+  title: string;
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  loading?: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 z-10">
+        <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <AlertTriangle className="w-6 h-6 text-red-500" />
+        </div>
+        <h3 className="text-base font-bold text-gray-900 text-center mb-1">{title}</h3>
+        <p className="text-sm text-gray-500 text-center mb-6">{message}</p>
+        <div className="flex gap-2">
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 transition disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-red-600 hover:bg-red-700 transition disabled:opacity-50 flex items-center justify-center gap-1.5"
+          >
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailPanel({ proposal, onClose, onStatusChange, onDelete }: {
   proposal: ProposalRow;
   onClose: () => void;
   onStatusChange: (id: number, status: Status) => void;
+  onDelete: (id: number) => void;
 }) {
   const [updating, setUpdating] = useState(false);
-  const [downloadingDocx, setDownloadingDocx] = useState(false);
-  const [docxError, setDocxError] = useState<string | null>(null);
-
-  const openPdf = () => {
-    window.open(`/pm-app/proposal-pdf?id=${proposal.id}`, "_blank");
-  };
-
-  const downloadDocx = async () => {
-    setDownloadingDocx(true);
-    setDocxError(null);
-    try {
-      const res = await fetch(`${API}/proposals/${proposal.id}/generate-docx`);
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error || `Server error ${res.status}`);
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      const safe = proposal.company_name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
-      a.download = `Proposal_${safe}_${proposal.proposal_no}.docx`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e: any) {
-      setDocxError(e?.message || "Download failed");
-    } finally {
-      setDownloadingDocx(false);
-    }
-  };
+  const [resending, setResending] = useState(false);
+  const [resendResult, setResendResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const changeStatus = async (s: Status) => {
     setUpdating(true);
@@ -115,127 +125,188 @@ function DetailPanel({ proposal, onClose, onStatusChange }: {
     }
   };
 
+  const handleResend = async () => {
+    setResending(true);
+    setResendResult(null);
+    try {
+      const res = await fetch(`${API}/proposal-wizard/requests/${proposal.id}/resend`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Resend failed");
+      setResendResult({ ok: true, msg: `Resent to ${proposal.email}` });
+      onStatusChange(proposal.id, "sent");
+    } catch (e: any) {
+      setResendResult({ ok: false, msg: e.message || "Resend failed" });
+    } finally {
+      setResending(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch(`${API}/proposals/${proposal.id}`, { method: "DELETE" });
+      if (res.ok) {
+        onDelete(proposal.id);
+        onClose();
+      }
+    } finally {
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex">
-      <div className="flex-1 bg-black/40" onClick={onClose} />
-      <div className="w-full max-w-md bg-white shadow-2xl flex flex-col h-full overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
-          <div>
-            <h2 className="text-base font-bold text-gray-900">{proposal.proposal_no}</h2>
-            <p className="text-xs text-gray-500">{formatDate(proposal.created_at)}</p>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+    <>
+      <div className="fixed inset-0 z-50 flex">
+        <div className="flex-1 bg-black/40" onClick={onClose} />
+        <div className="w-full max-w-md bg-white shadow-2xl flex flex-col h-full overflow-y-auto">
 
-        <div className="p-5 space-y-5 flex-1">
-          {/* Status */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Status</p>
-            <div className="flex flex-wrap gap-2">
-              {(Object.keys(STATUS_META) as Status[]).map((s) => (
-                <button
-                  key={s}
-                  disabled={updating}
-                  onClick={() => changeStatus(s)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
-                    proposal.status === s
-                      ? STATUS_META[s].color + " shadow-sm"
-                      : "border-gray-200 text-gray-500 hover:border-gray-300"
-                  }`}
-                >
-                  {updating && proposal.status !== s ? <Loader2 className="w-3 h-3 animate-spin" /> : STATUS_META[s].icon}
-                  {STATUS_META[s].label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* System + Flow */}
-          <div className="bg-blue-50 rounded-xl p-4 border border-blue-100 space-y-2">
-            <div className="flex items-center gap-2">
-              {proposal.system_option === 2
-                ? <Layers className="w-4 h-4 text-purple-500" />
-                : <Droplets className="w-4 h-4 text-blue-500" />}
-              <span className="text-sm font-semibold text-gray-800">
-                Option {proposal.system_option} — {proposal.system_option === 1 ? "Standard STP" : "STP + MBR Advanced"}
-              </span>
-            </div>
-            <p className="text-sm text-gray-600">
-              Flow Rate: <strong className="text-gray-900">{proposal.flow_rate} M³/Day</strong>
-            </p>
-          </div>
-
-          {/* Company */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Company</p>
-            <div className="space-y-1.5 text-sm text-gray-700">
-              <div className="flex items-start gap-2">
-                <Building2 className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                <span className="font-semibold">{proposal.company_name}</span>
-              </div>
-              {proposal.address && (
-                <div className="flex items-start gap-2">
-                  <MapPin className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                  <span>{proposal.address}</span>
-                </div>
-              )}
-              <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                <span>{proposal.city}, {proposal.country}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Contact */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Contact</p>
-            <div className="space-y-1.5 text-sm text-gray-700">
-              <div className="flex items-center gap-2"><User className="w-4 h-4 text-gray-400" />{proposal.contact_person}</div>
-              <div className="flex items-center gap-2"><Mail className="w-4 h-4 text-gray-400" /><a href={`mailto:${proposal.email}`} className="text-blue-600 hover:underline">{proposal.email}</a></div>
-              {proposal.phone && <div className="flex items-center gap-2"><Phone className="w-4 h-4 text-gray-400" />{proposal.phone}</div>}
-            </div>
-          </div>
-
-          {/* Notes */}
-          {proposal.notes && (
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
             <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Notes</p>
-              <p className="text-sm text-gray-700 bg-gray-50 rounded-xl p-3 border border-gray-100">{proposal.notes}</p>
+              <h2 className="text-base font-bold text-gray-900">{proposal.proposal_no}</h2>
+              <p className="text-xs text-gray-500">{formatDate(proposal.created_at)}</p>
             </div>
-          )}
-        </div>
+            <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
 
-        {/* Actions */}
-        <div className="sticky bottom-0 px-5 py-4 border-t border-gray-100 bg-white space-y-2">
-          <button
-            onClick={openPdf}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition"
-          >
-            <FileText className="w-4 h-4" />
-            Generate &amp; View Proposal PDF
-            <ExternalLink className="w-3.5 h-3.5 opacity-70" />
-          </button>
-          <button
-            onClick={downloadDocx}
-            disabled={downloadingDocx}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 shadow-sm transition disabled:opacity-60"
-          >
-            {downloadingDocx
-              ? <Loader2 className="w-4 h-4 animate-spin" />
-              : <Download className="w-4 h-4" />}
-            Download DOCX from Template
-          </button>
-          {docxError && (
-            <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700">
-              <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-              {docxError}
+          <div className="p-5 space-y-5 flex-1">
+            {/* Status */}
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Status</p>
+              <div className="flex flex-wrap gap-2">
+                {(Object.keys(STATUS_META) as Status[]).map((s) => (
+                  <button
+                    key={s}
+                    disabled={updating}
+                    onClick={() => changeStatus(s)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
+                      proposal.status === s
+                        ? STATUS_META[s].color + " shadow-sm"
+                        : "border-gray-200 text-gray-500 hover:border-gray-300"
+                    }`}
+                  >
+                    {updating && proposal.status !== s ? <Loader2 className="w-3 h-3 animate-spin" /> : STATUS_META[s].icon}
+                    {STATUS_META[s].label}
+                  </button>
+                ))}
+              </div>
             </div>
-          )}
+
+            {/* System + Flow */}
+            <div className="bg-blue-50 rounded-xl p-4 border border-blue-100 space-y-2">
+              <div className="flex items-center gap-2">
+                {proposal.system_option === 2
+                  ? <Layers className="w-4 h-4 text-blue-500" />
+                  : <Droplets className="w-4 h-4 text-blue-500" />}
+                <span className="text-sm font-semibold text-gray-800">
+                  Option {proposal.system_option} — {proposal.system_option === 1 ? "Standard STP" : "STP + MBR Advanced"}
+                </span>
+              </div>
+              <p className="text-sm text-gray-600">
+                Flow Rate: <strong className="text-gray-900">{proposal.flow_rate} M³/Day</strong>
+              </p>
+            </div>
+
+            {/* Company */}
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Company</p>
+              <div className="space-y-1.5 text-sm text-gray-700">
+                <div className="flex items-start gap-2">
+                  <Building2 className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                  <span className="font-semibold">{proposal.company_name}</span>
+                </div>
+                {proposal.address && (
+                  <div className="flex items-start gap-2">
+                    <MapPin className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                    <span>{proposal.address}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  <span>{proposal.city}, {proposal.country}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Contact */}
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Contact</p>
+              <div className="space-y-1.5 text-sm text-gray-700">
+                <div className="flex items-center gap-2"><User className="w-4 h-4 text-gray-400" />{proposal.contact_person}</div>
+                <div className="flex items-center gap-2"><Mail className="w-4 h-4 text-gray-400" /><a href={`mailto:${proposal.email}`} className="text-blue-600 hover:underline">{proposal.email}</a></div>
+                {proposal.phone && <div className="flex items-center gap-2"><Phone className="w-4 h-4 text-gray-400" />{proposal.phone}</div>}
+              </div>
+            </div>
+
+            {/* Notes */}
+            {proposal.notes && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Notes</p>
+                <p className="text-sm text-gray-700 bg-gray-50 rounded-xl p-3 border border-gray-100">{proposal.notes}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="sticky bottom-0 px-5 py-4 border-t border-gray-100 bg-white space-y-3">
+
+            {/* Resend result */}
+            {resendResult && (
+              <div className={`flex items-start gap-2 px-3 py-2.5 rounded-xl text-xs font-medium border ${
+                resendResult.ok
+                  ? "bg-green-50 border-green-200 text-green-700"
+                  : "bg-red-50 border-red-200 text-red-700"
+              }`}>
+                {resendResult.ok
+                  ? <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                  : <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />}
+                {resendResult.msg}
+              </div>
+            )}
+
+            {/* Resend button */}
+            <button
+              onClick={handleResend}
+              disabled={resending}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition disabled:opacity-60"
+            >
+              {resending
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Preparing &amp; Resending…</>
+                : <><Send className="w-4 h-4" /> Resend Proposal Email</>}
+            </button>
+
+            {/* Email target */}
+            <p className="text-center text-xs text-gray-400">
+              Will be sent to <span className="font-medium text-gray-600">{proposal.email}</span>
+            </p>
+
+            {/* Delete button */}
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete Record
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Delete Proposal"
+          message={`Are you sure you want to delete ${proposal.proposal_no}? This cannot be undone.`}
+          onConfirm={handleDelete}
+          onCancel={() => setConfirmDelete(false)}
+          loading={deleting}
+        />
+      )}
+    </>
   );
 }
 
@@ -245,6 +316,8 @@ export default function ProposalAdmin() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | Status>("all");
   const [selected, setSelected] = useState<ProposalRow | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -261,6 +334,22 @@ export default function ProposalAdmin() {
   const handleStatusChange = (id: number, status: Status) => {
     setRows((prev) => prev.map((r) => r.id === id ? { ...r, status } : r));
     setSelected((prev) => prev?.id === id ? { ...prev, status } : prev);
+  };
+
+  const handleDelete = (id: number) => {
+    setRows((prev) => prev.filter((r) => r.id !== id));
+    if (selected?.id === id) setSelected(null);
+  };
+
+  const deleteRow = async (id: number) => {
+    setDeletingId(id);
+    try {
+      const res = await fetch(`${API}/proposals/${id}`, { method: "DELETE" });
+      if (res.ok) handleDelete(id);
+    } finally {
+      setDeletingId(null);
+      setConfirmDeleteId(null);
+    }
   };
 
   const filtered = rows.filter((r) => {
@@ -303,12 +392,12 @@ export default function ProposalAdmin() {
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
             </button>
             <a
-              href="/pm-app/proposal-request"
+              href="/pm-app/proposal-wizard"
               target="_blank"
               rel="noreferrer"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-white bg-blue-600 hover:bg-blue-700 transition"
             >
-              <ExternalLink className="w-3.5 h-3.5" /> Open Customer Portal
+              <ExternalLink className="w-3.5 h-3.5" /> Open Proposal Wizard
             </a>
           </div>
         </div>
@@ -355,8 +444,8 @@ export default function ProposalAdmin() {
               {rows.length === 0 && (
                 <p className="text-xs mt-1 text-gray-400">
                   Share the{" "}
-                  <a href="/pm-app/proposal-request" target="_blank" className="text-blue-500 hover:underline">
-                    Customer Portal
+                  <a href="/pm-app/proposal-wizard" target="_blank" className="text-blue-500 hover:underline">
+                    Proposal Wizard
                   </a>{" "}
                   to start receiving requests
                 </p>
@@ -392,7 +481,7 @@ export default function ProposalAdmin() {
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
                         row.system_option === 2
-                          ? "bg-purple-100 text-purple-700"
+                          ? "bg-blue-100 text-blue-700"
                           : "bg-blue-100 text-blue-700"
                       }`}>
                         {row.system_option === 2 ? <Layers className="w-3 h-3" /> : <Droplets className="w-3 h-3" />}
@@ -403,12 +492,23 @@ export default function ProposalAdmin() {
                     <td className="px-4 py-3"><StatusBadge status={row.status} /></td>
                     <td className="px-4 py-3 text-xs text-gray-500">{formatDate(row.created_at)}</td>
                     <td className="px-4 py-3">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setSelected(row); }}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-gray-600 border border-gray-200 hover:border-blue-300 hover:text-blue-600 transition"
-                      >
-                        <Eye className="w-3 h-3" /> View
-                      </button>
+                      <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => setSelected(row)}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-gray-600 border border-gray-200 hover:border-blue-300 hover:text-blue-600 transition"
+                        >
+                          <Eye className="w-3 h-3" /> View
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteId(row.id)}
+                          disabled={deletingId === row.id}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-red-500 border border-red-100 hover:border-red-300 hover:bg-red-50 transition disabled:opacity-50"
+                        >
+                          {deletingId === row.id
+                            ? <Loader2 className="w-3 h-3 animate-spin" />
+                            : <Trash2 className="w-3 h-3" />}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -423,6 +523,17 @@ export default function ProposalAdmin() {
           proposal={selected}
           onClose={() => setSelected(null)}
           onStatusChange={handleStatusChange}
+          onDelete={handleDelete}
+        />
+      )}
+
+      {confirmDeleteId !== null && (
+        <ConfirmDialog
+          title="Delete Proposal"
+          message={`Delete ${rows.find(r => r.id === confirmDeleteId)?.proposal_no}? This cannot be undone.`}
+          onConfirm={() => deleteRow(confirmDeleteId)}
+          onCancel={() => setConfirmDeleteId(null)}
+          loading={deletingId === confirmDeleteId}
         />
       )}
     </Layout>

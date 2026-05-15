@@ -3397,6 +3397,18 @@ router.patch("/proposals/:id", async (req, res) => {
   }
 });
 
+router.delete("/proposals/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "invalid id" });
+    const r = await pool.query("DELETE FROM proposal_requests WHERE id = $1 RETURNING id", [id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: "not found" });
+    res.json({ success: true, id });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || String(e) });
+  }
+});
+
 // ─── Proposal DOCX Template Generator ────────────────────────────────────────
 
 const TEMPLATE_SEARCH_PATHS = [
