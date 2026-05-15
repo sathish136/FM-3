@@ -125,33 +125,127 @@ function buildEmailHtml(
   wttNumber: string,
   filenames: string[],
 ): string {
-  const attachmentList = filenames
-    .map((f, i) => {
-      const nameWithoutExt = f.replace(/\.[^/.]+$/, "");
-      return `<p style="margin:2px 0">${i + 1}. ${nameWithoutExt}</p>`;
-    })
-    .join("\n");
+  const today = new Date();
+  const dateStr = today.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
 
-  return `
-<div style="font-family:Arial,sans-serif;font-size:14px;color:#333;max-width:700px;line-height:1.6">
-  <p style="margin:4px 0">Dear Sir,</p>
-  <p style="margin:12px 0">&nbsp;</p>
-  <p style="margin:4px 0">Greetings from WTT INTERNATIONAL!!!</p>
-  <p style="margin:12px 0">&nbsp;</p>
-  <p style="margin:4px 0">With reference to the discussions your good selves had with our Team, we are attaching herewith the following document for the supply of Sewage Treatment Plant of capacity <strong>${flowKld} M3/Day</strong> with Foundational limit during Phase-1, Progressive limit during Phase-2 and ZLD based Treatment scheme during Phase-3 for M/s. <strong>${customerName}</strong>.</p>
-  <p style="margin:12px 0">&nbsp;</p>
-  ${attachmentList}
-  <p style="margin:12px 0">&nbsp;</p>
-  <p style="margin:4px 0">Kindly revert back for any other clarifications.</p>
-  <p style="margin:12px 0">&nbsp;</p>
-  <p style="margin:4px 0">Thanks &amp; Regards</p>
-  <p style="margin:12px 0">&nbsp;</p>
-  <p style="margin:4px 0"><strong>RAJA A</strong></p>
-  <p style="margin:4px 0">AGM – PROPOSAL</p>
-  <p style="margin:4px 0">7845009909</p>
-  <p style="margin:4px 0">raja.a@wttint.com</p>
-</div>
-  `;
+  const attachmentRows = filenames.map((f, i) => {
+    const isPdf = f.toLowerCase().endsWith(".pdf");
+    const isXls = f.toLowerCase().endsWith(".xlsx") || f.toLowerCase().endsWith(".xls");
+    const icon = isPdf
+      ? `<span style="display:inline-block;background:#e53e3e;color:#fff;font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;letter-spacing:.5px;margin-right:10px;vertical-align:middle">PDF</span>`
+      : isXls
+      ? `<span style="display:inline-block;background:#276749;color:#fff;font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;letter-spacing:.5px;margin-right:10px;vertical-align:middle">XLS</span>`
+      : `<span style="display:inline-block;background:#2b6cb0;color:#fff;font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;letter-spacing:.5px;margin-right:10px;vertical-align:middle">DOC</span>`;
+    const label = f.replace(/\.[^/.]+$/, "");
+    return `
+      <tr>
+        <td style="padding:10px 14px;border-bottom:1px solid #e8edf2;font-size:13px;color:#2d3748;vertical-align:middle">
+          <span style="display:inline-block;width:22px;height:22px;background:#ebf4ff;border-radius:50%;text-align:center;line-height:22px;font-size:11px;font-weight:700;color:#2b6cb0;margin-right:10px;vertical-align:middle">${i + 1}</span>
+          ${icon}
+          <span style="vertical-align:middle">${label}</span>
+        </td>
+      </tr>`;
+  }).join("\n");
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f0f4f8;font-family:'Segoe UI',Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f4f8;padding:30px 0">
+  <tr><td align="center">
+  <table width="620" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.09)">
+
+    <!-- Header banner -->
+    <tr>
+      <td style="background:linear-gradient(135deg,#1a365d 0%,#2b6cb0 100%);padding:32px 36px 28px">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td>
+              <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:1px">WTT INTERNATIONAL</div>
+              <div style="font-size:11px;color:#bee3f8;margin-top:4px;letter-spacing:.5px">WATER TREATMENT TECHNOLOGIES</div>
+            </td>
+            <td align="right" style="vertical-align:top">
+              <div style="background:rgba(255,255,255,0.15);border-radius:6px;padding:6px 14px;display:inline-block">
+                <div style="font-size:10px;color:#bee3f8;letter-spacing:.5px">PROPOSAL NO.</div>
+                <div style="font-size:15px;font-weight:700;color:#ffffff;margin-top:2px">${wttNumber}</div>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <!-- Date bar -->
+    <tr>
+      <td style="background:#ebf8ff;padding:10px 36px;border-bottom:1px solid #bee3f8">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="font-size:12px;color:#2c5282;font-weight:600">Proposal Documents</td>
+            <td align="right" style="font-size:12px;color:#4a5568">Date: ${dateStr}</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <!-- Body -->
+    <tr>
+      <td style="padding:32px 36px 24px">
+        <p style="margin:0 0 6px;font-size:15px;color:#2d3748">Dear Sir / Madam,</p>
+        <p style="margin:0 0 20px;font-size:13px;color:#718096">Greetings from <strong style="color:#2b6cb0">WTT International</strong>!</p>
+
+        <p style="margin:0 0 20px;font-size:14px;color:#4a5568;line-height:1.75">
+          With reference to the discussions your good selves had with our team, we are pleased to attach herewith the proposal documents for the supply of a
+          <strong style="color:#1a365d">Sewage Treatment Plant</strong> of capacity
+          <span style="background:#ebf8ff;color:#2b6cb0;font-weight:700;padding:2px 8px;border-radius:4px">${flowKld} M³/Day</span>
+          with Foundational limit during Phase-1, Progressive limit during Phase-2, and ZLD-based Treatment scheme during Phase-3, for
+          <strong style="color:#1a365d">M/s. ${customerName}</strong>.
+        </p>
+
+        <!-- Attachments box -->
+        <div style="background:#f7fafc;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:24px">
+          <div style="background:#edf2f7;padding:10px 14px;border-bottom:1px solid #e2e8f0">
+            <span style="font-size:12px;font-weight:700;color:#4a5568;letter-spacing:.5px;text-transform:uppercase">Enclosed Documents</span>
+          </div>
+          <table width="100%" cellpadding="0" cellspacing="0">
+            ${attachmentRows}
+          </table>
+        </div>
+
+        <p style="margin:0 0 24px;font-size:14px;color:#4a5568;line-height:1.75">
+          We trust that the above documents meet your requirements. Please feel free to reach out for any clarifications or further information. We look forward to the opportunity of working with you.
+        </p>
+
+        <p style="margin:0;font-size:14px;color:#4a5568">Warm Regards,</p>
+      </td>
+    </tr>
+
+    <!-- Signature -->
+    <tr>
+      <td style="padding:0 36px 32px">
+        <table cellpadding="0" cellspacing="0" style="border-left:4px solid #2b6cb0;padding-left:16px">
+          <tr><td style="font-size:16px;font-weight:700;color:#1a365d;padding-bottom:3px">Raja A</td></tr>
+          <tr><td style="font-size:12px;color:#2b6cb0;font-weight:600;padding-bottom:6px">AGM – Proposals &amp; Business Development</td></tr>
+          <tr><td style="font-size:12px;color:#718096;padding-bottom:2px">&#128222; +91 78450 09909</td></tr>
+          <tr><td style="font-size:12px;color:#718096;padding-bottom:2px">&#9993; raja.a@wttint.com</td></tr>
+          <tr><td style="font-size:12px;color:#718096">&#127760; www.wttindia.com</td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <!-- Footer -->
+    <tr>
+      <td style="background:#1a365d;padding:16px 36px">
+        <p style="margin:0;font-size:11px;color:#90cdf4;text-align:center">
+          WTT International Pvt. Ltd. &nbsp;|&nbsp; Water Treatment Technologies &nbsp;|&nbsp; This email and attachments are confidential.
+        </p>
+      </td>
+    </tr>
+
+  </table>
+  </td></tr>
+</table>
+</body>
+</html>`;
 }
 
 // ── document processing ────────────────────────────────────────────────────
@@ -188,6 +282,16 @@ function processXlsx(
       // Replace date placeholder "01.Jan.2026" with today (same 11-char length)
       if (content.includes("01.Jan.2026")) {
         content = content.replace(/01\.Jan\.2026/g, dateL);
+        changed = true;
+      }
+      // Replace date placeholder "01-Jan-26" (9-char dash format)
+      if (content.includes("01-Jan-26")) {
+        content = content.replace(/01-Jan-26/g, todayShort());
+        changed = true;
+      }
+      // Replace date placeholder "1-Jan-26" (no leading zero)
+      if (content.includes("1-Jan-26")) {
+        content = content.replace(/1-Jan-26/g, todayShort());
         changed = true;
       }
       // Replace CITY placeholder
