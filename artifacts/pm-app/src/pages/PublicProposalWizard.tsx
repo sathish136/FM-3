@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   Building2, Droplets, ChevronRight, CheckCircle2,
-  Send, Loader2, Mail, Phone, User, Hash, MapPin,
+  Send, Loader2, Mail, Phone, User, MapPin, MessageSquare,
 } from "lucide-react";
 
 const API = "/api";
@@ -15,6 +15,7 @@ interface FormData {
   email: string;
   phone: string;
   city: string;
+  remarks: string;
 }
 
 const INIT: FormData = {
@@ -24,6 +25,7 @@ const INIT: FormData = {
   email: "",
   phone: "",
   city: "",
+  remarks: "",
 };
 
 export default function PublicProposalWizard() {
@@ -46,7 +48,9 @@ export default function PublicProposalWizard() {
     form.customerName.trim() &&
     form.flowRate &&
     form.contactPerson.trim() &&
-    form.email.trim().includes("@");
+    form.email.trim().includes("@") &&
+    form.phone.trim() &&
+    form.city.trim();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,8 +67,9 @@ export default function PublicProposalWizard() {
           toEmail: form.email.trim(),
           contactPerson: form.contactPerson.trim(),
           phone: form.phone.trim(),
-          city: form.city.trim() || "Bangladesh",
+          city: form.city.trim(),
           country: "Bangladesh",
+          notes: form.remarks.trim(),
         }),
       });
       const data = await res.json();
@@ -80,7 +85,7 @@ export default function PublicProposalWizard() {
   if (result) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/30 flex flex-col items-center justify-center p-4">
-        <img src={LOGO_URL} alt="WTT International" className="h-16 object-contain mb-6" />
+        <img src={LOGO_URL} alt="WTT International" className="h-24 object-contain mb-6" />
         <div className="bg-white rounded-3xl shadow-xl max-w-md w-full p-10 text-center">
           <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-5">
             <CheckCircle2 className="w-10 h-10 text-green-500" />
@@ -104,7 +109,7 @@ export default function PublicProposalWizard() {
           </button>
         </div>
         <p className="text-center text-xs text-gray-400 mt-6">
-          © 2026 WTT INTERNATIONAL
+          © 2026 WTT INTERNATIONAL PVT LTD
         </p>
       </div>
     );
@@ -113,12 +118,12 @@ export default function PublicProposalWizard() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/30 flex flex-col items-center justify-center p-4">
 
-      {/* Centered logo — login page style */}
+      {/* Logo */}
       <div className="flex flex-col items-center mb-8 text-center">
         <img
           src={LOGO_URL}
           alt="WTT International"
-          className="h-16 object-contain mb-4"
+          className="h-28 object-contain mb-4"
         />
         <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Bangladesh Proposal Request</h1>
         <p className="text-sm text-gray-500 mt-1.5 max-w-sm">
@@ -204,7 +209,9 @@ export default function PublicProposalWizard() {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Phone</label>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+              Phone <span className="text-red-500">*</span>
+            </label>
             <div className="relative">
               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
@@ -212,42 +219,44 @@ export default function PublicProposalWizard() {
                 value={form.phone}
                 onChange={(e) => update({ phone: e.target.value })}
                 placeholder="+880 17..."
+                required
                 className="w-full pl-10 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
           </div>
         </div>
 
-        {/* City — country is fixed to Bangladesh */}
+        {/* City */}
         <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1.5">City</label>
+          <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+            City <span className="text-red-500">*</span>
+          </label>
           <div className="relative">
             <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               value={form.city}
               onChange={(e) => update({ city: e.target.value })}
               placeholder="Dhaka"
+              required
               className="w-full pl-10 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
         </div>
 
-        {/* What you'll receive */}
-        {form.flowRate && (
-          <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4">
-            <p className="text-xs font-bold text-indigo-600 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-              <Hash className="w-3.5 h-3.5" /> Documents you will receive
-            </p>
-            <ul className="text-xs text-indigo-800 space-y-1">
-              <li>• Technical Specification — {form.flowRate}</li>
-              <li>• OPEX (Operating Cost) Sheet — {form.flowRate}</li>
-              <li>• Proposal Terms &amp; Conditions — {form.flowRate}</li>
-            </ul>
-            <p className="text-[11px] text-indigo-500 mt-2">
-              All documents will be personalised for <strong>{form.customerName || "your company"}</strong> and sent to <strong>{form.email || "your email"}</strong>.
-            </p>
+        {/* Remarks */}
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1.5">Remarks</label>
+          <div className="relative">
+            <MessageSquare className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+            <textarea
+              value={form.remarks}
+              onChange={(e) => update({ remarks: e.target.value })}
+              placeholder="Brief requirement or message..."
+              rows={3}
+              className="w-full pl-10 pr-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+            />
           </div>
-        )}
+        </div>
 
         {error && (
           <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
@@ -270,7 +279,7 @@ export default function PublicProposalWizard() {
       </form>
 
       <p className="text-center text-xs text-gray-400 mt-6">
-        © 2026 WTT INTERNATIONAL
+        © 2026 WTT INTERNATIONAL PVT LTD
       </p>
     </div>
   );
