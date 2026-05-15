@@ -187,9 +187,13 @@ function processXlsx(
         content = content.replace(/01\.Jan\.2026/g, dateL);
         changed = true;
       }
-      // Strip yellow (or any) highlight formatting from DOCX runs
-      if (name.endsWith(".xml") && content.includes("w:highlight")) {
-        content = content.replace(/<w:highlight[^/]*\/>/g, "");
+      // Strip highlight and background-shading formatting from DOCX runs
+      if (name.endsWith(".xml") && (content.includes("w:highlight") || content.includes("w:shd"))) {
+        content = content
+          .replace(/<w:highlight\b[^>]*\/?>/gi, "")
+          .replace(/<\/w:highlight>/gi, "")
+          .replace(/<w:shd\b[^>]*\/?>/gi, "")
+          .replace(/<\/w:shd>/gi, "");
         changed = true;
       }
       if (changed) zip.file(name, content);
