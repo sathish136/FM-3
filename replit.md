@@ -18,8 +18,10 @@ FlowMatrix provides integrated tools for managing proposals, monitoring plant op
 *   `SITE_DB_PASSWORD`: MSSQL password
 *   `SITE_DB_PORT`: MSSQL port (optional, defaults to `1433`)
 *   `SITE_DB_DATABASE`: Optional default MSSQL database
-*   `GMAIL_USER`: Full Gmail address for email feature
-*   `GMAIL_APP_PASSWORD`: 16-char Gmail App Password
+*   `PROPOSAL_SMTP_USER`: Microsoft 365 email address for sending proposals (e.g., `raja.a@wttint.com`)
+*   `PROPOSAL_SMTP_PASSWORD`: Password / app password for `PROPOSAL_SMTP_USER` (Office 365 SMTP)
+*   `SMTP_USER`: Microsoft 365 email address for general system emails (OTP, PLC reports, notifications)
+*   `SMTP_PASSWORD`: Password / app password for `SMTP_USER` (Office 365 SMTP)
 
 ## Stack
 

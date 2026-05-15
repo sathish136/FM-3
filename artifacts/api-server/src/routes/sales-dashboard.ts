@@ -136,12 +136,13 @@ function maskEmail(email: string): string {
 }
 
 async function sendDownloadOtpEmail(to: string, otp: string, filename: string) {
-  const gmailUser = process.env["GMAIL_USER"] || "noreply@wttint.com";
-  const gmailPass = process.env["GMAIL_APP_PASSWORD"] || "ejjjsfufipqmvpuh";
+  const gmailUser = process.env["SMTP_USER"] || "noreply@wttint.com";
+  const gmailPass = process.env["SMTP_PASSWORD"] || "";
   const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
+    host: "smtp.office365.com",
     port: 587,
     secure: false,
+    requireTLS: true,
     auth: { user: gmailUser, pass: gmailPass },
   });
   await transporter.sendMail({

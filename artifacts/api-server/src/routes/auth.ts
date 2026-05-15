@@ -46,8 +46,8 @@ async function sendOtpEmail(
   otp: string,
   name: string,
 ): Promise<void> {
-  const gmailUser = process.env.GMAIL_USER || "noreply@wttint.com";
-  const gmailPass = process.env.GMAIL_APP_PASSWORD || "";
+  const gmailUser = process.env.SMTP_USER || "noreply@wttint.com";
+  const gmailPass = process.env.SMTP_PASSWORD || "";
 
   const transporter = nodemailer.createTransport({
     host: "smtp.office365.com",

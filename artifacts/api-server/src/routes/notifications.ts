@@ -10,8 +10,8 @@ const ULTRAMSG_INSTANCE = "instance149987";
 const ULTRAMSG_TOKEN = "6baxh4iuxajibxez";
 const ULTRAMSG_BASE = `https://api.ultramsg.com/${ULTRAMSG_INSTANCE}`;
 
-const GMAIL_USER = process.env.GMAIL_USER || "noreply@wttint.com";
-const GMAIL_PASS = process.env.GMAIL_APP_PASSWORD || "";
+const GMAIL_USER = process.env.SMTP_USER || "noreply@wttint.com";
+const GMAIL_PASS = process.env.SMTP_PASSWORD || "";
 
 export async function sendWhatsApp(to: string, message: string): Promise<{ success: boolean; error?: string }> {
   try {

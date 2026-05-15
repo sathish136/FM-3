@@ -406,10 +406,10 @@ router.post("/proposal-wizard/send-email", async (req, res) => { try {
     return res.status(400).json({ error: "flowRate, customerName and toEmail required" });
   }
 
-  const gmailUser = process.env.GMAIL_USER;
-  const gmailPass = process.env.GMAIL_APP_PASSWORD;
-  if (!gmailUser || !gmailPass) {
-    return res.status(503).json({ error: "Email not configured on server" });
+  const smtpUser = process.env.PROPOSAL_SMTP_USER;
+  const smtpPass = process.env.PROPOSAL_SMTP_PASSWORD;
+  if (!smtpUser || !smtpPass) {
+    return res.status(503).json({ error: "Proposal email not configured on server" });
   }
 
   const dir = safeJoin(PROPOSAL_ROOT, flowRate);
@@ -434,15 +434,18 @@ router.post("/proposal-wizard/send-email", async (req, res) => { try {
   });
 
   const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: { user: gmailUser, pass: gmailPass },
+    host: "smtp.office365.com",
+    port: 587,
+    secure: false,
+    requireTLS: true,
+    auth: { user: smtpUser, pass: smtpPass },
   });
 
   const kld = kldFromFolder(flowRate);
   const emailHtml = buildEmailHtml(customer, kld, wttNumber, attachments.map((a) => a.filename));
 
   await transporter.sendMail({
-    from: `WTT International <${gmailUser}>`,
+    from: `WTT International <${smtpUser}>`,
     to: toEmail,
     subject: `Proposal Documents – ${customerName} – ${kld} KLD – ${wttNumber}`,
     html: emailHtml,
@@ -492,10 +495,10 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
       return res.status(400).json({ error: "flowRate, customerName and toEmail required" });
     }
 
-    const gmailUser = process.env.GMAIL_USER;
-    const gmailPass = process.env.GMAIL_APP_PASSWORD;
-    if (!gmailUser || !gmailPass) {
-      return res.status(503).json({ error: "Email not configured. Please contact WTT directly." });
+    const smtpUser = process.env.PROPOSAL_SMTP_USER;
+    const smtpPass = process.env.PROPOSAL_SMTP_PASSWORD;
+    if (!smtpUser || !smtpPass) {
+      return res.status(503).json({ error: "Proposal email not configured. Please contact WTT directly." });
     }
 
     const dir = safeJoin(PROPOSAL_ROOT, flowRate);
@@ -520,14 +523,17 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
     });
 
     const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: { user: gmailUser, pass: gmailPass },
+      host: "smtp.office365.com",
+      port: 587,
+      secure: false,
+      requireTLS: true,
+      auth: { user: smtpUser, pass: smtpPass },
     });
 
     const emailHtml = buildEmailHtml(customer, kld, wttNumber, attachments.map((a) => a.filename));
 
     await transporter.sendMail({
-      from: `WTT International <${gmailUser}>`,
+      from: `WTT International <${smtpUser}>`,
       to: toEmail,
       subject: `Proposal – ${customerName} – ${kld} KLD STP – ${wttNumber}`,
       html: emailHtml,

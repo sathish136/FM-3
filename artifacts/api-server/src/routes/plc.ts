@@ -1174,8 +1174,8 @@ router.post("/plc/site-calls/:id/send-email", async (req, res) => {
     const toEmail = req.body.to || call.customer_email;
     if (!toEmail) return res.status(400).json({ error: "No customer email address provided." });
 
-    const smtpUser = process.env.GMAIL_USER || "noreply@wttint.com";
-    const smtpPass = process.env.GMAIL_APP_PASSWORD || "";
+    const smtpUser = process.env.SMTP_USER || "noreply@wttint.com";
+    const smtpPass = process.env.SMTP_PASSWORD || "";
     const transporter = nodemailer.createTransport({
       host: "smtp.office365.com", port: 587, secure: false, requireTLS: true,
       auth: { user: smtpUser, pass: smtpPass },
@@ -1427,8 +1427,8 @@ router.post("/plc/service-reports/:id/send-email", async (req, res) => {
     const toEmail = req.body.to || report.customer_email;
     if (!toEmail) return res.status(400).json({ error: "No customer email address provided." });
 
-    const smtpUser = process.env.GMAIL_USER || "noreply@wttint.com";
-    const smtpPass = process.env.GMAIL_APP_PASSWORD || "";
+    const smtpUser = process.env.SMTP_USER || "noreply@wttint.com";
+    const smtpPass = process.env.SMTP_PASSWORD || "";
     const transporter = nodemailer.createTransport({
       host: "smtp.office365.com", port: 587, secure: false, requireTLS: true,
       auth: { user: smtpUser, pass: smtpPass },
@@ -2252,8 +2252,8 @@ router.post("/plc/panel-inspections/:id/send-email", async (req, res) => {
     const toEmail = req.body.email_to || insp.email_to;
     if (!toEmail) return res.status(400).json({ error: "No recipient email" });
 
-    const smtpUser = process.env.GMAIL_USER;
-    const smtpPass = process.env.GMAIL_APP_PASSWORD;
+    const smtpUser = process.env.SMTP_USER;
+    const smtpPass = process.env.SMTP_PASSWORD;
     if (!smtpUser || !smtpPass) return res.status(500).json({ error: "Email not configured" });
 
     const inspNo = insp.inspection_no || `PID-${String(insp.id).padStart(4, "0")}`;
@@ -2365,7 +2365,7 @@ router.post("/plc/panel-inspections/:id/send-email", async (req, res) => {
       doc.end();
     });
 
-    const transporter = nodemailer.createTransport({ service: "gmail", auth: { user: smtpUser, pass: smtpPass } });
+    const transporter = nodemailer.createTransport({ host: "smtp.office365.com", port: 587, secure: false, requireTLS: true, auth: { user: smtpUser, pass: smtpPass } });
 
     const html = `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif;">
 <div style="max-width:600px;margin:24px auto;background:white;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.08);">
