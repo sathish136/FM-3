@@ -1,6 +1,8 @@
 import { Router } from "express";
-import { readdirSync, statSync, readFileSync, existsSync } from "fs";
-import { join, resolve as pathResolve, basename } from "path";
+import { readdirSync, statSync, readFileSync, existsSync, writeFileSync, unlinkSync } from "fs";
+import { join, resolve as pathResolve, basename, extname } from "path";
+import { execSync } from "child_process";
+import { tmpdir } from "os";
 import nodemailer from "nodemailer";
 import PizZip from "pizzip";
 import { db, pool } from "@workspace/db";
@@ -328,6 +330,38 @@ function buildFilename(original: string, customerName: string, wttNumber: string
 }
 
 /**
+ * Convert a buffer (docx/xlsx) to PDF using LibreOffice headless.
+ * Returns the PDF buffer, or the original buffer if conversion fails.
+ */
+function convertToPdf(content: Buffer, originalFilename: string): { buf: Buffer; filename: string } {
+  const ext = extname(originalFilename).toLowerCase();
+  if (ext !== ".docx" && ext !== ".doc" && ext !== ".xlsx") {
+    return { buf: content, filename: originalFilename };
+  }
+  const tmpIn = join(tmpdir(), `wtt_${Date.now()}_${Math.random().toString(36).slice(2)}${ext}`);
+  const pdfName = basename(tmpIn, ext) + ".pdf";
+  const tmpOut = join(tmpdir(), pdfName);
+  try {
+    writeFileSync(tmpIn, content);
+    execSync(
+      `libreoffice --headless --convert-to pdf --outdir "${tmpdir()}" "${tmpIn}"`,
+      { timeout: 60_000, stdio: "pipe" },
+    );
+    const pdfBuf = readFileSync(tmpOut);
+    return {
+      buf: pdfBuf,
+      filename: originalFilename.replace(/\.(docx?|xlsx)$/i, ".pdf"),
+    };
+  } catch (err) {
+    console.error("[proposal-wizard] PDF conversion failed, sending original:", err);
+    return { buf: content, filename: originalFilename };
+  } finally {
+    try { unlinkSync(tmpIn); } catch {}
+    try { unlinkSync(tmpOut); } catch {}
+  }
+}
+
+/**
  * Record the sent proposal in the proposal_requests table so it appears
  * in the /proposals tracking dashboard.
  */
@@ -477,11 +511,13 @@ router.post("/proposal-wizard/send-email", async (req, res) => { try {
 
   const attachments = files.map((f) => {
     const filePath = join(dir, f);
-    const content = buildModifiedFile(filePath, customer, wttNumber, city || "");
+    const raw = buildModifiedFile(filePath, customer, wttNumber, city || "");
+    const renamedOrig = buildFilename(f, customer, wttNumber);
+    const { buf, filename } = convertToPdf(raw, renamedOrig);
     return {
-      filename: buildFilename(f, customer, wttNumber),
-      content,
-      contentType: mimeFor(f),
+      filename,
+      content: buf,
+      contentType: filename.endsWith(".pdf") ? "application/pdf" : mimeFor(f),
     };
   });
 
@@ -566,11 +602,13 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
 
     const attachments = files.map((f) => {
       const filePath = join(dir, f);
-      const content = buildModifiedFile(filePath, customer, wttNumber, city || "");
+      const raw = buildModifiedFile(filePath, customer, wttNumber, city || "");
+      const renamedOrig = buildFilename(f, customer, wttNumber);
+      const { buf, filename } = convertToPdf(raw, renamedOrig);
       return {
-        filename: buildFilename(f, customer, wttNumber),
-        content,
-        contentType: mimeFor(f),
+        filename,
+        content: buf,
+        contentType: filename.endsWith(".pdf") ? "application/pdf" : mimeFor(f),
       };
     });
 
