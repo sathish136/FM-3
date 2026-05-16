@@ -426,6 +426,55 @@ router.get("/hrms/employees", async (req, res) => {
   }
 });
 
+// GET /api/hrms/employees/id-card-data — active employees with extended fields for ID card generation
+router.get("/hrms/employees/id-card-data", async (_req, res) => {
+  try {
+    if (!ERPNEXT_URL || !ERPNEXT_API_KEY || !ERPNEXT_API_SECRET) {
+      return res.json([]);
+    }
+    const fields = JSON.stringify([
+      "name", "employee_name", "department", "designation",
+      "status", "date_of_joining", "date_of_birth", "image",
+      "cell_number", "blood_group", "emergency_phone",
+      "permanent_address", "current_address", "company",
+    ]);
+    const filters = JSON.stringify([["Employee", "status", "=", "Active"]]);
+    const params = new URLSearchParams({
+      fields,
+      filters,
+      limit_page_length: "500",
+      order_by: "employee_name asc",
+    });
+    const url = `${ERPNEXT_URL}/api/resource/Employee?${params}`;
+    const resp = await fetch(url, {
+      headers: { Authorization: `token ${ERPNEXT_API_KEY}:${ERPNEXT_API_SECRET}` },
+    });
+    if (!resp.ok) throw new Error(`ERPNext error: ${resp.status}`);
+    const json = await resp.json();
+    const { applyEmployeeFilter } = await import("../lib/erpnext");
+    const employees = applyEmployeeFilter((json.data ?? []) as any[]);
+    return res.json(
+      employees.map((e: any) => ({
+        name: e.name,
+        employee_name: e.employee_name,
+        department: e.department ?? null,
+        designation: e.designation ?? null,
+        status: e.status,
+        date_of_joining: e.date_of_joining ?? null,
+        date_of_birth: e.date_of_birth ?? null,
+        image: e.image ?? null,
+        cell_number: e.cell_number ?? null,
+        blood_group: e.blood_group ?? null,
+        emergency_phone: e.emergency_phone ?? null,
+        permanent_address: e.permanent_address || e.current_address || null,
+        company: e.company ?? null,
+      }))
+    );
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 router.get("/hrms/leave-applications", async (req, res) => {
   try {
     const { status, employee } = req.query as Record<string, string>;

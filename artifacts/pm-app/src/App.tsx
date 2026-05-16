@@ -85,6 +85,7 @@ import PublicProposalWizard from "@/pages/PublicProposalWizard";
 import ProposalAdmin from "@/pages/ProposalAdmin";
 import AgentManagement from "@/pages/AgentManagement";
 import HrmsWorkMonitor from "@/pages/HrmsWorkMonitor";
+import EmployeeIdCard from "@/pages/EmployeeIdCard";
 import ProposalPDFView from "@/pages/ProposalPDFView";
 import Workshop from "@/pages/Workshop";
 import PLCAutomation from "@/pages/PLCAutomation";
@@ -254,6 +255,7 @@ function ProtectedRoutes() {
       <Route path="/hrms/task-summary" component={TaskSummary} />
       <Route path="/hrms/daily-reporting" component={DailyReporting} />
       <Route path="/hrms/work-monitor" component={HrmsWorkMonitor} />
+      <Route path="/hrms/id-cards" component={EmployeeIdCard} />
       <Route path="/logistics-dashboard" component={LogisticsDashboard} />
       <Route path="/process-proposal" component={ProcessProposalDashboard} />
       <Route path="/finance-dashboard" component={FinanceDashboard} />

@@ -7,7 +7,7 @@ import {
   Play, Square, Phone, ShieldOff, Loader2, Languages, Globe, Mic, Pause,
   ScanLine, Factory, Database, UserCheck,
   Code2, Monitor, Gauge, Tag, Ticket, Cpu, Network,
-  FlaskConical, TestTubes, CheckCircle2,
+  FlaskConical, TestTubes, CheckCircle2, CreditCard,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -301,6 +301,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { path: "/hrms/task-summary",      label: "Task Summary",    icon: ListChecks,    color: "text-lime-400",    bgColor: "bg-lime-500/15" },
       { path: "/hrms/daily-reporting",   label: "Daily Reporting", icon: ClipboardList, color: "text-orange-400",  bgColor: "bg-orange-500/15" },
       { path: "/hrms/work-monitor",      label: "Work Monitor",    icon: Clock,         color: "text-blue-400",    bgColor: "bg-blue-500/15" },
+      { path: "/hrms/id-cards",          label: "ID Cards",        icon: CreditCard,    color: "text-yellow-400",  bgColor: "bg-yellow-500/15" },
     ],
   },
   {
@@ -417,6 +418,7 @@ const PATH_TO_MODULE: Record<string, string> = {
   "/hrms/task-summary":     "hrms-task-summary",
   "/hrms/daily-reporting":  "hrms-daily-reporting",
   "/hrms/work-monitor":     "hrms-work-monitor",
+  "/hrms/id-cards":         "hrms-id-cards",
   "/plant-overview":        "plant-overview",
   "/site-data":             "site-data",
   "/site-db":               "site-db",
