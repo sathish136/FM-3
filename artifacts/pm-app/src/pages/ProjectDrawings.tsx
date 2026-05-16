@@ -707,6 +707,7 @@ function PdfViewer({
 }) {
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
+  const [pageVisible, setPageVisible] = useState(true);
   const [pdfError, setPdfError] = useState(false);
   const [scale, setScale] = useState(1.2);
   const [annotTool, setAnnotTool] = useState<AnnotationTool>("select");
@@ -770,7 +771,10 @@ function PdfViewer({
     if (!totalPages) return;
     scrollToBottomRef.current = false;
     isTransitioningRef.current = true;
-    setPageNumber(Math.max(1, Math.min(totalPages, n)));
+    setPageVisible(false);
+    setTimeout(() => {
+      setPageNumber(Math.max(1, Math.min(totalPages, n)));
+    }, 180);
     setTimeout(() => { isTransitioningRef.current = false; }, 800);
   }, [totalPages]);
 
@@ -779,7 +783,10 @@ function PdfViewer({
     if (!totalPages) return;
     scrollToBottomRef.current = true;
     isTransitioningRef.current = true;
-    setPageNumber(Math.max(1, Math.min(totalPages, n)));
+    setPageVisible(false);
+    setTimeout(() => {
+      setPageNumber(Math.max(1, Math.min(totalPages, n)));
+    }, 180);
     setTimeout(() => { isTransitioningRef.current = false; }, 800);
   }, [totalPages]);
 
@@ -1175,7 +1182,14 @@ function PdfViewer({
                     </div>
                   }
                 >
-                  <div className="relative">
+                  <div
+                    className="relative"
+                    style={{
+                      opacity: pageVisible ? 1 : 0,
+                      transform: pageVisible ? "translateY(0)" : "translateY(8px)",
+                      transition: "opacity 0.25s ease, transform 0.25s ease",
+                    }}
+                  >
                     <Page
                       pageNumber={Math.min(pageNumber, numPages ?? 1)}
                       scale={scale}
@@ -1184,6 +1198,7 @@ function PdfViewer({
                       className="shadow-2xl"
                       onRenderSuccess={(page) => {
                         setPageDims({ width: page.width, height: page.height });
+                        setPageVisible(true);
                       }}
                     />
                     <PdfWatermark
