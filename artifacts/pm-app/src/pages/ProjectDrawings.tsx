@@ -4533,6 +4533,7 @@ export default function ProjectDrawings() {
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
   const [projectFilter, setProjectFilter] = useState("");
   const [viewerIdx, setViewerIdx] = useState<number | null>(null);
+  const [viewerSource, setViewerSource] = useState<typeof drawings>([]);
   const [detailDrawingId, setDetailDrawingId] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [selectedSystem, setSelectedSystem] = useState<string>("All");
@@ -5062,7 +5063,7 @@ export default function ProjectDrawings() {
           onSelectProject={(p) => { setSelectedProject(p); setDeptFilter(""); setSelectedSystem("All"); setStatusFilter("all"); setSearch(""); setDetailDrawingId(null); }}
           onSelectDept={(p, dept) => { setSelectedProject(p); setDeptFilter(dept); setSelectedSystem("All"); setStatusFilter("all"); setSearch(""); setDetailDrawingId(null); }}
           onSelectSystem={(p, dept, sys) => { setSelectedProject(p); setDeptFilter(dept); setSelectedSystem(sys); setStatusFilter("all"); setSearch(""); setDetailDrawingId(null); }}
-          onSelectDrawing={(id) => { setDetailDrawingId(id); }}
+          onSelectDrawing={(id) => { const i = drawings.findIndex(d => d.id === id); if (i >= 0) { setViewerSource(drawings); setViewerIdx(i); } }}
           search={search}
           onSearchChange={setSearch}
           onUpload={() => setModal({ type: "upload" })}
@@ -5353,6 +5354,7 @@ export default function ProjectDrawings() {
                           });
                         } else {
                           const i = filtered.findIndex(d => d.id === drawing.id);
+                          setViewerSource(filtered);
                           setViewerIdx(i);
                         }
                       }}
@@ -5405,7 +5407,7 @@ export default function ProjectDrawings() {
                         <div className="text-xs text-gray-500">{formatDate(drawing.uploadedAt)}</div>
                         <div className="flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
                           <button
-                            onClick={(e) => { e.stopPropagation(); const i = filtered.findIndex(d => d.id === drawing.id); setViewerIdx(i); }}
+                            onClick={(e) => { e.stopPropagation(); const i = filtered.findIndex(d => d.id === drawing.id); setViewerSource(filtered); setViewerIdx(i); }}
                             title="View PDF"
                             className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                           >
@@ -5456,22 +5458,22 @@ export default function ProjectDrawings() {
       </div>
 
 
-      {/* PDF Viewer (legacy eye-icon path) */}
-      {viewerIdx !== null && filtered[viewerIdx] && (
+      {/* PDF Viewer */}
+      {viewerIdx !== null && viewerSource[viewerIdx] && (
         <PdfViewer
-          drawing={filtered[viewerIdx]}
-          fileData={fileDataCache[filtered[viewerIdx].id] || ""}
+          drawing={viewerSource[viewerIdx]}
+          fileData={fileDataCache[viewerSource[viewerIdx].id] || ""}
           onClose={() => setViewerIdx(null)}
           onPrev={() => setViewerIdx((i) => Math.max(0, (i ?? 0) - 1))}
           onNext={() =>
-            setViewerIdx((i) => Math.min(filtered.length - 1, (i ?? 0) + 1))
+            setViewerIdx((i) => Math.min(viewerSource.length - 1, (i ?? 0) + 1))
           }
           hasPrev={viewerIdx > 0}
-          hasNext={viewerIdx < filtered.length - 1}
-          total={filtered.length}
+          hasNext={viewerIdx < viewerSource.length - 1}
+          total={viewerSource.length}
           currentIdx={viewerIdx}
-          onCheck={(remarks) => handleCheck(filtered[viewerIdx], remarks)}
-          onApprove={() => handleApprove(filtered[viewerIdx])}
+          onCheck={(remarks) => handleCheck(viewerSource[viewerIdx!], remarks)}
+          onApprove={() => handleApprove(viewerSource[viewerIdx!])}
           currentUserName={user?.full_name || ""}
         />
       )}
