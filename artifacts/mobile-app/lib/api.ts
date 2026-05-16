@@ -3,7 +3,22 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { KEYS } from './storage';
 
 async function getBase(): Promise<string> {
-  if (Platform.OS === 'web') return '';
+  // Web in browser: try stored URL first, then env, then infer from window.location
+  if (Platform.OS === 'web') {
+    try {
+      const stored = await AsyncStorage.getItem(KEYS.API_URL);
+      if (stored) return JSON.parse(stored).replace(/\/$/, '');
+    } catch {}
+    if (process.env.EXPO_PUBLIC_API_URL) {
+      return process.env.EXPO_PUBLIC_API_URL.replace(/\/$/, '');
+    }
+    // Fall back to same-host port 8080 so local dev works without config
+    if (typeof window !== 'undefined') {
+      return `${window.location.protocol}//${window.location.hostname}:8080`;
+    }
+    return 'http://localhost:8080';
+  }
+  // Native (Android / iOS)
   try {
     const stored = await AsyncStorage.getItem(KEYS.API_URL);
     if (stored) return JSON.parse(stored).replace(/\/$/, '');
