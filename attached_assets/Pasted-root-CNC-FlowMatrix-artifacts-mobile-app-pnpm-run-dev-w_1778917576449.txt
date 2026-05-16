@@ -1,0 +1,62 @@
+root@CNC:/FlowMatrix/artifacts/mobile-app# pnpm run dev
+
+> @workspace/mobile-app@1.0.0 dev /FlowMatrix/artifacts/mobile-app
+> EXPO_NO_TELEMETRY=1 expo start --tunnel --port 8099 --clear --non-interactive
+
+  --non-interactive is not supported, use $CI=1 instead
+Starting project at /FlowMatrix/artifacts/mobile-app
+Starting Metro Bundler
+warning: Bundler cache is empty, rebuilding (this may take a minute)
+Tunnel connected.
+Tunnel ready.
+▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+█ ▄▄▄▄▄ █▄▄▄ ▀ ▄███ ▀█ ██▀ ████ ▄▄▄▄▄ █
+█ █   █ ██▄▀ █ ▄█▄▀█   ▀█▄ ▀▀▀█ █   █ █
+█ █▄▄▄█ ██▀▄ ▄▀▄█▄ █▄ ▄█▀▀▄ █▄█ █▄▄▄█ █
+█▄▄▄▄▄▄▄█ ▀▄█ ▀▄█▄█ █ █ █▄▀▄█ █▄▄▄▄▄▄▄█
+█▄ █ ▄█▄██▄▀█▄█▄▀▄▄█ ██▄▀██  ▄▀▄▀▀▀██▄█
+██▄ ▀ ▄▄▄▀  █▄██▄█▀█▀ ██ ▄▄ ▄▄ ▀ ▄ ▀▀▄█
+███ ▄▄▀▄▄██▄█▀▄   ██▄█▄█ ██▀▀ ▀▄▄▀ ▀█▄█
+██▄ ▄▀▄▄▄▄ ▀█▀▀  ▄█▀ ▄▄▄█ ▄ ▄ █ ▀▄▀▀ ▄█
+█▀▄▀██▄▄▄▀▄█ ▄██▀▀▀█▀ █▀█▄ █ ▄▀▄██▀  ██
+█▀█▀   ▄▀▄▀█▀▄ ▄▄▄▄▀▄█▄▀▄█ ▄ ▀▀███▀█▄ █
+█ █ ▀▀▄▄▄ ▀▀▄▀ █ █  ▀██▄ ▀█ ▀▄█▄▄  █▀▄█
+█ ▄▀▄  ▄▀█▄▀ ▀ █▄▀ ██▀█▀ ▄█▀▄██▀█▀▀▀▀ █
+█ ▄ ▀  ▄▄▄▀█▄▄ ▀▀▀▀▄▄█▄█▀▄█▀▀ █▄▀▀▄█ ██
+█ ▄▄█ ▄▄▄▀ ▀ ▄▄█▄██ ▄██▀▀ █ ▄█▄ ▄█▀   █
+█▄█▄█▄█▄▄▀ ▀▀▀▀  █▀▄▀▀█▀▄█▄▀▄ ▄▄▄ ▀ ▀▄█
+█ ▄▄▄▄▄ ████▄▀█▀  ▄ ▄▄▄▀▄█ ▀▀ █▄█  ▄▀ █
+█ █   █ █ ▄▄█▄▄ ▀  ▄▀██▄▀█▀▀▄▄   ▄█▀▀▀█
+█ █▄▄▄█ █▀▄▀█▄█ ▄  ▄▀ █▀▄█▄▀▀█▄▀ ▄  ▀ █
+█▄▄▄▄▄▄▄█▄████▄▄███▄▄▄▄████▄█▄█▄▄█▄██▄█
+
+› Metro waiting on exp+flowmatrix://expo-development-client/?url=https%3A%2F%2Fntuogvc-itwtt-8099.exp.direct
+› Scan the QR code above to open the project in a development build. Learn more
+
+› Web is waiting on http://localhost:8099
+
+› Using development build
+› Press s │ switch to Expo Go
+
+› Press a │ open Android
+› Press w │ open web
+
+› Press j │ open debugger
+› Press r │ reload app
+› Press m │ toggle menu
+› shift+m │ more tools
+› Press o │ open project code in your editor
+
+› Press ? │ show all commands
+
+Logs for your project will appear below. Press Ctrl+C to exit.
+Web Bundled 11026ms node_modules/.pnpm/expo-router@6.0.23_@types+react-dom@19.2.3_@types+react@19.1.17__@types+react@19.1.17_e_0be22fccd5b624b8bcfbdc54bd3ed8c3/node_modules/expo-router/entry.js (1549 modules)
+ LOG  [web] Logs will appear in the browser console
+Web Bundled 75ms node_modules/.pnpm/expo-router@6.0.23_@types+react-dom@19.2.3_@types+react@19.1.17__@types+react@19.1.17_e_0be22fccd5b624b8bcfbdc54bd3ed8c3/node_modules/expo-router/entry.js (1 module)
+ LOG  [web] Logs will appear in the browser console
+
+
+
+only working web ip  Web is waiting on http://localhost:8099
+
+need to chnage system ip no localhost
