@@ -1,6 +1,23 @@
 const { getDefaultConfig } = require('expo/metro-config');
 const http = require('http');
 const https = require('https');
+const fs = require('fs');
+const path = require('path');
+
+// Load .env manually so API_TARGET is available in metro config
+try {
+  const envFile = path.join(__dirname, '.env');
+  const lines = fs.readFileSync(envFile, 'utf8').split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const idx = trimmed.indexOf('=');
+    if (idx === -1) continue;
+    const key = trimmed.slice(0, idx).trim();
+    const val = trimmed.slice(idx + 1).trim();
+    if (key && !(key in process.env)) process.env[key] = val;
+  }
+} catch {}
 
 const config = getDefaultConfig(__dirname);
 
@@ -19,9 +36,19 @@ config.resolver = {
 };
 
 // Proxy /api/* requests to the API server so the web preview works
-// from any LAN IP without needing direct browser access to port 8080.
+// from any LAN IP without needing direct browser access to the API port.
+// Override with: API_TARGET=http://10.15.5.21:8080 pnpm run dev
+//            or: set API_TARGET in .env
 const API_TARGET = process.env.API_TARGET || 'http://localhost:8080';
-const targetUrl = new URL(API_TARGET);
+console.log(`[metro] API proxy → ${API_TARGET}`);
+
+let targetUrl;
+try {
+  targetUrl = new URL(API_TARGET);
+} catch (e) {
+  console.error('[metro] Invalid API_TARGET URL:', API_TARGET);
+  process.exit(1);
+}
 const proxyAgent = targetUrl.protocol === 'https:' ? https : http;
 
 config.server = {
@@ -31,7 +58,7 @@ config.server = {
       if (req.url && (req.url === '/api' || req.url.startsWith('/api/'))) {
         const options = {
           hostname: targetUrl.hostname,
-          port: targetUrl.port || (targetUrl.protocol === 'https:' ? 443 : 80),
+          port: Number(targetUrl.port) || (targetUrl.protocol === 'https:' ? 443 : 80),
           path: req.url,
           method: req.method,
           headers: {
@@ -49,9 +76,14 @@ config.server = {
         });
 
         proxyReq.on('error', (err) => {
-          console.error('[metro proxy error]', err.message);
-          res.writeHead(502, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'API proxy error: ' + err.message }));
+          const msg = err.code
+            ? `${err.code}: ${err.message}`
+            : err.message || String(err);
+          console.error(`[metro proxy error] ${req.method} ${req.url} → ${API_TARGET} — ${msg}`);
+          if (!res.headersSent) {
+            res.writeHead(502, { 'Content-Type': 'application/json' });
+          }
+          res.end(JSON.stringify({ error: `API proxy error (${msg}). Is the API server reachable at ${API_TARGET}?` }));
         });
 
         req.pipe(proxyReq, { end: true });
