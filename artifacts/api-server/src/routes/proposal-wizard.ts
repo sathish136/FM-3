@@ -81,6 +81,8 @@ function buildLoBaseProfile(fontsDir?: string): void {
     ["Liberation Serif", "Roboto"],
     ["Carlito", "Roboto"],
     ["Caladea", "Roboto"],
+    ["Trajan Pro", "Trajan Pro"],
+    ["Trojan Pro", "Trojan Pro"],
   ];
 
   // ── CORRECT LibreOffice XCU format for font substitution ────────────────
@@ -657,7 +659,7 @@ function processXlsx(
           .replace(/<\/w:shd>/gi, "");
         if (content !== before) changed = true;
       }
-      const roboto = applyRobotoToXml(content);
+      const roboto = applyRobotoToSpreadsheetXml(content);
       if (roboto !== content) {
         content = roboto;
         changed = true;
@@ -773,7 +775,25 @@ function buildFilename(
     .replace(/WTT-BAN-0001/g, wttNumber);
 }
 
-const PROPOSAL_FONT = "Roboto";
+/** Body text (matches email / UI). Titles use {@link PROPOSAL_TITLE_FONT}. */
+const BODY_FONT = "Roboto";
+/**
+ * Page titles, section headings, table column headers (S.NO, DESCRIPTION, …).
+ * Template ships with Trajan Pro; override with PROPOSAL_TITLE_FONT if needed.
+ */
+const PROPOSAL_TITLE_FONT =
+  process.env.PROPOSAL_TITLE_FONT?.trim() || "Trajan Pro";
+
+/** Subtract from every w:sz / w:szCs (half-points). Default 0 = no shrink (was too aggressive at 4). Set env for subtle tweak, e.g. 2 ≈ −1pt. */
+const FONT_SZ_TRIM_HALFPTS = Math.min(
+  20,
+  Math.max(
+    0,
+    Number.parseInt(process.env.PROPOSAL_FONT_SZ_TRIM_HALFPTS ?? "0", 10) || 0,
+  ),
+);
+const FONT_SZ_MIN_HALFPTS = 16; // floor 8pt — stays readable
+
 /** Bullet/symbol fonts — keep original so list markers render */
 const PRESERVE_FONT_NAMES = new Set(["Symbol", "Wingdings", "Webdings"]);
 
@@ -781,34 +801,118 @@ function shouldPreserveFont(fontAttrs: string): boolean {
   return [...PRESERVE_FONT_NAMES].some((f) => fontAttrs.includes(`"${f}"`));
 }
 
-/** Force Roboto on every w:rFonts run (Word body, headers, styles, tables). */
-function applyRobotoToXml(content: string): string {
-  let out = content;
+function wRFontsTag(font: string): string {
+  return `<w:rFonts w:ascii="${font}" w:hAnsi="${font}" w:cs="${font}" w:eastAsia="${font}"/>`;
+}
 
-  out = out.replace(/<w:rFonts[^/]*\/>/g, (tag) => {
-    if (shouldPreserveFont(tag)) return tag;
-    return `<w:rFonts w:ascii="${PROPOSAL_FONT}" w:hAnsi="${PROPOSAL_FONT}" w:cs="${PROPOSAL_FONT}" w:eastAsia="${PROPOSAL_FONT}"/>`;
-  });
+function patchWRFonts(tag: string, font: string): string {
+  if (shouldPreserveFont(tag)) return tag;
+  return wRFontsTag(font);
+}
 
-  // Spreadsheet + theme fonts
+/** Excel / chart theme: all Roboto. */
+function applyRobotoToSpreadsheetXml(content: string): string {
+  let out = content.replace(/<w:rFonts[^/]*\/>/g, (tag) =>
+    patchWRFonts(tag, BODY_FONT),
+  );
   out = out.replace(
     /<a:latin typeface="[^"]*"/g,
-    `<a:latin typeface="${PROPOSAL_FONT}"`,
+    `<a:latin typeface="${BODY_FONT}"`,
   );
-  out = out.replace(
-    /<a:ea typeface="[^"]*"/g,
-    `<a:ea typeface="${PROPOSAL_FONT}"`,
-  );
-  out = out.replace(
-    /<a:cs typeface="[^"]*"/g,
-    `<a:cs typeface="${PROPOSAL_FONT}"`,
-  );
-  out = out.replace(
-    /<name val="(?!Roboto)[^"]+"/g,
-    `<name val="${PROPOSAL_FONT}"`,
-  );
-
+  out = out.replace(/<a:ea typeface="[^"]*"/g, `<a:ea typeface="${BODY_FONT}"`);
+  out = out.replace(/<a:cs typeface="[^"]*"/g, `<a:cs typeface="${BODY_FONT}"`);
+  out = out.replace(/<name val="(?!Roboto)[^"]+"/g, `<name val="${BODY_FONT}"`);
   return out;
+}
+
+function applyBodyFontToWordXml(content: string): string {
+  return content.replace(/<w:rFonts[^/]*\/>/g, (tag: string) =>
+    patchWRFonts(tag, BODY_FONT),
+  );
+}
+
+/** First row of each table → title font (column headers). */
+function applyTitleFontToTableFirstRows(content: string): string {
+  return content.replace(
+    /<w:tbl(\s[^>]*)>([\s\S]*?)<\/w:tbl>/gi,
+    (_, attrs, inner) => {
+      const m = inner.match(/<w:tr\b[^>]*>[\s\S]*?<\/w:tr>/i);
+      if (!m) return `<w:tbl${attrs}>${inner}</w:tbl>`;
+      const patchedRow = m[0].replace(/<w:rFonts[^/]*\/>/g, (tag: string) =>
+        patchWRFonts(tag, PROPOSAL_TITLE_FONT),
+      );
+      return `<w:tbl${attrs}>${inner.replace(m[0], patchedRow)}</w:tbl>`;
+    },
+  );
+}
+
+/** TOC / Word headings / confidentiality title → title font. */
+function applyTitleFontToTitleParagraphs(content: string): string {
+  return content.replace(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g, (para) => {
+    const styleTitle =
+      /w:pStyle w:val="TOCHeading"/.test(para) ||
+      /w:pStyle w:val="Heading[1-9]"/.test(para);
+    const confidentiality =
+      /<w:t[^>]*>(?:\s*)CONFIDENTIALITY(?:\s*)<\/w:t>/.test(para);
+    if (!styleTitle && !confidentiality) return para;
+    return para.replace(/<w:rFonts[^/]*\/>/g, (tag: string) =>
+      patchWRFonts(tag, PROPOSAL_TITLE_FONT),
+    );
+  });
+}
+
+/** Heading & TOC paragraph styles in styles.xml → title font for PDF. */
+function patchStylesXmlHeadingFonts(content: string): string {
+  return content.replace(/<w:style\b[^>]*>[\s\S]*?<\/w:style>/g, (block) => {
+    if (!/w:styleId="(Heading[1-9]|TOCHeading)"/.test(block)) return block;
+    return block.replace(/<w:rFonts[^/]*\/>/g, (tag: string) =>
+      patchWRFonts(tag, PROPOSAL_TITLE_FONT),
+    );
+  });
+}
+
+/** Shrink all explicit font sizes slightly (fixes cramped footers / odd page breaks after LO PDF). */
+function trimWordFontSizes(xml: string): string {
+  const trim = FONT_SZ_TRIM_HALFPTS;
+  if (trim <= 0) return xml;
+  return xml.replace(
+    /<w:(szCs|sz)\s+w:val="(\d+)"/g,
+    (_full, kind: string, val: string) => {
+      const n = Number.parseInt(val, 10);
+      if (!Number.isFinite(n)) return `<w:${kind} w:val="${val}"`;
+      const next = Math.max(FONT_SZ_MIN_HALFPTS, n - trim);
+      return `<w:${kind} w:val="${next}"`;
+    },
+  );
+}
+
+/**
+ * Wordprocessing XML: Roboto body + Trajan/Trojan (title) on headers & headings.
+ */
+function applyProposalFontsToWordXml(content: string, xmlPath: string): string {
+  const lowerPath = xmlPath.replace(/\\/g, "/");
+  if (/^word\/styles\.xml$/i.test(lowerPath)) {
+    return trimWordFontSizes(
+      patchStylesXmlHeadingFonts(applyBodyFontToWordXml(content)),
+    );
+  }
+  let out = applyBodyFontToWordXml(content);
+  out = applyTitleFontToTableFirstRows(out);
+  out = applyTitleFontToTitleParagraphs(out);
+  return trimWordFontSizes(out);
+}
+
+function shouldPatchWordprocessingXml(xmlPath: string): boolean {
+  const p = xmlPath.replace(/\\/g, "/");
+  if (!/^word\//i.test(p) || !p.toLowerCase().endsWith(".xml")) return false;
+  if (/^word\/fonttable\.xml$/i.test(p)) return false;
+  if (/^word\/_rels\//i.test(p)) return false;
+  return true;
+}
+
+/** @deprecated use applyRobotoToSpreadsheetXml or applyProposalFontsToWordXml */
+function applyRobotoToXml(content: string): string {
+  return applyRobotoToSpreadsheetXml(content);
 }
 
 /** Center header/body logo images (LO .doc→.docx often shifts anchored images left). */
@@ -898,23 +1002,26 @@ function patchDocxZip(
       changed = true;
     }
 
-    const roboto = applyRobotoToXml(content);
-    if (roboto !== content) {
-      content = roboto;
-      changed = true;
-    }
-
     const centered = applyLogoCentering(content, name);
     if (centered !== content) {
       content = centered;
       changed = true;
     }
 
+    if (shouldPatchWordprocessingXml(name)) {
+      const fonts = applyProposalFontsToWordXml(content, name);
+      if (fonts !== content) {
+        content = fonts;
+        changed = true;
+      }
+    }
+
     if (changed) zip.file(name, content);
   });
 }
 
-function applyRobotoToDocx(docxBuf: Buffer): Buffer {
+/** Apply title + body fonts to a docx buffer (e.g. before LO PDF export). */
+function applyFontsToDocxBuffer(docxBuf: Buffer): Buffer {
   const zip = new PizZip(docxBuf);
   let anyChanged = false;
   Object.keys(zip.files).forEach((name) => {
@@ -922,14 +1029,40 @@ function applyRobotoToDocx(docxBuf: Buffer): Buffer {
     const file = zip.file(name);
     if (!file || (file as any).dir) return;
     const content = file.asText();
-    const patched = applyRobotoToXml(content);
+    if (!shouldPatchWordprocessingXml(name)) return;
+    const patched = applyProposalFontsToWordXml(content, name);
     if (patched !== content) {
       zip.file(name, patched);
       anyChanged = true;
     }
   });
-  if (!anyChanged) return docxBuf;
-  return zip.generate({ type: "nodebuffer", compression: "DEFLATE" });
+  return anyChanged
+    ? zip.generate({ type: "nodebuffer", compression: "DEFLATE" })
+    : docxBuf;
+}
+
+/** Apply Roboto to all spreadsheet/XML inside xlsx before PDF (rare path). */
+function applyFontsToXlsxBuffer(xlsxBuf: Buffer): Buffer {
+  const zip = new PizZip(xlsxBuf);
+  let anyChanged = false;
+  Object.keys(zip.files).forEach((name) => {
+    if (
+      !name.toLowerCase().endsWith(".xml") &&
+      !name.toLowerCase().endsWith(".rels")
+    )
+      return;
+    const file = zip.file(name);
+    if (!file || (file as any).dir) return;
+    const content = file.asText();
+    const patched = applyRobotoToSpreadsheetXml(content);
+    if (patched !== content) {
+      zip.file(name, patched);
+      anyChanged = true;
+    }
+  });
+  return anyChanged
+    ? zip.generate({ type: "nodebuffer", compression: "DEFLATE" })
+    : xlsxBuf;
 }
 
 function isPdfBuffer(buf: Buffer): boolean {
@@ -972,9 +1105,9 @@ function convertToPdf(
   try {
     const patched =
       ext === ".docx"
-        ? applyRobotoToDocx(content)
+        ? applyFontsToDocxBuffer(content)
         : ext === ".xlsx"
-          ? applyRobotoToDocx(content)
+          ? applyFontsToXlsxBuffer(content)
           : content;
     writeFileSync(tmpIn, patched);
     // Calc component required for .xlsx → PDF (writer-only installs cannot load spreadsheets)
@@ -1331,9 +1464,9 @@ async function recordProposalRequest(
       params.notes?.trim() || `Bangladesh Wizard — ${params.wttNumber}`;
     await pool.query(
       `INSERT INTO proposal_requests
-         (proposal_no, company_name, city, country, contact_person, email, phone, system_option, flow_rate, status, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8,$9,$10)
-       ON CONFLICT (proposal_no) DO NOTHING`,
+        (proposal_no, company_name, city, country, contact_person, email, phone, system_option, flow_rate, status, notes)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8,$9,$10)
+      ON CONFLICT (proposal_no) DO NOTHING`,
       [
         params.wttNumber,
         params.customerName,

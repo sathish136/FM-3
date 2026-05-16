@@ -41,7 +41,7 @@ const ALL_PAGES: SearchEntry[] = [
   { path: "/project-timeline",          label: "Project Timeline",       icon: GanttChartSquare, group: "Project Management",    keywords: "gantt timeline schedule" },
   { path: "/meeting-minutes",           label: "Meeting Minutes",        icon: FileText,         group: "Project Management",    keywords: "meeting notes actions" },
   { path: "/meeting-discussion",        label: "Project Discussion",     icon: MessageSquare,    group: "Project Management",    keywords: "meeting discussion chat project" },
-  { path: "/project-drawings",          label: "Project Drawings",       icon: FolderOpen,       group: "Project Management",    keywords: "drawings folder files" },
+  { path: "/project-drawings",          label: "Project Drawings",       icon: FolderOpen,       group: "Design & Engineering",  keywords: "drawings folder files" },
   { path: "/presentation",              label: "Presentation",           icon: MonitorPlay,      group: "Project Management",    keywords: "slides pptx deck" },
   { path: "/speech-translator",         label: "Speech Translator",      icon: Languages,        group: "Project Management",    keywords: "speech translator voice language" },
   { path: "/translator",                label: "Translator",             icon: Globe,            group: "Project Management",    keywords: "translator language translate" },

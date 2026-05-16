@@ -235,7 +235,6 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { path: "/meeting-discussion",   label: "Project Discussion",   icon: MessageSquare,    color: "text-blue-400",   bgColor: "bg-blue-500/15" },
       { path: "/speech-translator", label: "Speech Translator", icon: Languages,        color: "text-violet-400", bgColor: "bg-violet-500/15" },
       { path: "/translator",        label: "Translator",        icon: Globe,            color: "text-blue-400",   bgColor: "bg-blue-500/15" },
-      { path: "/project-drawings",  label: "Project Drawings",  icon: FolderOpen,       color: "text-sky-400",    bgColor: "bg-sky-500/15" },
       { path: "/presentation",      label: "Presentation",      icon: MonitorPlay,      color: "text-orange-400", bgColor: "bg-orange-500/15" },
     ],
   },
@@ -245,6 +244,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { path: "/design-3d",        label: "Design 3D",          icon: Box,        color: "text-violet-400",  bgColor: "bg-violet-500/15" },
       { path: "/pid",              label: "P&ID Process",       icon: GitBranch,  color: "text-rose-400",    bgColor: "bg-rose-500/15" },
       { path: "/nesting",          label: "Nesting",            icon: Layers,     color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
+      { path: "/project-drawings", label: "Project Drawings",   icon: FolderOpen, color: "text-sky-400",     bgColor: "bg-sky-500/15" },
     ],
   },
   {
