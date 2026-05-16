@@ -1,0 +1,234 @@
+Project Drawing Module – Complete Workflow
+1. Drawing Upload
+The first user uploads project drawings in bulk.
+2. Drawing Review & Correction
+Another user reviews the uploaded drawings.
+If all drawings are correct:
+The reviewer submits them for approval.
+If corrections are required:
+The reviewer marks corrections using the markup tool.
+The reviewer can add comments, notes, or instructions on the drawing.
+3. Correction Notification
+After corrections are marked:
+A notification is sent to the uploader.
+Notification message:
+“Reviewer has requested corrections for the drawing.”
+4. Corrected Drawing Re-Upload
+The uploader corrects the drawings and uploads the updated files again.
+Once updated:
+A notification is sent to the reviewer for rechecking.
+Revision Management (REV System)
+5. Revision Control
+After approval, if any additional correction is required:
+The drawing revision number should increase automatically.
+Example:
+First approved drawing → REV-0
+After first correction → REV-1
+Next correction → REV-2
+6. Revision Workflow
+Every revision follows the same workflow:
+Upload revised drawing
+Reviewer checks drawing
+Corrections marked if required
+Re-upload corrected drawing
+Final approval process
+Complete revision history must be maintained.
+Final Approval Workflow
+7. Design HOD Approval
+Once the reviewer submits the drawing:
+The Design HOD reviews the final drawing.
+If approved:
+Notification sent to the Project Manager.
+Project Manager Module (Separate Module)
+8. Final Approved Drawing Module
+
+After final approval:
+
+Approved drawings move to a separate module accessible by the Project Manager.
+Project Manager Features
+
+The Project Manager can:
+
+View all approved drawings
+Download drawings
+Share drawings
+Give access permissions to:
+Workshop Team
+Site Engineers
+Production Team
+Workshop & Site Engineer Module (Separate Module)
+9. Site / Workshop Follow-Up
+Workshop and Site Engineers can:
+View approved drawings
+Track execution progress
+Report issues found during production or site work
+10. Issue Reporting System
+
+If any issue or correction is found during execution:
+
+Users can:
+Mark issues directly on drawings
+Add comments and reports
+Upload supporting images/documents
+Example Reports
+Dimension mismatch
+Fabrication issue
+Site installation issue
+Material conflict
+Missing details
+Separate Issue Correction Workflow
+Reported issues should go through a separate correction workflow.
+Notifications should be sent to:
+Design Team
+Reviewer
+Project Manager
+Updated revised drawings will again follow:
+Review
+Approval
+Revision tracking process
+Notifications Required
+Notification Events
+Drawing uploaded
+Correction requested
+Corrected drawing uploaded
+Reviewer approved
+HOD approved
+Revision created
+Issue reported from site/workshop
+Final approved drawing released
+Email Configuration
+Default SMTP
+noreply@wttint.com
+Design HOD
+dhilip@wttint.com
+Project Manager
+vaithees@wttint.com
+site enginner emails
+when assign engineer emails get from erpnext work email 
+Project Drawing Module – Complete Workflow
+1. Drawing Upload
+The first user uploads project drawings in bulk.
+2. Drawing Review & Correction
+Another user reviews the uploaded drawings.
+If all drawings are correct:
+The reviewer submits them for approval.
+If corrections are required:
+The reviewer marks corrections using the markup tool.
+The reviewer can add comments, notes, or instructions on the drawing.
+3. Correction Notification
+After corrections are marked:
+A notification is sent to the uploader.
+Notification message:
+“Reviewer has requested corrections for the drawing.”
+4. Corrected Drawing Re-Upload
+The uploader corrects the drawings and uploads the updated files again.
+Once updated:
+A notification is sent to the reviewer for rechecking.
+Revision Management (REV System)
+5. Revision Control
+After approval, if any additional correction is required:
+The drawing revision number increases automatically.
+Revision Format
+First approved drawing → REV-0
+First revision → REV-1
+Second revision → REV-2
+6. Revision Workflow
+
+Every revision follows the same workflow:
+
+Upload revised drawing
+Reviewer checks drawing
+Corrections marked if required
+Corrected drawing re-upload
+Final approval process
+Full revision history must be maintained.
+Previous revisions should remain viewable for tracking and audit purposes.
+Final Approval Workflow
+7. Design HOD Approval
+Once the reviewer submits the drawing:
+The Design HOD reviews the drawing.
+If approved:
+Notification sent to the Project Manager.
+Project Manager Module (Separate Module)
+8. Final Approved Drawing Access
+
+After final approval:
+
+Approved drawings move to a separate module for the Project Manager.
+Project Manager Permissions
+
+The Project Manager can:
+
+View approved drawings
+Download drawings
+Share drawings
+Assign access permissions to:
+Workshop Team
+Production Team
+Site Engineers
+ERPNext Integration
+9. Site Engineer Email Integration
+When a Site Engineer is assigned to a project:
+The engineer’s work email should automatically fetch from ERPNext.
+Email notifications should be sent using the ERPNext work email.
+Example
+Assigned Engineer → Fetch email from ERPNext Employee master
+Use fetched email for:
+Drawing access notifications
+Revision notifications
+Issue reporting notifications
+Approval updates
+Workshop & Site Engineer Module (Separate Module)
+10. Site / Workshop Follow-Up
+Workshop and Site Engineers can:
+View approved drawings
+Track site/workshop execution progress
+Raise issues if any mismatch or correction is found
+Issue Reporting System
+11. Site & Workshop Issue Reports
+
+If any issue is identified during fabrication or installation:
+
+Users can:
+
+Mark issues directly on drawings
+Add comments and notes
+Upload supporting images/documents
+Submit issue reports
+Example Issues
+Dimension mismatch
+Fabrication issue
+Installation issue
+Material conflict
+Missing details
+Drawing mismatch with site condition
+Separate Issue Correction Workflow
+12. Issue Resolution Process
+Reported issues go through a separate correction workflow.
+Workflow
+Site/Workshop raises issue
+Design team receives notification
+Corrections made in drawing
+Revised drawing uploaded
+Reviewer checks revision
+HOD approval
+Updated drawing released again
+Notifications Required
+Notification Events
+Drawing uploaded
+Correction requested
+Corrected drawing uploaded
+Reviewer approved
+HOD approved
+Revision created
+Site issue reported
+Workshop issue reported
+Updated revision released
+Final approved drawing released
+Email Configuration
+Default SMTP
+noreply@wttint.com
+Design HOD
+dhilip@wttint.com
+Project Manager
+vaithees@wttint.com
