@@ -1,9 +1,9 @@
 import { Layout } from "@/components/Layout";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
-  Search, Filter, CheckSquare, Square, Printer, RefreshCw,
-  Users, X, ChevronDown, Loader2, CreditCard, Download,
-  CheckCheck, AlertCircle,
+  Search, CheckSquare, Square, Printer, RefreshCw,
+  Users, X, Loader2, CreditCard, AlertCircle,
+  ChevronDown,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -27,140 +27,89 @@ function formatDate(val: string | null): string {
   if (!val) return "";
   const d = new Date(val);
   if (isNaN(d.getTime())) return val;
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = d.getFullYear();
-  return `${dd}-${mm}-${yyyy}`;
+  return `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
 }
 
-function ImageWithFallback({ src, alt, className }: { src: string | null; alt: string; className?: string }) {
-  const [errored, setErrored] = useState(false);
-  const initials = alt
-    .split(" ")
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? "")
-    .join("");
+function cleanDept(dept: string | null): string {
+  return (dept || "").replace(/ - WTT.*$/i, "").trim().toUpperCase();
+}
 
-  const proxied = src
-    ? `${BASE}/api/hrms/image-proxy?path=${encodeURIComponent(src)}`
-    : null;
+function EmpAvatar({ src, name, size = 36 }: { src: string | null; name: string; size?: number }) {
+  const [err, setErr] = useState(false);
+  const initials = name.split(" ").slice(0, 2).map(w => w[0]?.toUpperCase() ?? "").join("");
+  const proxied = src ? `${BASE}/api/hrms/image-proxy?path=${encodeURIComponent(src)}` : null;
+  const style = { width: size, height: size, borderRadius: "50%", flexShrink: 0 as const, overflow: "hidden" as const };
 
-  if (!proxied || errored) {
+  if (!proxied || err) {
     return (
-      <div className={`${className} bg-slate-200 flex items-center justify-center text-slate-500 font-bold text-lg`}>
+      <div style={{ ...style, background: "#e0e7ff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.38, fontWeight: 700, color: "#4338ca" }}>
         {initials || "?"}
       </div>
     );
   }
-  return (
-    <img
-      src={proxied}
-      alt={alt}
-      className={className}
-      onError={() => setErrored(true)}
-    />
-  );
+  return <img src={proxied} alt={name} style={{ ...style, objectFit: "cover" }} onError={() => setErr(true)} />;
 }
 
 function IdCard({ emp }: { emp: Employee }) {
-  const [photoSrc, setPhotoSrc] = useState<string | null>(null);
-  const [photoError, setPhotoError] = useState(false);
-  const initials = emp.employee_name
-    .split(" ")
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? "")
-    .join("");
-
-  useEffect(() => {
-    if (emp.image) {
-      setPhotoSrc(`${BASE}/api/hrms/image-proxy?path=${encodeURIComponent(emp.image)}`);
-      setPhotoError(false);
-    } else {
-      setPhotoSrc(null);
-    }
-  }, [emp.image]);
-
-  const dept = (emp.department || "").replace(/ - WTT$/i, "").replace(/ - WTT INTERNATIONAL.*$/i, "").toUpperCase();
+  const [photoErr, setPhotoErr] = useState(false);
+  const photoSrc = emp.image ? `${BASE}/api/hrms/image-proxy?path=${encodeURIComponent(emp.image)}` : null;
+  const initials = emp.employee_name.split(" ").slice(0, 2).map(w => w[0]?.toUpperCase() ?? "").join("");
 
   return (
     <div className="id-card">
+      {/* Top section */}
       <div className="id-card-top">
-        <div className="id-card-left">
-          <div className="wtt-logo-block">
-            <img src={`${BASE}/wtt-logo.png`} alt="WTT" className="wtt-logo-img" />
-            <div className="wtt-logo-text">
-              <div className="wtt-name">WTT</div>
-              <div className="wtt-sub">I N T E R N A T I O N A L</div>
-              <div className="wtt-tagline">Water Loving Technology</div>
-            </div>
+        {/* Left strip — brand + photo */}
+        <div className="id-card-left-strip">
+          <div className="id-brand">
+            <img src={`${BASE}/wtt-logo.png`} alt="WTT" className="id-logo-img" />
+            <div className="id-brand-name">WTT</div>
+            <div className="id-brand-sub">I N T E R N A T I O N A L</div>
+            <div className="id-brand-tag">Water Loving Technology</div>
           </div>
-          <div className="emp-photo-wrap">
-            {photoSrc && !photoError ? (
-              <img
-                src={photoSrc}
-                alt={emp.employee_name}
-                className="emp-photo"
-                onError={() => setPhotoError(true)}
-              />
+          <div className="id-photo-wrap">
+            {photoSrc && !photoErr ? (
+              <img src={photoSrc} alt={emp.employee_name} className="id-photo" onError={() => setPhotoErr(true)} />
             ) : (
-              <div className="emp-photo emp-photo-fallback">{initials || "?"}</div>
+              <div className="id-photo id-photo-fb">{initials || "?"}</div>
             )}
           </div>
         </div>
-        <div className="id-card-right">
-          <table className="id-detail-table">
+
+        {/* Right — details */}
+        <div className="id-card-details">
+          <table className="id-tbl">
             <tbody>
-              <tr>
-                <td className="id-label">EMPLOYEE ID</td>
-                <td className="id-colon">:</td>
-                <td className="id-value id-value-bold">{emp.name}</td>
-              </tr>
-              <tr>
-                <td className="id-label">DOJ</td>
-                <td className="id-colon">:</td>
-                <td className="id-value">{formatDate(emp.date_of_joining)}</td>
-              </tr>
-              <tr>
-                <td className="id-label">DOB</td>
-                <td className="id-colon">:</td>
-                <td className="id-value">{formatDate(emp.date_of_birth)}</td>
-              </tr>
-              <tr>
-                <td className="id-label">MOBILE NO</td>
-                <td className="id-colon">:</td>
-                <td className="id-value">{emp.cell_number || ""}</td>
-              </tr>
-              <tr>
-                <td className="id-label">EMERGENCY CONTACT</td>
-                <td className="id-colon">:</td>
-                <td className="id-value">{emp.emergency_phone || ""}</td>
-              </tr>
-              <tr>
-                <td className="id-label">BLOOD GROUP</td>
-                <td className="id-colon">:</td>
-                <td className="id-value id-value-bold">{emp.blood_group || ""}</td>
-              </tr>
+              <tr><td className="id-lbl">EMPLOYEE ID</td><td className="id-sep">:</td><td className="id-val id-bold">{emp.name}</td></tr>
+              <tr><td className="id-lbl">DOJ</td><td className="id-sep">:</td><td className="id-val">{formatDate(emp.date_of_joining)}</td></tr>
+              <tr><td className="id-lbl">DOB</td><td className="id-sep">:</td><td className="id-val">{formatDate(emp.date_of_birth)}</td></tr>
+              <tr><td className="id-lbl">MOBILE NO</td><td className="id-sep">:</td><td className="id-val">{emp.cell_number || ""}</td></tr>
+              <tr><td className="id-lbl">EMERGENCY CONTACT</td><td className="id-sep">:</td><td className="id-val">{emp.emergency_phone || ""}</td></tr>
+              <tr><td className="id-lbl">BLOOD GROUP</td><td className="id-sep">:</td><td className="id-val id-bold">{emp.blood_group || ""}</td></tr>
             </tbody>
           </table>
-          <div className="id-address-block">
-            <div className="id-label-block">ADDRESS :</div>
-            <div className="id-address-text">{emp.permanent_address || ""}</div>
-          </div>
+          {emp.permanent_address && (
+            <div className="id-addr-block">
+              <span className="id-lbl">ADDRESS :</span>
+              <div className="id-addr-text">{emp.permanent_address}</div>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Bottom bar */}
       <div className="id-card-bottom">
-        <div className="id-card-bottom-left">
-          <div className="emp-name-print">{emp.employee_name.toUpperCase()}</div>
-          <div className="emp-dept-print">{dept}</div>
+        <div className="id-bot-left">
+          <div className="id-emp-name">{emp.employee_name.toUpperCase()}</div>
+          <div className="id-emp-dept">{cleanDept(emp.department)}</div>
         </div>
-        <div className="id-card-bottom-right">
-          <div className="auth-sig">Authorized Signature</div>
-          <div className="company-addr">
+        <div className="id-bot-right">
+          <div className="id-auth-sig">Authorized Signature</div>
+          <div className="id-co-addr">
             <strong>WTT INTERNATIONAL PVT.LTD,</strong><br />
             No.3, College Cross Road,<br />
-            Tirupur - 641602,<br />
-            Tamil Nadu, INDIA<br />
-            PH: +91-421-2241120 &nbsp; 224 7707<br />
+            Tirupur - 641602, Tamil Nadu, INDIA<br />
+            PH: +91-421-2241120 &nbsp;·&nbsp; 224 7707<br />
             WWW.WTTINT.COM
           </div>
         </div>
@@ -192,372 +141,314 @@ export default function EmployeeIdCard() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchEmployees();
-  }, [fetchEmployees]);
+  useEffect(() => { fetchEmployees(); }, [fetchEmployees]);
 
-  const departments = ["All", ...Array.from(new Set(employees.map((e) => (e.department || "").replace(/ - WTT.*$/i, "").trim()).filter(Boolean))).sort()];
+  const departments = [
+    "All",
+    ...Array.from(new Set(employees.map(e => cleanDept(e.department)).filter(Boolean))).sort(),
+  ];
 
-  const filtered = employees.filter((e) => {
-    const dept = (e.department || "").replace(/ - WTT.*$/i, "").trim();
-    const matchDept = deptFilter === "All" || dept === deptFilter;
-    const matchSearch =
-      !search ||
+  const filtered = employees.filter(e => {
+    const matchDept = deptFilter === "All" || cleanDept(e.department) === deptFilter;
+    const matchSearch = !search ||
       e.employee_name.toLowerCase().includes(search.toLowerCase()) ||
       e.name.toLowerCase().includes(search.toLowerCase()) ||
       (e.designation || "").toLowerCase().includes(search.toLowerCase());
-    return matchSearch && matchDept;
+    return matchDept && matchSearch;
   });
 
-  const allSelected = filtered.length > 0 && filtered.every((e) => selected.has(e.name));
-  const someSelected = filtered.some((e) => selected.has(e.name));
+  const allSelected = filtered.length > 0 && filtered.every(e => selected.has(e.name));
+  const someSelected = filtered.some(e => selected.has(e.name));
 
   function toggleAll() {
-    if (allSelected) {
-      const next = new Set(selected);
-      filtered.forEach((e) => next.delete(e.name));
-      setSelected(next);
-    } else {
-      const next = new Set(selected);
-      filtered.forEach((e) => next.add(e.name));
-      setSelected(next);
-    }
+    const next = new Set(selected);
+    if (allSelected) filtered.forEach(e => next.delete(e.name));
+    else filtered.forEach(e => next.add(e.name));
+    setSelected(next);
   }
 
   function toggleOne(name: string) {
     const next = new Set(selected);
-    if (next.has(name)) next.delete(name);
-    else next.add(name);
+    if (next.has(name)) next.delete(name); else next.add(name);
     setSelected(next);
   }
 
-  const selectedEmployees = employees.filter((e) => selected.has(e.name));
+  const selectedEmployees = employees.filter(e => selected.has(e.name));
 
   function handlePrint() {
-    if (selectedEmployees.length === 0) return;
+    if (!selectedEmployees.length) return;
     window.print();
   }
 
   return (
     <Layout>
+      {/* ── Card styles (shared between screen preview and print) ── */}
       <style>{`
-        /* ── Screen styles ── */
-        .idcard-page { padding: 24px; min-height: 100vh; }
-        .idcard-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
-        .idcard-title { font-size: 22px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
-        .idcard-controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-        .idcard-search { position: relative; }
-        .idcard-search input { padding: 8px 12px 8px 36px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: #f1f5f9; font-size: 13px; outline: none; width: 200px; }
-        .idcard-search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #64748b; }
-        .idcard-select { padding: 8px 12px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: #f1f5f9; font-size: 13px; cursor: pointer; outline: none; }
-        .btn-primary { display: flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; background: #3b82f6; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: background .15s; }
-        .btn-primary:hover { background: #2563eb; }
-        .btn-primary:disabled { background: #475569; cursor: not-allowed; }
-        .btn-ghost { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 8px; background: transparent; color: #94a3b8; font-size: 13px; cursor: pointer; border: 1px solid #334155; transition: all .15s; }
-        .btn-ghost:hover { background: #1e293b; color: #f1f5f9; }
-
-        .idcard-body { display: flex; gap: 20px; }
-        .idcard-list { width: 340px; flex-shrink: 0; background: #1e293b; border-radius: 12px; border: 1px solid #334155; overflow: hidden; display: flex; flex-direction: column; max-height: calc(100vh - 160px); }
-        .idcard-list-header { padding: 12px 16px; border-bottom: 1px solid #334155; display: flex; align-items: center; gap: 10px; background: #1a2744; }
-        .idcard-list-header label { display: flex; align-items: center; gap-8px; cursor: pointer; color: #94a3b8; font-size: 13px; }
-        .idcard-list-body { flex: 1; overflow-y: auto; }
-        .emp-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #1e293b; cursor: pointer; transition: background .1s; }
-        .emp-row:hover { background: #0f172a; }
-        .emp-row.selected { background: #1e3a5f; }
-        .emp-avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: #334155; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: #94a3b8; overflow: hidden; }
-        .emp-info { flex: 1; min-width: 0; }
-        .emp-info-name { font-size: 13px; font-weight: 600; color: #f1f5f9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .emp-info-sub { font-size: 11px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .emp-id-badge { font-size: 10px; background: #334155; color: #94a3b8; border-radius: 4px; padding: 2px 6px; flex-shrink: 0; }
-
-        .idcard-preview { flex: 1; background: #111827; border-radius: 12px; border: 1px solid #1e293b; padding: 20px; overflow-y: auto; max-height: calc(100vh - 160px); }
-        .preview-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #4b5563; gap: 12px; text-align: center; padding: 40px; }
-        .preview-grid { display: flex; flex-wrap: wrap; gap: 16px; }
-
-        /* ── ID Card Styles (screen) ── */
         .id-card {
-          width: 320px;
-          border: 1.5px solid #cbd5e1;
-          border-radius: 8px;
-          overflow: hidden;
-          background: #fff;
-          font-family: Arial, sans-serif;
-          box-shadow: 0 2px 8px rgba(0,0,0,.12);
-          color: #1e293b;
-          flex-shrink: 0;
+          width: 320px; flex-shrink: 0;
+          border: 1.5px solid #cbd5e1; border-radius: 8px; overflow: hidden;
+          background: #fff; font-family: Arial, sans-serif;
+          box-shadow: 0 2px 8px rgba(0,0,0,.10); color: #1e293b;
         }
-        .id-card-top { display: flex; min-height: 130px; }
-        .id-card-left {
-          width: 100px;
+        .id-card-top { display: flex; min-height: 128px; }
+        .id-card-left-strip {
+          width: 96px; flex-shrink: 0;
           background: linear-gradient(160deg, #0a2463 0%, #1e3a8a 100%);
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          padding: 8px 6px;
-          gap: 8px;
-          flex-shrink: 0;
+          display: flex; flex-direction: column; align-items: center;
+          padding: 8px 6px; gap: 8px;
         }
-        .wtt-logo-block { display: flex; flex-direction: column; align-items: center; gap: 3px; }
-        .wtt-logo-img { width: 32px; height: 32px; object-fit: contain; filter: brightness(0) invert(1); }
-        .wtt-logo-text { text-align: center; }
-        .wtt-name { color: #fff; font-size: 13px; font-weight: 900; letter-spacing: 1px; line-height: 1; }
-        .wtt-sub { color: #93c5fd; font-size: 5px; letter-spacing: .5px; line-height: 1.2; font-weight: 600; }
-        .wtt-tagline { color: #bfdbfe; font-size: 5px; font-style: italic; line-height: 1.2; }
-        .emp-photo-wrap { flex: 1; display: flex; align-items: center; justify-content: center; }
-        .emp-photo { width: 60px; height: 72px; object-fit: cover; border-radius: 4px; border: 2px solid #3b82f6; }
-        .emp-photo-fallback { width: 60px; height: 72px; border-radius: 4px; border: 2px solid #3b82f6; background: #1e40af; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 18px; }
-        .id-card-right { flex: 1; padding: 8px 10px; }
-        .id-detail-table { width: 100%; border-collapse: collapse; font-size: 8.5px; }
-        .id-detail-table tr { height: 16px; }
-        .id-label { color: #475569; white-space: nowrap; padding-right: 4px; font-size: 8px; width: 86px; }
-        .id-colon { color: #94a3b8; padding-right: 4px; }
-        .id-value { color: #1e293b; font-size: 8.5px; }
-        .id-value-bold { font-weight: 700; }
-        .id-address-block { margin-top: 4px; }
-        .id-label-block { font-size: 8px; color: #475569; font-weight: 600; }
-        .id-address-text { font-size: 7.5px; color: #334155; line-height: 1.4; margin-top: 2px; }
+        .id-brand { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+        .id-logo-img { width: 28px; height: 28px; object-fit: contain; filter: brightness(0) invert(1); }
+        .id-brand-name { color: #fff; font-size: 12px; font-weight: 900; letter-spacing: 1px; line-height: 1; }
+        .id-brand-sub { color: #93c5fd; font-size: 4.5px; letter-spacing: .4px; line-height: 1.3; font-weight: 700; text-align: center; }
+        .id-brand-tag { color: #bfdbfe; font-size: 4px; font-style: italic; text-align: center; line-height: 1.3; }
+        .id-photo-wrap { flex: 1; display: flex; align-items: center; justify-content: center; }
+        .id-photo { width: 58px; height: 70px; object-fit: cover; border-radius: 4px; border: 2px solid #60a5fa; }
+        .id-photo-fb { width: 58px; height: 70px; border-radius: 4px; border: 2px solid #60a5fa; background: #1e40af; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 17px; }
+        .id-card-details { flex: 1; padding: 7px 9px; }
+        .id-tbl { width: 100%; border-collapse: collapse; }
+        .id-tbl tr { height: 15px; }
+        .id-lbl { color: #475569; font-size: 7.5px; white-space: nowrap; padding-right: 3px; width: 82px; }
+        .id-sep { color: #94a3b8; padding-right: 3px; font-size: 7.5px; }
+        .id-val { color: #1e293b; font-size: 8px; }
+        .id-bold { font-weight: 700; }
+        .id-addr-block { margin-top: 4px; }
+        .id-addr-text { font-size: 7px; color: #334155; line-height: 1.4; margin-top: 1px; }
         .id-card-bottom {
-          display: flex;
-          border-top: 2px solid #0a2463;
-          background: #f8fafc;
-          padding: 6px 10px;
-          align-items: flex-start;
-          gap: 6px;
-          min-height: 52px;
+          display: flex; align-items: flex-start; gap: 6px;
+          border-top: 2px solid #0a2463; background: #f8fafc;
+          padding: 5px 9px; min-height: 50px;
         }
-        .id-card-bottom-left { flex: 1; }
-        .emp-name-print { font-size: 10px; font-weight: 900; color: #0a2463; letter-spacing: .5px; }
-        .emp-dept-print { font-size: 8px; color: #1e40af; font-weight: 600; margin-top: 2px; }
-        .id-card-bottom-right { text-align: right; }
-        .auth-sig { font-size: 7px; color: #475569; font-style: italic; border-top: .5px solid #475569; padding-top: 2px; display: inline-block; margin-bottom: 3px; }
-        .company-addr { font-size: 6.5px; color: #334155; line-height: 1.5; text-align: right; }
+        .id-bot-left { flex: 1; }
+        .id-emp-name { font-size: 9.5px; font-weight: 900; color: #0a2463; letter-spacing: .4px; }
+        .id-emp-dept { font-size: 7.5px; color: #1e40af; font-weight: 600; margin-top: 2px; }
+        .id-bot-right { text-align: right; }
+        .id-auth-sig { font-size: 6.5px; color: #475569; font-style: italic; border-top: .5px solid #94a3b8; padding-top: 2px; display: inline-block; margin-bottom: 3px; }
+        .id-co-addr { font-size: 6px; color: #334155; line-height: 1.5; text-align: right; }
 
-        /* ── Selection count bar ── */
-        .sel-bar { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #1a3a5c; border-bottom: 1px solid #334155; font-size: 12px; color: #93c5fd; }
-
-        /* ── PRINT STYLES ── */
+        /* ── PRINT ── */
         @media print {
           body > * { display: none !important; }
-          #print-area {
+          #id-print-area {
             display: block !important;
-            position: fixed !important;
-            top: 0 !important; left: 0 !important;
-            width: 210mm !important;
-            margin: 0 !important;
-            padding: 8mm !important;
-            background: #fff !important;
+            position: fixed !important; top: 0 !important; left: 0 !important;
+            width: 210mm !important; padding: 8mm !important; background: #fff !important;
           }
           @page { size: A4 portrait; margin: 0; }
-          .print-grid {
+          .id-print-grid {
             display: grid !important;
             grid-template-columns: repeat(2, 88mm) !important;
             gap: 6mm !important;
           }
           .id-card {
-            width: 88mm !important;
-            border: 1.5px solid #94a3b8 !important;
-            box-shadow: none !important;
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
+            width: 88mm !important; box-shadow: none !important;
+            border: 1px solid #94a3b8 !important;
+            break-inside: avoid !important; page-break-inside: avoid !important;
           }
-          .id-card-left { width: 28mm !important; padding: 4mm 3mm !important; }
-          .wtt-logo-img { width: 10mm !important; height: 10mm !important; }
-          .wtt-name { font-size: 9pt !important; }
-          .wtt-sub { font-size: 4pt !important; }
-          .wtt-tagline { font-size: 4pt !important; }
-          .emp-photo { width: 18mm !important; height: 22mm !important; }
-          .emp-photo-fallback { width: 18mm !important; height: 22mm !important; font-size: 14pt !important; }
-          .id-card-right { padding: 3mm 4mm !important; }
-          .id-detail-table { font-size: 7pt !important; }
-          .id-label { font-size: 6.5pt !important; width: 26mm !important; }
-          .id-value { font-size: 7pt !important; }
-          .id-address-block { margin-top: 2mm !important; }
-          .id-label-block { font-size: 6pt !important; }
-          .id-address-text { font-size: 6pt !important; }
-          .id-card-bottom { padding: 2mm 3mm !important; min-height: 14mm !important; }
-          .emp-name-print { font-size: 8pt !important; }
-          .emp-dept-print { font-size: 6pt !important; }
-          .auth-sig { font-size: 5.5pt !important; }
-          .company-addr { font-size: 5pt !important; }
+          .id-card-left-strip { width: 26mm !important; padding: 3mm 3mm !important; }
+          .id-logo-img { width: 9mm !important; height: 9mm !important; }
+          .id-brand-name { font-size: 8pt !important; }
+          .id-brand-sub  { font-size: 3.5pt !important; }
+          .id-brand-tag  { font-size: 3pt !important; }
+          .id-photo { width: 17mm !important; height: 21mm !important; }
+          .id-photo-fb { width: 17mm !important; height: 21mm !important; font-size: 12pt !important; }
+          .id-card-details { padding: 3mm 3.5mm !important; }
+          .id-lbl { font-size: 6pt !important; width: 24mm !important; }
+          .id-sep { font-size: 6pt !important; }
+          .id-val { font-size: 6.5pt !important; }
+          .id-tbl tr { height: auto !important; }
+          .id-addr-text { font-size: 5.5pt !important; }
+          .id-lbl.addr { font-size: 5.5pt !important; }
+          .id-card-bottom { padding: 2mm 3mm !important; min-height: 12mm !important; }
+          .id-emp-name { font-size: 7.5pt !important; }
+          .id-emp-dept { font-size: 6pt !important; }
+          .id-auth-sig { font-size: 5pt !important; }
+          .id-co-addr  { font-size: 4.5pt !important; }
           .id-card-top { min-height: 0 !important; }
-          .id-detail-table tr { height: auto !important; }
         }
       `}</style>
 
-      <div className="idcard-page">
-        <div className="idcard-header">
-          <div className="idcard-title">
-            <CreditCard className="w-6 h-6 text-blue-400" />
-            <span>Employee ID Cards</span>
-            <span className="text-sm font-normal text-slate-400">
-              ({employees.length} employees)
+      <div className="h-full flex flex-col bg-[#f1f5f9] overflow-hidden">
+
+        {/* ── Header ── */}
+        <div className="bg-white border-b border-gray-100 px-6 py-3 flex items-center gap-4 shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <CreditCard className="w-4 h-4 text-yellow-500 shrink-0" />
+            <h1 className="text-sm font-bold text-gray-900">Employee ID Cards</h1>
+            <span className="text-xs text-gray-400 ml-1">
+              {employees.length > 0 ? `${employees.length} active employees` : "Bulk generate & print on A4"}
             </span>
           </div>
-          <div className="idcard-controls">
-            <button className="btn-ghost" onClick={fetchEmployees} disabled={loading}>
-              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
-            <button
-              className="btn-primary"
-              onClick={handlePrint}
-              disabled={selectedEmployees.length === 0}
-            >
-              <Printer className="w-4 h-4" />
-              Print {selectedEmployees.length > 0 ? `(${selectedEmployees.length})` : ""} on A4
-            </button>
-          </div>
+          <button
+            onClick={fetchEmployees}
+            disabled={loading}
+            className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          </button>
+          <button
+            onClick={handlePrint}
+            disabled={selectedEmployees.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            Print {selectedEmployees.length > 0 ? `(${selectedEmployees.length})` : ""} on A4
+          </button>
         </div>
 
+        {/* ── Error ── */}
         {error && (
-          <div className="flex items-center gap-3 bg-red-950/60 border border-red-700 text-red-300 rounded-lg px-4 py-3 mb-4 text-sm">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <div className="mx-6 mt-3 flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-2.5 text-xs shrink-0">
+            <AlertCircle className="w-4 h-4 shrink-0" />
             {error}
           </div>
         )}
 
-        <div className="idcard-body">
-          {/* ── Employee List ── */}
-          <div className="idcard-list">
-            <div className="idcard-list-header">
-              <button
-                onClick={toggleAll}
-                className="flex items-center gap-2 text-slate-300 hover:text-white transition-colors"
-              >
-                {allSelected ? (
-                  <CheckSquare className="w-4 h-4 text-blue-400" />
-                ) : someSelected ? (
-                  <CheckSquare className="w-4 h-4 text-blue-300/50" />
-                ) : (
-                  <Square className="w-4 h-4" />
-                )}
-                <span className="text-xs">
-                  {allSelected ? "Deselect All" : "Select All"}
-                </span>
-              </button>
-              <span className="text-xs text-slate-500 ml-auto">
-                {filtered.length} shown
-              </span>
-            </div>
+        {/* ── Body ── */}
+        <div className="flex flex-1 overflow-hidden gap-4 p-4">
 
-            <div style={{ padding: "8px 10px", borderBottom: "1px solid #334155", display: "flex", flexDirection: "column", gap: "6px" }}>
-              <div className="idcard-search" style={{ width: "100%" }}>
-                <Search className="idcard-search-icon" style={{ width: 14, height: 14 }} />
+          {/* ── Left: employee list ── */}
+          <div className="w-72 flex-shrink-0 bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col overflow-hidden">
+
+            {/* Filters */}
+            <div className="px-3 pt-3 pb-2 flex flex-col gap-2 border-b border-gray-100">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                 <input
-                  style={{ width: "100%", boxSizing: "border-box" }}
-                  placeholder="Search name / ID / designation…"
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search name / ID…"
+                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-gray-50"
                 />
               </div>
-              <select
-                className="idcard-select"
-                style={{ width: "100%" }}
-                value={deptFilter}
-                onChange={(e) => setDeptFilter(e.target.value)}
+              <div className="relative">
+                <select
+                  value={deptFilter}
+                  onChange={e => setDeptFilter(e.target.value)}
+                  className="w-full appearance-none pl-3 pr-7 py-1.5 text-xs rounded-lg border border-gray-200 bg-gray-50 text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                >
+                  {departments.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* Select all bar */}
+            <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between">
+              <button
+                onClick={toggleAll}
+                className="flex items-center gap-2 text-xs text-gray-600 hover:text-indigo-700 transition-colors"
               >
-                {departments.map((d) => (
-                  <option key={d} value={d}>{d}</option>
-                ))}
-              </select>
+                {allSelected
+                  ? <CheckSquare className="w-3.5 h-3.5 text-indigo-600" />
+                  : someSelected
+                  ? <CheckSquare className="w-3.5 h-3.5 text-indigo-400" />
+                  : <Square className="w-3.5 h-3.5" />
+                }
+                {allSelected ? "Deselect All" : "Select All"}
+              </button>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-gray-400">{filtered.length} shown</span>
+                {selected.size > 0 && (
+                  <button
+                    onClick={() => setSelected(new Set())}
+                    className="flex items-center gap-1 text-[10px] text-rose-500 hover:text-rose-700 transition-colors"
+                  >
+                    <X className="w-3 h-3" /> Clear
+                  </button>
+                )}
+              </div>
             </div>
 
             {selected.size > 0 && (
-              <div className="sel-bar">
-                <span>{selected.size} selected for print</span>
-                <button onClick={() => setSelected(new Set())} className="flex items-center gap-1 hover:text-white transition-colors">
-                  <X className="w-3 h-3" /> Clear
-                </button>
+              <div className="px-3 py-1.5 bg-indigo-50 border-b border-indigo-100 text-[10px] font-semibold text-indigo-700">
+                {selected.size} selected · {Math.ceil(selected.size / 8)} A4 sheet{Math.ceil(selected.size / 8) !== 1 ? "s" : ""}
               </div>
             )}
 
-            <div className="idcard-list-body">
+            {/* List */}
+            <div className="flex-1 overflow-y-auto">
               {loading ? (
                 <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
+                  <Loader2 className="w-5 h-5 text-indigo-500 animate-spin" />
                 </div>
               ) : filtered.length === 0 ? (
-                <div className="flex flex-col items-center py-12 text-slate-500 text-sm gap-2">
-                  <Users className="w-8 h-8" />
+                <div className="flex flex-col items-center py-12 text-gray-400 text-xs gap-2">
+                  <Users className="w-7 h-7" />
                   No employees found
                 </div>
               ) : (
-                filtered.map((emp) => (
+                filtered.map(emp => (
                   <div
                     key={emp.name}
-                    className={`emp-row ${selected.has(emp.name) ? "selected" : ""}`}
                     onClick={() => toggleOne(emp.name)}
+                    className={`flex items-center gap-2.5 px-3 py-2 border-b border-gray-50 cursor-pointer transition-colors ${
+                      selected.has(emp.name) ? "bg-indigo-50" : "hover:bg-gray-50"
+                    }`}
                   >
-                    {selected.has(emp.name) ? (
-                      <CheckSquare className="w-4 h-4 text-blue-400 flex-shrink-0" />
-                    ) : (
-                      <Square className="w-4 h-4 text-slate-600 flex-shrink-0" />
-                    )}
-                    <ImageWithFallback
-                      src={emp.image}
-                      alt={emp.employee_name}
-                      className="emp-avatar"
-                    />
-                    <div className="emp-info">
-                      <div className="emp-info-name">{emp.employee_name}</div>
-                      <div className="emp-info-sub">
-                        {[emp.designation, (emp.department || "").replace(/ - WTT.*$/i, "")].filter(Boolean).join(" · ")}
+                    {selected.has(emp.name)
+                      ? <CheckSquare className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                      : <Square className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
+                    }
+                    <EmpAvatar src={emp.image} name={emp.employee_name} size={32} />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-semibold text-gray-800 truncate">{emp.employee_name}</div>
+                      <div className="text-[10px] text-gray-400 truncate">
+                        {[emp.designation, cleanDept(emp.department)].filter(Boolean).join(" · ")}
                       </div>
                     </div>
-                    <div className="emp-id-badge">{emp.name}</div>
+                    <span className="text-[9px] bg-gray-100 text-gray-500 rounded px-1.5 py-0.5 flex-shrink-0">{emp.name}</span>
                   </div>
                 ))
               )}
             </div>
           </div>
 
-          {/* ── Preview ── */}
-          <div className="idcard-preview">
+          {/* ── Right: preview ── */}
+          <div className="flex-1 overflow-y-auto">
             {selectedEmployees.length === 0 ? (
-              <div className="preview-empty">
-                <CreditCard className="w-14 h-14 text-slate-700" />
+              <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-4 text-center px-8">
+                <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
+                  <CreditCard className="w-8 h-8 text-gray-300" />
+                </div>
                 <div>
-                  <div className="text-slate-400 font-semibold text-base mb-1">No cards selected</div>
-                  <div className="text-slate-600 text-sm">
-                    Select employees from the list to preview their ID cards here.<br />
-                    Then click <strong>Print on A4</strong> to print all selected cards.
+                  <div className="font-semibold text-gray-500 text-sm mb-1">No cards selected</div>
+                  <div className="text-xs text-gray-400 leading-relaxed">
+                    Select employees from the list to preview their ID cards.<br />
+                    Use <strong className="text-gray-500">Select All</strong> to pick an entire department at once.
                   </div>
                 </div>
               </div>
             ) : (
-              <>
+              <div>
                 <div className="flex items-center justify-between mb-4">
-                  <div className="text-sm text-slate-400">
-                    Preview — <strong className="text-white">{selectedEmployees.length}</strong> card{selectedEmployees.length !== 1 ? "s" : ""}
+                  <div className="text-xs text-gray-500">
+                    <span className="font-semibold text-gray-700">{selectedEmployees.length}</span> card{selectedEmployees.length !== 1 ? "s" : ""} selected
                     &nbsp;·&nbsp;
-                    {Math.ceil(selectedEmployees.length / 8)} A4 sheet{Math.ceil(selectedEmployees.length / 8) !== 1 ? "s" : ""}
+                    <span className="font-semibold text-gray-700">{Math.ceil(selectedEmployees.length / 8)}</span> A4 sheet{Math.ceil(selectedEmployees.length / 8) !== 1 ? "s" : ""}
                     &nbsp;(8 per sheet)
                   </div>
                   <button
-                    className="btn-primary"
                     onClick={handlePrint}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
                   >
-                    <Printer className="w-4 h-4" />
+                    <Printer className="w-3.5 h-3.5" />
                     Print All
                   </button>
                 </div>
-                <div className="preview-grid">
-                  {selectedEmployees.map((emp) => (
-                    <IdCard key={emp.name} emp={emp} />
-                  ))}
+                <div className="flex flex-wrap gap-4">
+                  {selectedEmployees.map(emp => <IdCard key={emp.name} emp={emp} />)}
                 </div>
-              </>
+              </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* ── Print Area — always in DOM, hidden on screen, shown by @media print ── */}
-      <div id="print-area" style={{ display: "none" }}>
-        <div className="print-grid">
-          {selectedEmployees.map((emp) => (
-            <IdCard key={emp.name} emp={emp} />
-          ))}
+      {/* ── Always-rendered print area (hidden on screen, shown by @media print) ── */}
+      <div id="id-print-area" style={{ display: "none" }}>
+        <div className="id-print-grid">
+          {selectedEmployees.map(emp => <IdCard key={emp.name} emp={emp} />)}
         </div>
       </div>
     </Layout>
