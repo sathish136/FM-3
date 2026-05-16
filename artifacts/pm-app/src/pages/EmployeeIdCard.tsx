@@ -229,6 +229,8 @@ export default function EmployeeIdCard() {
   return (
     <Layout>
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap');
+
         /* ── ID card base ── */
         .idc {
           width: 190px; height: 295px;
@@ -237,7 +239,7 @@ export default function EmployeeIdCard() {
           border-radius: 6px;
           border: 1px solid #e2e8f0;
           box-shadow: 0 3px 10px rgba(0,0,0,.12);
-          font-family: Arial, sans-serif;
+          font-family: 'Roboto', Arial, sans-serif;
           flex-shrink: 0;
         }
         .idc-deco {
@@ -263,16 +265,19 @@ export default function EmployeeIdCard() {
           font-size: 22px; font-weight: 900;
           color: #1e3a8a; letter-spacing: 2px; line-height: 1;
           margin-bottom: 1px;
+          font-family: 'Roboto', Arial, sans-serif;
         }
         .idc-intl-text {
           font-size: 7.5px; font-weight: 700;
           color: #ea580c; letter-spacing: 3px;
           text-transform: uppercase; line-height: 1.2;
           margin-bottom: 1px;
+          font-family: 'Roboto', Arial, sans-serif;
         }
         .idc-tag-text {
           font-size: 6px; color: #475569;
           font-style: italic; margin-bottom: 8px;
+          font-family: 'Roboto', Arial, sans-serif;
         }
         .idc-photo-ring {
           width: 76px; height: 76px; border-radius: 50%;
@@ -294,15 +299,17 @@ export default function EmployeeIdCard() {
           color: #fff; font-size: 22px; font-weight: 700;
         }
         .idc-emp-name {
-          font-size: 11.5px; font-weight: 900;
+          font-size: 16px; font-weight: 900;
           color: #1e3a8a; letter-spacing: .5px;
           text-align: center; line-height: 1.2;
           margin-bottom: 2px;
+          font-family: 'Roboto', Arial, sans-serif;
         }
         .idc-emp-dept {
-          font-size: 7.5px; color: #475569;
+          font-size: 10.4px; color: #475569;
           font-weight: 600; text-align: center;
           margin-bottom: 6px;
+          font-family: 'Roboto', Arial, sans-serif;
         }
         .idc-qr {
           width: 52px; height: 52px;
@@ -321,26 +328,30 @@ export default function EmployeeIdCard() {
         }
         .idc-dtbl tr { height: 16px; }
         .idc-dlbl {
-          font-size: 6.5px; font-weight: 700;
+          font-size: 9.1px; font-weight: 700;
           color: #1e3a8a; white-space: nowrap;
           padding-right: 1px; vertical-align: top;
+          font-family: 'Roboto', Arial, sans-serif;
         }
         .idc-dcolon {
-          font-size: 6.5px; color: #1e3a8a;
+          font-size: 9.1px; color: #1e3a8a;
           padding: 0 3px; vertical-align: top;
+          font-family: 'Roboto', Arial, sans-serif;
         }
         .idc-dval {
-          font-size: 6.5px; color: #1e293b;
+          font-size: 9.1px; color: #1e293b;
           vertical-align: top;
+          font-family: 'Roboto', Arial, sans-serif;
         }
         .idc-dvbold { font-weight: 700; }
         .idc-addr-section { margin-bottom: 4px; }
         .idc-addr-box {
           border: .5px solid #94a3b8;
           min-height: 30px; padding: 2px 4px;
-          font-size: 6px; color: #334155;
+          font-size: 10.5px; color: #334155;
           line-height: 1.5; border-radius: 2px;
           margin-top: 1px;
+          font-family: 'Candara', 'Calibri', sans-serif;
         }
         .idc-sig-area {
           flex: 1;
@@ -407,25 +418,25 @@ export default function EmployeeIdCard() {
           /* front print */
           .idc-front-inner { padding: 2.5mm 3mm 1.5mm !important; }
           .idc-logo { width: 12mm !important; height: 12mm !important; }
-          .idc-wtt-text { font-size: 12pt !important; letter-spacing: 1.5px !important; }
-          .idc-intl-text { font-size: 3.5pt !important; letter-spacing: 2px !important; }
-          .idc-tag-text { font-size: 3pt !important; margin-bottom: 2mm !important; }
+          .idc-wtt-text { font-size: 12pt !important; letter-spacing: 1.5px !important; font-family: 'Roboto', Arial, sans-serif !important; }
+          .idc-intl-text { font-size: 3.5pt !important; letter-spacing: 2px !important; font-family: 'Roboto', Arial, sans-serif !important; }
+          .idc-tag-text { font-size: 3pt !important; margin-bottom: 2mm !important; font-family: 'Roboto', Arial, sans-serif !important; }
           .idc-photo-ring { width: 20mm !important; height: 20mm !important; border-width: 1mm !important; box-shadow: 0 0 0 .5mm #fff, 0 0 0 1.3mm #f97316 !important; margin-bottom: 2mm !important; }
-          .idc-emp-name { font-size: 6.5pt !important; }
-          .idc-emp-dept { font-size: 5pt !important; margin-bottom: 1.5mm !important; }
+          .idc-emp-name { font-size: 12pt !important; font-family: 'Roboto', Arial, sans-serif !important; }
+          .idc-emp-dept { font-size: 7.8pt !important; margin-bottom: 1.5mm !important; font-family: 'Roboto', Arial, sans-serif !important; }
           .idc-qr { width: 13mm !important; height: 13mm !important; }
 
           /* back print */
           .idc-back-inner { padding: 2.5mm 3.5mm 2mm 5mm !important; }
-          .idc-dtbl tr { height: 4mm !important; }
-          .idc-dlbl { font-size: 4.5pt !important; }
-          .idc-dcolon { font-size: 4.5pt !important; }
-          .idc-dval { font-size: 4.5pt !important; }
-          .idc-addr-box { font-size: 3.5pt !important; min-height: 8mm !important; }
+          .idc-dtbl tr { height: 4.2mm !important; }
+          .idc-dlbl { font-size: 6.84pt !important; font-family: 'Roboto', Arial, sans-serif !important; }
+          .idc-dcolon { font-size: 6.84pt !important; font-family: 'Roboto', Arial, sans-serif !important; }
+          .idc-dval { font-size: 6.84pt !important; font-family: 'Roboto', Arial, sans-serif !important; }
+          .idc-addr-box { font-size: 7.9pt !important; min-height: 10mm !important; font-family: 'Candara', 'Calibri', sans-serif !important; }
           .idc-sig-line { width: 18mm !important; }
-          .idc-sig-label { font-size: 3.5pt !important; }
-          .idc-co-block { font-size: 3.5pt !important; padding-top: 1mm !important; }
-          .idc-co-name { font-size: 4pt !important; }
+          .idc-sig-label { font-size: 4pt !important; font-family: 'Roboto', Arial, sans-serif !important; }
+          .idc-co-block { font-size: 4pt !important; padding-top: 1mm !important; font-family: 'Roboto', Arial, sans-serif !important; }
+          .idc-co-name { font-size: 5pt !important; font-family: 'Roboto', Arial, sans-serif !important; }
         }
       `}</style>
 
