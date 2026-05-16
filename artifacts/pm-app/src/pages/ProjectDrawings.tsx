@@ -477,6 +477,88 @@ const STATUS_CONFIG: Record<
   },
 };
 
+const WF_STAGE_CONFIG: Record<
+  string,
+  { label: string; shortLabel: string; bg: string; border: string; textColor: string; dotColor: string }
+> = {
+  pending_review: {
+    label: "Pending Review",
+    shortLabel: "Pending",
+    bg: "bg-sky-50",
+    border: "border-sky-300",
+    textColor: "text-sky-700",
+    dotColor: "bg-sky-500",
+  },
+  correction_requested: {
+    label: "Corrections Needed",
+    shortLabel: "Correction",
+    bg: "bg-amber-50",
+    border: "border-amber-300",
+    textColor: "text-amber-700",
+    dotColor: "bg-amber-500",
+  },
+  correction_uploaded: {
+    label: "Correction Uploaded",
+    shortLabel: "Corrected",
+    bg: "bg-blue-50",
+    border: "border-blue-300",
+    textColor: "text-blue-700",
+    dotColor: "bg-blue-500",
+  },
+  issue_correction_requested: {
+    label: "Issue Correction",
+    shortLabel: "Issue Corr.",
+    bg: "bg-orange-50",
+    border: "border-orange-300",
+    textColor: "text-orange-700",
+    dotColor: "bg-orange-500",
+  },
+  issue_correction_uploaded: {
+    label: "Issue Fix Uploaded",
+    shortLabel: "Issue Fixed",
+    bg: "bg-blue-50",
+    border: "border-blue-300",
+    textColor: "text-blue-700",
+    dotColor: "bg-blue-500",
+  },
+  submitted_for_approval: {
+    label: "Awaiting HOD",
+    shortLabel: "HOD Pending",
+    bg: "bg-purple-50",
+    border: "border-purple-300",
+    textColor: "text-purple-700",
+    dotColor: "bg-purple-500",
+  },
+  hod_approved: {
+    label: "HOD Approved",
+    shortLabel: "HOD Approved",
+    bg: "bg-emerald-50",
+    border: "border-emerald-300",
+    textColor: "text-emerald-700",
+    dotColor: "bg-emerald-500",
+  },
+  hod_rejected: {
+    label: "HOD Rejected",
+    shortLabel: "Rejected",
+    bg: "bg-red-50",
+    border: "border-red-300",
+    textColor: "text-red-700",
+    dotColor: "bg-red-500",
+  },
+};
+
+const WF_STAGE_ORDER = [
+  "all",
+  "pending_review",
+  "correction_requested",
+  "correction_uploaded",
+  "issue_correction_requested",
+  "issue_correction_uploaded",
+  "submitted_for_approval",
+  "hod_approved",
+  "hod_rejected",
+];
+
 const DEPARTMENTS = [
   "Mechanical",
   "Electrical",
@@ -635,6 +717,18 @@ function StatusBadge({
       {status === "revision" && <RefreshCw className="w-3 h-3" />}
       {status === "final" && <CheckCircle2 className="w-3 h-3" />}
       {label || cfg.label}
+    </span>
+  );
+}
+
+function WorkflowStageBadge({ wfStatus }: { wfStatus: string }) {
+  const cfg = WF_STAGE_CONFIG[wfStatus] || WF_STAGE_CONFIG.pending_review;
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold border ${cfg.bg} ${cfg.border} ${cfg.textColor} whitespace-nowrap`}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dotColor}`} />
+      {cfg.label}
     </span>
   );
 }
@@ -5562,6 +5656,7 @@ export default function ProjectDrawings() {
   const [statusFilter, setStatusFilter] = useState<DrawingStatus | "all">(
     "all",
   );
+  const [wfFilter, setWfFilter] = useState<string>("all");
   const [deptFilter, setDeptFilter] = useState("");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -5732,11 +5827,12 @@ export default function ProjectDrawings() {
       d.systemName.toLowerCase().includes(q) ||
       d.department.toLowerCase().includes(q);
     const matchStatus = statusFilter === "all" || d.status === statusFilter;
+    const matchWf = wfFilter === "all" || (d.workflowStatus || "pending_review") === wfFilter;
     const matchDept = !deptFilter || d.department === deptFilter;
     const matchProject = !projectFilter || d.project === projectFilter;
     const matchSelectedProject = !selectedProject || d.project === selectedProject;
     const matchSelectedSystem = selectedSystem === "All" || d.systemName === selectedSystem;
-    return matchSearch && matchStatus && matchDept && matchProject && matchSelectedProject && matchSelectedSystem;
+    return matchSearch && matchStatus && matchWf && matchDept && matchProject && matchSelectedProject && matchSelectedSystem;
   });
 
   const handleUpload = async (
@@ -6259,6 +6355,50 @@ export default function ProjectDrawings() {
                   </div>
                 </div>
               </div>
+              {/* Workflow stage filter */}
+              {(() => {
+                const stagesPresent = WF_STAGE_ORDER.filter(k => {
+                  if (k === "all") return true;
+                  return drawings.some(d => (d.workflowStatus || "pending_review") === k);
+                });
+                if (stagesPresent.length <= 2) return null; // only "all" + one stage — not worth showing
+                return (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mr-1">Workflow:</span>
+                    {stagesPresent.map(k => {
+                      if (k === "all") {
+                        const isActive = wfFilter === "all";
+                        return (
+                          <button key="all" onClick={() => setWfFilter("all")}
+                            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium border transition-colors ${isActive ? "bg-gray-800 text-white border-gray-800" : "bg-white text-gray-600 border-gray-300 hover:border-gray-500 hover:text-gray-800"}`}>
+                            All
+                            <span className={`px-1 py-0.5 rounded-full text-[10px] font-bold ${isActive ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"}`}>
+                              {drawings.filter(d => isDeptAccessible(d.department)).length}
+                            </span>
+                          </button>
+                        );
+                      }
+                      const cfg = WF_STAGE_CONFIG[k];
+                      const count = drawings.filter(d => (d.workflowStatus || "pending_review") === k && isDeptAccessible(d.department)).length;
+                      if (!count) return null;
+                      const isActive = wfFilter === k;
+                      return (
+                        <button key={k} onClick={() => setWfFilter(k)}
+                          className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] font-medium border transition-colors ${isActive ? `${cfg.bg} ${cfg.border} ${cfg.textColor} shadow-sm` : "bg-white text-gray-600 border-gray-300 hover:border-gray-400 hover:text-gray-800"}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${isActive ? cfg.dotColor : "bg-gray-400"}`} />
+                          {cfg.shortLabel}
+                          <span className={`px-1 py-0.5 rounded-full text-[10px] font-bold ${isActive ? "bg-white/40" : "bg-gray-100 text-gray-500"}`}>
+                            {count}
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {wfFilter !== "all" && (
+                      <button onClick={() => setWfFilter("all")} className="text-[11px] text-gray-400 hover:text-gray-600 underline ml-1">clear</button>
+                    )}
+                  </div>
+                );
+              })()}
               {/* Bulk action bar */}
               {selectionMode && selectedIds.size > 0 && (
                 <div className="flex items-center gap-2 px-1 py-2 bg-blue-50 border border-blue-200 rounded-xl flex-wrap">
@@ -6385,7 +6525,7 @@ export default function ProjectDrawings() {
                 </div>
               ) : (
                 <div className="grid gap-2">
-                  <div className="hidden md:grid grid-cols-[32px_2.5fr_2fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 px-4 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-200">
+                  <div className="hidden md:grid grid-cols-[32px_2fr_1.4fr_1fr_1fr_2fr_0.7fr_0.8fr_auto] gap-3 px-4 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-200">
                     {selectionMode ? (
                       <input
                         type="checkbox"
@@ -6404,9 +6544,10 @@ export default function ProjectDrawings() {
                     )}
                     <span>Drawing No. / Title</span>
                     <span>System</span>
-                    <span>Department</span>
-                    <span>Status</span>
-                    <span>Revisions</span>
+                    <span>Dept</span>
+                    <span>Doc Status</span>
+                    <span>Workflow Stage</span>
+                    <span>Revs</span>
                     <span>Date</span>
                     <span />
                   </div>
@@ -6433,7 +6574,7 @@ export default function ProjectDrawings() {
                           : "border-gray-200 hover:border-blue-400"
                       }`}
                     >
-                      <div className="hidden md:grid grid-cols-[32px_2.5fr_2fr_1.5fr_1.5fr_1.2fr_1fr_auto] gap-3 items-center">
+                      <div className="hidden md:grid grid-cols-[32px_2fr_1.4fr_1fr_1fr_2fr_0.7fr_0.8fr_auto] gap-3 items-center">
                         {selectionMode ? (
                           <input
                             type="checkbox"
@@ -6455,22 +6596,27 @@ export default function ProjectDrawings() {
                         <div className="text-xs text-gray-600 truncate" title={drawing.department}>
                           {drawing.department || "—"}
                         </div>
-                        <div className="flex flex-col gap-1">
+                        {/* Doc Status */}
+                        <div>
                           <StatusBadge status={drawing.status} label={drawing.revisionLabel} />
-                          <div className="flex items-center gap-1">
+                        </div>
+                        {/* Workflow Stage */}
+                        <div className="flex flex-col gap-1 min-w-0">
+                          <WorkflowStageBadge wfStatus={drawing.workflowStatus || "pending_review"} />
+                          <div className="flex items-center gap-1 flex-wrap">
                             {drawing.checkedBy && (
                               <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                 <UserCheck className="w-2.5 h-2.5" /> Checked
                               </span>
                             )}
                             {drawing.approvedBy && (
-                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-violet-50 text-violet-700 border border-violet-200">
                                 <ThumbsUp className="w-2.5 h-2.5" /> Approved
                               </span>
                             )}
                           </div>
                         </div>
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs text-gray-500 tabular-nums">
                           {drawing.history.length === 0 ? "—" : `${drawing.history.length} rev${drawing.history.length !== 1 ? "s" : ""}`}
                         </div>
                         <div className="text-xs text-gray-500">{formatDate(drawing.uploadedAt)}</div>
