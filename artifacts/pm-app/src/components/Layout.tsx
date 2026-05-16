@@ -7,7 +7,7 @@ import {
   Play, Square, Phone, ShieldOff, Loader2, Languages, Globe, Mic, Pause,
   ScanLine, Factory, Database, UserCheck,
   Code2, Monitor, Gauge, Tag, Ticket, Cpu, Network,
-  FlaskConical, TestTubes,
+  FlaskConical, TestTubes, CheckCircle2,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -245,6 +245,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { path: "/pid",              label: "P&ID Process",       icon: GitBranch,  color: "text-rose-400",    bgColor: "bg-rose-500/15" },
       { path: "/nesting",          label: "Nesting",            icon: Layers,     color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
       { path: "/project-drawings", label: "Project Drawings",   icon: FolderOpen, color: "text-sky-400",     bgColor: "bg-sky-500/15" },
+      { path: "/approved-drawings", label: "Approved Drawings",  icon: CheckCircle2, color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
     ],
   },
   {
@@ -381,6 +382,7 @@ const PATH_TO_MODULE: Record<string, string> = {
   "/speech-translator":     "speech-translator",
   "/translator":            "translator",
   "/project-drawings":      "project-drawings",
+  "/approved-drawings":     "approved-drawings",
   "/presentation":          "presentation",
   "/design-3d":             "design-3d",
   "/pid":                   "pid",

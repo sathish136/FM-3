@@ -4,6 +4,7 @@ import { db } from "@workspace/db";
 import { projectDrawingsTable } from "@workspace/db/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import OpenAI from "openai";
+import { sendEmailNotification, buildEmailHtml } from "./notifications";
 
 const drawingUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
@@ -86,7 +87,9 @@ router.post("/project-drawings", drawingUpload.single("file"), async (req, res) 
         checkedBy: body.checkedBy ?? null,
         approvedBy: body.approvedBy ?? null,
         erpFileUrl: body.erpFileUrl ?? null,
-      })
+        uploaderEmail: body.uploaderEmail ?? null,
+        workflowStatus: body.workflowStatus ?? "pending_review",
+      } as any)
       .returning();
     // Set drawingType via update to work around Drizzle DEFAULT behaviour for this column
     const drawingType = body.drawingType ?? "";
@@ -117,6 +120,7 @@ router.patch("/project-drawings/:id", async (req, res) => {
       "title","project","department","drawingType","systemName","status","revisionNo",
       "revisionLabel","fileData","fileName","note","uploadedBy","history",
       "viewLog","checkedBy","approvedBy","erpFileUrl","aiAnalysis",
+      "workflowStatus","reviewerEmail","uploaderEmail","corrections","hodRemarks",
     ] as const;
     for (const key of allowed) {
       if (key in body) (updateFields as any)[key] = body[key];
@@ -259,6 +263,395 @@ router.post("/drawings/analyze-page", async (req, res) => {
   } catch (e: any) {
     console.error("Drawing analyze error:", e);
     return res.status(500).json({ error: e?.message ?? String(e) });
+  }
+});
+
+// GET /api/project-drawings/:id/file — return only the file data (for lazy loading)
+router.get("/project-drawings/:id/file", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [row] = await db
+      .select({ fileData: projectDrawingsTable.fileData })
+      .from(projectDrawingsTable)
+      .where(eq(projectDrawingsTable.id, id));
+    if (!row) return res.status(404).json({ error: "Not found" });
+    return res.json({ fileData: row.fileData });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Drawing Workflow Actions ──────────────────────────────────────────────────
+
+const HOD_EMAIL = "dhilip@wttint.com";
+const PM_EMAIL = "vaithees@wttint.com";
+
+function drawingEmailHtml(title: string, body: string, drawing: { drawingNo: string; title?: string; project?: string }) {
+  const meta = [
+    `<p style="margin:4px 0;color:#1e293b;font-size:14px;"><strong>Drawing No:</strong> ${drawing.drawingNo}</p>`,
+    drawing.title ? `<p style="margin:4px 0;color:#1e293b;font-size:14px;"><strong>Title:</strong> ${drawing.title}</p>` : "",
+    drawing.project ? `<p style="margin:4px 0;color:#1e293b;font-size:14px;"><strong>Project:</strong> ${drawing.project}</p>` : "",
+  ].filter(Boolean).join("\n");
+  return `
+    <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#f8fafc;border-radius:16px;">
+      <h2 style="color:#0a2463;margin:0 0 8px;">FlowMatri<span style="color:#0ea5e9">X</span></h2>
+      <p style="color:#64748b;font-size:13px;margin:0 0 20px;">Project Drawing Notification</p>
+      <div style="background:#fff;border:2px solid #e2e8f0;border-radius:12px;padding:24px;">
+        <h3 style="margin:0 0 12px;color:#0a2463;">${title}</h3>
+        ${meta}
+        <hr style="border:none;border-top:1px solid #e2e8f0;margin:16px 0;" />
+        <p style="color:#1e293b;font-size:14px;margin:0;">${body}</p>
+      </div>
+      <p style="color:#94a3b8;font-size:11px;text-align:center;margin-top:20px;">© ${new Date().getFullYear()} WTT INTERNATIONAL INDIA</p>
+    </div>
+  `;
+}
+
+// POST /api/project-drawings/:id/request-corrections
+router.post("/project-drawings/:id/request-corrections", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { comment, reviewerName, reviewerEmail, uploaderEmail } = req.body as {
+      comment: string;
+      reviewerName: string;
+      reviewerEmail: string;
+      uploaderEmail: string;
+    };
+
+    const corrections = { comment, requestedAt: new Date().toISOString(), requestedBy: reviewerName };
+
+    const [row] = await db
+      .update(projectDrawingsTable)
+      .set({
+        workflowStatus: "correction_requested",
+        corrections,
+        reviewerEmail: reviewerEmail || null,
+        uploaderEmail: uploaderEmail || null,
+        updatedAt: new Date(),
+      } as any)
+      .where(eq(projectDrawingsTable.id, id))
+      .returning();
+
+    if (!row) return res.status(404).json({ error: "Drawing not found" });
+
+    // Send email to uploader
+    if (uploaderEmail) {
+      const html = drawingEmailHtml(
+        "Correction Required on Your Drawing",
+        `Reviewer <strong>${reviewerName}</strong> has requested corrections.<br/><br/><strong>Remarks:</strong> ${comment || "Please review and re-upload the corrected drawing."}`,
+        row as any,
+      );
+      sendEmailNotification(uploaderEmail, `Corrections Required – ${row.drawingNo}`, html).catch(() => {});
+    }
+
+    return res.json(row);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/project-drawings/:id/correction-uploaded
+router.post("/project-drawings/:id/correction-uploaded", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { uploaderName, uploaderEmail, reviewerEmail, isIssueCorrectionCycle } = req.body as {
+      uploaderName: string;
+      uploaderEmail: string;
+      reviewerEmail: string;
+      isIssueCorrectionCycle?: boolean;
+    };
+
+    const newStatus = isIssueCorrectionCycle ? "issue_correction_uploaded" : "correction_uploaded";
+
+    const [row] = await db
+      .update(projectDrawingsTable)
+      .set({ workflowStatus: newStatus, updatedAt: new Date() } as any)
+      .where(eq(projectDrawingsTable.id, id))
+      .returning();
+
+    if (!row) return res.status(404).json({ error: "Drawing not found" });
+
+    // Notify reviewer
+    if (reviewerEmail) {
+      const subject = isIssueCorrectionCycle
+        ? `Issue Correction Uploaded – ${row.drawingNo}`
+        : `Corrected Drawing Uploaded – ${row.drawingNo}`;
+      const body = isIssueCorrectionCycle
+        ? `<strong>${uploaderName || "The design team"}</strong> has uploaded a revised drawing in response to the reported site/workshop issue. Please review the correction and take the next action.`
+        : `<strong>${uploaderName || "The uploader"}</strong> has uploaded a corrected version of this drawing. Please review it and take the next action.`;
+      const html = drawingEmailHtml(isIssueCorrectionCycle ? "Issue Correction Uploaded" : "Corrected Drawing Uploaded", body, row as any);
+      sendEmailNotification(reviewerEmail, subject, html).catch(() => {});
+    }
+
+    return res.json(row);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/project-drawings/:id/submit-approval
+router.post("/project-drawings/:id/submit-approval", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reviewerName, reviewerEmail, uploaderEmail } = req.body as {
+      reviewerName: string;
+      reviewerEmail: string;
+      uploaderEmail: string;
+    };
+
+    const [row] = await db
+      .update(projectDrawingsTable)
+      .set({
+        workflowStatus: "submitted_for_approval",
+        reviewerEmail: reviewerEmail || null,
+        uploaderEmail: uploaderEmail || null,
+        updatedAt: new Date(),
+      } as any)
+      .where(eq(projectDrawingsTable.id, id))
+      .returning();
+
+    if (!row) return res.status(404).json({ error: "Drawing not found" });
+
+    // Email HOD
+    const html = drawingEmailHtml(
+      "Drawing Submitted for Your Approval",
+      `Reviewer <strong>${reviewerName}</strong> has reviewed this drawing and submitted it for your final approval. Please log in to FlowMatriX to approve or reject.`,
+      row as any,
+    );
+    sendEmailNotification(HOD_EMAIL, `Drawing Ready for Approval – ${row.drawingNo}`, html).catch(() => {});
+
+    return res.json(row);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/project-drawings/:id/hod-decision
+router.post("/project-drawings/:id/hod-decision", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { decision, hodRemarks, hodName } = req.body as {
+      decision: "approve" | "reject";
+      hodRemarks?: string;
+      hodName?: string;
+    };
+
+    const isApproved = decision === "approve";
+    const newStatus = isApproved ? "hod_approved" : "hod_rejected";
+
+    const [row] = await db
+      .update(projectDrawingsTable)
+      .set({
+        workflowStatus: newStatus,
+        hodRemarks: hodRemarks || null,
+        updatedAt: new Date(),
+      } as any)
+      .where(eq(projectDrawingsTable.id, id))
+      .returning();
+
+    if (!row) return res.status(404).json({ error: "Drawing not found" });
+
+    const rowAny = row as any;
+
+    if (isApproved) {
+      // Notify Project Manager
+      const pmHtml = drawingEmailHtml(
+        "Drawing Approved by Design HOD",
+        `Design HOD <strong>${hodName || "dhilip@wttint.com"}</strong> has approved this drawing. It is now ready for final use.`,
+        rowAny,
+      );
+      sendEmailNotification(PM_EMAIL, `Drawing Approved – ${row.drawingNo}`, pmHtml).catch(() => {});
+
+      // Also notify reviewer & uploader
+      if (rowAny.reviewerEmail) {
+        sendEmailNotification(rowAny.reviewerEmail, `Drawing Approved – ${row.drawingNo}`, pmHtml).catch(() => {});
+      }
+    } else {
+      // HOD rejected — notify reviewer and uploader
+      const rejectMsg = `Design HOD has <strong>rejected</strong> this drawing.<br/><br/><strong>Remarks:</strong> ${hodRemarks || "No remarks provided."}`;
+      const rejectHtml = drawingEmailHtml("Drawing Rejected by HOD", rejectMsg, rowAny);
+      if (rowAny.reviewerEmail) {
+        sendEmailNotification(rowAny.reviewerEmail, `Drawing Rejected – ${row.drawingNo}`, rejectHtml).catch(() => {});
+      }
+      if (rowAny.uploaderEmail && rowAny.uploaderEmail !== rowAny.reviewerEmail) {
+        sendEmailNotification(rowAny.uploaderEmail, `Drawing Rejected – ${row.drawingNo}`, rejectHtml).catch(() => {});
+      }
+    }
+
+    return res.json(row);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Drawing Issues ────────────────────────────────────────────────────────────
+
+// GET /api/project-drawings/:id/issues
+router.get("/project-drawings/:id/issues", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const rows = await db.execute(
+      sql`SELECT * FROM project_drawing_issues WHERE drawing_id = ${id} ORDER BY reported_at DESC`
+    );
+    return res.json(rows.rows);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/project-drawings/:id/issues — report a new issue
+router.post("/project-drawings/:id/issues", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, issueType, description, reportedBy, reporterEmail, images } = req.body as {
+      title: string;
+      issueType: string;
+      description: string;
+      reportedBy: string;
+      reporterEmail?: string;
+      images?: unknown[];
+    };
+
+    const issueId = `iss_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const rows = await db.execute(sql`
+      INSERT INTO project_drawing_issues (id, drawing_id, title, issue_type, description, reported_by, reporter_email, images)
+      VALUES (${issueId}, ${id}, ${title || ""}, ${issueType || "general"}, ${description || ""}, ${reportedBy || ""}, ${reporterEmail || null}, ${JSON.stringify(images || [])}::jsonb)
+      RETURNING *
+    `);
+    const issue = rows.rows[0] as any;
+
+    // Fetch drawing details for email
+    const drawingRows = await db.execute(sql`SELECT * FROM project_drawings WHERE id = ${id}`);
+    const drawing = drawingRows.rows[0] as any;
+
+    // Notify design HOD and reviewer
+    if (drawing) {
+      const issueHtml = drawingEmailHtml(
+        "Issue Reported on Drawing",
+        `<strong>${reportedBy || "A team member"}</strong> has reported an issue on this drawing.<br/><br/><strong>Issue Type:</strong> ${issueType || "General"}<br/><strong>Title:</strong> ${title}<br/><br/><strong>Description:</strong><br/>${description || "No description provided."}`,
+        drawing,
+      );
+      sendEmailNotification(HOD_EMAIL, `Issue Reported – ${drawing.drawing_no || "Drawing"}`, issueHtml).catch(() => {});
+      if (drawing.reviewer_email) {
+        sendEmailNotification(drawing.reviewer_email, `Issue Reported – ${drawing.drawing_no || "Drawing"}`, issueHtml).catch(() => {});
+      }
+    }
+
+    return res.json(issue);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/project-drawings/:id/issues/:issueId — resolve / update issue
+router.patch("/project-drawings/:id/issues/:issueId", async (req, res) => {
+  try {
+    const { issueId } = req.params;
+    const { status, resolvedBy, resolvedNote } = req.body as {
+      status: string;
+      resolvedBy?: string;
+      resolvedNote?: string;
+    };
+
+    const rows = await db.execute(sql`
+      UPDATE project_drawing_issues
+      SET status = ${status},
+          resolved_by = ${resolvedBy || null},
+          resolved_note = ${resolvedNote || null},
+          resolved_at = ${status === "resolved" ? new Date().toISOString() : null},
+          updated_at = NOW()
+      WHERE id = ${issueId}
+      RETURNING *
+    `);
+    const issue = rows.rows[0];
+    if (!issue) return res.status(404).json({ error: "Issue not found" });
+    return res.json(issue);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/project-drawings/:id/issues/:issueId
+router.delete("/project-drawings/:id/issues/:issueId", async (req, res) => {
+  try {
+    const { issueId } = req.params;
+    await db.execute(sql`DELETE FROM project_drawing_issues WHERE id = ${issueId}`);
+    return res.json({ ok: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/project-drawings/:id/issues/:issueId/start-correction — trigger correction from an issue
+router.post("/project-drawings/:id/issues/:issueId/start-correction", async (req, res) => {
+  try {
+    const { id, issueId } = req.params;
+    const { reportedBy, reporterEmail } = req.body as {
+      reportedBy: string;
+      reporterEmail?: string;
+    };
+
+    // Mark the issue as correction_triggered
+    await db.execute(sql`
+      UPDATE project_drawing_issues SET correction_triggered = TRUE, updated_at = NOW()
+      WHERE id = ${issueId}
+    `);
+
+    // Set drawing to issue_correction_requested
+    const [row] = await db
+      .update(projectDrawingsTable)
+      .set({
+        workflowStatus: "issue_correction_requested",
+        issueTriggerID: issueId,
+        updatedAt: new Date(),
+      } as any)
+      .where(eq(projectDrawingsTable.id, id))
+      .returning();
+
+    if (!row) return res.status(404).json({ error: "Drawing not found" });
+
+    const rowAny = row as any;
+
+    // Notify uploader (design team)
+    if (rowAny.uploaderEmail) {
+      const html = drawingEmailHtml(
+        "Correction Required – Site/Workshop Issue",
+        `<strong>${reportedBy || "A site/workshop team member"}</strong> has reported an issue on this drawing and a correction is required.<br/><br/>Please review the reported issue in the drawing's <strong>Issues tab</strong>, make the necessary corrections, and upload the revised drawing.`,
+        rowAny,
+      );
+      sendEmailNotification(rowAny.uploaderEmail, `Correction Required (Issue) – ${row.drawingNo}`, html).catch(() => {});
+    }
+
+    // Notify reviewer if known
+    if (rowAny.reviewerEmail) {
+      const html = drawingEmailHtml(
+        "Issue Correction In Progress",
+        `An issue has been raised on this drawing by <strong>${reportedBy || "site/workshop"}</strong> and a correction has been requested from the design team.`,
+        rowAny,
+      );
+      sendEmailNotification(rowAny.reviewerEmail, `Issue Correction Requested – ${row.drawingNo}`, html).catch(() => {});
+    }
+
+    return res.json(row);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/project-drawings/:id/assign-teams — PM assigns team access
+router.post("/project-drawings/:id/assign-teams", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { teams } = req.body as { teams: string[] };
+    const [row] = await db
+      .update(projectDrawingsTable)
+      .set({ assignedTeams: teams || [] } as any)
+      .where(eq(projectDrawingsTable.id, id))
+      .returning();
+    if (!row) return res.status(404).json({ error: "Drawing not found" });
+    return res.json(row);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
   }
 });
 

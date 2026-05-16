@@ -51,6 +51,10 @@ import {
   FileSpreadsheet,
   CheckCheck,
   Download,
+  Flag,
+  GitBranch,
+  ArrowRight,
+  XCircle,
 } from "lucide-react";
 import { useState, useRef, useCallback, useEffect, CSSProperties, ElementType } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
@@ -400,6 +404,12 @@ interface AiAnalysisResult {
   isElectrical: boolean;
 }
 
+interface CorrectionEntry {
+  comment: string;
+  requestedAt: string;
+  requestedBy: string;
+}
+
 interface ProjectDrawing {
   id: string;
   drawingNo: string;
@@ -422,6 +432,12 @@ interface ProjectDrawing {
   approvedBy: ApprovalEntry | null;
   erpFileUrl: string | null;
   aiAnalysis: AiAnalysisResult | null;
+  workflowStatus?: string | null;
+  reviewerEmail?: string | null;
+  uploaderEmail?: string | null;
+  corrections?: CorrectionEntry | null;
+  hodRemarks?: string | null;
+  assignedTeams?: string[] | null;
 }
 
 const STATUS_CONFIG: Record<
@@ -3092,7 +3108,7 @@ function SendApprovalModal({
 
 // ─── DrawingDetailPage ────────────────────────────────────────────────────────
 
-type DetailTab = "ai" | "suggestions" | "view" | "revisions";
+type DetailTab = "ai" | "suggestions" | "view" | "revisions" | "workflow" | "issues";
 
 function DrawingDetailPage({
   drawing,
@@ -3105,6 +3121,8 @@ function DrawingDetailPage({
   onDelete,
   onAnalysisSaved,
   currentUserName,
+  currentUserEmail,
+  onWorkflowAction,
 }: {
   drawing: ProjectDrawing;
   fileData: string;
@@ -3116,6 +3134,8 @@ function DrawingDetailPage({
   onDelete: () => void;
   onAnalysisSaved?: (id: string, analysis: AiAnalysisResult) => void;
   currentUserName: string;
+  currentUserEmail?: string;
+  onWorkflowAction?: (drawingId: string, updated: ProjectDrawing) => void;
 }) {
   const cfg = STATUS_CONFIG[drawing.status];
 
@@ -3154,6 +3174,98 @@ function DrawingDetailPage({
   const [checkRemarksIssues, setCheckRemarksIssues] = useState<string[]>([]);
   const [checkRemarksNotes, setCheckRemarksNotes] = useState("");
   const PREDEFINED_ISSUES = ["BOM mistake", "Dimensions missing", "Details missing", "Title block incomplete", "Scale not specified", "Revision not updated"];
+
+  // Workflow state
+  const [wfLoading, setWfLoading] = useState(false);
+  const [wfToast, setWfToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+  const [showCorrectionModal, setShowCorrectionModal] = useState(false);
+  const [correctionComment, setCorrectionComment] = useState("");
+  const [showHodRejectModal, setShowHodRejectModal] = useState(false);
+  const [hodRejectRemarks, setHodRejectRemarks] = useState("");
+
+  const showWfToast = (type: "success" | "error", msg: string) => {
+    setWfToast({ type, msg });
+    setTimeout(() => setWfToast(null), 4000);
+  };
+
+  const wfPost = async (endpoint: string, body: Record<string, unknown>) => {
+    setWfLoading(true);
+    try {
+      const res = await fetch(`${BASE}/api/project-drawings/${drawing.id}/${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error || "Request failed");
+      }
+      const updated = await res.json();
+      onWorkflowAction?.(drawing.id, updated as ProjectDrawing);
+      return updated;
+    } catch (e: any) {
+      showWfToast("error", e.message || "An error occurred");
+      return null;
+    } finally {
+      setWfLoading(false);
+    }
+  };
+
+  const handleRequestCorrections = async () => {
+    if (!correctionComment.trim()) {
+      showWfToast("error", "Please enter correction remarks");
+      return;
+    }
+    const result = await wfPost("request-corrections", {
+      comment: correctionComment.trim(),
+      reviewerName: currentUserName,
+      reviewerEmail: currentUserEmail || "",
+      uploaderEmail: drawing.uploaderEmail || "",
+    });
+    if (result) {
+      showWfToast("success", "Corrections requested. Uploader has been notified.");
+      setShowCorrectionModal(false);
+      setCorrectionComment("");
+    }
+  };
+
+  const handleSubmitApproval = async () => {
+    const result = await wfPost("submit-approval", {
+      reviewerName: currentUserName,
+      reviewerEmail: currentUserEmail || "",
+      uploaderEmail: drawing.uploaderEmail || "",
+    });
+    if (result) {
+      showWfToast("success", "Submitted for HOD approval. Design HOD has been notified.");
+    }
+  };
+
+  const handleHodApprove = async () => {
+    const result = await wfPost("hod-decision", {
+      decision: "approve",
+      hodName: currentUserName,
+    });
+    if (result) {
+      showWfToast("success", "Drawing approved. Project Manager has been notified.");
+    }
+  };
+
+  const handleHodReject = async () => {
+    if (!hodRejectRemarks.trim()) {
+      showWfToast("error", "Please enter rejection remarks");
+      return;
+    }
+    const result = await wfPost("hod-decision", {
+      decision: "reject",
+      hodRemarks: hodRejectRemarks.trim(),
+      hodName: currentUserName,
+    });
+    if (result) {
+      showWfToast("success", "Drawing rejected. Reviewer has been notified.");
+      setShowHodRejectModal(false);
+      setHodRejectRemarks("");
+    }
+  };
 
   // Reset on drawing change — use saved report if available
   useEffect(() => {
@@ -3420,6 +3532,8 @@ function DrawingDetailPage({
           { key: "suggestions" as DetailTab, label: "Suggestions", icon: Lightbulb },
           { key: "view" as DetailTab, label: "View Drawing", icon: FileText },
           { key: "revisions" as DetailTab, label: `Revisions (${allRevisions.length})`, icon: History },
+          { key: "workflow" as DetailTab, label: "Workflow", icon: GitBranch },
+          { key: "issues" as DetailTab, label: "Issues", icon: Flag },
         ] as { key: DetailTab; label: string; icon: React.ElementType }[]).map(({ key, label, icon: Icon }) => (
           <button
             key={key}
@@ -3930,8 +4044,803 @@ function DrawingDetailPage({
           </div>
           )} {/* end Revisions tab */}
 
+          {/* ══ WORKFLOW TAB ══════════════════════════════════════════════════ */}
+          {activeTab === "workflow" && (() => {
+            const wfStatus = drawing.workflowStatus || "pending_review";
+            const isHod = currentUserEmail === "dhilip@wttint.com";
+            const isUploader = currentUserEmail && drawing.uploaderEmail && currentUserEmail === drawing.uploaderEmail;
+            const isReviewer = !isUploader;
+
+            const STEPS = [
+              { key: "pending_review", label: "Drawing Uploaded", icon: Upload, color: "blue" },
+              { key: "correction_requested", label: "Corrections Requested", icon: AlertTriangle, color: "amber" },
+              { key: "correction_uploaded", label: "Correction Uploaded", icon: RefreshCw, color: "blue" },
+              { key: "issue_correction_requested", label: "Issue Correction", icon: Flag, color: "orange" },
+              { key: "issue_correction_uploaded", label: "Fix Uploaded", icon: RefreshCw, color: "blue" },
+              { key: "submitted_for_approval", label: "Submitted for HOD", icon: Send, color: "purple" },
+              { key: "hod_approved", label: "HOD Approved", icon: CheckCircle2, color: "emerald" },
+              { key: "hod_rejected", label: "HOD Rejected", icon: XCircle, color: "red" },
+            ];
+
+            const normalFlow = ["pending_review", "submitted_for_approval", "hod_approved", "hod_rejected"];
+            const correctionFlow = ["pending_review", "correction_requested", "correction_uploaded", "submitted_for_approval", "hod_approved", "hod_rejected"];
+            const issueCorrectionFlow = ["issue_correction_requested", "issue_correction_uploaded", "submitted_for_approval", "hod_approved", "hod_rejected"];
+            const hasIssueCorrHistory = ["issue_correction_requested", "issue_correction_uploaded"].includes(wfStatus);
+            const hasCorrHistory = ["correction_requested", "correction_uploaded"].includes(wfStatus);
+            const displayFlow = hasIssueCorrHistory ? issueCorrectionFlow : hasCorrHistory ? correctionFlow : normalFlow;
+            const currentStepIdx = displayFlow.findIndex(s => s === wfStatus);
+
+            const stepColorMap: Record<string, string> = {
+              blue: "bg-blue-600 text-white",
+              amber: "bg-amber-500 text-white",
+              orange: "bg-orange-500 text-white",
+              purple: "bg-purple-600 text-white",
+              emerald: "bg-emerald-600 text-white",
+              red: "bg-red-600 text-white",
+            };
+
+            return (
+              <div className="space-y-5">
+
+                {/* Workflow Toast */}
+                {wfToast && (
+                  <div className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium ${wfToast.type === "success" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"}`}>
+                    {wfToast.type === "success" ? <CheckCircle2 className="w-4 h-4 flex-shrink-0" /> : <AlertCircle className="w-4 h-4 flex-shrink-0" />}
+                    {wfToast.msg}
+                  </div>
+                )}
+
+                {/* Status Tracker */}
+                <div className="bg-white rounded-2xl border border-gray-200 p-6">
+                  <div className="flex items-center gap-2 mb-5">
+                    <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center">
+                      <GitBranch className="w-4 h-4 text-white" />
+                    </div>
+                    <h2 className="text-sm font-bold text-gray-900">Drawing Workflow Status</h2>
+                  </div>
+
+                  <div className="flex items-start gap-0 overflow-x-auto pb-2">
+                    {displayFlow.map((stepKey, idx) => {
+                      const stepDef = STEPS.find(s => s.key === stepKey);
+                      if (!stepDef) return null;
+                      const { icon: StepIcon, label, color } = stepDef;
+                      const isDone = idx < currentStepIdx;
+                      const isCurrent = idx === currentStepIdx;
+                      const isLast = idx === displayFlow.length - 1;
+
+                      return (
+                        <div key={stepKey} className="flex items-center flex-shrink-0">
+                          <div className="flex flex-col items-center gap-1.5 w-28 text-center">
+                            <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 border-2 transition-all ${
+                              isCurrent
+                                ? `${stepColorMap[color] || "bg-blue-600 text-white"} border-transparent shadow-md`
+                                : isDone
+                                  ? "bg-emerald-500 text-white border-transparent"
+                                  : "bg-gray-100 text-gray-400 border-gray-200"
+                            }`}>
+                              {isDone ? <CheckCircle2 className="w-4 h-4" /> : <StepIcon className="w-4 h-4" />}
+                            </div>
+                            <p className={`text-[11px] leading-tight font-medium ${isCurrent ? "text-gray-900" : isDone ? "text-emerald-700" : "text-gray-400"}`}>
+                              {label}
+                            </p>
+                          </div>
+                          {!isLast && (
+                            <div className={`w-8 h-0.5 flex-shrink-0 mb-5 ${idx < currentStepIdx ? "bg-emerald-400" : "bg-gray-200"}`} />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Metadata */}
+                  <div className="mt-4 flex flex-wrap gap-3 text-xs text-gray-500">
+                    {drawing.uploaderEmail && (
+                      <span className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5">
+                        <Upload className="w-3 h-3 text-gray-400" /> Uploader: <strong className="text-gray-700">{drawing.uploaderEmail}</strong>
+                      </span>
+                    )}
+                    {drawing.reviewerEmail && (
+                      <span className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5">
+                        <UserCheck className="w-3 h-3 text-gray-400" /> Reviewer: <strong className="text-gray-700">{drawing.reviewerEmail}</strong>
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Correction Note (visible to all, especially uploader) */}
+                {(wfStatus === "correction_requested" || wfStatus === "correction_uploaded") && drawing.corrections && (
+                  <div className={`rounded-2xl border p-5 ${wfStatus === "correction_requested" ? "bg-amber-50 border-amber-200" : "bg-blue-50 border-blue-200"}`}>
+                    <div className="flex items-start gap-3">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${wfStatus === "correction_requested" ? "bg-amber-100" : "bg-blue-100"}`}>
+                        <AlertTriangle className={`w-4 h-4 ${wfStatus === "correction_requested" ? "text-amber-600" : "text-blue-600"}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-bold mb-1 ${wfStatus === "correction_requested" ? "text-amber-800" : "text-blue-800"}`}>
+                          {wfStatus === "correction_requested" ? "Corrections Required" : "Corrections Were Requested"}
+                        </p>
+                        <p className={`text-sm leading-relaxed mb-2 ${wfStatus === "correction_requested" ? "text-amber-700" : "text-blue-700"}`}>
+                          {drawing.corrections.comment}
+                        </p>
+                        <p className="text-[11px] text-gray-400">
+                          Requested by {drawing.corrections.requestedBy} · {formatDateTime(drawing.corrections.requestedAt)}
+                        </p>
+                      </div>
+                    </div>
+                    {wfStatus === "correction_requested" && isUploader && (
+                      <div className="mt-4 pt-4 border-t border-amber-200">
+                        <p className="text-xs text-amber-700 mb-3">
+                          Please correct the drawing and upload the revised version using the button below.
+                        </p>
+                        <button
+                          onClick={onRevisionUpload}
+                          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 transition-colors"
+                        >
+                          <ArrowUpCircle className="w-4 h-4" /> Upload Corrected Drawing
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Issue Correction – Action Panel for Uploader (Design Team) */}
+                {wfStatus === "issue_correction_requested" && (
+                  <div className="bg-orange-50 border border-orange-200 rounded-2xl p-5">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center flex-shrink-0">
+                        <Flag className="w-4 h-4 text-orange-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-orange-800 mb-1">Issue-Triggered Correction Required</p>
+                        <p className="text-sm text-orange-700 leading-relaxed">
+                          A site or workshop team has reported an issue with this drawing. Please open the <strong>Issues tab</strong>, review the reported issue, make the necessary corrections, and upload the revised drawing.
+                        </p>
+                      </div>
+                    </div>
+                    {isUploader && (
+                      <div className="mt-4 pt-4 border-t border-orange-200">
+                        <button
+                          onClick={onRevisionUpload}
+                          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-600 text-white text-sm font-semibold hover:bg-orange-700 transition-colors"
+                        >
+                          <ArrowUpCircle className="w-4 h-4" /> Upload Corrected Drawing
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Issue Correction – Fix Uploaded, Reviewer can act */}
+                {wfStatus === "issue_correction_uploaded" && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                        <RefreshCw className="w-4 h-4 text-blue-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-blue-800 mb-1">Issue Correction Uploaded</p>
+                        <p className="text-sm text-blue-700 leading-relaxed">
+                          The design team has uploaded a corrected drawing in response to the reported issue. Please review the revision and take action.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* HOD Remarks (if rejected) */}
+                {wfStatus === "hod_rejected" && drawing.hodRemarks && (
+                  <div className="bg-red-50 border border-red-200 rounded-2xl p-5">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0">
+                        <XCircle className="w-4 h-4 text-red-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-red-800 mb-1">Rejected by Design HOD</p>
+                        <p className="text-sm text-red-700 leading-relaxed">{drawing.hodRemarks}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* HOD Approved banner */}
+                {wfStatus === "hod_approved" && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                      <CheckCircle2 className="w-6 h-6 text-emerald-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-emerald-800">Approved by Design HOD</p>
+                      <p className="text-xs text-emerald-600 mt-0.5">This drawing has been approved by the Design HOD. The Project Manager has been notified.</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Reviewer Actions */}
+                {isReviewer && !isHod && (wfStatus === "pending_review" || wfStatus === "correction_uploaded" || wfStatus === "issue_correction_uploaded") && (
+                  <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center">
+                        <UserCheck className="w-4 h-4 text-emerald-600" />
+                      </div>
+                      <h3 className="text-sm font-bold text-gray-900">Reviewer Actions</h3>
+                    </div>
+                    <p className="text-xs text-gray-500 mb-4">
+                      {wfStatus === "correction_uploaded"
+                        ? "The uploader has submitted corrected drawings. Review and take action."
+                        : wfStatus === "issue_correction_uploaded"
+                          ? "The design team has uploaded a corrected drawing for the reported issue. Review and take action."
+                          : "Review the drawing and choose one of the following actions."}
+                    </p>
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        onClick={() => setShowCorrectionModal(true)}
+                        disabled={wfLoading}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-800 text-sm font-semibold hover:bg-amber-100 transition-colors disabled:opacity-50"
+                      >
+                        <AlertTriangle className="w-4 h-4" /> Request Corrections
+                      </button>
+                      <button
+                        onClick={handleSubmitApproval}
+                        disabled={wfLoading}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700 transition-colors disabled:opacity-50"
+                      >
+                        {wfLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                        Submit for HOD Approval
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* HOD Actions */}
+                {isHod && wfStatus === "submitted_for_approval" && (
+                  <div className="bg-white rounded-2xl border-2 border-purple-200 p-5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-7 h-7 rounded-lg bg-purple-100 flex items-center justify-center">
+                        <Shield className="w-4 h-4 text-purple-600" />
+                      </div>
+                      <h3 className="text-sm font-bold text-gray-900">Design HOD Decision</h3>
+                    </div>
+                    <p className="text-xs text-gray-500 mb-4">
+                      This drawing has been submitted for your approval. Review the drawing and approve or reject.
+                    </p>
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        onClick={handleHodApprove}
+                        disabled={wfLoading}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                      >
+                        {wfLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ThumbsUp className="w-4 h-4" />}
+                        Approve Drawing
+                      </button>
+                      <button
+                        onClick={() => setShowHodRejectModal(true)}
+                        disabled={wfLoading}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-50 border border-red-300 text-red-800 text-sm font-semibold hover:bg-red-100 transition-colors disabled:opacity-50"
+                      >
+                        <XCircle className="w-4 h-4" /> Reject
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Pending for HOD banner (if submitted but user is not HOD) */}
+                {!isHod && wfStatus === "submitted_for_approval" && (
+                  <div className="bg-purple-50 border border-purple-200 rounded-2xl p-5 flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
+                      <Loader2 className="w-5 h-5 text-purple-600 animate-spin" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-purple-800">Awaiting HOD Approval</p>
+                      <p className="text-xs text-purple-600 mt-0.5">This drawing has been submitted to Design HOD (dhilip@wttint.com) for final approval.</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Request Corrections Modal */}
+                {showCorrectionModal && (
+                  <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+                          <AlertTriangle className="w-5 h-5 text-amber-600" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-bold text-gray-900">Request Corrections</h3>
+                          <p className="text-xs text-gray-500">{drawing.drawingNo}{drawing.title ? ` — ${drawing.title}` : ""}</p>
+                        </div>
+                      </div>
+                      <div className="mb-4">
+                        <label className="block text-xs font-semibold text-gray-700 mb-1.5">Uploader Email <span className="text-red-500">*</span></label>
+                        <input
+                          type="email"
+                          placeholder="Enter uploader's email to notify them"
+                          defaultValue={drawing.uploaderEmail || ""}
+                          id="correction-uploader-email"
+                          className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 placeholder-gray-400 focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                      <div className="mb-5">
+                        <label className="block text-xs font-semibold text-gray-700 mb-1.5">Correction Remarks <span className="text-red-500">*</span></label>
+                        <textarea
+                          value={correctionComment}
+                          onChange={(e) => setCorrectionComment(e.target.value)}
+                          placeholder="Describe what corrections are needed..."
+                          rows={4}
+                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 text-gray-700 placeholder-gray-400 resize-none focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => { setShowCorrectionModal(false); setCorrectionComment(""); }}
+                          className="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => {
+                            const emailInput = document.getElementById("correction-uploader-email") as HTMLInputElement;
+                            const uploaderEmail = emailInput?.value || drawing.uploaderEmail || "";
+                            wfPost("request-corrections", {
+                              comment: correctionComment.trim(),
+                              reviewerName: currentUserName,
+                              reviewerEmail: currentUserEmail || "",
+                              uploaderEmail,
+                            }).then(result => {
+                              if (result) {
+                                showWfToast("success", "Corrections requested. Uploader has been notified.");
+                                setShowCorrectionModal(false);
+                                setCorrectionComment("");
+                              }
+                            });
+                          }}
+                          disabled={!correctionComment.trim() || wfLoading}
+                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                        >
+                          {wfLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                          Send Corrections
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* HOD Rejection Modal */}
+                {showHodRejectModal && (
+                  <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-9 h-9 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
+                          <XCircle className="w-5 h-5 text-red-600" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-bold text-gray-900">Reject Drawing</h3>
+                          <p className="text-xs text-gray-500">{drawing.drawingNo}{drawing.title ? ` — ${drawing.title}` : ""}</p>
+                        </div>
+                      </div>
+                      <div className="mb-5">
+                        <label className="block text-xs font-semibold text-gray-700 mb-1.5">Rejection Remarks <span className="text-red-500">*</span></label>
+                        <textarea
+                          value={hodRejectRemarks}
+                          onChange={(e) => setHodRejectRemarks(e.target.value)}
+                          placeholder="Explain why this drawing is being rejected..."
+                          rows={4}
+                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 text-gray-700 placeholder-gray-400 resize-none focus:outline-none focus:border-red-500"
+                        />
+                      </div>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => { setShowHodRejectModal(false); setHodRejectRemarks(""); }}
+                          className="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleHodReject}
+                          disabled={!hodRejectRemarks.trim() || wfLoading}
+                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                        >
+                          {wfLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                          Confirm Rejection
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            );
+          })()}
+
+          {/* ══ ISSUES TAB ════════════════════════════════════════════════════ */}
+          {activeTab === "issues" && (
+            <IssuesTab
+              drawingId={drawing.id}
+              drawingNo={drawing.drawingNo}
+              drawingTitle={drawing.title}
+              currentUserName={currentUserName}
+              currentUserEmail={currentUserEmail || ""}
+              onWorkflowAction={(action) => {
+                if (action === "issue_correction_requested") {
+                  setDrawings(prev => prev.map(d => d.id === drawing.id
+                    ? { ...d, workflowStatus: "issue_correction_requested" }
+                    : d
+                  ));
+                }
+              }}
+            />
+          )}
+
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── IssuesTab Component ──────────────────────────────────────────────────────
+
+interface DrawingIssue {
+  id: string;
+  drawing_id: string;
+  title: string;
+  issue_type: string;
+  description: string;
+  reported_by: string;
+  reporter_email: string | null;
+  reported_at: string;
+  status: string;
+  images: string[];
+  resolved_at: string | null;
+  resolved_by: string | null;
+  resolved_note: string | null;
+  correction_triggered: boolean;
+}
+
+const ISSUE_TYPES = [
+  { key: "dimension_mismatch", label: "Dimension Mismatch" },
+  { key: "fabrication_issue", label: "Fabrication Issue" },
+  { key: "installation_issue", label: "Site Installation Issue" },
+  { key: "material_conflict", label: "Material Conflict" },
+  { key: "missing_details", label: "Missing Details" },
+  { key: "drawing_mismatch", label: "Drawing Mismatch" },
+  { key: "general", label: "General Issue" },
+];
+
+const ISSUE_STATUS_CFG: Record<string, { label: string; cls: string }> = {
+  open: { label: "Open", cls: "bg-red-100 text-red-700 border-red-200" },
+  in_progress: { label: "In Progress", cls: "bg-amber-100 text-amber-700 border-amber-200" },
+  resolved: { label: "Resolved", cls: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+};
+
+function IssuesTab({
+  drawingId,
+  drawingNo,
+  drawingTitle,
+  currentUserName,
+  currentUserEmail,
+  onWorkflowAction,
+}: {
+  drawingId: string;
+  drawingNo: string;
+  drawingTitle: string;
+  currentUserName: string;
+  currentUserEmail: string;
+  onWorkflowAction?: (action: "issue_correction_requested") => void;
+}) {
+  const [issues, setIssues] = useState<DrawingIssue[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+  const [resolveModal, setResolveModal] = useState<{ issue: DrawingIssue } | null>(null);
+  const [resolveNote, setResolveNote] = useState("");
+  const [corrBusy, setCorrBusy] = useState<string | null>(null);
+
+  const [form, setForm] = useState({
+    title: "",
+    issueType: "general",
+    description: "",
+  });
+
+  const showToast = (type: "success" | "error", msg: string) => {
+    setToast({ type, msg });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  const loadIssues = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${BASE}/api/project-drawings/${drawingId}/issues`);
+      if (res.ok) setIssues(await res.json());
+    } catch {}
+    setLoading(false);
+  };
+
+  useEffect(() => { loadIssues(); }, [drawingId]);
+
+  const handleSubmit = async () => {
+    if (!form.title.trim() || !form.description.trim()) {
+      showToast("error", "Please fill in the title and description");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch(`${BASE}/api/project-drawings/${drawingId}/issues`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: form.title.trim(),
+          issueType: form.issueType,
+          description: form.description.trim(),
+          reportedBy: currentUserName,
+          reporterEmail: currentUserEmail,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to submit");
+      const newIssue = await res.json();
+      setIssues(prev => [newIssue, ...prev]);
+      showToast("success", "Issue reported. Design HOD and reviewer have been notified.");
+      setShowForm(false);
+      setForm({ title: "", issueType: "general", description: "" });
+    } catch (e: any) {
+      showToast("error", e.message || "Failed to submit issue");
+    }
+    setSubmitting(false);
+  };
+
+  const handleResolve = async () => {
+    if (!resolveModal) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`${BASE}/api/project-drawings/${drawingId}/issues/${resolveModal.issue.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "resolved",
+          resolvedBy: currentUserName,
+          resolvedNote: resolveNote.trim(),
+        }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      const updated = await res.json();
+      setIssues(prev => prev.map(i => i.id === updated.id ? updated : i));
+      showToast("success", "Issue marked as resolved.");
+      setResolveModal(null);
+      setResolveNote("");
+    } catch {
+      showToast("error", "Failed to resolve issue");
+    }
+    setSubmitting(false);
+  };
+
+  const handleStartCorrection = async (issue: DrawingIssue) => {
+    setCorrBusy(issue.id);
+    try {
+      const res = await fetch(`${BASE}/api/project-drawings/${drawingId}/issues/${issue.id}/start-correction`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reportedBy: issue.reported_by,
+          reporterEmail: issue.reporter_email,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to trigger correction");
+      setIssues(prev => prev.map(i => i.id === issue.id ? { ...i, correction_triggered: true } : i));
+      showToast("success", "Correction workflow started. Design team has been notified.");
+      onWorkflowAction?.("issue_correction_requested");
+    } catch (e: any) {
+      showToast("error", e.message || "Failed to start correction workflow");
+    }
+    setCorrBusy(null);
+  };
+
+  const openCount = issues.filter(i => i.status === "open" || i.status === "in_progress").length;
+  const resolvedCount = issues.filter(i => i.status === "resolved").length;
+
+  return (
+    <div className="space-y-4">
+      {/* Toast */}
+      {toast && (
+        <div className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium ${toast.type === "success" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"}`}>
+          {toast.type === "success" ? <CheckCircle2 className="w-4 h-4 flex-shrink-0" /> : <AlertCircle className="w-4 h-4 flex-shrink-0" />}
+          {toast.msg}
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-5">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center">
+              <Flag className="w-4 h-4 text-red-600" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-gray-900">Issue Tracker</h2>
+              <p className="text-xs text-gray-500">
+                {openCount > 0 ? `${openCount} open` : "No open issues"}{resolvedCount > 0 ? ` · ${resolvedCount} resolved` : ""}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowForm(s => !s)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-colors"
+          >
+            <Flag className="w-4 h-4" /> Report Issue
+          </button>
+        </div>
+
+        {/* Report Form */}
+        {showForm && (
+          <div className="mt-5 pt-5 border-t border-gray-100">
+            <h3 className="text-xs font-bold text-gray-700 mb-3 uppercase tracking-wide">New Issue Report</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Issue Title <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={form.title}
+                  onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                  placeholder="Brief title of the issue..."
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-red-400"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Issue Type</label>
+                <select
+                  value={form.issueType}
+                  onChange={e => setForm(f => ({ ...f, issueType: e.target.value }))}
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-red-400 bg-white"
+                >
+                  {ISSUE_TYPES.map(t => (
+                    <option key={t.key} value={t.key}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Description <span className="text-red-500">*</span></label>
+                <textarea
+                  value={form.description}
+                  onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                  placeholder="Describe the issue in detail — what's wrong, where it was found, impact..."
+                  rows={4}
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:border-red-400"
+                />
+              </div>
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => { setShowForm(false); setForm({ title: "", issueType: "general", description: "" }); }}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSubmit}
+                  disabled={submitting}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors"
+                >
+                  {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  Submit Issue
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Issues List */}
+      {loading ? (
+        <div className="flex items-center justify-center h-24">
+          <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
+        </div>
+      ) : issues.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-gray-200 p-10 text-center">
+          <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center mx-auto mb-3">
+            <Flag className="w-6 h-6 text-gray-400" />
+          </div>
+          <p className="text-sm font-semibold text-gray-500">No issues reported</p>
+          <p className="text-xs text-gray-400 mt-1">Site and workshop teams can report issues here</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {issues.map(issue => {
+            const statusCfg = ISSUE_STATUS_CFG[issue.status] || ISSUE_STATUS_CFG.open;
+            const typeLabel = ISSUE_TYPES.find(t => t.key === issue.issue_type)?.label || issue.issue_type;
+            return (
+              <div key={issue.id} className={`bg-white rounded-2xl border p-5 ${issue.correction_triggered ? "border-orange-200" : issue.status === "open" ? "border-red-200" : issue.status === "in_progress" ? "border-amber-200" : "border-gray-200"}`}>
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className={`inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full border ${statusCfg.cls}`}>
+                        {statusCfg.label}
+                      </span>
+                      <span className="text-[11px] font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                        {typeLabel}
+                      </span>
+                      {issue.correction_triggered && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200">
+                          <RefreshCw className="w-3 h-3" /> Correction Triggered
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="text-sm font-bold text-gray-900">{issue.title}</h3>
+                    <p className="text-sm text-gray-600 mt-1 leading-relaxed">{issue.description}</p>
+                    <div className="flex flex-wrap gap-3 mt-2 text-xs text-gray-400">
+                      <span>Reported by <strong className="text-gray-600">{issue.reported_by}</strong></span>
+                      <span>{new Date(issue.reported_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
+                    </div>
+                    {issue.status === "resolved" && issue.resolved_by && (
+                      <div className="mt-2 p-2.5 bg-emerald-50 rounded-lg border border-emerald-200 text-xs text-emerald-700">
+                        <strong>Resolved by {issue.resolved_by}:</strong> {issue.resolved_note || "Issue resolved."}
+                      </div>
+                    )}
+                    {issue.correction_triggered && (
+                      <div className="mt-2 p-2.5 bg-orange-50 rounded-lg border border-orange-200 text-xs text-orange-700">
+                        A correction workflow has been started for this issue. The design team has been notified to upload a revised drawing.
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-2 flex-shrink-0">
+                    {issue.status !== "resolved" && !issue.correction_triggered && (
+                      <button
+                        onClick={() => handleStartCorrection(issue)}
+                        disabled={corrBusy === issue.id}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-orange-300 text-orange-700 bg-orange-50 text-xs font-semibold hover:bg-orange-100 transition-colors disabled:opacity-50"
+                      >
+                        {corrBusy === issue.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                        Start Correction
+                      </button>
+                    )}
+                    {issue.status !== "resolved" && (
+                      <button
+                        onClick={() => { setResolveModal({ issue }); setResolveNote(""); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-300 text-emerald-700 bg-emerald-50 text-xs font-semibold hover:bg-emerald-100 transition-colors flex-shrink-0"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Resolve
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Resolve Modal */}
+      {resolveModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-gray-900">Resolve Issue</h3>
+                <p className="text-xs text-gray-500 truncate">{resolveModal.issue.title}</p>
+              </div>
+            </div>
+            <div className="mb-5">
+              <label className="block text-xs font-semibold text-gray-700 mb-1.5">Resolution Note (optional)</label>
+              <textarea
+                value={resolveNote}
+                onChange={e => setResolveNote(e.target.value)}
+                placeholder="Describe how the issue was resolved..."
+                rows={3}
+                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setResolveModal(null)} className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors">Cancel</button>
+              <button
+                onClick={handleResolve}
+                disabled={submitting}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+              >
+                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                Mark Resolved
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -4749,6 +5658,8 @@ export default function ProjectDrawings() {
         approvedBy: null,
         erpFileUrl: null,
         aiAnalysis: null,
+        uploaderEmail: user?.email || null,
+        workflowStatus: "pending_review",
       };
       try {
         let res: Response;
@@ -4773,6 +5684,8 @@ export default function ProjectDrawings() {
             uploadedBy: newDrawing.uploadedBy,
             history: [],
             viewLog: [],
+            uploaderEmail: newDrawing.uploaderEmail,
+            workflowStatus: newDrawing.workflowStatus,
           };
           formData.append("meta", JSON.stringify(meta));
           res = await fetch(`${BASE}/api/project-drawings`, {
@@ -4856,6 +5769,7 @@ export default function ProjectDrawings() {
       revisedBy: drawing.uploadedBy,
     };
     const newRevNo = drawing.status === "draft" ? 1 : drawing.revisionNo + 1;
+    const wasCorrectionRequested = drawing.workflowStatus === "correction_requested" || drawing.workflowStatus === "issue_correction_requested";
     const updated: ProjectDrawing = {
       ...drawing,
       status: "revision",
@@ -4873,6 +5787,31 @@ export default function ProjectDrawings() {
     };
     if (data.fileData) setFileDataCache(prev => ({ ...prev, [drawing.id]: data.fileData }));
     await apiSaveDrawing(updated, data.fileData);
+
+    // If this was a correction upload, mark workflow status and notify reviewer
+    if (wasCorrectionRequested) {
+      const isIssueCorrectionCycle = drawing.workflowStatus === "issue_correction_requested";
+      try {
+        const wfRes = await fetch(`${BASE}/api/project-drawings/${drawing.id}/correction-uploaded`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            uploaderName: user?.full_name || "Uploader",
+            uploaderEmail: user?.email || drawing.uploaderEmail || "",
+            reviewerEmail: drawing.reviewerEmail || "",
+            isIssueCorrectionCycle,
+          }),
+        });
+        if (wfRes.ok) {
+          const wfData = await wfRes.json();
+          updated.workflowStatus = isIssueCorrectionCycle ? "issue_correction_uploaded" : "correction_uploaded";
+          setDrawings((prev) => prev.map((d) => (d.id === drawing.id ? { ...updated, ...wfData } : d)));
+          setModal({ type: "none" });
+          return;
+        }
+      } catch {}
+    }
+
     setDrawings((prev) => prev.map((d) => (d.id === drawing.id ? updated : d)));
     setModal({ type: "none" });
   };
@@ -5086,6 +6025,10 @@ export default function ProjectDrawings() {
                 setDrawings(prev => prev.map(d => d.id === id ? { ...d, aiAnalysis: analysis } : d));
               }}
               currentUserName={user?.full_name || ""}
+              currentUserEmail={user?.email || ""}
+              onWorkflowAction={(drawingId, updated) => {
+                setDrawings(prev => prev.map(d => d.id === drawingId ? updated : d));
+              }}
             />
           ) : (
           <div className="flex flex-col h-full">
