@@ -54,35 +54,6 @@ function buildLoBaseProfile(fontsDir?: string): void {
 
   // All document fonts → Roboto (proposal brand standard)
   const substitutions: [string, string][] = [
-<<<<<<< Updated upstream
-    ["Times New Roman",  "Roboto"],
-    ["Arial",            "Roboto"],
-    ["Arial Narrow",     "Roboto"],
-    ["Courier New",      "Roboto"],
-    ["Calibri",          "Roboto"],
-    ["Calibri Light",    "Roboto"],
-    ["Cambria",          "Roboto"],
-    ["Cambria Math",     "Roboto"],
-    ["Consolas",         "Roboto"],
-    ["Segoe UI",         "Roboto"],
-    ["Tahoma",           "Roboto"],
-    ["Verdana",          "Roboto"],
-    ["Georgia",          "Roboto"],
-    ["Trebuchet MS",     "Roboto"],
-    ["Impact",           "Roboto"],
-    ["Comic Sans MS",    "Roboto"],
-    ["Palatino Linotype","Roboto"],
-    ["Book Antiqua",     "Roboto"],
-    ["Garamond",         "Roboto"],
-    ["Century Gothic",   "Roboto"],
-    ["Microsoft Sans Serif", "Roboto"],
-    ["DejaVu Sans",      "Roboto"],
-    ["DejaVu Serif",     "Roboto"],
-    ["Liberation Sans",  "Roboto"],
-    ["Liberation Serif", "Roboto"],
-    ["Carlito",          "Roboto"],
-    ["Caladea",          "Roboto"],
-=======
     ["Times New Roman", "Roboto"],
     ["Arial", "Roboto"],
     ["Arial Narrow", "Roboto"],
@@ -110,7 +81,6 @@ function buildLoBaseProfile(fontsDir?: string): void {
     ["Liberation Serif", "Roboto"],
     ["Carlito", "Roboto"],
     ["Caladea", "Roboto"],
->>>>>>> Stashed changes
   ];
 
   // ── CORRECT LibreOffice XCU format for font substitution ────────────────
@@ -214,24 +184,15 @@ setImmediate(function installAssetsOnce() {
     for (const srcDir of ROBOTO_SOURCES) {
       try {
         for (const filename of readdirSync(srcDir)) {
-<<<<<<< Updated upstream
-          if (!filename.toLowerCase().includes("roboto") || !filename.toLowerCase().endsWith(".ttf")) continue;
-=======
           if (
             !filename.toLowerCase().includes("roboto") ||
             !filename.toLowerCase().endsWith(".ttf")
           )
             continue;
->>>>>>> Stashed changes
           const dest = join(fontsDir, filename);
           if (isValidTtf(dest)) continue;
           const src = join(srcDir, filename);
           if (!isValidTtf(src)) continue;
-<<<<<<< Updated upstream
-          try { copyFileSync(src, dest); installed++; } catch {}
-        }
-      } catch { /* dir not present */ }
-=======
           try {
             copyFileSync(src, dest);
             installed++;
@@ -240,7 +201,6 @@ setImmediate(function installAssetsOnce() {
       } catch {
         /* dir not present */
       }
->>>>>>> Stashed changes
     }
 
     // Nix / Replit fallback
@@ -248,39 +208,27 @@ setImmediate(function installAssetsOnce() {
     if (nixRoboto) {
       try {
         for (const filename of readdirSync(nixRoboto)) {
-<<<<<<< Updated upstream
-          if (!filename.toLowerCase().includes("roboto") || !filename.toLowerCase().endsWith(".ttf")) continue;
-=======
           if (
             !filename.toLowerCase().includes("roboto") ||
             !filename.toLowerCase().endsWith(".ttf")
           )
             continue;
->>>>>>> Stashed changes
           const dest = join(fontsDir, filename);
           if (isValidTtf(dest)) continue;
           const src = join(nixRoboto, filename);
           if (!isValidTtf(src)) continue;
-<<<<<<< Updated upstream
-          try { copyFileSync(src, dest); installed++; } catch {}
-=======
           try {
             copyFileSync(src, dest);
             installed++;
           } catch {}
->>>>>>> Stashed changes
         }
       } catch {}
     }
 
     if (installed > 0) {
-<<<<<<< Updated upstream
-      console.log(`[proposal-wizard] Installed ${installed} Roboto font files.`);
-=======
       console.log(
         `[proposal-wizard] Installed ${installed} Roboto font files.`,
       );
->>>>>>> Stashed changes
     }
 
     // Rebuild fontconfig cache so LibreOffice (which uses fontconfig) finds our fonts
@@ -710,14 +658,10 @@ function processXlsx(
         if (content !== before) changed = true;
       }
       const roboto = applyRobotoToXml(content);
-<<<<<<< Updated upstream
-      if (roboto !== content) { content = roboto; changed = true; }
-=======
       if (roboto !== content) {
         content = roboto;
         changed = true;
       }
->>>>>>> Stashed changes
       if (changed) zip.file(name, content);
     } catch {
       // skip binary-only entries
@@ -759,13 +703,9 @@ function processDoc(
 
   function replaceAllInPlace(search: string, replacement: string): void {
     if (search.length !== replacement.length) {
-<<<<<<< Updated upstream
-      throw new Error(`processDoc: length mismatch "${search}" (${search.length}) vs "${replacement}" (${replacement.length})`);
-=======
       throw new Error(
         `processDoc: length mismatch "${search}" (${search.length}) vs "${replacement}" (${replacement.length})`,
       );
->>>>>>> Stashed changes
     }
     const searchBuf = Buffer.from(search, "ascii");
     const replBuf = Buffer.from(replacement, "ascii");
@@ -851,12 +791,6 @@ function applyRobotoToXml(content: string): string {
   });
 
   // Spreadsheet + theme fonts
-<<<<<<< Updated upstream
-  out = out.replace(/<a:latin typeface="[^"]*"/g, `<a:latin typeface="${PROPOSAL_FONT}"`);
-  out = out.replace(/<a:ea typeface="[^"]*"/g, `<a:ea typeface="${PROPOSAL_FONT}"`);
-  out = out.replace(/<a:cs typeface="[^"]*"/g, `<a:cs typeface="${PROPOSAL_FONT}"`);
-  out = out.replace(/<name val="(?!Roboto)[^"]+"/g, `<name val="${PROPOSAL_FONT}"`);
-=======
   out = out.replace(
     /<a:latin typeface="[^"]*"/g,
     `<a:latin typeface="${PROPOSAL_FONT}"`,
@@ -873,7 +807,6 @@ function applyRobotoToXml(content: string): string {
     /<name val="(?!Roboto)[^"]+"/g,
     `<name val="${PROPOSAL_FONT}"`,
   );
->>>>>>> Stashed changes
 
   return out;
 }
@@ -894,14 +827,10 @@ function applyLogoCentering(content: string, xmlPath: string): string {
     if (para.includes("<w:pPr>")) {
       return para.replace("<w:pPr>", '<w:pPr><w:jc w:val="center"/>');
     }
-<<<<<<< Updated upstream
-    return para.replace(/(<w:p(?:\s[^>]*)?>)/, "$1<w:pPr><w:jc w:val=\"center\"/></w:pPr>");
-=======
     return para.replace(
       /(<w:p(?:\s[^>]*)?>)/,
       '$1<w:pPr><w:jc w:val="center"/></w:pPr>',
     );
->>>>>>> Stashed changes
   });
 
   // Foreground anchored shapes (banner/logo) — page-centered, skip watermark (behindDoc="1")
@@ -930,28 +859,16 @@ function patchDocxZip(
   const cityUpper = city ? city.toUpperCase().trim() : "";
 
   Object.keys(zip.files).forEach((name) => {
-<<<<<<< Updated upstream
-    if (!name.toLowerCase().endsWith(".xml") && !name.toLowerCase().endsWith(".rels")) return;
-=======
     if (
       !name.toLowerCase().endsWith(".xml") &&
       !name.toLowerCase().endsWith(".rels")
     )
       return;
->>>>>>> Stashed changes
     const file = zip.file(name);
     if (!file || (file as any).dir) return;
     let content = file.asText();
     let changed = false;
 
-<<<<<<< Updated upstream
-    if (content.includes("COMPANY NAME")) { content = content.replace(/COMPANY NAME/g, cnUpper); changed = true; }
-    if (content.includes("WTT-BAN-0001")) { content = content.replace(/WTT-BAN-0001/g, wttNumber); changed = true; }
-    if (content.includes("01.Jan.2026")) { content = content.replace(/01\.Jan\.2026/g, dateL); changed = true; }
-    if (content.includes("01-Jan-26")) { content = content.replace(/01-Jan-26/g, dateS); changed = true; }
-    if (content.includes("1-Jan-26")) { content = content.replace(/1-Jan-26/g, dateS); changed = true; }
-    if (cityUpper && content.includes("CITY")) { content = content.replace(/\bCITY\b/g, cityUpper); changed = true; }
-=======
     if (content.includes("COMPANY NAME")) {
       content = content.replace(/COMPANY NAME/g, cnUpper);
       changed = true;
@@ -976,19 +893,12 @@ function patchDocxZip(
       content = content.replace(/\bCITY\b/g, cityUpper);
       changed = true;
     }
->>>>>>> Stashed changes
     if (content.includes('w:val="yellow"')) {
       content = content.replace(/<w:highlight w:val="yellow"\/>/g, "");
       changed = true;
     }
 
     const roboto = applyRobotoToXml(content);
-<<<<<<< Updated upstream
-    if (roboto !== content) { content = roboto; changed = true; }
-
-    const centered = applyLogoCentering(content, name);
-    if (centered !== content) { content = centered; changed = true; }
-=======
     if (roboto !== content) {
       content = roboto;
       changed = true;
@@ -999,7 +909,6 @@ function patchDocxZip(
       content = centered;
       changed = true;
     }
->>>>>>> Stashed changes
 
     if (changed) zip.file(name, content);
   });
@@ -1014,14 +923,10 @@ function applyRobotoToDocx(docxBuf: Buffer): Buffer {
     if (!file || (file as any).dir) return;
     const content = file.asText();
     const patched = applyRobotoToXml(content);
-<<<<<<< Updated upstream
-    if (patched !== content) { zip.file(name, patched); anyChanged = true; }
-=======
     if (patched !== content) {
       zip.file(name, patched);
       anyChanged = true;
     }
->>>>>>> Stashed changes
   });
   if (!anyChanged) return docxBuf;
   return zip.generate({ type: "nodebuffer", compression: "DEFLATE" });
@@ -1066,17 +971,11 @@ function convertToPdf(
   }
   try {
     const patched =
-<<<<<<< Updated upstream
-      ext === ".docx" ? applyRobotoToDocx(content)
-      : ext === ".xlsx" ? applyRobotoToDocx(content)
-      : content;
-=======
       ext === ".docx"
         ? applyRobotoToDocx(content)
         : ext === ".xlsx"
           ? applyRobotoToDocx(content)
           : content;
->>>>>>> Stashed changes
     writeFileSync(tmpIn, patched);
     // Calc component required for .xlsx → PDF (writer-only installs cannot load spreadsheets)
     const pdfFilter = ext === ".xlsx" ? "pdf:calc_pdf_Export" : "pdf";
@@ -1085,40 +984,26 @@ function convertToPdf(
       { timeout: 90_000, stdio: "pipe" },
     );
     if (!existsSync(tmpOut)) {
-<<<<<<< Updated upstream
-      const hint = ext === ".xlsx"
-        ? " Install LibreOffice Calc: apt-get install -y libreoffice-calc-nogui"
-        : "";
-=======
       const hint =
         ext === ".xlsx"
           ? " Install LibreOffice Calc: apt-get install -y libreoffice-calc-nogui"
           : "";
->>>>>>> Stashed changes
       throw new Error(`LibreOffice did not produce a PDF file.${hint}`);
     }
     const pdfBuf = readFileSync(tmpOut);
     if (!isPdfBuffer(pdfBuf)) {
       throw new Error("Conversion output is not a valid PDF");
     }
-<<<<<<< Updated upstream
-    console.log(`[proposal-wizard] Converted ${originalFilename} → ${pdfFilename} (${pdfBuf.length} bytes)`);
-=======
     console.log(
       `[proposal-wizard] Converted ${originalFilename} → ${pdfFilename} (${pdfBuf.length} bytes)`,
     );
->>>>>>> Stashed changes
     return { buf: pdfBuf, filename: pdfFilename };
   } catch (err) {
     const msg = (err as Error)?.message ?? String(err);
     console.error("[proposal-wizard] PDF conversion failed:", msg);
-<<<<<<< Updated upstream
-    throw new Error(`PDF conversion failed for ${basename(originalFilename)}: ${msg}`);
-=======
     throw new Error(
       `PDF conversion failed for ${basename(originalFilename)}: ${msg}`,
     );
->>>>>>> Stashed changes
   } finally {
     try {
       unlinkSync(tmpIn);
@@ -1143,9 +1028,6 @@ function docToPdf(
   city: string,
   renamedFilename: string,
 ): { buf: Buffer; filename: string } {
-<<<<<<< Updated upstream
-  const { buf: docxBuf } = docToDocx(filePath, customerName, wttNumber, city, renamedFilename);
-=======
   const { buf: docxBuf } = docToDocx(
     filePath,
     customerName,
@@ -1153,7 +1035,6 @@ function docToPdf(
     city,
     renamedFilename,
   );
->>>>>>> Stashed changes
   return convertToPdf(docxBuf, renamedFilename.replace(/\.doc$/i, ".docx"));
 }
 
@@ -1187,22 +1068,12 @@ function buildProposalAttachment(
   if (lower.endsWith(".doc")) {
     const pdf = docToPdf(filePath, customerName, wttNumber, city, renamedOrig);
     const filename = pdfFilenameFrom(pdf.filename);
-<<<<<<< Updated upstream
-    if (!isPdfBuffer(pdf.buf)) throw new Error(`Attachment is not PDF: ${filename}`);
-=======
     if (!isPdfBuffer(pdf.buf))
       throw new Error(`Attachment is not PDF: ${filename}`);
->>>>>>> Stashed changes
     return { filename, content: pdf.buf, contentType: "application/pdf" };
   }
 
   if (lower.endsWith(".docx")) {
-<<<<<<< Updated upstream
-    const modifiedBuf = buildModifiedFile(filePath, customerName, wttNumber, city);
-    const pdf = convertToPdf(modifiedBuf, renamedOrig);
-    const filename = pdfFilenameFrom(pdf.filename);
-    if (!isPdfBuffer(pdf.buf)) throw new Error(`Attachment is not PDF: ${filename}`);
-=======
     const modifiedBuf = buildModifiedFile(
       filePath,
       customerName,
@@ -1213,7 +1084,6 @@ function buildProposalAttachment(
     const filename = pdfFilenameFrom(pdf.filename);
     if (!isPdfBuffer(pdf.buf))
       throw new Error(`Attachment is not PDF: ${filename}`);
->>>>>>> Stashed changes
     return { filename, content: pdf.buf, contentType: "application/pdf" };
   }
 
@@ -1223,29 +1093,21 @@ function buildProposalAttachment(
 /** Nodemailer attachments — PDF for Word, native .xlsx for Excel. */
 function toNodemailerAttachments(
   items: { filename: string; content: Buffer; contentType: string }[],
-<<<<<<< Updated upstream
-): { filename: string; content: Buffer; contentType: string; contentDisposition: "attachment" }[] {
-=======
 ): {
   filename: string;
   content: Buffer;
   contentType: string;
   contentDisposition: "attachment";
 }[] {
->>>>>>> Stashed changes
   return items.map((item) => {
     const lower = item.filename.toLowerCase();
     if (lower.endsWith(".pdf")) {
       if (!isPdfBuffer(item.content)) {
         throw new Error(`Refusing to attach invalid PDF: ${item.filename}`);
       }
-<<<<<<< Updated upstream
-      console.log(`[proposal-wizard] Email attachment: ${item.filename} (${item.content.length} bytes, PDF)`);
-=======
       console.log(
         `[proposal-wizard] Email attachment: ${item.filename} (${item.content.length} bytes, PDF)`,
       );
->>>>>>> Stashed changes
       return {
         filename: item.filename,
         content: item.content,
@@ -1257,13 +1119,9 @@ function toNodemailerAttachments(
       if (!isXlsxBuffer(item.content)) {
         throw new Error(`Refusing to attach invalid Excel: ${item.filename}`);
       }
-<<<<<<< Updated upstream
-      console.log(`[proposal-wizard] Email attachment: ${item.filename} (${item.content.length} bytes, XLSX)`);
-=======
       console.log(
         `[proposal-wizard] Email attachment: ${item.filename} (${item.content.length} bytes, XLSX)`,
       );
->>>>>>> Stashed changes
       return {
         filename: item.filename,
         content: item.content,
@@ -1271,13 +1129,9 @@ function toNodemailerAttachments(
         contentDisposition: "attachment" as const,
       };
     }
-<<<<<<< Updated upstream
-    throw new Error(`Refusing to attach unsupported file type: ${item.filename}`);
-=======
     throw new Error(
       `Refusing to attach unsupported file type: ${item.filename}`,
     );
->>>>>>> Stashed changes
   });
 }
 
@@ -1314,14 +1168,10 @@ function docToDocx(
 
     const zip = new PizZip(readFileSync(tmpDocx));
     patchDocxZip(zip, customerName, wttNumber, city);
-<<<<<<< Updated upstream
-    const docxBuf = zip.generate({ type: "nodebuffer", compression: "DEFLATE" });
-=======
     const docxBuf = zip.generate({
       type: "nodebuffer",
       compression: "DEFLATE",
     });
->>>>>>> Stashed changes
     writeFileSync(tmpMod, docxBuf);
 
     const outFilename = renamedFilename.replace(/\.doc$/i, ".docx");
@@ -1332,13 +1182,9 @@ function docToDocx(
   } catch (err) {
     const msg = (err as Error)?.message ?? String(err);
     console.error("[proposal-wizard] docToDocx failed:", msg);
-<<<<<<< Updated upstream
-    throw new Error(`Could not prepare document for PDF: ${basename(filePath)} (${msg})`);
-=======
     throw new Error(
       `Could not prepare document for PDF: ${basename(filePath)} (${msg})`,
     );
->>>>>>> Stashed changes
   } finally {
     for (const f of [tmpOrig, tmpDocx, tmpMod]) {
       try {
@@ -1463,96 +1309,6 @@ async function updateProposalRequestStatus(
   }
 }
 
-<<<<<<< Updated upstream
-interface ProposalSendJob {
-  flowRate: string;
-  customerName: string;
-  toEmail: string;
-  contactPerson: string;
-  phone: string;
-  city: string;
-  country: string;
-  notes?: string;
-  wttNumber: string;
-}
-
-/** Build PDFs and send proposal email (slow — run in background). */
-async function sendProposalEmailJob(job: ProposalSendJob): Promise<void> {
-  const smtpUser = process.env.PROPOSAL_SMTP_USER;
-  const smtpPass = process.env.PROPOSAL_SMTP_PASSWORD;
-  if (!smtpUser || !smtpPass) throw new Error("Proposal email not configured on server");
-
-  const dir = safeJoin(PROPOSAL_ROOT, job.flowRate);
-  if (!dir) throw new Error("Invalid flow rate");
-
-  const files = getProposalTemplateFiles(job.flowRate);
-  if (files.length === 0) throw new Error("No files found for selected flow rate");
-
-  const customer = job.customerName.toUpperCase().trim();
-  const kld = kldFromFolder(job.flowRate);
-
-  console.log(`[proposal-wizard] Background send started: ${job.wttNumber} → ${job.toEmail}`);
-  const built = files.map((f) =>
-    buildProposalAttachment(join(dir, f), f, customer, job.wttNumber, job.city || ""),
-  );
-  const attachments = toNodemailerAttachments(built);
-
-  const transporter = nodemailer.createTransport({
-    host: "smtp.office365.com",
-    port: 587,
-    secure: false,
-    requireTLS: true,
-    auth: { user: smtpUser, pass: smtpPass },
-  });
-
-  const emailHtml = buildEmailHtml(customer, kld, job.wttNumber, attachments.map((a) => a.filename));
-
-  await transporter.sendMail({
-    from: `WTT INTERNATIONAL <${smtpUser}>`,
-    to: job.toEmail,
-    subject: `Proposal – ${job.customerName} – ${kld} KLD STP – ${job.wttNumber}`,
-    html: emailHtml,
-    attachments,
-  });
-
-  await updateProposalRequestStatus(job.wttNumber, "sent");
-  console.log(`[proposal-wizard] Background send complete: ${job.wttNumber}`);
-}
-
-function queueProposalEmailJob(job: ProposalSendJob): void {
-  setImmediate(() => {
-    void sendProposalEmailJob(job).catch(async (err) => {
-      const msg = (err as Error)?.message ?? String(err);
-      console.error(`[proposal-wizard] Background send failed (${job.wttNumber}):`, msg);
-      try {
-        await updateProposalRequestStatus(job.wttNumber, "failed", msg.slice(0, 500));
-      } catch (dbErr) {
-        console.error("[proposal-wizard] Could not update failed status:", dbErr);
-      }
-    });
-  });
-}
-
-async function updateProposalRequestStatus(
-  wttNumber: string,
-  status: string,
-  errorNote?: string,
-): Promise<void> {
-  if (errorNote) {
-    await pool.query(
-      `UPDATE proposal_requests SET status = $1, notes = $2, updated_at = NOW() WHERE proposal_no = $3`,
-      [status, errorNote, wttNumber],
-    );
-  } else {
-    await pool.query(
-      `UPDATE proposal_requests SET status = $1, updated_at = NOW() WHERE proposal_no = $2`,
-      [status, wttNumber],
-    );
-  }
-}
-
-=======
->>>>>>> Stashed changes
 /**
  * Record the proposal in proposal_requests (dashboard tracking).
  */
@@ -1571,12 +1327,8 @@ async function recordProposalRequest(
   status: "pending" | "sent" | "failed" = "sent",
 ): Promise<void> {
   try {
-<<<<<<< Updated upstream
-    const noteText = params.notes?.trim() || `Bangladesh Wizard — ${params.wttNumber}`;
-=======
     const noteText =
       params.notes?.trim() || `Bangladesh Wizard — ${params.wttNumber}`;
->>>>>>> Stashed changes
     await pool.query(
       `INSERT INTO proposal_requests
          (proposal_no, company_name, city, country, contact_person, email, phone, system_option, flow_rate, status, notes)
@@ -1722,41 +1474,11 @@ router.post("/proposal-wizard/send-email", async (req, res) => {
       country?: string;
     };
 
-<<<<<<< Updated upstream
-  if (!flowRate || !customerName || !toEmail) {
-    return res.status(400).json({ error: "flowRate, customerName and toEmail required" });
-  }
-
-  const smtpUser = process.env.PROPOSAL_SMTP_USER;
-  const smtpPass = process.env.PROPOSAL_SMTP_PASSWORD;
-  if (!smtpUser || !smtpPass) {
-    return res.status(503).json({ error: "Proposal email not configured on server" });
-  }
-
-  const dir = safeJoin(PROPOSAL_ROOT, flowRate);
-  if (!dir) return res.status(400).json({ error: "Invalid flow rate" });
-
-  const files = getProposalTemplateFiles(flowRate);
-  if (files.length === 0) return res.status(404).json({ error: "No files found for flow rate" });
-
-  const customer = customerName.toUpperCase().trim();
-  const wttNumber = wttParam && /^WTT-BAN-\d{4}$/.test(wttParam)
-    ? wttParam
-    : formatWttNumber(await nextCounter(customer, flowRate));
-
-  const kld = kldFromFolder(flowRate);
-
-  const built = files.map((f) =>
-    buildProposalAttachment(join(dir, f), f, customer, wttNumber, city || ""),
-  );
-  const attachments = toNodemailerAttachments(built);
-=======
     if (!flowRate || !customerName || !toEmail) {
       return res
         .status(400)
         .json({ error: "flowRate, customerName and toEmail required" });
     }
->>>>>>> Stashed changes
 
     const smtpUser = process.env.PROPOSAL_SMTP_USER;
     const smtpPass = process.env.PROPOSAL_SMTP_PASSWORD;
@@ -1871,10 +1593,6 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
         .json({ error: "flowRate, customerName and toEmail required" });
     }
 
-<<<<<<< Updated upstream
-    if (!process.env.PROPOSAL_SMTP_USER || !process.env.PROPOSAL_SMTP_PASSWORD) {
-      return res.status(503).json({ error: "Proposal email not configured. Please contact WTT directly." });
-=======
     if (
       !process.env.PROPOSAL_SMTP_USER ||
       !process.env.PROPOSAL_SMTP_PASSWORD
@@ -1884,34 +1602,21 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
         .json({
           error: "Proposal email not configured. Please contact WTT directly.",
         });
->>>>>>> Stashed changes
     }
 
     const dir = safeJoin(PROPOSAL_ROOT, flowRate);
     if (!dir) return res.status(400).json({ error: "Invalid flow rate" });
 
     const files = getProposalTemplateFiles(flowRate);
-<<<<<<< Updated upstream
-    if (files.length === 0) return res.status(404).json({ error: "No files found for selected flow rate" });
-=======
     if (files.length === 0)
       return res
         .status(404)
         .json({ error: "No files found for selected flow rate" });
->>>>>>> Stashed changes
 
     const customer = customerName.toUpperCase().trim();
     const counter = await nextCounter(customer, flowRate);
     const wttNumber = formatWttNumber(counter);
 
-<<<<<<< Updated upstream
-    await recordProposalRequest({
-      wttNumber,
-      customerName: customer,
-      contactPerson: contactPerson || customerName,
-      email: toEmail,
-      phone: phone || "",
-=======
     await recordProposalRequest(
       {
         wttNumber,
@@ -1928,7 +1633,6 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
     );
 
     queueProposalEmailJob({
->>>>>>> Stashed changes
       flowRate,
       customerName,
       toEmail,
@@ -1936,21 +1640,6 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
       phone: phone || "",
       city: city || "",
       country: country || "Bangladesh",
-<<<<<<< Updated upstream
-      city: city || "Bangladesh",
-      notes: notes?.trim(),
-    }, "pending");
-
-    queueProposalEmailJob({
-      flowRate,
-      customerName,
-      toEmail,
-      contactPerson: contactPerson || customerName,
-      phone: phone || "",
-      city: city || "",
-      country: country || "Bangladesh",
-=======
->>>>>>> Stashed changes
       notes: notes?.trim(),
       wttNumber,
     });
@@ -1958,13 +1647,6 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
     res.json({
       success: true,
       wttNumber,
-<<<<<<< Updated upstream
-      message: "Your request has been received. Proposal documents will be emailed to you shortly.",
-    });
-  } catch (err: any) {
-    console.error("send-public error:", err);
-    res.status(500).json({ error: err?.message || "Failed to submit proposal request" });
-=======
       message:
         "Your request has been received. Proposal documents will be emailed to you shortly.",
     });
@@ -1973,7 +1655,6 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
     res
       .status(500)
       .json({ error: err?.message || "Failed to submit proposal request" });
->>>>>>> Stashed changes
   }
 });
 
@@ -2024,14 +1705,10 @@ router.post("/proposal-wizard/requests/:id/resend", async (req, res) => {
       return res.status(400).json({ error: "Invalid flow rate folder" });
 
     const files = getProposalTemplateFiles(flowRateFolder);
-<<<<<<< Updated upstream
-    if (files.length === 0) return res.status(404).json({ error: "No files found for selected flow rate" });
-=======
     if (files.length === 0)
       return res
         .status(404)
         .json({ error: "No files found for selected flow rate" });
->>>>>>> Stashed changes
 
     const customer = String(p.company_name).toUpperCase().trim();
     const wttNumber = String(p.proposal_no);
