@@ -3,27 +3,23 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { KEYS } from './storage';
 
 async function getBase(): Promise<string> {
-  // Web in browser: try stored URL first, then env, then infer from window.location
-  if (Platform.OS === 'web') {
-    try {
-      const stored = await AsyncStorage.getItem(KEYS.API_URL);
-      if (stored) return JSON.parse(stored).replace(/\/$/, '');
-    } catch {}
-    if (process.env.EXPO_PUBLIC_API_URL) {
-      return process.env.EXPO_PUBLIC_API_URL.replace(/\/$/, '');
-    }
-    // Fall back to same-host port 8080 so local dev works without config
-    if (typeof window !== 'undefined') {
-      return `${window.location.protocol}//${window.location.hostname}:8080`;
-    }
-    return 'http://localhost:8080';
-  }
-  // Native (Android / iOS)
+  // Check for a user-saved API URL first (works on all platforms)
   try {
     const stored = await AsyncStorage.getItem(KEYS.API_URL);
     if (stored) return JSON.parse(stored).replace(/\/$/, '');
   } catch {}
-  return process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') || 'http://localhost:8080';
+
+  // Explicit env override (set EXPO_PUBLIC_API_URL in .env to force a URL)
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL.replace(/\/$/, '');
+  }
+
+  // Web: use same-origin so serve-web.mjs proxy forwards /api/* to localhost:8080.
+  // This means the browser never needs direct access to port 8080 — works on any LAN IP.
+  if (Platform.OS === 'web') return '';
+
+  // Native (Android / iOS): default to localhost:8080
+  return 'http://localhost:8080';
 }
 
 async function getToken(): Promise<string | null> {
