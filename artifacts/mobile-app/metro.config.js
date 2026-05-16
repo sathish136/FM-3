@@ -67,26 +67,41 @@ config.server = {
           },
         };
 
-        const proxyReq = proxyAgent.request(options, (proxyRes) => {
-          res.writeHead(proxyRes.statusCode, {
-            ...proxyRes.headers,
-            'access-control-allow-origin': '*',
-          });
-          proxyRes.pipe(res, { end: true });
-        });
-
-        proxyReq.on('error', (err) => {
-          const msg = err.code
-            ? `${err.code}: ${err.message}`
-            : err.message || String(err);
-          console.error(`[metro proxy error] ${req.method} ${req.url} → ${API_TARGET} — ${msg}`);
-          if (!res.headersSent) {
-            res.writeHead(502, { 'Content-Type': 'application/json' });
+        // Collect the full request body first — req.pipe() is unreliable
+        // inside Metro's middleware chain (body may not stream correctly).
+        const bodyChunks = [];
+        req.on('data', (chunk) => bodyChunks.push(chunk));
+        req.on('end', () => {
+          const bodyBuffer = Buffer.concat(bodyChunks);
+          if (bodyBuffer.length) {
+            options.headers['content-length'] = bodyBuffer.length;
           }
-          res.end(JSON.stringify({ error: `API proxy error (${msg}). Is the API server reachable at ${API_TARGET}?` }));
-        });
 
-        req.pipe(proxyReq, { end: true });
+          const proxyReq = proxyAgent.request(options, (proxyRes) => {
+            res.writeHead(proxyRes.statusCode, {
+              ...proxyRes.headers,
+              'access-control-allow-origin': '*',
+            });
+            proxyRes.pipe(res, { end: true });
+          });
+
+          proxyReq.on('error', (err) => {
+            const msg = err.code
+              ? `${err.code}: ${err.message}`
+              : err.message || String(err);
+            console.error(`[metro proxy error] ${req.method} ${req.url} → ${API_TARGET} — ${msg}`);
+            if (!res.headersSent) {
+              res.writeHead(502, { 'Content-Type': 'application/json' });
+            }
+            res.end(JSON.stringify({ error: `API proxy error (${msg}). Is the API server reachable at ${API_TARGET}?` }));
+          });
+
+          if (bodyBuffer.length) proxyReq.write(bodyBuffer);
+          proxyReq.end();
+        });
+        req.on('error', (err) => {
+          console.error(`[metro proxy req error] ${err.message}`);
+        });
       } else {
         middleware(req, res, next);
       }
