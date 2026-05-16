@@ -5322,7 +5322,8 @@ export default function ProjectDrawings() {
                             return next;
                           });
                         } else {
-                          setDetailDrawingId(drawing.id);
+                          const i = filtered.findIndex(d => d.id === drawing.id);
+                          setViewerIdx(i);
                         }
                       }}
                       className={`bg-white border rounded-xl px-4 py-3 hover:shadow-md transition-all group cursor-pointer ${
