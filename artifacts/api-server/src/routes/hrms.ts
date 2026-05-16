@@ -432,43 +432,72 @@ router.get("/hrms/employees/id-card-data", async (_req, res) => {
     if (!ERPNEXT_URL || !ERPNEXT_API_KEY || !ERPNEXT_API_SECRET) {
       return res.json([]);
     }
+    const auth = `token ${ERPNEXT_API_KEY}:${ERPNEXT_API_SECRET}`;
+
+    // Step 1: bulk list — only fields permitted in ERPNext list queries
     const fields = JSON.stringify([
       "name", "employee_name", "department", "designation",
       "status", "date_of_joining", "date_of_birth", "image",
-      "cell_number", "blood_group", "emergency_phone",
-      "permanent_address", "current_address", "company",
+      "cell_number", "blood_group", "company",
     ]);
     const filters = JSON.stringify([["Employee", "status", "=", "Active"]]);
     const params = new URLSearchParams({
-      fields,
-      filters,
-      limit_page_length: "500",
-      order_by: "employee_name asc",
+      fields, filters, limit_page_length: "500", order_by: "employee_name asc",
     });
-    const url = `${ERPNEXT_URL}/api/resource/Employee?${params}`;
-    const resp = await fetch(url, {
-      headers: { Authorization: `token ${ERPNEXT_API_KEY}:${ERPNEXT_API_SECRET}` },
+    const listResp = await fetch(`${ERPNEXT_URL}/api/resource/Employee?${params}`, {
+      headers: { Authorization: auth },
     });
-    if (!resp.ok) throw new Error(`ERPNext error: ${resp.status}`);
-    const json = await resp.json();
+    if (!listResp.ok) throw new Error(`ERPNext list error: ${listResp.status}`);
+    const listJson = await listResp.json();
+
     const { applyEmployeeFilter } = await import("../lib/erpnext");
-    const employees = applyEmployeeFilter((json.data ?? []) as any[]);
+    const base = applyEmployeeFilter((listJson.data ?? []) as any[]);
+
+    // Step 2: fetch individual records in parallel (batches of 10) for restricted fields
+    // (emergency_phone_number, permanent_address are not allowed in list queries)
+    const extMap = new Map<string, { emergency_phone: string | null; address: string | null }>();
+
+    async function fetchExt(name: string) {
+      try {
+        const r = await fetch(`${ERPNEXT_URL}/api/resource/Employee/${encodeURIComponent(name)}`, {
+          headers: { Authorization: auth },
+        });
+        if (!r.ok) return;
+        const d = (await r.json()).data ?? {};
+        // Strip HTML tags from address fields
+        const stripHtml = (s: string) => (s || "").replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").trim();
+        const addr = stripHtml(d.current_address || d.permanent_address || "");
+        extMap.set(name, {
+          emergency_phone: d.emergency_phone_number || null,
+          address: addr || null,
+        });
+      } catch { /* ignore individual failures */ }
+    }
+
+    // Run in batches of 15 concurrent requests
+    const BATCH = 15;
+    for (let i = 0; i < base.length; i += BATCH) {
+      await Promise.all(base.slice(i, i + BATCH).map((e: any) => fetchExt(e.name)));
+    }
+
     return res.json(
-      employees.map((e: any) => ({
-        name: e.name,
-        employee_name: e.employee_name,
-        department: e.department ?? null,
-        designation: e.designation ?? null,
-        status: e.status,
-        date_of_joining: e.date_of_joining ?? null,
-        date_of_birth: e.date_of_birth ?? null,
-        image: e.image ?? null,
-        cell_number: e.cell_number ?? null,
-        blood_group: e.blood_group ?? null,
-        emergency_phone: e.emergency_phone ?? null,
-        permanent_address: e.permanent_address || e.current_address || null,
-        company: e.company ?? null,
-      }))
+      base.map((e: any) => {
+        const ext = extMap.get(e.name);
+        return {
+          name: e.name,
+          employee_name: e.employee_name,
+          department: e.department ?? null,
+          designation: e.designation ?? null,
+          status: e.status,
+          date_of_joining: e.date_of_joining ?? null,
+          date_of_birth: e.date_of_birth ?? null,
+          image: e.image ?? null,
+          cell_number: e.cell_number ?? null,
+          blood_group: e.blood_group ?? null,
+          emergency_phone: ext?.emergency_phone ?? null,
+          permanent_address: ext?.address ?? null,
+        };
+      })
     );
   } catch (e) {
     res.status(500).json({ error: String(e) });
