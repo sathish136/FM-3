@@ -59,20 +59,19 @@ function IdCard({ emp }: { emp: Employee }) {
     <div className="id-card">
       {/* Top section */}
       <div className="id-card-top">
-        {/* Left strip — brand + photo */}
+        {/* Left strip — photo on top, brand below */}
         <div className="id-card-left-strip">
-          <div className="id-brand">
-            <img src={`${BASE}/wtt-logo.png`} alt="WTT" className="id-logo-img" />
-            <div className="id-brand-name">WTT</div>
-            <div className="id-brand-sub">I N T E R N A T I O N A L</div>
-            <div className="id-brand-tag">Water Loving Technology</div>
-          </div>
           <div className="id-photo-wrap">
             {photoSrc && !photoErr ? (
               <img src={photoSrc} alt={emp.employee_name} className="id-photo" onError={() => setPhotoErr(true)} />
             ) : (
               <div className="id-photo id-photo-fb">{initials || "?"}</div>
             )}
+          </div>
+          <div className="id-brand">
+            <div className="id-brand-name">WTT</div>
+            <div className="id-brand-sub">I N T E R N A T I O N A L</div>
+            <div className="id-brand-tag">Water Loving Technology</div>
           </div>
         </div>
 
@@ -194,15 +193,14 @@ export default function EmployeeIdCard() {
         .id-card-left-strip {
           width: 96px; flex-shrink: 0;
           background: linear-gradient(160deg, #0a2463 0%, #1e3a8a 100%);
-          display: flex; flex-direction: column; align-items: center;
-          padding: 8px 6px; gap: 8px;
+          display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+          padding: 8px 6px;
         }
+        .id-photo-wrap { display: flex; align-items: center; justify-content: center; }
         .id-brand { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-        .id-logo-img { width: 28px; height: 28px; object-fit: contain; filter: brightness(0) invert(1); }
-        .id-brand-name { color: #fff; font-size: 12px; font-weight: 900; letter-spacing: 1px; line-height: 1; }
-        .id-brand-sub { color: #93c5fd; font-size: 4.5px; letter-spacing: .4px; line-height: 1.3; font-weight: 700; text-align: center; }
+        .id-brand-name { color: #fff; font-size: 13px; font-weight: 900; letter-spacing: 1.5px; line-height: 1; }
+        .id-brand-sub { color: #93c5fd; font-size: 4.5px; letter-spacing: .5px; line-height: 1.3; font-weight: 700; text-align: center; }
         .id-brand-tag { color: #bfdbfe; font-size: 4px; font-style: italic; text-align: center; line-height: 1.3; }
-        .id-photo-wrap { flex: 1; display: flex; align-items: center; justify-content: center; }
         .id-photo { width: 58px; height: 70px; object-fit: cover; border-radius: 4px; border: 2px solid #60a5fa; }
         .id-photo-fb { width: 58px; height: 70px; border-radius: 4px; border: 2px solid #60a5fa; background: #1e40af; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 17px; }
         .id-card-details { flex: 1; padding: 7px 9px; }
@@ -246,7 +244,6 @@ export default function EmployeeIdCard() {
             break-inside: avoid !important; page-break-inside: avoid !important;
           }
           .id-card-left-strip { width: 26mm !important; padding: 3mm 3mm !important; }
-          .id-logo-img { width: 9mm !important; height: 9mm !important; }
           .id-brand-name { font-size: 8pt !important; }
           .id-brand-sub  { font-size: 3.5pt !important; }
           .id-brand-tag  { font-size: 3pt !important; }
