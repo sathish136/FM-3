@@ -655,6 +655,35 @@ router.post("/project-drawings/:id/assign-teams", async (req, res) => {
   }
 });
 
+// GET /api/drawings/employees — active ERPNext employees for uploader/checker picker
+router.get("/drawings/employees", async (_req, res) => {
+  try {
+    if (!ERPNEXT_URL || !ERPNEXT_API_KEY || !ERPNEXT_API_SECRET) {
+      return res.json([]);
+    }
+    const fields = JSON.stringify(["name", "employee_name", "user_id", "department", "designation"]);
+    const filters = JSON.stringify([["Employee", "status", "=", "Active"]]);
+    const params = new URLSearchParams({ fields, filters, limit_page_length: "500", order_by: "employee_name asc" });
+    const r = await fetch(`${ERPNEXT_URL}/api/resource/Employee?${params}`, {
+      headers: { Authorization: authHeader() },
+    });
+    if (!r.ok) return res.json([]);
+    const data = await r.json() as any;
+    const employees = (data.data ?? [])
+      .filter((e: any) => e.user_id)
+      .map((e: any) => ({
+        id: e.name,
+        name: e.employee_name,
+        email: e.user_id,
+        department: e.department || "",
+        designation: e.designation || "",
+      }));
+    return res.json(employees);
+  } catch {
+    return res.json([]);
+  }
+});
+
 // ── ERPNext file helpers ──────────────────────────────────────────────────────
 
 router.post("/drawings/upload-file", async (req, res) => {

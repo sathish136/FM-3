@@ -1921,6 +1921,14 @@ interface ErpProject {
   erpnextName?: string;
 }
 
+interface DrawingEmployee {
+  id: string;
+  name: string;
+  email: string;
+  department: string;
+  designation: string;
+}
+
 interface UploadModalProps {
   userDept: string;
   userName: string;
@@ -1941,6 +1949,7 @@ interface UploadModalProps {
       fileName: string;
       note: string;
       uploadedBy: string;
+      uploaderEmail?: string;
     }>,
   ) => void;
 }
@@ -1992,12 +2001,20 @@ function UploadModal({
   const projectRef = useRef<HTMLDivElement>(null);
   const projectDropRef = useRef<HTMLDivElement>(null);
   const [dropStyle, setDropStyle] = useState<CSSProperties>({});
+  const [uploadEmployees, setUploadEmployees] = useState<DrawingEmployee[]>([]);
+  const [selectedUploader, setSelectedUploader] = useState<DrawingEmployee | null>(null);
+  const [uploaderSearch, setUploaderSearch] = useState("");
+  const [showUploaderDrop, setShowUploaderDrop] = useState(false);
 
   useEffect(() => {
     const email = (() => { try { const s = localStorage.getItem("wtt_auth_user"); return s ? JSON.parse(s).email || "" : ""; } catch { return ""; } })();
     fetch(`${BASE}/api/projects${email ? `?email=${encodeURIComponent(email)}` : ""}`)
       .then((r) => (r.ok ? r.json() : []))
       .then((data: ErpProject[]) => setErpProjects(data))
+      .catch(() => {});
+    fetch(`${BASE}/api/drawings/employees`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: DrawingEmployee[]) => setUploadEmployees(data))
       .catch(() => {});
   }, []);
 
@@ -2175,7 +2192,8 @@ function UploadModal({
         rawFile: entry.file,
         fileName: entry.file.name,
         note,
-        uploadedBy: userName,
+        uploadedBy: selectedUploader ? selectedUploader.name : userName,
+        uploaderEmail: selectedUploader ? selectedUploader.email : undefined,
       });
     }
 
@@ -2312,6 +2330,60 @@ function UploadModal({
                 ))}
               </select>
             </div>
+          </div>
+
+          {/* Uploader — ERPNext employee picker */}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1 flex items-center gap-1">
+              <Users className="w-3.5 h-3.5 text-gray-400" />
+              Uploaded By
+              {uploadEmployees.length > 0 && <span className="text-gray-400 font-normal ml-1">({uploadEmployees.length} from ERPNext)</span>}
+            </label>
+            <div className="relative">
+              <input
+                value={uploaderSearch}
+                onChange={(e) => { setUploaderSearch(e.target.value); setShowUploaderDrop(true); if (!e.target.value) setSelectedUploader(null); }}
+                onFocus={() => setShowUploaderDrop(true)}
+                onBlur={() => setTimeout(() => setShowUploaderDrop(false), 150)}
+                placeholder={uploadEmployees.length > 0 ? "Search employee…" : (userName || "Not set")}
+                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {selectedUploader && (
+                <button
+                  type="button"
+                  onClick={() => { setSelectedUploader(null); setUploaderSearch(""); }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+              {showUploaderDrop && uploadEmployees.length > 0 && (
+                <div className="absolute z-[9999] w-full bg-white border border-gray-200 rounded-xl shadow-xl mt-1 max-h-48 overflow-auto">
+                  {uploadEmployees
+                    .filter(e => !uploaderSearch || e.name.toLowerCase().includes(uploaderSearch.toLowerCase()) || e.email.toLowerCase().includes(uploaderSearch.toLowerCase()))
+                    .map(e => (
+                      <button
+                        key={e.id}
+                        type="button"
+                        onMouseDown={() => { setSelectedUploader(e); setUploaderSearch(e.name); setShowUploaderDrop(false); }}
+                        className="w-full text-left px-3 py-2 hover:bg-blue-50 flex flex-col gap-0.5 transition-colors"
+                      >
+                        <span className="text-sm font-medium text-gray-900">{e.name}</span>
+                        <span className="text-xs text-blue-600">{e.email}</span>
+                        {e.designation && <span className="text-[10px] text-gray-400">{e.designation}</span>}
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
+            {selectedUploader && (
+              <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                <Mail className="w-3 h-3" /> {selectedUploader.email}
+              </p>
+            )}
+            {!selectedUploader && userName && (
+              <p className="text-xs text-gray-400 mt-1">Defaults to logged-in user: {userName}</p>
+            )}
           </div>
 
           {/* Drawing Type */}
@@ -3182,6 +3254,23 @@ function DrawingDetailPage({
   const [correctionComment, setCorrectionComment] = useState("");
   const [showHodRejectModal, setShowHodRejectModal] = useState(false);
   const [hodRejectRemarks, setHodRejectRemarks] = useState("");
+  const [correctionUploaderEmail, setCorrectionUploaderEmail] = useState(drawing.uploaderEmail || "");
+  const [correctionEmpSearch, setCorrectionEmpSearch] = useState("");
+  const [correctionShowEmpDrop, setCorrectionShowEmpDrop] = useState(false);
+  const [correctionEmployees, setCorrectionEmployees] = useState<DrawingEmployee[]>([]);
+
+  useEffect(() => {
+    fetch(`${BASE}/api/drawings/employees`)
+      .then(r => r.ok ? r.json() : [])
+      .then((data: DrawingEmployee[]) => {
+        setCorrectionEmployees(data);
+        if (drawing.uploaderEmail) {
+          const match = data.find((e: DrawingEmployee) => e.email === drawing.uploaderEmail);
+          if (match) setCorrectionEmpSearch(match.name);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const showWfToast = (type: "success" | "error", msg: string) => {
     setWfToast({ type, msg });
@@ -4349,14 +4438,53 @@ function DrawingDetailPage({
                         </div>
                       </div>
                       <div className="mb-4">
-                        <label className="block text-xs font-semibold text-gray-700 mb-1.5">Uploader Email <span className="text-red-500">*</span></label>
-                        <input
-                          type="email"
-                          placeholder="Enter uploader's email to notify them"
-                          defaultValue={drawing.uploaderEmail || ""}
-                          id="correction-uploader-email"
-                          className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 placeholder-gray-400 focus:outline-none focus:border-amber-500"
-                        />
+                        <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                          Uploader Email <span className="text-red-500">*</span>
+                          {correctionEmployees.length > 0 && <span className="text-gray-400 font-normal ml-1">(from ERPNext)</span>}
+                        </label>
+                        {correctionEmployees.length > 0 ? (
+                          <div className="relative">
+                            <input
+                              value={correctionEmpSearch}
+                              onChange={(e) => { setCorrectionEmpSearch(e.target.value); setCorrectionShowEmpDrop(true); if (!e.target.value) setCorrectionUploaderEmail(""); }}
+                              onFocus={() => setCorrectionShowEmpDrop(true)}
+                              onBlur={() => setTimeout(() => setCorrectionShowEmpDrop(false), 150)}
+                              placeholder="Search employee name or email…"
+                              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 placeholder-gray-400 focus:outline-none focus:border-amber-500"
+                            />
+                            {correctionUploaderEmail && (
+                              <p className="text-xs text-amber-700 mt-1 flex items-center gap-1">
+                                <Mail className="w-3 h-3" /> {correctionUploaderEmail}
+                              </p>
+                            )}
+                            {correctionShowEmpDrop && (
+                              <div className="absolute z-[9999] w-full bg-white border border-gray-200 rounded-xl shadow-xl mt-1 max-h-44 overflow-auto">
+                                {correctionEmployees
+                                  .filter(e => !correctionEmpSearch || e.name.toLowerCase().includes(correctionEmpSearch.toLowerCase()) || e.email.toLowerCase().includes(correctionEmpSearch.toLowerCase()))
+                                  .map(e => (
+                                    <button
+                                      key={e.id}
+                                      type="button"
+                                      onMouseDown={() => { setCorrectionUploaderEmail(e.email); setCorrectionEmpSearch(e.name); setCorrectionShowEmpDrop(false); }}
+                                      className="w-full text-left px-3 py-2 hover:bg-amber-50 flex flex-col gap-0.5 transition-colors"
+                                    >
+                                      <span className="text-sm font-medium text-gray-900">{e.name}</span>
+                                      <span className="text-xs text-amber-700">{e.email}</span>
+                                      {e.designation && <span className="text-[10px] text-gray-400">{e.designation}</span>}
+                                    </button>
+                                  ))}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <input
+                            type="email"
+                            placeholder="Enter uploader's email to notify them"
+                            value={correctionUploaderEmail}
+                            onChange={e => setCorrectionUploaderEmail(e.target.value)}
+                            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 placeholder-gray-400 focus:outline-none focus:border-amber-500"
+                          />
+                        )}
                       </div>
                       <div className="mb-5">
                         <label className="block text-xs font-semibold text-gray-700 mb-1.5">Correction Remarks <span className="text-red-500">*</span></label>
@@ -4377,13 +4505,11 @@ function DrawingDetailPage({
                         </button>
                         <button
                           onClick={() => {
-                            const emailInput = document.getElementById("correction-uploader-email") as HTMLInputElement;
-                            const uploaderEmail = emailInput?.value || drawing.uploaderEmail || "";
                             wfPost("request-corrections", {
                               comment: correctionComment.trim(),
                               reviewerName: currentUserName,
                               reviewerEmail: currentUserEmail || "",
-                              uploaderEmail,
+                              uploaderEmail: correctionUploaderEmail || drawing.uploaderEmail || "",
                             }).then(result => {
                               if (result) {
                                 showWfToast("success", "Corrections requested. Uploader has been notified.");
@@ -5658,7 +5784,7 @@ export default function ProjectDrawings() {
         approvedBy: null,
         erpFileUrl: null,
         aiAnalysis: null,
-        uploaderEmail: user?.email || null,
+        uploaderEmail: (data as any).uploaderEmail || user?.email || null,
         workflowStatus: "pending_review",
       };
       try {
@@ -5797,7 +5923,7 @@ export default function ProjectDrawings() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             uploaderName: user?.full_name || "Uploader",
-            uploaderEmail: user?.email || drawing.uploaderEmail || "",
+            uploaderEmail: drawing.uploaderEmail || user?.email || "",
             reviewerEmail: drawing.reviewerEmail || "",
             isIssueCorrectionCycle,
           }),
