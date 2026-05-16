@@ -3162,6 +3162,7 @@ function DrawingDetailPage({
     setPdfError(false);
     setAiAnalysis((drawing.aiAnalysis as any) ?? null);
     setAiError(null);
+    setActiveTab("view");
     setViewRevIdx(null);
     autoAnalyzedRef.current = false;
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
