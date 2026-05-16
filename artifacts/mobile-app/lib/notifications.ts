@@ -3,25 +3,37 @@ import { Platform } from 'react-native';
 
 const SEEN_KEY = 'hrms_seen_announcements_v1';
 
-let Notifications: typeof import('expo-notifications') | null = null;
+type NotificationsModule = typeof import('expo-notifications');
+let Notifications: NotificationsModule | null = null;
 
-try {
-  Notifications = require('expo-notifications');
-  Notifications!.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
-    }),
-  });
-} catch {
-  Notifications = null;
+// expo-notifications removed Android push support from Expo Go in SDK 53.
+// Guard every access so the app works gracefully without it.
+function loadNotifications(): NotificationsModule | null {
+  if (Platform.OS === 'web') return null;
+  try {
+    const mod = require('expo-notifications') as NotificationsModule;
+    // setNotificationHandler may throw in Expo Go on Android — guard separately
+    try {
+      mod.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true,
+          shouldShowBanner: true,
+          shouldShowList: true,
+        }),
+      });
+    } catch {}
+    return mod;
+  } catch {
+    return null;
+  }
 }
 
+Notifications = loadNotifications();
+
 export async function requestNotificationPermission(): Promise<boolean> {
-  if (Platform.OS === 'web' || !Notifications) return false;
+  if (!Notifications) return false;
   try {
     const { status: existing } = await Notifications.getPermissionsAsync();
     if (existing === 'granted') return true;
@@ -33,7 +45,7 @@ export async function requestNotificationPermission(): Promise<boolean> {
 }
 
 export async function getNotificationPermissionStatus(): Promise<'granted' | 'denied' | 'undetermined'> {
-  if (Platform.OS === 'web' || !Notifications) return 'denied';
+  if (!Notifications) return 'denied';
   try {
     const { status } = await Notifications.getPermissionsAsync();
     return status as 'granted' | 'denied' | 'undetermined';
@@ -43,7 +55,7 @@ export async function getNotificationPermissionStatus(): Promise<'granted' | 'de
 }
 
 export async function sendLocalNotification(title: string, body: string, data?: Record<string, unknown>) {
-  if (Platform.OS === 'web' || !Notifications) return;
+  if (!Notifications) return;
   try {
     await Notifications.scheduleNotificationAsync({
       content: { title, body, data: data ?? {}, sound: true },
@@ -53,7 +65,7 @@ export async function sendLocalNotification(title: string, body: string, data?: 
 }
 
 export async function notifyNewAnnouncements(announcements: { id: number; title: string; body: string; type: string }[]) {
-  if (Platform.OS === 'web' || !Notifications || announcements.length === 0) return;
+  if (!Notifications || announcements.length === 0) return;
   try {
     const raw = await AsyncStorage.getItem(SEEN_KEY);
     const seen: number[] = raw ? JSON.parse(raw) : [];
