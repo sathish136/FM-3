@@ -39,28 +39,35 @@ function buildLoBaseProfile(fontsDir?: string): void {
     } catch {}
   }
 
-  // Font substitution pairs: [Microsoft font, metric-compatible replacement]
-  // Carlito is metrically identical to Calibri; Caladea to Cambria.
+  // All document fonts → Roboto (proposal brand standard)
   const substitutions: [string, string][] = [
-    ["Times New Roman",  "Liberation Serif"],
-    ["Arial",            "Liberation Sans"],
-    ["Arial Narrow",     "Liberation Sans Narrow"],
-    ["Courier New",      "Liberation Mono"],
-    ["Calibri",          "Carlito"],
-    ["Cambria",          "Caladea"],
-    ["Cambria Math",     "Caladea"],
-    ["Consolas",         "Liberation Mono"],
-    ["Segoe UI",         "Liberation Sans"],
-    ["Tahoma",           "Liberation Sans"],
-    ["Verdana",          "Liberation Sans"],
-    ["Georgia",          "Liberation Serif"],
-    ["Trebuchet MS",     "Liberation Sans"],
-    ["Impact",           "Liberation Sans"],
-    ["Comic Sans MS",    "Liberation Sans"],
-    ["Palatino Linotype","Liberation Serif"],
-    ["Book Antiqua",     "Liberation Serif"],
-    ["Garamond",         "Liberation Serif"],
-    ["Century Gothic",   "Liberation Sans"],
+    ["Times New Roman",  "Roboto"],
+    ["Arial",            "Roboto"],
+    ["Arial Narrow",     "Roboto"],
+    ["Courier New",      "Roboto"],
+    ["Calibri",          "Roboto"],
+    ["Calibri Light",    "Roboto"],
+    ["Cambria",          "Roboto"],
+    ["Cambria Math",     "Roboto"],
+    ["Consolas",         "Roboto"],
+    ["Segoe UI",         "Roboto"],
+    ["Tahoma",           "Roboto"],
+    ["Verdana",          "Roboto"],
+    ["Georgia",          "Roboto"],
+    ["Trebuchet MS",     "Roboto"],
+    ["Impact",           "Roboto"],
+    ["Comic Sans MS",    "Roboto"],
+    ["Palatino Linotype","Roboto"],
+    ["Book Antiqua",     "Roboto"],
+    ["Garamond",         "Roboto"],
+    ["Century Gothic",   "Roboto"],
+    ["Microsoft Sans Serif", "Roboto"],
+    ["DejaVu Sans",      "Roboto"],
+    ["DejaVu Serif",     "Roboto"],
+    ["Liberation Sans",  "Roboto"],
+    ["Liberation Serif", "Roboto"],
+    ["Carlito",          "Roboto"],
+    ["Caladea",          "Roboto"],
   ];
 
   // ── CORRECT LibreOffice XCU format for font substitution ────────────────
@@ -141,39 +148,42 @@ setImmediate(function installAssetsOnce() {
     const fontsDir = join(homedir(), ".fonts");
     mkdirSync(fontsDir, { recursive: true });
 
-    // Font packages to install.  For each package we do ONE nix-store lookup,
-    // then batch-copy every TTF whose name starts with `prefix`.
-    // Carlito is metrically identical to Calibri; Caladea to Cambria.
-    const FONT_PACKAGES: { pkgHint: string; prefix: string }[] = [
-      { pkgHint: "liberation-fonts", prefix: "Liberation" },
-      { pkgHint: "carlito",          prefix: "Carlito" },
-      { pkgHint: "caladea",          prefix: "Caladea" },
+    // Roboto — standard font for all proposal PDFs
+    const ROBOTO_SOURCES = [
+      "/usr/share/fonts/truetype/roboto/unhinted/RobotoTTF",
+      "/usr/share/fonts/truetype/roboto",
     ];
-
     let installed = 0;
+    for (const srcDir of ROBOTO_SOURCES) {
+      try {
+        for (const filename of readdirSync(srcDir)) {
+          if (!filename.toLowerCase().includes("roboto") || !filename.toLowerCase().endsWith(".ttf")) continue;
+          const dest = join(fontsDir, filename);
+          if (isValidTtf(dest)) continue;
+          const src = join(srcDir, filename);
+          if (!isValidTtf(src)) continue;
+          try { copyFileSync(src, dest); installed++; } catch {}
+        }
+      } catch { /* dir not present */ }
+    }
 
-    for (const { pkgHint, prefix } of FONT_PACKAGES) {
-      const nixDir = findNixFontDir(pkgHint);
-      if (!nixDir) {
-        console.warn(`[proposal-wizard] Nix font dir not found for: ${pkgHint}`);
-        continue;
-      }
-
-      let pkgFiles: string[];
-      try { pkgFiles = readdirSync(nixDir); } catch { continue; }
-
-      for (const filename of pkgFiles) {
-        if (!filename.startsWith(prefix) || !filename.toLowerCase().endsWith(".ttf")) continue;
-        const dest = join(fontsDir, filename);
-        if (isValidTtf(dest)) continue; // Already cached
-        const src = join(nixDir, filename);
-        if (!isValidTtf(src)) continue;
-        try { copyFileSync(src, dest); installed++; } catch {}
-      }
+    // Nix / Replit fallback
+    const nixRoboto = findNixFontDir("roboto");
+    if (nixRoboto) {
+      try {
+        for (const filename of readdirSync(nixRoboto)) {
+          if (!filename.toLowerCase().includes("roboto") || !filename.toLowerCase().endsWith(".ttf")) continue;
+          const dest = join(fontsDir, filename);
+          if (isValidTtf(dest)) continue;
+          const src = join(nixRoboto, filename);
+          if (!isValidTtf(src)) continue;
+          try { copyFileSync(src, dest); installed++; } catch {}
+        }
+      } catch {}
     }
 
     if (installed > 0) {
-      console.log(`[proposal-wizard] Installed ${installed} metric-compatible fonts.`);
+      console.log(`[proposal-wizard] Installed ${installed} Roboto font files.`);
     }
 
     // Rebuild fontconfig cache so LibreOffice (which uses fontconfig) finds our fonts
@@ -259,6 +269,11 @@ function getFilesInFolder(folder: string): string[] {
   } catch {
     return [];
   }
+}
+
+/** Only proposal templates (.doc / .docx / .xlsx) — never other files from the folder. */
+function getProposalTemplateFiles(folder: string): string[] {
+  return getFilesInFolder(folder).filter((f) => /\.(docx?|xlsx)$/i.test(f));
 }
 
 function fileTypeLabel(filename: string): string {
@@ -543,7 +558,7 @@ function processXlsx(
         content = content.replace(/\bCITY\b/g, city.toUpperCase().trim());
         changed = true;
       }
-      // Strip ALL highlight and background-shading formatting from DOCX runs
+      // Strip highlight/shading in xlsx xml
       if (name.endsWith(".xml")) {
         const before = content;
         content = content
@@ -553,6 +568,8 @@ function processXlsx(
           .replace(/<\/w:shd>/gi, "");
         if (content !== before) changed = true;
       }
+      const roboto = applyRobotoToXml(content);
+      if (roboto !== content) { content = roboto; changed = true; }
       if (changed) zip.file(name, content);
     } catch {
       // skip binary-only entries
@@ -564,18 +581,25 @@ function processXlsx(
 
 /**
  * For old binary .doc (OLE2/CFB) files:
- * - COMPANY NAME (12 chars): pad/truncate to exact 12 bytes
- * - WTT-BAN-0001 (12 chars): always 12 chars (WTT-BAN-XXXX) — perfect same-length
- * - Date "01-Jan-26" (9 chars): replaced with today DD-Mon-YY (9 chars)
- * - Date "01.Jan.2026" (11 chars): replaced with today DD.Mon.YYYY (11 chars)
- * - CITY: variable-length splice; FIB ccpText updated to reflect char delta
- * - Yellow highlight (sprmCHighlight=0x2A0C, value=0x07): cleared to 0x00
+ * - COMPANY NAME (12 chars): pad/truncate to exact 12 bytes (same-length only)
+ * - WTT-BAN-0001 (12 chars): always 12 chars (WTT-BAN-XXXX)
+ * - Date "01-Jan-26" (9 chars) / "01.Jan.2026" (11 chars): same-length date swap
+ * - CITY (4 chars in address block): pad/truncate to 4 bytes at "\rCITY,"
+ * - Yellow highlight (sprmCHighlight): cleared to 0x00
+ * - No buffer resizing — file stays valid for LibreOffice direct .doc → PDF
  *
  * OLE2 layout assumptions (validated against template files):
  *   - FIB (Word 97) starts at raw offset 512 (first sector of WordDocument stream)
  *   - ccpText is at FIB+76 (raw offset 588), csw=14, cslw offset derives to 64+12=76
  *   - Text block starts at fcMin=2048; "\rCITY," address pattern at raw ~2592
  */
+/** Pad/truncate to exact byte length so OLE2 .doc structure is not resized (required for LO PDF export). */
+function padAscii(value: string, length: number): string {
+  const raw = Buffer.from(value.toUpperCase().trim(), "ascii");
+  if (raw.length >= length) return raw.subarray(0, length).toString("ascii");
+  return raw.toString("ascii") + " ".repeat(length - raw.length);
+}
+
 function processDoc(
   filePath: string,
   customerName: string,
@@ -586,6 +610,9 @@ function processDoc(
   let result = Buffer.from(buf);
 
   function replaceAllInPlace(search: string, replacement: string): void {
+    if (search.length !== replacement.length) {
+      throw new Error(`processDoc: length mismatch "${search}" (${search.length}) vs "${replacement}" (${replacement.length})`);
+    }
     const searchBuf = Buffer.from(search, "ascii");
     const replBuf = Buffer.from(replacement, "ascii");
     let pos = 0;
@@ -595,58 +622,18 @@ function processDoc(
     }
   }
 
-  // Replace COMPANY NAME (12-char placeholder) — variable-length splice so no trailing spaces
-  {
-    const cnSearch = Buffer.from("COMPANY NAME", "ascii");
-    const cnRepl   = Buffer.from(customerName.toUpperCase().trim(), "ascii");
-    const delta    = cnRepl.length - cnSearch.length;
-    let pos = 0;
-    while ((pos = result.indexOf(cnSearch, pos)) !== -1) {
-      result = Buffer.concat([result.subarray(0, pos), cnRepl, result.subarray(pos + cnSearch.length)]);
-      if (delta !== 0) {
-        const CCPTEXT_RAW = 588;
-        const ccpText = result.readInt32LE(CCPTEXT_RAW);
-        result.writeInt32LE(ccpText + delta, CCPTEXT_RAW);
-      }
-      pos += cnRepl.length;
-    }
-  }
-
-  // Replace WTT-BAN-0001 (12 chars) with new number (WTT-BAN-XXXX, always 12 chars)
+  // Same-length only — keeps Word 97 binary valid for LibreOffice .doc → PDF
+  replaceAllInPlace("COMPANY NAME", padAscii(customerName, 12));
   replaceAllInPlace("WTT-BAN-0001", wttNumber);
-
-  // Replace date "01-Jan-26" (9 chars) → today in DD-Mon-YY format (9 chars)
   replaceAllInPlace("01-Jan-26", todayShort());
-
-  // Replace date "01.Jan.2026" (11 chars) → today in DD.Mon.YYYY format (11 chars)
   replaceAllInPlace("01.Jan.2026", todayLong());
 
-  // Replace CITY placeholder — search for "\rCITY," to avoid matching "CAPACITY"
+  // Address line uses exactly 4-char "CITY" between CR and comma
   if (city) {
-    const cityUpper = city.toUpperCase().trim();
-    const searchPat = Buffer.from("\x0dCITY,", "binary"); // CR + CITY + comma = 6 bytes
-    const replPat   = Buffer.from("\x0d" + cityUpper + ",", "binary");
-    const cityPos   = result.indexOf(searchPat);
-    if (cityPos !== -1) {
-      const delta = replPat.length - searchPat.length;
-      if (delta === 0) {
-        replPat.copy(result, cityPos);
-      } else {
-        // Splice: rebuild buffer with variable-length city name
-        result = Buffer.concat([
-          result.subarray(0, cityPos),
-          replPat,
-          result.subarray(cityPos + searchPat.length),
-        ]);
-        // Update ccpText in the Word 97 FIB so the character count stays correct.
-        // FIB starts at raw offset 512 (sector 0); ccpText is at FIB+76 = raw 588.
-        // (csw=14 → FibRgW97 ends at FIB+61; cslw at FIB+62; FibRgLw97 at FIB+64;
-        //  ccpText is the 4th long in FibRgLw97 = FIB+64+3*4 = FIB+76.)
-        const CCPTEXT_RAW = 588;
-        const ccpText = result.readInt32LE(CCPTEXT_RAW);
-        result.writeInt32LE(ccpText + delta, CCPTEXT_RAW);
-      }
-    }
+    const searchPat = Buffer.from("\x0dCITY,", "binary");
+    const replPat = Buffer.from("\x0d" + padAscii(city, 4) + ",", "binary");
+    const cityPos = result.indexOf(searchPat);
+    if (cityPos !== -1) replPat.copy(result, cityPos);
   }
 
   // Remove yellow highlighting: sprmCHighlight opcode 0x2A0C stored as [0x0C, 0x2A],
@@ -688,65 +675,142 @@ function buildFilename(original: string, customerName: string, wttNumber: string
     .replace(/WTT-BAN-0001/g, wttNumber);
 }
 
-/**
- * Font substitution map: Microsoft Office fonts → metric-compatible free alternatives.
- * Carlito is dimension-identical to Calibri (same glyph widths), so substituting it
- * preserves all text reflow and page breaks. Caladea is identical to Cambria.
- */
-const FONT_SUBSTITUTIONS: [string, string][] = [
-  ["Calibri",          "Carlito"],
-  ["Cambria Math",     "Caladea"],
-  ["Cambria",          "Caladea"],
-  ["Times New Roman",  "Liberation Serif"],
-  ["Arial Narrow",     "Liberation Sans Narrow"],
-  ["Arial",            "Liberation Sans"],
-  ["Courier New",      "Liberation Mono"],
-  ["Consolas",         "Liberation Mono"],
-  ["Symbol",           "Liberation Serif"],
-];
+const PROPOSAL_FONT = "Roboto";
+/** Bullet/symbol fonts — keep original so list markers render */
+const PRESERVE_FONT_NAMES = new Set(["Symbol", "Wingdings", "Webdings"]);
 
-/**
- * Patch Microsoft font names in DOCX XML files to their metric-compatible free
- * equivalents. This is the most reliable approach because LibreOffice's own
- * font-substitution XCU format varies between versions and may be silently ignored.
- */
-function patchFontsInDocx(docxBuf: Buffer): Buffer {
-  const zip = new PizZip(docxBuf);
-  let anyChanged = false;
+function shouldPreserveFont(fontAttrs: string): boolean {
+  return [...PRESERVE_FONT_NAMES].some((f) => fontAttrs.includes(`"${f}"`));
+}
+
+/** Force Roboto on every w:rFonts run (Word body, headers, styles, tables). */
+function applyRobotoToXml(content: string): string {
+  let out = content;
+
+  out = out.replace(/<w:rFonts[^/]*\/>/g, (tag) => {
+    if (shouldPreserveFont(tag)) return tag;
+    return `<w:rFonts w:ascii="${PROPOSAL_FONT}" w:hAnsi="${PROPOSAL_FONT}" w:cs="${PROPOSAL_FONT}" w:eastAsia="${PROPOSAL_FONT}"/>`;
+  });
+
+  // Spreadsheet + theme fonts
+  out = out.replace(/<a:latin typeface="[^"]*"/g, `<a:latin typeface="${PROPOSAL_FONT}"`);
+  out = out.replace(/<a:ea typeface="[^"]*"/g, `<a:ea typeface="${PROPOSAL_FONT}"`);
+  out = out.replace(/<a:cs typeface="[^"]*"/g, `<a:cs typeface="${PROPOSAL_FONT}"`);
+  out = out.replace(/<name val="(?!Roboto)[^"]+"/g, `<name val="${PROPOSAL_FONT}"`);
+
+  return out;
+}
+
+/** Center header/body logo images (LO .doc→.docx often shifts anchored images left). */
+function applyLogoCentering(content: string, xmlPath: string): string {
+  const isHeader = /word\/header\d*\.xml$/i.test(xmlPath);
+  if (!isHeader && !content.includes("<w:drawing>")) return content;
+
+  // Paragraphs with inline logo — center alignment
+  let out = content.replace(/(<w:p[ >][\s\S]*?<\/w:p>)/g, (para) => {
+    if (!para.includes("<w:drawing>")) return para;
+    const isLogoPara = para.includes("wp:inline") || /name="Image/i.test(para);
+    if (!isLogoPara && isHeader) return para;
+    if (/<w:jc\s/.test(para)) {
+      return para.replace(/<w:jc\s[^/]*\/>/g, '<w:jc w:val="center"/>');
+    }
+    if (para.includes("<w:pPr>")) {
+      return para.replace("<w:pPr>", '<w:pPr><w:jc w:val="center"/>');
+    }
+    return para.replace(/(<w:p(?:\s[^>]*)?>)/, "$1<w:pPr><w:jc w:val=\"center\"/></w:pPr>");
+  });
+
+  // Foreground anchored shapes (banner/logo) — page-centered, skip watermark (behindDoc="1")
+  out = out.replace(/<wp:anchor\b[^>]*>[\s\S]*?<\/wp:anchor>/g, (anchor) => {
+    if (/behindDoc="1"/.test(anchor)) return anchor;
+    if (!/wp:positionH/.test(anchor)) return anchor;
+    return anchor.replace(
+      /<wp:positionH[^>]*>[\s\S]*?<\/wp:positionH>/,
+      '<wp:positionH relativeFrom="page"><wp:align>center</wp:align></wp:positionH>',
+    );
+  });
+
+  return out;
+}
+
+/** Apply placeholder substitutions, Roboto, and layout fixes to a docx zip. */
+function patchDocxZip(
+  zip: PizZip,
+  customerName: string,
+  wttNumber: string,
+  city: string,
+): void {
+  const dateL = todayLong();
+  const dateS = todayShort();
+  const cnUpper = customerName.toUpperCase().trim();
+  const cityUpper = city ? city.toUpperCase().trim() : "";
 
   Object.keys(zip.files).forEach((name) => {
-    if (!name.toLowerCase().endsWith(".xml")) return;
+    if (!name.toLowerCase().endsWith(".xml") && !name.toLowerCase().endsWith(".rels")) return;
     const file = zip.file(name);
     if (!file || (file as any).dir) return;
     let content = file.asText();
     let changed = false;
 
-    for (const [msFont, freeFont] of FONT_SUBSTITUTIONS) {
-      // Font names appear as attribute values in w:rFonts, w:font, etc.
-      // We only replace exact-match quoted occurrences to avoid partial matches.
-      const quoted = `"${msFont}"`;
-      if (content.includes(quoted)) {
-        content = content.split(quoted).join(`"${freeFont}"`);
-        changed = true;
-      }
+    if (content.includes("COMPANY NAME")) { content = content.replace(/COMPANY NAME/g, cnUpper); changed = true; }
+    if (content.includes("WTT-BAN-0001")) { content = content.replace(/WTT-BAN-0001/g, wttNumber); changed = true; }
+    if (content.includes("01.Jan.2026")) { content = content.replace(/01\.Jan\.2026/g, dateL); changed = true; }
+    if (content.includes("01-Jan-26")) { content = content.replace(/01-Jan-26/g, dateS); changed = true; }
+    if (content.includes("1-Jan-26")) { content = content.replace(/1-Jan-26/g, dateS); changed = true; }
+    if (cityUpper && content.includes("CITY")) { content = content.replace(/\bCITY\b/g, cityUpper); changed = true; }
+    if (content.includes('w:val="yellow"')) {
+      content = content.replace(/<w:highlight w:val="yellow"\/>/g, "");
+      changed = true;
     }
 
-    if (changed) { zip.file(name, content); anyChanged = true; }
-  });
+    const roboto = applyRobotoToXml(content);
+    if (roboto !== content) { content = roboto; changed = true; }
 
+    const centered = applyLogoCentering(content, name);
+    if (centered !== content) { content = centered; changed = true; }
+
+    if (changed) zip.file(name, content);
+  });
+}
+
+function applyRobotoToDocx(docxBuf: Buffer): Buffer {
+  const zip = new PizZip(docxBuf);
+  let anyChanged = false;
+  Object.keys(zip.files).forEach((name) => {
+    if (!name.toLowerCase().endsWith(".xml")) return;
+    const file = zip.file(name);
+    if (!file || (file as any).dir) return;
+    const content = file.asText();
+    const patched = applyRobotoToXml(content);
+    if (patched !== content) { zip.file(name, patched); anyChanged = true; }
+  });
   if (!anyChanged) return docxBuf;
   return zip.generate({ type: "nodebuffer", compression: "DEFLATE" });
 }
 
+function isPdfBuffer(buf: Buffer): boolean {
+  return buf.length >= 4 && buf.subarray(0, 4).toString("ascii") === "%PDF";
+}
+
+/** XLSX is a ZIP archive (PK header). */
+function isXlsxBuffer(buf: Buffer): boolean {
+  return buf.length >= 4 && buf[0] === 0x50 && buf[1] === 0x4b;
+}
+
+function pdfFilenameFrom(originalFilename: string): string {
+  return originalFilename.replace(/\.(docx?|xlsx|xls)$/i, ".pdf");
+}
+
 /**
- * Convert a buffer (docx/xlsx) to PDF using LibreOffice headless.
- * Returns the PDF buffer, or the original buffer if conversion fails.
+ * Convert a buffer (doc/docx/xlsx) to PDF using LibreOffice headless.
+ * Never returns Word/Excel — throws if PDF conversion fails.
  */
 function convertToPdf(content: Buffer, originalFilename: string): { buf: Buffer; filename: string } {
   const ext = extname(originalFilename).toLowerCase();
-  if (ext !== ".docx") {
-    return { buf: content, filename: originalFilename };
+  if (ext !== ".doc" && ext !== ".docx" && ext !== ".xlsx") {
+    throw new Error(`Cannot convert to PDF: unsupported type ${ext}`);
   }
+  const pdfFilename = pdfFilenameFrom(originalFilename);
   const uid = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const tmpIn = join(tmpdir(), `wtt_${uid}${ext}`);
   const pdfName = basename(tmpIn, ext) + ".pdf";
@@ -757,22 +821,33 @@ function convertToPdf(content: Buffer, originalFilename: string): { buf: Buffer;
     execSync(`cp -r "${baseProfile}" "${loProfile}"`, { stdio: "pipe" });
   } catch { /* base profile may not exist — proceed without it */ }
   try {
-    // Patch Microsoft font names → metric-compatible free fonts before conversion
-    const patched = patchFontsInDocx(content);
+    const patched =
+      ext === ".docx" ? applyRobotoToDocx(content)
+      : ext === ".xlsx" ? applyRobotoToDocx(content)
+      : content;
     writeFileSync(tmpIn, patched);
+    // Calc component required for .xlsx → PDF (writer-only installs cannot load spreadsheets)
+    const pdfFilter = ext === ".xlsx" ? "pdf:calc_pdf_Export" : "pdf";
     execSync(
-      `libreoffice --headless "-env:UserInstallation=file://${loProfile}" --convert-to pdf --outdir "${tmpdir()}" "${tmpIn}"`,
+      `libreoffice --headless "-env:UserInstallation=file://${loProfile}" --convert-to "${pdfFilter}" --outdir "${tmpdir()}" "${tmpIn}"`,
       { timeout: 90_000, stdio: "pipe" },
     );
+    if (!existsSync(tmpOut)) {
+      const hint = ext === ".xlsx"
+        ? " Install LibreOffice Calc: apt-get install -y libreoffice-calc-nogui"
+        : "";
+      throw new Error(`LibreOffice did not produce a PDF file.${hint}`);
+    }
     const pdfBuf = readFileSync(tmpOut);
-    console.log(`[proposal-wizard] Converted ${originalFilename} → PDF (${pdfBuf.length} bytes)`);
-    return {
-      buf: pdfBuf,
-      filename: originalFilename.replace(/\.(docx?|xlsx)$/i, ".pdf"),
-    };
+    if (!isPdfBuffer(pdfBuf)) {
+      throw new Error("Conversion output is not a valid PDF");
+    }
+    console.log(`[proposal-wizard] Converted ${originalFilename} → ${pdfFilename} (${pdfBuf.length} bytes)`);
+    return { buf: pdfBuf, filename: pdfFilename };
   } catch (err) {
-    console.error("[proposal-wizard] PDF conversion failed, sending original:", (err as any)?.message ?? err);
-    return { buf: content, filename: originalFilename };
+    const msg = (err as Error)?.message ?? String(err);
+    console.error("[proposal-wizard] PDF conversion failed:", msg);
+    throw new Error(`PDF conversion failed for ${basename(originalFilename)}: ${msg}`);
   } finally {
     try { unlinkSync(tmpIn); } catch {}
     try { unlinkSync(tmpOut); } catch {}
@@ -781,13 +856,8 @@ function convertToPdf(content: Buffer, originalFilename: string): { buf: Buffer;
 }
 
 /**
- * Two-stage pipeline for .doc → PDF:
- *   1. Convert original .doc → .docx via LibreOffice (clean ZIP/XML — no binary patching)
- *   2. Apply all text substitutions directly in the docx XML (COMPANY NAME, WTT #, dates, city)
- *   3. Convert modified .docx → PDF via LibreOffice
- *
- * This avoids the "BrokenPackageRequest" error caused by manually patching the Word97
- * binary FIB header after variable-length text replacements.
+ * Legacy .doc → PDF: .doc → .docx (LO) → Roboto + substitutions + logo centering → PDF.
+ * Always uses the docx pipeline so fonts and header logo match the brand template.
  */
 function docToPdf(
   filePath: string,
@@ -796,15 +866,87 @@ function docToPdf(
   city: string,
   renamedFilename: string,
 ): { buf: Buffer; filename: string } {
-  // Step 1: produce the approved DOCX (same code path the user signed off on)
   const { buf: docxBuf } = docToDocx(filePath, customerName, wttNumber, city, renamedFilename);
+  return convertToPdf(docxBuf, renamedFilename.replace(/\.doc$/i, ".docx"));
+}
 
-  // Step 2: render that exact DOCX → PDF, no extra transformations
-  const { buf: pdfBuf, filename: pdfFilename } = convertToPdf(
-    docxBuf,
-    renamedFilename.replace(/\.doc$/i, ".docx"),
-  );
-  return { buf: pdfBuf, filename: pdfFilename };
+/**
+ * Build one email attachment:
+ * - Word (.doc / .docx) → PDF only
+ * - Excel (.xlsx) → stays .xlsx (substitutions applied, not converted)
+ */
+function buildProposalAttachment(
+  filePath: string,
+  originalFilename: string,
+  customerName: string,
+  wttNumber: string,
+  city: string,
+): { filename: string; content: Buffer; contentType: string } {
+  const renamedOrig = buildFilename(originalFilename, customerName, wttNumber);
+  const lower = filePath.toLowerCase();
+
+  if (lower.endsWith(".xlsx")) {
+    const buf = buildModifiedFile(filePath, customerName, wttNumber, city);
+    if (!isXlsxBuffer(buf)) {
+      throw new Error(`Attachment is not a valid Excel file: ${renamedOrig}`);
+    }
+    return {
+      filename: renamedOrig,
+      content: buf,
+      contentType: mimeFor(renamedOrig),
+    };
+  }
+
+  if (lower.endsWith(".doc")) {
+    const pdf = docToPdf(filePath, customerName, wttNumber, city, renamedOrig);
+    const filename = pdfFilenameFrom(pdf.filename);
+    if (!isPdfBuffer(pdf.buf)) throw new Error(`Attachment is not PDF: ${filename}`);
+    return { filename, content: pdf.buf, contentType: "application/pdf" };
+  }
+
+  if (lower.endsWith(".docx")) {
+    const modifiedBuf = buildModifiedFile(filePath, customerName, wttNumber, city);
+    const pdf = convertToPdf(modifiedBuf, renamedOrig);
+    const filename = pdfFilenameFrom(pdf.filename);
+    if (!isPdfBuffer(pdf.buf)) throw new Error(`Attachment is not PDF: ${filename}`);
+    return { filename, content: pdf.buf, contentType: "application/pdf" };
+  }
+
+  throw new Error(`Unsupported template file: ${originalFilename}`);
+}
+
+/** Nodemailer attachments — PDF for Word, native .xlsx for Excel. */
+function toNodemailerAttachments(
+  items: { filename: string; content: Buffer; contentType: string }[],
+): { filename: string; content: Buffer; contentType: string; contentDisposition: "attachment" }[] {
+  return items.map((item) => {
+    const lower = item.filename.toLowerCase();
+    if (lower.endsWith(".pdf")) {
+      if (!isPdfBuffer(item.content)) {
+        throw new Error(`Refusing to attach invalid PDF: ${item.filename}`);
+      }
+      console.log(`[proposal-wizard] Email attachment: ${item.filename} (${item.content.length} bytes, PDF)`);
+      return {
+        filename: item.filename,
+        content: item.content,
+        contentType: "application/pdf",
+        contentDisposition: "attachment" as const,
+      };
+    }
+    if (lower.endsWith(".xlsx")) {
+      if (!isXlsxBuffer(item.content)) {
+        throw new Error(`Refusing to attach invalid Excel: ${item.filename}`);
+      }
+      console.log(`[proposal-wizard] Email attachment: ${item.filename} (${item.content.length} bytes, XLSX)`);
+      return {
+        filename: item.filename,
+        content: item.content,
+        contentType: mimeFor(item.filename),
+        contentDisposition: "attachment" as const,
+      };
+    }
+    throw new Error(`Refusing to attach unsupported file type: ${item.filename}`);
+  });
 }
 
 /**
@@ -836,66 +978,8 @@ function docToDocx(
       { timeout: 90_000, stdio: "pipe" },
     );
 
-    // Stage 2: XML text replacements inside the .docx
-    const dateL    = todayLong();
-    const dateS    = todayShort();
-    const cnUpper  = customerName.toUpperCase().trim();
-    const cityUpper = city ? city.toUpperCase().trim() : "";
-
     const zip = new PizZip(readFileSync(tmpDocx));
-
-    Object.keys(zip.files).forEach((name) => {
-      if (!name.toLowerCase().endsWith(".xml") && !name.toLowerCase().endsWith(".rels")) return;
-      const file = zip.file(name);
-      if (!file || (file as any).dir) return;
-      let content = file.asText();
-      let changed = false;
-
-      if (content.includes("COMPANY NAME")) { content = content.replace(/COMPANY NAME/g, cnUpper); changed = true; }
-      if (content.includes("WTT-BAN-0001")) { content = content.replace(/WTT-BAN-0001/g, wttNumber); changed = true; }
-      if (content.includes("01.Jan.2026"))  { content = content.replace(/01\.Jan\.2026/g, dateL); changed = true; }
-      if (content.includes("01-Jan-26"))    { content = content.replace(/01-Jan-26/g, dateS); changed = true; }
-      if (content.includes("1-Jan-26"))     { content = content.replace(/1-Jan-26/g, dateS); changed = true; }
-      if (cityUpper && content.includes("CITY")) { content = content.replace(/\bCITY\b/g, cityUpper); changed = true; }
-      if (content.includes('w:val="yellow"')) {
-        content = content.replace(/<w:highlight w:val="yellow"\/>/g, "");
-        changed = true;
-      }
-
-      // ── Font size -1pt ────────────────────────────────────────────────────
-      // LibreOffice's .doc→.docx conversion adds ~1pt to all font sizes.
-      // Compensate by subtracting 2 half-points (= 1pt) from every w:sz / w:szCs value.
-      if (content.includes("w:sz")) {
-        const before = content;
-        content = content.replace(/(<w:szCs?\s+w:val=")(\d+)(")/g, (_, pre, val, suf) => {
-          const n = parseInt(val, 10);
-          return `${pre}${Math.max(n - 2, 8)}${suf}`; // floor at 4pt (half=8)
-        });
-        if (content !== before) changed = true;
-      }
-
-      // ── Header logo centering ─────────────────────────────────────────────
-      // LO's .doc→.docx conversion loses centre alignment on image paragraphs.
-      if (/word\/header\d*\.xml$/i.test(name) && content.includes("<w:drawing>")) {
-        const fixed = content.replace(
-          /(<w:p[ >][^]*?<\/w:p>)/g,
-          (para) => {
-            if (!para.includes("<w:drawing>")) return para;
-            if (/<w:jc\s/.test(para)) {
-              return para.replace(/<w:jc\s[^/]*\/>/g, '<w:jc w:val="center"/>');
-            }
-            if (para.includes("<w:pPr>")) {
-              return para.replace("<w:pPr>", '<w:pPr><w:jc w:val="center"/>');
-            }
-            return para.replace(/(<w:p(?:\s[^>]*)?>)/, '$1<w:pPr><w:jc w:val="center"/></w:pPr>');
-          },
-        );
-        if (fixed !== content) { content = fixed; changed = true; }
-      }
-
-      if (changed) zip.file(name, content);
-    });
-
+    patchDocxZip(zip, customerName, wttNumber, city);
     const docxBuf = zip.generate({ type: "nodebuffer", compression: "DEFLATE" });
     writeFileSync(tmpMod, docxBuf);
 
@@ -903,34 +987,125 @@ function docToDocx(
     console.log(`[proposal-wizard] docToDocx: ${basename(filePath)} → ${outFilename} (${docxBuf.length} bytes)`);
     return { buf: docxBuf, filename: outFilename };
   } catch (err) {
-    console.error("[proposal-wizard] docToDocx failed:", (err as any)?.message ?? err);
-    // Last resort: return the raw .doc (better than a corrupted binary-patched file)
-    return { buf: readFileSync(filePath), filename: renamedFilename };
+    const msg = (err as Error)?.message ?? String(err);
+    console.error("[proposal-wizard] docToDocx failed:", msg);
+    throw new Error(`Could not prepare document for PDF: ${basename(filePath)} (${msg})`);
   } finally {
     for (const f of [tmpOrig, tmpDocx, tmpMod]) { try { unlinkSync(f); } catch {} }
     try { execSync(`rm -rf "${loProfile1}"`, { stdio: "pipe" }); } catch {}
   }
 }
 
-/**
- * Record the sent proposal in the proposal_requests table so it appears
- * in the /proposals tracking dashboard.
- */
-async function recordProposalRequest(params: {
-  wttNumber: string;
-  customerName: string;
-  contactPerson: string;
-  email: string;
-  phone: string;
+interface ProposalSendJob {
   flowRate: string;
-  country: string;
+  customerName: string;
+  toEmail: string;
+  contactPerson: string;
+  phone: string;
   city: string;
-}): Promise<void> {
+  country: string;
+  notes?: string;
+  wttNumber: string;
+}
+
+/** Build PDFs and send proposal email (slow — run in background). */
+async function sendProposalEmailJob(job: ProposalSendJob): Promise<void> {
+  const smtpUser = process.env.PROPOSAL_SMTP_USER;
+  const smtpPass = process.env.PROPOSAL_SMTP_PASSWORD;
+  if (!smtpUser || !smtpPass) throw new Error("Proposal email not configured on server");
+
+  const dir = safeJoin(PROPOSAL_ROOT, job.flowRate);
+  if (!dir) throw new Error("Invalid flow rate");
+
+  const files = getProposalTemplateFiles(job.flowRate);
+  if (files.length === 0) throw new Error("No files found for selected flow rate");
+
+  const customer = job.customerName.toUpperCase().trim();
+  const kld = kldFromFolder(job.flowRate);
+
+  console.log(`[proposal-wizard] Background send started: ${job.wttNumber} → ${job.toEmail}`);
+  const built = files.map((f) =>
+    buildProposalAttachment(join(dir, f), f, customer, job.wttNumber, job.city || ""),
+  );
+  const attachments = toNodemailerAttachments(built);
+
+  const transporter = nodemailer.createTransport({
+    host: "smtp.office365.com",
+    port: 587,
+    secure: false,
+    requireTLS: true,
+    auth: { user: smtpUser, pass: smtpPass },
+  });
+
+  const emailHtml = buildEmailHtml(customer, kld, job.wttNumber, attachments.map((a) => a.filename));
+
+  await transporter.sendMail({
+    from: `WTT INTERNATIONAL <${smtpUser}>`,
+    to: job.toEmail,
+    subject: `Proposal – ${job.customerName} – ${kld} KLD STP – ${job.wttNumber}`,
+    html: emailHtml,
+    attachments,
+  });
+
+  await updateProposalRequestStatus(job.wttNumber, "sent");
+  console.log(`[proposal-wizard] Background send complete: ${job.wttNumber}`);
+}
+
+function queueProposalEmailJob(job: ProposalSendJob): void {
+  setImmediate(() => {
+    void sendProposalEmailJob(job).catch(async (err) => {
+      const msg = (err as Error)?.message ?? String(err);
+      console.error(`[proposal-wizard] Background send failed (${job.wttNumber}):`, msg);
+      try {
+        await updateProposalRequestStatus(job.wttNumber, "failed", msg.slice(0, 500));
+      } catch (dbErr) {
+        console.error("[proposal-wizard] Could not update failed status:", dbErr);
+      }
+    });
+  });
+}
+
+async function updateProposalRequestStatus(
+  wttNumber: string,
+  status: string,
+  errorNote?: string,
+): Promise<void> {
+  if (errorNote) {
+    await pool.query(
+      `UPDATE proposal_requests SET status = $1, notes = $2, updated_at = NOW() WHERE proposal_no = $3`,
+      [status, errorNote, wttNumber],
+    );
+  } else {
+    await pool.query(
+      `UPDATE proposal_requests SET status = $1, updated_at = NOW() WHERE proposal_no = $2`,
+      [status, wttNumber],
+    );
+  }
+}
+
+/**
+ * Record the proposal in proposal_requests (dashboard tracking).
+ */
+async function recordProposalRequest(
+  params: {
+    wttNumber: string;
+    customerName: string;
+    contactPerson: string;
+    email: string;
+    phone: string;
+    flowRate: string;
+    country: string;
+    city: string;
+    notes?: string;
+  },
+  status: "pending" | "sent" | "failed" = "sent",
+): Promise<void> {
   try {
+    const noteText = params.notes?.trim() || `Bangladesh Wizard — ${params.wttNumber}`;
     await pool.query(
       `INSERT INTO proposal_requests
          (proposal_no, company_name, city, country, contact_person, email, phone, system_option, flow_rate, status, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8,'sent',$9)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8,$9,$10)
        ON CONFLICT (proposal_no) DO NOTHING`,
       [
         params.wttNumber,
@@ -941,11 +1116,11 @@ async function recordProposalRequest(params: {
         params.email,
         params.phone || "",
         kldFromFolder(params.flowRate),
-        `Bangladesh Wizard — ${params.wttNumber}`,
+        status,
+        noteText,
       ],
     );
   } catch (err) {
-    // Non-fatal — log but don't fail the email send
     console.error("[proposal-wizard] recordProposalRequest error:", err);
   }
 }
@@ -1052,7 +1227,7 @@ router.post("/proposal-wizard/send-email", async (req, res) => { try {
   const dir = safeJoin(PROPOSAL_ROOT, flowRate);
   if (!dir) return res.status(400).json({ error: "Invalid flow rate" });
 
-  const files = getFilesInFolder(flowRate);
+  const files = getProposalTemplateFiles(flowRate);
   if (files.length === 0) return res.status(404).json({ error: "No files found for flow rate" });
 
   const customer = customerName.toUpperCase().trim();
@@ -1062,18 +1237,10 @@ router.post("/proposal-wizard/send-email", async (req, res) => { try {
 
   const kld = kldFromFolder(flowRate);
 
-  const attachments = files.map((f) => {
-    const filePath = join(dir, f);
-    const renamedOrig = buildFilename(f, customer, wttNumber);
-    if (f.toLowerCase().endsWith(".doc")) {
-      // Convert .doc → .docx (applies substitutions cleanly) and send as Word document
-      const { buf, filename } = docToDocx(filePath, customer, wttNumber, city || "", renamedOrig);
-      return { filename, content: buf, contentType: mimeFor(filename) };
-    }
-    // .docx / .xlsx — apply substitutions, send in original format (no PDF conversion)
-    const buf = buildModifiedFile(filePath, customer, wttNumber, city || "");
-    return { filename: renamedOrig, content: buf, contentType: mimeFor(renamedOrig) };
-  });
+  const built = files.map((f) =>
+    buildProposalAttachment(join(dir, f), f, customer, wttNumber, city || ""),
+  );
+  const attachments = toNodemailerAttachments(built);
 
   const transporter = nodemailer.createTransport({
     host: "smtp.office365.com",
@@ -1117,6 +1284,7 @@ router.post("/proposal-wizard/send-email", async (req, res) => { try {
 });
 
 // POST /api/proposal-wizard/send-public  (public-facing wizard — no auth needed)
+// Returns proposal number immediately; PDF conversion + email run in background.
 router.post("/proposal-wizard/send-public", async (req, res) => {
   try {
     const {
@@ -1136,74 +1304,52 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
       return res.status(400).json({ error: "flowRate, customerName and toEmail required" });
     }
 
-    const smtpUser = process.env.PROPOSAL_SMTP_USER;
-    const smtpPass = process.env.PROPOSAL_SMTP_PASSWORD;
-    if (!smtpUser || !smtpPass) {
+    if (!process.env.PROPOSAL_SMTP_USER || !process.env.PROPOSAL_SMTP_PASSWORD) {
       return res.status(503).json({ error: "Proposal email not configured. Please contact WTT directly." });
     }
 
     const dir = safeJoin(PROPOSAL_ROOT, flowRate);
     if (!dir) return res.status(400).json({ error: "Invalid flow rate" });
 
-    const files = getFilesInFolder(flowRate);
+    const files = getProposalTemplateFiles(flowRate);
     if (files.length === 0) return res.status(404).json({ error: "No files found for selected flow rate" });
 
     const customer = customerName.toUpperCase().trim();
     const counter = await nextCounter(customer, flowRate);
     const wttNumber = formatWttNumber(counter);
-    const kld = kldFromFolder(flowRate);
 
-    const attachments = files.map((f) => {
-      const filePath = join(dir, f);
-      const renamedOrig = buildFilename(f, customer, wttNumber);
-      if (f.toLowerCase().endsWith(".doc")) {
-        // Convert .doc → .docx (applies substitutions cleanly) and send as Word document
-        const { buf, filename } = docToDocx(filePath, customer, wttNumber, city || "", renamedOrig);
-        return { filename, content: buf, contentType: mimeFor(filename) };
-      }
-      // .docx / .xlsx — apply substitutions, send in original format (no PDF conversion)
-      const buf = buildModifiedFile(filePath, customer, wttNumber, city || "");
-      return { filename: renamedOrig, content: buf, contentType: mimeFor(renamedOrig) };
-    });
-
-    const transporter = nodemailer.createTransport({
-      host: "smtp.office365.com",
-      port: 587,
-      secure: false,
-      requireTLS: true,
-      auth: { user: smtpUser, pass: smtpPass },
-    });
-
-    const emailHtml = buildEmailHtml(customer, kld, wttNumber, attachments.map((a) => a.filename));
-
-    await transporter.sendMail({
-      from: `WTT INTERNATIONAL <${smtpUser}>`,
-      to: toEmail,
-      subject: `Proposal – ${customerName} – ${kld} KLD STP – ${wttNumber}`,
-      html: emailHtml,
-      attachments,
-    });
-
-    // Record for tracking in /proposals dashboard
     await recordProposalRequest({
       wttNumber,
       customerName: customer,
-      contactPerson: contactPerson || customer,
+      contactPerson: contactPerson || customerName,
       email: toEmail,
       phone: phone || "",
       flowRate,
       country: country || "Bangladesh",
       city: city || "Bangladesh",
+      notes: notes?.trim(),
+    }, "pending");
+
+    queueProposalEmailJob({
+      flowRate,
+      customerName,
+      toEmail,
+      contactPerson: contactPerson || customerName,
+      phone: phone || "",
+      city: city || "",
+      country: country || "Bangladesh",
+      notes: notes?.trim(),
+      wttNumber,
     });
 
-    res.json({ success: true, wttNumber, message: `Proposal sent to ${toEmail}` });
+    res.json({
+      success: true,
+      wttNumber,
+      message: "Your request has been received. Proposal documents will be emailed to you shortly.",
+    });
   } catch (err: any) {
     console.error("send-public error:", err);
-    const msg = err?.message || String(err);
-    if (msg.includes("534") || msg.includes("WebLoginRequired") || msg.includes("Invalid login")) {
-      return res.status(503).json({ error: "Email delivery failed: Gmail credentials need to be refreshed. Please contact WTT." });
-    }
-    res.status(500).json({ error: msg || "Failed to send proposal" });
+    res.status(500).json({ error: err?.message || "Failed to submit proposal request" });
   }
 });
 
@@ -1237,7 +1383,7 @@ router.post("/proposal-wizard/requests/:id/resend", async (req, res) => {
     const dir = safeJoin(PROPOSAL_ROOT, flowRateFolder);
     if (!dir) return res.status(400).json({ error: "Invalid flow rate folder" });
 
-    const files = getFilesInFolder(flowRateFolder);
+    const files = getProposalTemplateFiles(flowRateFolder);
     if (files.length === 0) return res.status(404).json({ error: "No files found for selected flow rate" });
 
     const customer = String(p.company_name).toUpperCase().trim();
@@ -1245,18 +1391,10 @@ router.post("/proposal-wizard/requests/:id/resend", async (req, res) => {
     const kld = kldFromFolder(flowRateFolder);
     const city = String(p.city || "Bangladesh");
 
-    const attachments = files.map((f) => {
-      const filePath = join(dir, f);
-      const renamedOrig = buildFilename(f, customer, wttNumber);
-      if (f.toLowerCase().endsWith(".doc")) {
-        // Convert .doc → .docx (applies substitutions cleanly) and send as Word document
-        const { buf, filename } = docToDocx(filePath, customer, wttNumber, city, renamedOrig);
-        return { filename, content: buf, contentType: mimeFor(filename) };
-      }
-      // .docx / .xlsx — apply substitutions, send in original format (no PDF conversion)
-      const buf = buildModifiedFile(filePath, customer, wttNumber, city);
-      return { filename: renamedOrig, content: buf, contentType: mimeFor(renamedOrig) };
-    });
+    const built = files.map((f) =>
+      buildProposalAttachment(join(dir, f), f, customer, wttNumber, city),
+    );
+    const attachments = toNodemailerAttachments(built);
 
     const transporter = nodemailer.createTransport({
       host: "smtp.office365.com",
