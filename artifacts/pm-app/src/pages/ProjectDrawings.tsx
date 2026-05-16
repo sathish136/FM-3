@@ -708,6 +708,8 @@ function PdfViewer({
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [pageVisible, setPageVisible] = useState(true);
+  const [pageDir, setPageDir] = useState<"next" | "prev">("next");
+  const [pageEntering, setPageEntering] = useState(false);
   const [pdfError, setPdfError] = useState(false);
   const [scale, setScale] = useState(1.2);
   const [annotTool, setAnnotTool] = useState<AnnotationTool>("select");
@@ -771,11 +773,13 @@ function PdfViewer({
     if (!totalPages) return;
     scrollToBottomRef.current = false;
     isTransitioningRef.current = true;
+    setPageDir("next");
     setPageVisible(false);
+    setPageEntering(false);
     setTimeout(() => {
       setPageNumber(Math.max(1, Math.min(totalPages, n)));
-    }, 180);
-    setTimeout(() => { isTransitioningRef.current = false; }, 800);
+    }, 220);
+    setTimeout(() => { isTransitioningRef.current = false; }, 900);
   }, [totalPages]);
 
   // Navigate to a page and scroll to bottom (going back)
@@ -783,11 +787,13 @@ function PdfViewer({
     if (!totalPages) return;
     scrollToBottomRef.current = true;
     isTransitioningRef.current = true;
+    setPageDir("prev");
     setPageVisible(false);
+    setPageEntering(false);
     setTimeout(() => {
       setPageNumber(Math.max(1, Math.min(totalPages, n)));
-    }, 180);
-    setTimeout(() => { isTransitioningRef.current = false; }, 800);
+    }, 220);
+    setTimeout(() => { isTransitioningRef.current = false; }, 900);
   }, [totalPages]);
 
   // Use refs for wheel handler to always have latest values without re-adding listener
@@ -1186,8 +1192,15 @@ function PdfViewer({
                     className="relative"
                     style={{
                       opacity: pageVisible ? 1 : 0,
-                      transform: pageVisible ? "translateY(0)" : "translateY(8px)",
-                      transition: "opacity 0.25s ease, transform 0.25s ease",
+                      transform: pageVisible
+                        ? "translateX(0) scale(1)"
+                        : pageEntering
+                          ? (pageDir === "next" ? "translateX(48px) scale(0.97)" : "translateX(-48px) scale(0.97)")
+                          : (pageDir === "next" ? "translateX(-48px) scale(0.97)" : "translateX(48px) scale(0.97)"),
+                      transition: pageVisible
+                        ? "opacity 0.28s cubic-bezier(0.22,1,0.36,1), transform 0.28s cubic-bezier(0.22,1,0.36,1)"
+                        : "opacity 0.18s ease-in, transform 0.18s ease-in",
+                      willChange: "opacity, transform",
                     }}
                   >
                     <Page
@@ -1198,7 +1211,8 @@ function PdfViewer({
                       className="shadow-2xl"
                       onRenderSuccess={(page) => {
                         setPageDims({ width: page.width, height: page.height });
-                        setPageVisible(true);
+                        setPageEntering(true);
+                        requestAnimationFrame(() => requestAnimationFrame(() => setPageVisible(true)));
                       }}
                     />
                     <PdfWatermark
