@@ -4969,9 +4969,9 @@ export default function ProjectDrawings() {
   );
 
   useEffect(() => {
-    if (viewerIdx !== null && filtered[viewerIdx]) {
-      handleLogView(filtered[viewerIdx].id);
-      const drawing = filtered[viewerIdx];
+    if (viewerIdx !== null && viewerSource[viewerIdx]) {
+      handleLogView(viewerSource[viewerIdx].id);
+      const drawing = viewerSource[viewerIdx];
       if (!fileDataCache[drawing.id]) {
         fetch(`${BASE}/api/project-drawings/${drawing.id}/file`)
           .then(r => r.ok ? r.json() : null)
