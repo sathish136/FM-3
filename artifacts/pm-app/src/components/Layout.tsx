@@ -21,7 +21,8 @@ import { WaterDropAnimation } from "@/components/WaterAnimation";
 import { useTheme, THEME_PRESETS } from "@/hooks/useTheme";
 import { useNavStyle } from "@/hooks/useNavStyle";
 import { useSlideshowContext } from "@/contexts/SlideshowContext";
-import { PATH_TO_MODULE, isModuleRoleAllowed } from "@/lib/appModules";
+import { APP_MODULES, ALL_MODULE_KEYS, isModuleRoleAllowed, OPEN_PATHS } from "@/lib/appModules";
+import { buildNavGroups, installedPathsFromModules, type NavItem } from "@/lib/buildNavGroups";
 
 interface InAppNotification {
   id: number;
@@ -191,179 +192,8 @@ interface NavItem {
   children?: { path: string; label: string }[];
 }
 
-const navGroups: { label: string; items: NavItem[] }[] = [
-  {
-    label: "Shortcuts",
-    items: [
-      { path: "/purchase-dashboard",  label: "Purchase Dashboard",  icon: BarChart3,  color: "text-blue-400",    bgColor: "bg-blue-500/15" },
-      { path: "/stores-dashboard",    label: "Stores Dashboard",    icon: Warehouse,  color: "text-teal-400",    bgColor: "bg-teal-500/15" },
-      { path: "/finance-dashboard",   label: "Finance Dashboard",   icon: Receipt,    color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
-      { path: "/hrms/analytics",      label: "HR Analytics",        icon: BarChart3,  color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
-      { path: "/hrms/task-summary",   label: "Task Summary",        icon: ListChecks, color: "text-lime-400",    bgColor: "bg-lime-500/15" },
-      { path: "/sales-dashboard",     label: "Sales Dashboard",     icon: BarChart3,  color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
-    ],
-  },
-  {
-    label: "Work",
-    items: [
-      { path: "/calendar", label: "Calendar", icon: Calendar, color: "text-blue-400", bgColor: "bg-blue-500/15" },
-    ],
-  },
-  {
-    label: "Main",
-    items: [
-      { path: "/", label: "Dashboard", icon: LayoutDashboard, color: "text-sky-400", bgColor: "bg-sky-500/15" },
-      { path: "/team-pulse", label: "Team Pulse", icon: Activity, color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
-      { path: "/team-reporting", label: "Team Reporting", icon: ClipboardList, color: "text-indigo-400", bgColor: "bg-indigo-500/15" },
-    ],
-  },
-  {
-    label: "IP Call Logs",
-    items: [
-      { path: "/ip-call-logs/hr",        label: "HR Recruitment",     icon: UserPlus,     color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
-      { path: "/ip-call-logs/project",   label: "Project Followups",  icon: Briefcase,    color: "text-blue-400",    bgColor: "bg-blue-500/15"    },
-      { path: "/ip-call-logs/purchase",  label: "Purchase Followups", icon: ShoppingCart, color: "text-amber-400",   bgColor: "bg-amber-500/15"   },
-      { path: "/ip-call-logs/marketing", label: "Marketing Followups",icon: Megaphone,    color: "text-violet-400",  bgColor: "bg-violet-500/15"  },
-    ],
-  },
-  {
-    label: "Projects",
-    items: [
-      { path: "/projects",          label: "Projects",          icon: Briefcase,        color: "text-blue-400",   bgColor: "bg-blue-500/15" },
-      { path: "/project-board",     label: "Project Board",     icon: LayoutGrid,       color: "text-indigo-400", bgColor: "bg-indigo-500/15" },
-      { path: "/task-management",   label: "Task Management",   icon: Activity,         color: "text-purple-400", bgColor: "bg-purple-500/15" },
-      { path: "/project-timeline",  label: "Timeline",          icon: GanttChartSquare, color: "text-cyan-400",   bgColor: "bg-cyan-500/15" },
-      { path: "/meeting-minutes",      label: "Meeting Minutes",      icon: FileText,         color: "text-teal-400",   bgColor: "bg-teal-500/15" },
-      { path: "/meeting-discussion",   label: "Project Discussion",   icon: MessageSquare,    color: "text-blue-400",   bgColor: "bg-blue-500/15" },
-      { path: "/speech-translator", label: "Speech Translator", icon: Languages,        color: "text-violet-400", bgColor: "bg-violet-500/15" },
-      { path: "/translator",        label: "Translator",        icon: Globe,            color: "text-blue-400",   bgColor: "bg-blue-500/15" },
-      { path: "/presentation",      label: "Presentation",      icon: MonitorPlay,      color: "text-orange-400", bgColor: "bg-orange-500/15" },
-    ],
-  },
-  {
-    label: "Design & Engineering",
-    items: [
-      { path: "/design-3d",             label: "Design 3D",            icon: Box,            color: "text-violet-400",  bgColor: "bg-violet-500/15" },
-      { path: "/design-2d",             label: "Design 2D",            icon: PenLine,        color: "text-blue-400",    bgColor: "bg-blue-500/15" },
-      { path: "/step-part-drawings",    label: "STEP Part Drawings",   icon: Ruler,          color: "text-sky-400",     bgColor: "bg-sky-500/15" },
-      { path: "/pid",                   label: "P&ID Process",         icon: GitBranch,      color: "text-rose-400",    bgColor: "bg-rose-500/15" },
-      { path: "/nesting",               label: "Nesting",              icon: Layers,         color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
-      { path: "/project-drawings",      label: "Project Drawings",     icon: FolderOpen,     color: "text-sky-400",     bgColor: "bg-sky-500/15" },
-      { path: "/approved-drawings",     label: "Approved Drawings",    icon: CheckCircle2,   color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
-      { path: "/drawings/mechanical",   label: "Design Mechanical",    icon: Cog,            color: "text-blue-400",    bgColor: "bg-blue-500/15" },
-      { path: "/drawings/electrical",   label: "Design Electrical",    icon: Zap,            color: "text-amber-400",   bgColor: "bg-amber-500/15" },
-      { path: "/drawings/civil",        label: "Design Civil",         icon: Building2,      color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
-      { path: "/civil-drawing-ai",      label: "Civil Drawing AI",     icon: Sparkles,       color: "text-purple-400",  bgColor: "bg-purple-500/15" },
-    ],
-  },
-  {
-    label: "Procurement",
-    items: [
-      { path: "/material-request",   label: "Material Request",   icon: ShoppingCart, color: "text-amber-400",  bgColor: "bg-amber-500/15" },
-      { path: "/purchase-order",     label: "Purchase Order",     icon: ShoppingBag,  color: "text-orange-400", bgColor: "bg-orange-500/15" },
-      { path: "/purchase-dashboard",   label: "Purchase Dashboard",   icon: BarChart3,    color: "text-blue-400",   bgColor: "bg-blue-500/15" },
-      { path: "/stores-dashboard",     label: "Stores Dashboard",     icon: Warehouse,    color: "text-teal-400",   bgColor: "bg-teal-500/15" },
-      { path: "/stock-reports",        label: "Stock Reports",        icon: Package,      color: "text-cyan-400",   bgColor: "bg-cyan-500/15" },
-      { path: "/finance-dashboard",     label: "Finance Dashboard",        icon: Receipt,   color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
-    ],
-  },
-  {
-    label: "Communication",
-    items: [
-      { path: "/email",       label: "Email",            icon: Mail,          color: "text-sky-400",    bgColor: "bg-sky-500/15" },
-      { path: "/smart-inbox", label: "Smart Inbox (AI)", icon: Bot,           color: "text-orange-400", bgColor: "bg-orange-500/15" },
-    ],
-  },
-  {
-    label: "Proposal",
-    items: [
-      { path: "/proposal-wizard",   label: "Proposal Wizard",     icon: Sparkles,      color: "text-blue-400",  bgColor: "bg-blue-500/15" },
-      { path: "/proposal-library",  label: "Proposal Library",    icon: FileText,      color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
-      { path: "/proposals",         label: "Proposal Requests",   icon: ClipboardList, color: "text-blue-400",    bgColor: "bg-blue-500/15"   },
-      { path: "/process-proposal",  label: "Process & Proposal",  icon: Layers,        color: "text-sky-400",     bgColor: "bg-sky-500/15"    },
-    ],
-  },
-  {
-    label: "Marketing & CRM",
-    items: [
-      { path: "/marketing",         label: "Marketing",        icon: Megaphone, color: "text-violet-400", bgColor: "bg-violet-500/15" },
-      { path: "/sales-dashboard",   label: "Sales Dashboard",  icon: BarChart3, color: "text-emerald-400",bgColor: "bg-emerald-500/15" },
-      { path: "/leads",            label: "Leads",           icon: Target,    color: "text-rose-400",   bgColor: "bg-rose-500/15" },
-      { path: "/vc-card-scanner",  label: "VC Card Scanner", icon: ScanLine,  color: "text-amber-400",  bgColor: "bg-amber-500/15" },
-      { path: "/plant-enquiry",    label: "Plant Enquiry",   icon: Factory,   color: "text-blue-400",   bgColor: "bg-blue-500/15" },
-      { path: "/campaigns",        label: "Campaigns",       icon: BarChart3, color: "text-pink-400",   bgColor: "bg-pink-500/15" },
-    ],
-  },
-  {
-    label: "HR",
-    items: [
-      { path: "/hrms",               label: "HRMS",           icon: UserCircle,    color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
-      { path: "/hrms/checkin",       label: "Attendance",     icon: Clock,         color: "text-teal-400",    bgColor: "bg-teal-500/15" },
-      { path: "/hrms/leave-request", label: "Leave Request",  icon: Calendar,      color: "text-amber-400",   bgColor: "bg-amber-500/15" },
-      { path: "/hrms/claims",        label: "Claims",         icon: Receipt,       color: "text-violet-400",  bgColor: "bg-violet-500/15" },
-      { path: "/hrms/recruitment",   label: "Recruitment",    icon: UserPlus,      color: "text-blue-400",    bgColor: "bg-blue-500/15" },
-      { path: "/hrms/incidents",     label: "HR Incidents",   icon: AlertTriangle, color: "text-rose-400",    bgColor: "bg-rose-500/15" },
-      { path: "/hrms/analytics",    label: "HR Analytics",   icon: BarChart3,     color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
-      { path: "/hrms/performance",       label: "Performance",     icon: TrendingUp,    color: "text-cyan-400",    bgColor: "bg-cyan-500/15" },
-      { path: "/hrms/team-performance",  label: "Team Dashboard",  icon: Activity,      color: "text-pink-400",    bgColor: "bg-pink-500/15" },
-      { path: "/hrms/task-summary",      label: "Task Summary",    icon: ListChecks,    color: "text-lime-400",    bgColor: "bg-lime-500/15" },
-      { path: "/hrms/daily-reporting",   label: "Daily Reporting", icon: ClipboardList, color: "text-orange-400",  bgColor: "bg-orange-500/15" },
-      { path: "/hrms/work-monitor",      label: "Work Monitor",    icon: Clock,         color: "text-blue-400",    bgColor: "bg-blue-500/15" },
-      { path: "/hrms/id-cards",          label: "ID Cards",        icon: CreditCard,    color: "text-yellow-400",  bgColor: "bg-yellow-500/15" },
-      { path: "/hrms/celebrations",      label: "Celebrations",    icon: PartyPopper,   color: "text-pink-400",    bgColor: "bg-pink-500/15" },
-    ],
-  },
-  {
-    label: "Workshop",
-    items: [
-      { path: "/workshop/welder",   label: "Welder Job Cards",   icon: Zap,           color: "text-rose-500",   bgColor: "bg-rose-500/15" },
-      { path: "/workshop/fitter",   label: "Fitter Job Cards",   icon: Activity,      color: "text-blue-400",   bgColor: "bg-blue-500/15" },
-    ],
-  },
-  {
-    label: "O&M",
-    items: [
-      { path: "/om/chemical-consumption", label: "Chemical Consumption", icon: FlaskConical, color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
-      { path: "/om/lab-reports",          label: "Lab Reports",          icon: TestTubes,    color: "text-blue-400",    bgColor: "bg-blue-500/15"    },
-      { path: "/om/site-performance",     label: "Site Performance",     icon: BarChart3,    color: "text-indigo-400",  bgColor: "bg-indigo-500/15"  },
-    ],
-  },
-  {
-    label: "PLC & Automation",
-    items: [
-      { path: "/plc-automation/device-config",       label: "PLC Device Config",     icon: Cpu,            color: "text-sky-400",     bgColor: "bg-sky-500/15"     },
-      { path: "/plc-automation/site-calls",          label: "Online Support Calls", icon: Phone,          color: "text-cyan-400",    bgColor: "bg-cyan-500/15"    },
-      { path: "/plc-automation/service-reports",     label: "Service Reports",       icon: ClipboardList,  color: "text-blue-400",    bgColor: "bg-blue-500/15"    },
-      { path: "/plc-automation/panel-inspection",    label: "Panel Inspection",      icon: ClipboardList,  color: "text-orange-400",  bgColor: "bg-orange-500/15"  },
-      { path: "/plc-automation/support-tickets",     label: "Support Tickets",       icon: Ticket,         color: "text-violet-400",  bgColor: "bg-violet-500/15"  },
-      { path: "/plc-automation/network-architecture",label: "Network Architecture",  icon: Network,        color: "text-blue-400",    bgColor: "bg-blue-500/15"    },
-    ],
-  },
-  {
-    label: "Monitoring",
-    items: [
-      { path: "/site-data", label: "Site Data", icon: Activity, color: "text-cyan-400", bgColor: "bg-cyan-500/15" },
-      { path: "/site-db", label: "Site DB Viewer", icon: Database, color: "text-indigo-400", bgColor: "bg-indigo-500/15" },
-      { path: "/site-db/analyze", label: "Plant Analytics", icon: Sparkles, color: "text-violet-400", bgColor: "bg-violet-500/15" },
-    ],
-  },
-  {
-    label: "Executive",
-    items: [
-      { path: "/mis-report", label: "MD Dashboard", icon: BarChart3, color: "text-violet-400", bgColor: "bg-violet-500/15" },
-    ],
-  },
-  {
-    label: "Admin",
-    items: [
-      { path: "/payment-tracker", label: "Bill & Recharge", icon: Receipt,  color: "text-indigo-400", bgColor: "bg-indigo-500/15" },
-      { path: "/user-management",   label: "User Management",   icon: Users,      color: "text-red-400",    bgColor: "bg-red-500/15" },
-      { path: "/agent-management",  label: "Agent Management",  icon: UserCheck,  color: "text-violet-400", bgColor: "bg-violet-500/15" },
-      { path: "/settings",        label: "Settings",        icon: Settings, color: "text-slate-400",  bgColor: "bg-slate-500/15" },
-      { path: "/email-settings",  label: "Email Settings",  icon: MailOpen, color: "text-sky-400",    bgColor: "bg-sky-500/15" },
-    ],
-  },
-];
+const navGroups = buildNavGroups(APP_MODULES);
+const installedModulePaths = installedPathsFromModules(APP_MODULES);
 
 const allNavItems: NavItem[] = navGroups.flatMap(g => g.items).filter(
   (item, idx, arr) => arr.findIndex(x => x.path === item.path) === idx
@@ -835,7 +665,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
           try {
             const mods = JSON.parse(data.modules) as string[];
             if (mods.length > 0) {
-              const allKeys = [...new Set(Object.values(PATH_TO_MODULE))];
+              const allKeys = [...ALL_MODULE_KEYS];
               const roles: Record<string, string> = {};
               allKeys.forEach(key => { roles[key] = mods.includes(key) ? "write" : "none"; });
               setModuleRoles(roles);
@@ -1029,7 +859,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
           {/* Center */}
           <div className="flex flex-1 items-center justify-center gap-2 px-4">
             <div className="hidden md:flex flex-1 max-w-sm">
-              <GlobalSearch allowedPaths={isAdmin ? undefined : new Set(visibleAllNavItems.map(i => i.path))} />
+              <GlobalSearch allowedPaths={isAdmin ? installedModulePaths : new Set(visibleAllNavItems.map(i => i.path))} />
             </div>
             <AISearch currentPath={location} forceOpen={aiTrigger} hideTriggerOnMobile />
             {rec.isRecording && (

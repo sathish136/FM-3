@@ -1,7 +1,10 @@
 /**
  * Single source of truth for app modules (user management, nav access, search).
  * When adding a route, add an entry here with key, label, group, and paths.
+ * To hide a module app-wide, add its key to DISABLED_MODULE_KEYS in appModuleConfig.ts.
  */
+
+import { isModuleEnabled } from "./appModuleConfig";
 
 export interface AppModule {
   key: string;
@@ -11,7 +14,7 @@ export interface AppModule {
   paths: string[];
 }
 
-export const APP_MODULES: AppModule[] = [
+const ALL_APP_MODULES: AppModule[] = [
   // Core
   { key: "dashboard", label: "Dashboard", group: "Core", paths: ["/"] },
   { key: "calendar", label: "Calendar", group: "Core", paths: ["/calendar"] },
@@ -125,6 +128,9 @@ export const APP_MODULES: AppModule[] = [
   { key: "email-settings", label: "Email Settings", group: "Admin", paths: ["/email-settings"] },
 ];
 
+/** Active modules — excludes keys in DISABLED_MODULE_KEYS (appModuleConfig.ts). */
+export const APP_MODULES: AppModule[] = ALL_APP_MODULES.filter(m => isModuleEnabled(m.key));
+
 /** Paths that do not require a module grant (profile, public-ish in-app pages). */
 export const OPEN_PATHS = ["/profile"];
 
@@ -157,8 +163,12 @@ export function isModuleRoleAllowed(
   moduleRoles: Record<string, string> | null,
   pathname: string,
 ): boolean {
+  const path = pathname.split("?")[0].replace(/\/$/, "") || "/";
+  if (OPEN_PATHS.includes(path)) return true;
+
   const key = resolveModuleKey(pathname);
-  if (!key) return true;
+  if (!key) return false;
+
   if (moduleRoles === null) return true;
   const role = moduleRoles[key];
   if (role === undefined) return false;
