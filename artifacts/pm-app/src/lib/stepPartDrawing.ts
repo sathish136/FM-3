@@ -267,10 +267,42 @@ export function formatMm(v: number): string {
 
 /** Dimension text on drawing (mm, no unit suffix for whole numbers). */
 export function formatDimLabel(v: number): string {
+  if (!isFinite(v) || isNaN(v)) return "—";
   const mm = Math.abs(v);
   if (mm >= 100) return String(Math.round(mm));
   if (mm >= 10) return mm.toFixed(1);
   return mm.toFixed(2);
+}
+
+export function inferWttBomRow(name: string, bounds: PartBounds) {
+  const n = name.toUpperCase();
+  const dn = name.match(/DN\s*(\d+)/i);
+  const size = dn ? `DN${dn[1]}` : "—";
+  let description = "PART";
+  if (n.includes("ELBOW")) description = "ELBOW";
+  else if (n.includes("PIPE") || n.includes("TUBE")) description = "PIPE";
+  else if (n.includes("TEE")) description = "TEE";
+  else if (n.includes("MTA")) description = "MTA";
+  else if (n.includes("NRV") || n.includes("CHECK")) description = "NRV";
+  else if (n.includes("BACK PRESSURE") || n.includes("BPCV")) description = "BACK PRESSURE VALVE";
+  else if (n.includes("VALVE")) description = "VALVE";
+  else if (n.includes("CLAMP") || n.includes("CLIP")) description = "CLAMP";
+  else if (n.includes("FLANGE")) description = "FLANGE";
+  else if (n.includes("REDUC")) description = "REDUCER";
+  const moc = n.includes("SS") || n.includes("316") ? "SS316" : n.includes("PP") ? "PP" : "PVC-U";
+  const std = n.includes("WTT") ? "WTT" : "ASME";
+  const pn = n.includes("PN16") ? "PN16" : "PN10";
+  let type = "—";
+  if (description === "ELBOW") type = n.includes("LONG") ? "90° Long Radius" : "90° Short Radius";
+  else if (description === "PIPE") type = "Plain End";
+  else if (description === "TEE") type = "Equal Tee 90°";
+  else if (description === "MTA") type = "BSP Male × Female Socket";
+  else if (description === "NRV") type = "Ball Check NRV";
+  else if (description === "BACK PRESSURE VALVE") type = "Female Union Controller";
+  else if (description === "CLAMP") type = n.includes("U-CLIP") ? "U-Clip" : "Pipe Type";
+  const longDim = Math.max(bounds.length, bounds.width, bounds.height);
+  const totalLength = description === "PIPE" ? `${longDim.toFixed(1)} mm` : "—";
+  return { description, size, moc, std, pn, type, totalLength };
 }
 
 export function boundsSummary(b: PartBounds): string {
