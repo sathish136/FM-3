@@ -44,6 +44,7 @@ export const APP_MODULES: AppModule[] = [
   // Design & Engineering
   { key: "design-3d", label: "Design 3D", group: "Design & Engineering", paths: ["/design-3d"] },
   { key: "design-2d", label: "Design 2D", group: "Design & Engineering", paths: ["/design-2d"] },
+  { key: "step-part-drawings", label: "STEP Part Drawings", group: "Design & Engineering", paths: ["/step-part-drawings"] },
   { key: "pid", label: "P&ID Process", group: "Design & Engineering", paths: ["/pid"] },
   { key: "nesting", label: "Nesting", group: "Design & Engineering", paths: ["/nesting"] },
   { key: "viewer-options", label: "Viewer Options", group: "Design & Engineering", paths: ["/viewer-options"] },
@@ -103,6 +104,7 @@ export const APP_MODULES: AppModule[] = [
   { key: "hrms-daily-reporting", label: "Daily Reporting", group: "HR", paths: ["/hrms/daily-reporting"] },
   { key: "hrms-work-monitor", label: "Work Monitor", group: "HR", paths: ["/hrms/work-monitor"] },
   { key: "hrms-id-cards", label: "Employee ID Cards", group: "HR", paths: ["/hrms/id-cards"] },
+  { key: "hrms-celebrations", label: "Birthdays & Anniversaries", group: "HR", paths: ["/hrms/celebrations"] },
   // Monitoring
   { key: "site-data", label: "Site Data", group: "Monitoring", paths: ["/site-data"] },
   { key: "plant-overview", label: "Plant Overview", group: "Monitoring", paths: ["/plant-overview"] },

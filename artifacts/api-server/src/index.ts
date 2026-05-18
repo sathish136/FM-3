@@ -6,6 +6,7 @@ import { setupChatWS } from "./chat-ws";
 import { setupDeepgramWS } from "./deepgram-ws";
 import { setupWhisperWS } from "./whisper-ws";
 import { warmupDeptCallLogs } from "./routes/dept-call-logs";
+import { startCelebrationRavenScheduler } from "./lib/celebrationRavenScheduler";
 
 // Prevent unhandled errors (e.g., IMAP socket timeouts) from crashing the server
 process.on("uncaughtException", (err) => {
@@ -38,4 +39,5 @@ setupWhisperWS(httpServer);
 httpServer.listen(port, () => {
   console.log(`Server listening on port ${port}`);
   warmupDeptCallLogs().catch(() => {});
+  startCelebrationRavenScheduler();
 });

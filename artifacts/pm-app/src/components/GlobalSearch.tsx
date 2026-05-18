@@ -10,7 +10,7 @@ import {
   BarChart2, ClipboardList, DollarSign, ClipboardCheck, BarChart,
   Languages, Globe, ScanLine, Database, Sparkles, Building2, Factory,
   Phone, UserPlus, Cpu, Wrench, Gauge, Tag, Library,
-  HardHat, MonitorSmartphone, ListOrdered, Network,
+  HardHat, MonitorSmartphone, ListOrdered, Network, PartyPopper, Ruler,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -52,6 +52,7 @@ const ALL_PAGES: SearchEntry[] = [
   { path: "/project-insights",          label: "Project Insights",       icon: BarChart2,        group: "Project Management",    keywords: "project insights analytics" },
   // ── Design & Engineering ─────────────────────────────────────────────────────
   { path: "/design-3d",                 label: "Design 3D",              icon: Box,              group: "Design & Engineering",  keywords: "3d step model viewer" },
+  { path: "/step-part-drawings",        label: "STEP Part Drawings",     icon: Ruler,            group: "Design & Engineering",  keywords: "step 2d part drawing measurement pdf orthographic" },
   { path: "/pid",                       label: "P&ID Process",           icon: GitBranch,        group: "Design & Engineering",  keywords: "pid piping instrumentation" },
   { path: "/nesting",                   label: "Nesting",                icon: Layers,           group: "Design & Engineering",  keywords: "nesting layout" },
   // ── PLC & Automation ─────────────────────────────────────────────────────────
@@ -113,6 +114,7 @@ const ALL_PAGES: SearchEntry[] = [
   { path: "/hrms/daily-reporting",      label: "Daily Reporting",        icon: FileText,         group: "HR",                    keywords: "daily report log hrms" },
   { path: "/hrms/work-monitor",         label: "Work Monitor",           icon: Activity,         group: "HR",                    keywords: "work monitor hrms productivity" },
   { path: "/hrms/id-cards",             label: "Employee ID Cards",      icon: CreditCard,       group: "HR",                    keywords: "id card employee badge print" },
+  { path: "/hrms/celebrations",         label: "Birthdays & Anniversaries", icon: PartyPopper,     group: "HR",                    keywords: "birthday anniversary wish celebration greeting card" },
   // ── Admin ───────────────────────────────────────────────────────────────────
   { path: "/settings",                  label: "Settings",               icon: Settings,         group: "Admin",                 keywords: "settings config" },
   { path: "/email-settings",            label: "Email Settings",         icon: MailOpen,         group: "Admin",                 keywords: "email settings gmail" },

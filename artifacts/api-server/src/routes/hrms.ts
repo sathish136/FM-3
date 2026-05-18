@@ -565,6 +565,243 @@ router.post("/hrms/id-card/render", async (req, res) => {
   }
 });
 
+// GET /api/hrms/celebrations — birthdays & work anniversaries (month / today)
+router.get("/hrms/celebrations", async (req, res) => {
+  try {
+    if (!ERPNEXT_URL || !ERPNEXT_API_KEY || !ERPNEXT_API_SECRET) {
+      return res.json({ birthdays: [], anniversaries: [], themes: { birthday: [], anniversary: [] } });
+    }
+    const q = req.query as Record<string, string>;
+    const now = new Date();
+    const month = Math.min(12, Math.max(1, parseInt(q.month || String(now.getMonth() + 1), 10) || now.getMonth() + 1));
+    const day = q.day ? parseInt(q.day, 10) : undefined;
+    const filter = (q.filter || "month") as "month" | "today" | "all";
+
+    const auth = `token ${ERPNEXT_API_KEY}:${ERPNEXT_API_SECRET}`;
+    const fields = JSON.stringify([
+      "name", "employee_name", "department", "designation",
+      "status", "date_of_joining", "date_of_birth", "image",
+    ]);
+    const filters = JSON.stringify([["Employee", "status", "=", "Active"]]);
+    const params = new URLSearchParams({
+      fields, filters, limit_page_length: "500", order_by: "employee_name asc",
+    });
+    const listResp = await fetch(`${ERPNEXT_URL}/api/resource/Employee?${params}`, {
+      headers: { Authorization: auth },
+    });
+    if (!listResp.ok) throw new Error(`ERPNext list error: ${listResp.status}`);
+    const listJson = await listResp.json();
+    const { applyEmployeeFilter } = await import("../lib/erpnext");
+    const {
+      matchesMonthDay,
+      yearsOfService,
+      getThemesForKind,
+    } = await import("../lib/celebrationWishSvg");
+
+    const base = applyEmployeeFilter((listJson.data ?? []) as any[]);
+    const todayMonth = now.getMonth() + 1;
+    const todayDay = now.getDate();
+    const useMonth = filter === "today" ? todayMonth : month;
+    const useDay = filter === "today" ? todayDay : day;
+
+    const mapEmp = (e: any, kind: "birthday" | "anniversary") => {
+      const dateField = kind === "birthday" ? e.date_of_birth : e.date_of_joining;
+      const yrs = kind === "anniversary" ? yearsOfService(e.date_of_joining, now) : undefined;
+      return {
+        name: e.name,
+        employee_name: e.employee_name,
+        department: e.department ?? null,
+        designation: e.designation ?? null,
+        date_of_joining: e.date_of_joining ?? null,
+        date_of_birth: e.date_of_birth ?? null,
+        image: e.image ?? null,
+        celebration_date: dateField,
+        years_of_service: yrs,
+        kind,
+        default_theme: kind === "birthday" ? "birthday-confetti" : "anniversary-navy",
+      };
+    };
+
+    const match = (dateStr: string | null) => {
+      if (!dateStr) return false;
+      if (filter === "all") return true;
+      return matchesMonthDay(dateStr, useMonth, useDay);
+    };
+
+    const birthdays = base
+      .filter((e: any) => match(e.date_of_birth))
+      .map((e: any) => mapEmp(e, "birthday"));
+    const anniversaries = base
+      .filter((e: any) => match(e.date_of_joining) && (yearsOfService(e.date_of_joining, now) ?? 0) >= 1)
+      .map((e: any) => mapEmp(e, "anniversary"));
+
+    res.json({
+      month: useMonth,
+      day: useDay,
+      filter,
+      birthdays,
+      anniversaries,
+      themes: {
+        birthday: getThemesForKind("birthday"),
+        anniversary: getThemesForKind("anniversary"),
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// POST /api/hrms/celebrations/render — themed wish card with employee photo
+router.post("/hrms/celebrations/render", async (req, res) => {
+  try {
+    const body = req.body as {
+      employee?: import("../lib/celebrationWishSvg").CelebrationEmployee;
+      kind?: import("../lib/celebrationWishSvg").CelebrationKind;
+      theme?: import("../lib/celebrationWishSvg").WishThemeId;
+      yearsOfService?: number;
+      customMessage?: string;
+    };
+    if (!body.employee?.name || !body.employee?.employee_name) {
+      return res.status(400).json({ error: "employee name and employee_name are required" });
+    }
+    if (body.kind !== "birthday" && body.kind !== "anniversary") {
+      return res.status(400).json({ error: "kind must be birthday or anniversary" });
+    }
+    const { renderCelebrationWishSvg, getThemesForKind, yearsOfService } = await import("../lib/celebrationWishSvg");
+    const allowed = getThemesForKind(body.kind);
+    const theme = allowed.includes(body.theme as any) ? body.theme! : allowed[0];
+    const yrs =
+      body.yearsOfService ??
+      (body.kind === "anniversary" ? yearsOfService(body.employee.date_of_joining) ?? undefined : undefined);
+
+    const assets: { photoDataUri?: string } = {};
+    if (body.employee.image && ERPNEXT_URL && ERPNEXT_API_KEY && ERPNEXT_API_SECRET) {
+      try {
+        const imgUrl = body.employee.image.startsWith("http")
+          ? body.employee.image
+          : `${ERPNEXT_URL}${body.employee.image}`;
+        const imgResp = await fetch(imgUrl, {
+          headers: { Authorization: `token ${ERPNEXT_API_KEY}:${ERPNEXT_API_SECRET}` },
+        });
+        if (imgResp.ok) {
+          const buf = Buffer.from(await imgResp.arrayBuffer());
+          const ct = imgResp.headers.get("content-type") || "image/jpeg";
+          assets.photoDataUri = `data:${ct};base64,${buf.toString("base64")}`;
+        }
+      } catch { /* initials fallback */ }
+    }
+
+    const svg = renderCelebrationWishSvg({
+      kind: body.kind,
+      theme,
+      employee: body.employee,
+      yearsOfService: yrs,
+      customMessage: body.customMessage,
+      photoDataUri: assets.photoDataUri,
+    });
+    res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
+    res.setHeader("Cache-Control", "private, max-age=120");
+    res.send(svg);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// GET /api/hrms/celebrations/raven-status — scheduler / Raven config
+router.get("/hrms/celebrations/raven-status", async (_req, res) => {
+  const { isRavenConfigured, resolveRavenChannelId } = await import("../lib/ravenClient");
+  const { isCelebrationsConfigured, getTodayCelebrations } = await import("../lib/celebrationsService");
+  try {
+    const channelId = isRavenConfigured() ? await resolveRavenChannelId() : null;
+    const today = isCelebrationsConfigured() ? await getTodayCelebrations() : [];
+    res.json({
+      enabled: process.env.CELEBRATION_RAVEN_ENABLED !== "false",
+      erpConfigured: isCelebrationsConfigured(),
+      ravenConfigured: isRavenConfigured(),
+      channelId,
+      channelUrl: "https://erp.wttint.com/app/raven-channel/WTT%20INTERNATIONAL%20PVT%20LTD-wtt-common",
+      postHour: parseInt(process.env.CELEBRATION_POST_HOUR || "9", 10),
+      timezone: process.env.CELEBRATION_TIMEZONE || "Asia/Kolkata",
+      todayCount: today.length,
+      today,
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// POST /api/hrms/celebrations/post-raven — manual post all of today to Raven channel
+router.post("/hrms/celebrations/post-raven", async (req, res) => {
+  try {
+    const force = req.query.force === "1" || (req.body as { force?: boolean })?.force === true;
+    const { runDailyCelebrationRavenPost } = await import("../lib/celebrationRavenScheduler");
+    const result = await runDailyCelebrationRavenPost(force);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// POST /api/hrms/celebrations/post-raven-one — send one wish card to Raven
+router.post("/hrms/celebrations/post-raven-one", async (req, res) => {
+  try {
+    const body = req.body as {
+      name: string;
+      employee_name: string;
+      department?: string | null;
+      designation?: string | null;
+      date_of_joining?: string | null;
+      date_of_birth?: string | null;
+      image?: string | null;
+      kind: "birthday" | "anniversary";
+      years_of_service?: number | null;
+      default_theme?: string;
+      theme?: string;
+      customMessage?: string;
+      force?: boolean;
+    };
+    if (!body.name || !body.employee_name || !body.kind) {
+      return res.status(400).json({ error: "name, employee_name, and kind are required" });
+    }
+    const {
+      postCelebrationToRaven,
+      todayKeyInTz,
+    } = await import("../lib/celebrationRavenScheduler");
+    const { isRavenConfigured, resolveRavenChannelId } = await import("../lib/ravenClient");
+    if (!isRavenConfigured()) {
+      return res.status(503).json({ error: "Raven not configured" });
+    }
+    const channelId = await resolveRavenChannelId();
+    const postDate = todayKeyInTz();
+    const entry = {
+      name: body.name,
+      employee_name: body.employee_name,
+      department: body.department ?? null,
+      designation: body.designation ?? null,
+      date_of_joining: body.date_of_joining ?? null,
+      date_of_birth: body.date_of_birth ?? null,
+      image: body.image ?? null,
+      celebration_date: body.kind === "birthday" ? body.date_of_birth ?? null : body.date_of_joining ?? null,
+      years_of_service: body.years_of_service ?? null,
+      kind: body.kind,
+      default_theme: (body.default_theme || "birthday-confetti") as import("../lib/celebrationWishSvg").WishThemeId,
+    };
+    const result = await postCelebrationToRaven(
+      entry,
+      channelId,
+      postDate,
+      body.force === true,
+      {
+        theme: body.theme as import("../lib/celebrationWishSvg").WishThemeId | undefined,
+        customMessage: body.customMessage,
+      },
+    );
+    res.json({ postDate, channelId, ...result });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 router.get("/hrms/leave-applications", async (req, res) => {
   try {
     const { status, employee } = req.query as Record<string, string>;

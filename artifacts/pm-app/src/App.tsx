@@ -25,6 +25,7 @@ import Sheets from "@/pages/Sheets";
 import Presentation from "@/pages/Presentation";
 import PptxPreviewPage from "@/pages/PptxPreviewPage";
 import Design3D from "@/pages/Design3D";
+import StepPartDrawings from "@/pages/StepPartDrawings";
 import PID from "@/pages/PID";
 import Gallery from "@/pages/Gallery";
 import Settings from "@/pages/Settings";
@@ -86,6 +87,7 @@ import ProposalAdmin from "@/pages/ProposalAdmin";
 import AgentManagement from "@/pages/AgentManagement";
 import HrmsWorkMonitor from "@/pages/HrmsWorkMonitor";
 import EmployeeIdCard from "@/pages/EmployeeIdCard";
+import HrmsCelebrations from "@/pages/HrmsCelebrations";
 import ProposalPDFView from "@/pages/ProposalPDFView";
 import Workshop from "@/pages/Workshop";
 import PLCAutomation from "@/pages/PLCAutomation";
@@ -218,6 +220,7 @@ function ProtectedRoutes() {
       <Route path="/viewer-options/mechanical" component={MechanicalViewer} />
       <Route path="/presentation" component={Presentation} />
       <Route path="/design-3d" component={Design3D} />
+      <Route path="/step-part-drawings" component={StepPartDrawings} />
       <Route path="/gallery" component={Gallery} />
       <Route path="/settings" component={Settings} />
       <Route path="/profile" component={Profile} />
@@ -259,6 +262,7 @@ function ProtectedRoutes() {
       <Route path="/hrms/daily-reporting" component={DailyReporting} />
       <Route path="/hrms/work-monitor" component={HrmsWorkMonitor} />
       <Route path="/hrms/id-cards" component={EmployeeIdCard} />
+      <Route path="/hrms/celebrations" component={HrmsCelebrations} />
       <Route path="/logistics-dashboard" component={LogisticsDashboard} />
       <Route path="/process-proposal" component={ProcessProposalDashboard} />
       <Route path="/finance-dashboard" component={FinanceDashboard} />

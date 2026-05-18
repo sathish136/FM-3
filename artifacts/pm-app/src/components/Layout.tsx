@@ -7,7 +7,7 @@ import {
   Play, Square, Phone, ShieldOff, Loader2, Languages, Globe, Mic, Pause,
   ScanLine, Factory, Database, UserCheck,
   Code2, Monitor, Gauge, Tag, Ticket, Cpu, Network,
-  FlaskConical, TestTubes, CheckCircle2, CreditCard,
+  FlaskConical, TestTubes, CheckCircle2, CreditCard, PartyPopper, Ruler,
   Cog, Building2, PenLine,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -243,16 +243,17 @@ const navGroups: { label: string; items: NavItem[] }[] = [
   {
     label: "Design & Engineering",
     items: [
-      { path: "/design-3d",             label: "Design 3D",          icon: Box,          color: "text-violet-400",  bgColor: "bg-violet-500/15" },
-      { path: "/design-2d",             label: "Design 2D",          icon: PenLine,      color: "text-blue-400",    bgColor: "bg-blue-500/15" },
-      { path: "/pid",                   label: "P&ID Process",       icon: GitBranch,    color: "text-rose-400",    bgColor: "bg-rose-500/15" },
-      { path: "/nesting",               label: "Nesting",            icon: Layers,       color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
-      { path: "/project-drawings",      label: "Project Drawings",   icon: FolderOpen,   color: "text-sky-400",     bgColor: "bg-sky-500/15" },
-      { path: "/approved-drawings",     label: "Approved Drawings",  icon: CheckCircle2, color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
-      { path: "/drawings/mechanical",   label: "Design Mechanical",  icon: Cog,          color: "text-blue-400",    bgColor: "bg-blue-500/15" },
-      { path: "/drawings/electrical",   label: "Design Electrical",  icon: Zap,          color: "text-amber-400",   bgColor: "bg-amber-500/15" },
-      { path: "/drawings/civil",        label: "Design Civil",       icon: Building2,    color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
-      { path: "/civil-drawing-ai",      label: "Civil Drawing AI",   icon: Sparkles,     color: "text-purple-400",  bgColor: "bg-purple-500/15" },
+      { path: "/design-3d",             label: "Design 3D",            icon: Box,            color: "text-violet-400",  bgColor: "bg-violet-500/15" },
+      { path: "/design-2d",             label: "Design 2D",            icon: PenLine,        color: "text-blue-400",    bgColor: "bg-blue-500/15" },
+      { path: "/step-part-drawings",    label: "STEP Part Drawings",   icon: Ruler,          color: "text-sky-400",     bgColor: "bg-sky-500/15" },
+      { path: "/pid",                   label: "P&ID Process",         icon: GitBranch,      color: "text-rose-400",    bgColor: "bg-rose-500/15" },
+      { path: "/nesting",               label: "Nesting",              icon: Layers,         color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
+      { path: "/project-drawings",      label: "Project Drawings",     icon: FolderOpen,     color: "text-sky-400",     bgColor: "bg-sky-500/15" },
+      { path: "/approved-drawings",     label: "Approved Drawings",    icon: CheckCircle2,   color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
+      { path: "/drawings/mechanical",   label: "Design Mechanical",    icon: Cog,            color: "text-blue-400",    bgColor: "bg-blue-500/15" },
+      { path: "/drawings/electrical",   label: "Design Electrical",    icon: Zap,            color: "text-amber-400",   bgColor: "bg-amber-500/15" },
+      { path: "/drawings/civil",        label: "Design Civil",         icon: Building2,      color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
+      { path: "/civil-drawing-ai",      label: "Civil Drawing AI",     icon: Sparkles,       color: "text-purple-400",  bgColor: "bg-purple-500/15" },
     ],
   },
   {
@@ -309,6 +310,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { path: "/hrms/daily-reporting",   label: "Daily Reporting", icon: ClipboardList, color: "text-orange-400",  bgColor: "bg-orange-500/15" },
       { path: "/hrms/work-monitor",      label: "Work Monitor",    icon: Clock,         color: "text-blue-400",    bgColor: "bg-blue-500/15" },
       { path: "/hrms/id-cards",          label: "ID Cards",        icon: CreditCard,    color: "text-yellow-400",  bgColor: "bg-yellow-500/15" },
+      { path: "/hrms/celebrations",      label: "Celebrations",    icon: PartyPopper,   color: "text-pink-400",    bgColor: "bg-pink-500/15" },
     ],
   },
   {

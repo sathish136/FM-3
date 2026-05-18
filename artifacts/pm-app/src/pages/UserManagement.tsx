@@ -120,7 +120,7 @@ const DEFAULT_ROLE_TEMPLATES: Omit<RoleTemplate, "id" | "createdAt" | "updatedAt
     moduleRoles: JSON.stringify(Object.fromEntries([
       ...["dashboard","calendar","hrms","hrms-checkin","hrms-leave-request","hrms-claims","hrms-recruitment","hrms-incidents",
          "hrms-analytics","hrms-performance","hrms-team-performance","hrms-task-summary","hrms-daily-reporting","hrms-work-monitor",
-         "hrms-id-cards","team","email","chat"].map(k => [k, "write"]),
+         "hrms-id-cards","hrms-celebrations","team","email","chat"].map(k => [k, "write"]),
       ...["tasks","projects","project-board","project-timeline","meeting-minutes"].map(k => [k, "read"]),
       ...["task-management","team-pulse","team-reporting","ip-call-logs","ip-call-logs-hr","ip-call-logs-project","ip-call-logs-purchase",
          "ip-call-logs-marketing","project-drawings","presentation","proposal-library","meeting-discussion","speech-translator","translator",
