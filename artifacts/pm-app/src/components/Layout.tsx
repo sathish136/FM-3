@@ -8,6 +8,7 @@ import {
   ScanLine, Factory, Database, UserCheck,
   Code2, Monitor, Gauge, Tag, Ticket, Cpu, Network,
   FlaskConical, TestTubes, CheckCircle2, CreditCard,
+  Cog, Building2, PenLine,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -242,11 +243,16 @@ const navGroups: { label: string; items: NavItem[] }[] = [
   {
     label: "Design & Engineering",
     items: [
-      { path: "/design-3d",        label: "Design 3D",          icon: Box,        color: "text-violet-400",  bgColor: "bg-violet-500/15" },
-      { path: "/pid",              label: "P&ID Process",       icon: GitBranch,  color: "text-rose-400",    bgColor: "bg-rose-500/15" },
-      { path: "/nesting",          label: "Nesting",            icon: Layers,     color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
-      { path: "/project-drawings", label: "Project Drawings",   icon: FolderOpen, color: "text-sky-400",     bgColor: "bg-sky-500/15" },
-      { path: "/approved-drawings", label: "Approved Drawings",  icon: CheckCircle2, color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
+      { path: "/design-3d",             label: "Design 3D",          icon: Box,          color: "text-violet-400",  bgColor: "bg-violet-500/15" },
+      { path: "/design-2d",             label: "Design 2D",          icon: PenLine,      color: "text-blue-400",    bgColor: "bg-blue-500/15" },
+      { path: "/pid",                   label: "P&ID Process",       icon: GitBranch,    color: "text-rose-400",    bgColor: "bg-rose-500/15" },
+      { path: "/nesting",               label: "Nesting",            icon: Layers,       color: "text-indigo-400",  bgColor: "bg-indigo-500/15" },
+      { path: "/project-drawings",      label: "Project Drawings",   icon: FolderOpen,   color: "text-sky-400",     bgColor: "bg-sky-500/15" },
+      { path: "/approved-drawings",     label: "Approved Drawings",  icon: CheckCircle2, color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
+      { path: "/drawings/mechanical",   label: "Design Mechanical",  icon: Cog,          color: "text-blue-400",    bgColor: "bg-blue-500/15" },
+      { path: "/drawings/electrical",   label: "Design Electrical",  icon: Zap,          color: "text-amber-400",   bgColor: "bg-amber-500/15" },
+      { path: "/drawings/civil",        label: "Design Civil",       icon: Building2,    color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
+      { path: "/civil-drawing-ai",      label: "Civil Drawing AI",   icon: Sparkles,     color: "text-purple-400",  bgColor: "bg-purple-500/15" },
     ],
   },
   {

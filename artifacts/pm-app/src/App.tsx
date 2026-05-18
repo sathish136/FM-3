@@ -102,6 +102,9 @@ import PLCNetworkArchitecture from "@/pages/PLCNetworkArchitecture";
 import OmChemicalConsumption from "@/pages/OmChemicalConsumption";
 import OmLabReport from "@/pages/OmLabReport";
 import OmSitePerformance from "@/pages/OmSitePerformance";
+import Design2DPage from "@/pages/Design2D";
+import Drawings from "@/pages/Drawings";
+import CivilDrawingAI from "@/pages/CivilDrawingAI";
 import { SlideshowProvider } from "@/contexts/SlideshowContext";
 import { RecordingProvider } from "@/contexts/RecordingContext";
 import { LiveMeetingProvider } from "@/contexts/LiveMeetingContext";
@@ -294,6 +297,11 @@ function ProtectedRoutes() {
       <Route path="/om/chemical-consumption" component={OmChemicalConsumption} />
       <Route path="/om/lab-reports"          component={OmLabReport} />
       <Route path="/om/site-performance"     component={OmSitePerformance} />
+      <Route path="/design-2d"              component={Design2DPage} />
+      <Route path="/drawings/mechanical"    component={Drawings} />
+      <Route path="/drawings/electrical"    component={Drawings} />
+      <Route path="/drawings/civil"         component={Drawings} />
+      <Route path="/civil-drawing-ai"       component={CivilDrawingAI} />
       <Route component={NotFound} />
     </Switch>
   );

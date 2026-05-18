@@ -43,9 +43,14 @@ export const APP_MODULES: AppModule[] = [
   { key: "process-proposal", label: "Process & Proposal", group: "Proposal", paths: ["/process-proposal"] },
   // Design & Engineering
   { key: "design-3d", label: "Design 3D", group: "Design & Engineering", paths: ["/design-3d"] },
+  { key: "design-2d", label: "Design 2D", group: "Design & Engineering", paths: ["/design-2d"] },
   { key: "pid", label: "P&ID Process", group: "Design & Engineering", paths: ["/pid"] },
   { key: "nesting", label: "Nesting", group: "Design & Engineering", paths: ["/nesting"] },
   { key: "viewer-options", label: "Viewer Options", group: "Design & Engineering", paths: ["/viewer-options"] },
+  { key: "drawings-mechanical", label: "Design Mechanical", group: "Design & Engineering", paths: ["/drawings/mechanical"] },
+  { key: "drawings-electrical", label: "Design Electrical", group: "Design & Engineering", paths: ["/drawings/electrical"] },
+  { key: "drawings-civil", label: "Design Civil", group: "Design & Engineering", paths: ["/drawings/civil"] },
+  { key: "civil-drawing-ai", label: "Civil Drawing AI", group: "Design & Engineering", paths: ["/civil-drawing-ai"] },
   // O&M
   { key: "om-chemical-consumption", label: "Chemical Consumption", group: "O&M", paths: ["/om/chemical-consumption"] },
   { key: "om-lab-reports", label: "Lab Reports", group: "O&M", paths: ["/om/lab-reports"] },
