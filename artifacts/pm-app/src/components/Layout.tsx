@@ -76,6 +76,7 @@ import {
   CheckCircle2,
   CreditCard,
   PartyPopper,
+  Ruler,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -551,6 +552,13 @@ const navGroups: { label: string; items: NavItem[] }[] = [
         icon: CheckCircle2,
         color: "text-emerald-400",
         bgColor: "bg-emerald-500/15",
+      },
+      {
+        path: "/step-part-drawings",
+        label: "STEP Part Drawings",
+        icon: Ruler,
+        color: "text-sky-400",
+        bgColor: "bg-sky-500/15",
       },
     ],
   },
