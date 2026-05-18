@@ -1,10 +1,13 @@
 import { Layout } from "@/components/Layout";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Search, CheckSquare, Square, Printer, RefreshCw,
+  Search, CheckSquare, Square, RefreshCw,
   Users, X, Loader2, CreditCard, AlertCircle,
-  ChevronDown,
+  ChevronDown, FileDown, Scissors,
 } from "lucide-react";
+import { generateIdCardPdf, getPairsPerSheet } from "@/lib/idCardPrint";
+
+const PAIRS_PER_SHEET = getPairsPerSheet();
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -21,13 +24,6 @@ interface Employee {
   blood_group: string | null;
   emergency_phone: string | null;
   permanent_address: string | null;
-}
-
-function formatDate(val: string | null): string {
-  if (!val) return "";
-  const d = new Date(val);
-  if (isNaN(d.getTime())) return val;
-  return `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
 }
 
 function cleanDept(dept: string | null): string {
@@ -49,120 +45,71 @@ function EmpAvatar({ src, name, size = 36 }: { src: string | null; name: string;
   return <img src={proxied} alt={name} style={{ ...style, objectFit: "cover" }} onError={() => setErr(true)} />;
 }
 
-function WaveDecor({ id }: { id: string }) {
-  return (
-    <svg className="idc-deco" viewBox="0 0 190 295" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id={`${id}bl`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#1e3a8a" />
-          <stop offset="0.5" stopColor="#2563eb" />
-          <stop offset="1" stopColor="#1e40af" />
-        </linearGradient>
-        <linearGradient id={`${id}gr`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#064e3b" />
-          <stop offset="0.5" stopColor="#059669" />
-          <stop offset="1" stopColor="#065f46" />
-        </linearGradient>
-      </defs>
-      <path d={`M0 0 C0 40 44 95 40 148 C36 201 0 255 0 295 Z`} fill={`url(#${id}bl)`} />
-      <path d={`M190 0 C190 40 146 95 150 148 C154 201 190 255 190 295 Z`} fill={`url(#${id}gr)`} />
-    </svg>
-  );
+const svgCache = new Map<string, string>();
+/** Bump when server SVG output shape changes (embedded assets, address text, etc.). */
+const SVG_CACHE_VERSION = "v3";
+
+async function fetchIdCardSvg(emp: Employee, side: "front" | "back"): Promise<string> {
+  const key = `${SVG_CACHE_VERSION}:${emp.name}:${side}:${emp.image ?? ""}`;
+  const hit = svgCache.get(key);
+  if (hit) return hit;
+
+  const res = await fetch(`${BASE}/api/hrms/id-card/render`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ employee: emp, side }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error || `Render failed: ${res.status}`);
+  }
+  const svg = await res.text();
+  svgCache.set(key, svg);
+  return svg;
 }
 
-function IdCardFront({ emp }: { emp: Employee }) {
-  const [photoErr, setPhotoErr] = useState(false);
-  const photoSrc = emp.image ? `${BASE}/api/hrms/image-proxy?path=${encodeURIComponent(emp.image)}` : null;
-  const initials = emp.employee_name.split(" ").slice(0, 2).map(w => w[0]?.toUpperCase() ?? "").join("");
-  const waveId = `f${emp.name.replace(/[^a-z0-9]/gi, "")}`;
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=60x60&data=${encodeURIComponent(emp.name)}&bgcolor=ffffff&color=1e3a8a`;
+function IdCardSvgFace({ emp, side }: { emp: Employee; side: "front" | "back" }) {
+  const [svg, setSvg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSvg(null);
+    setError(null);
+    fetchIdCardSvg(emp, side)
+      .then(html => {
+        if (!cancelled) setSvg(html);
+      })
+      .catch(e => {
+        if (!cancelled) setError(e.message ?? "Failed to load card");
+      });
+    return () => { cancelled = true; };
+  }, [emp, side]);
 
   return (
-    <div className="idc">
-      <WaveDecor id={waveId} />
-      <div className="idc-front-inner">
-        <img src={`${BASE}/wtt-logo.png`} className="idc-logo" alt="WTT" />
-        <div className="idc-wtt-text">WTT</div>
-        <div className="idc-intl-text">INTERNATIONAL</div>
-        <div className="idc-tag-text">Water Loving Technology</div>
-        <div className="idc-photo-ring">
-          {photoSrc && !photoErr ? (
-            <img src={photoSrc} className="idc-photo-img" alt={emp.employee_name} onError={() => setPhotoErr(true)} />
-          ) : (
-            <div className="idc-photo-fb">{initials || "?"}</div>
-          )}
+    <div className="idc" ref={hostRef}>
+      {error && (
+        <div className="idc-err">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{error}</span>
         </div>
-        <div className="idc-emp-name">{emp.employee_name.toUpperCase()}</div>
-        <div className="idc-emp-dept">{cleanDept(emp.department)}</div>
-        <img src={qrUrl} className="idc-qr" alt="QR" />
-      </div>
+      )}
+      {!error && !svg && (
+        <div className="idc-loading">
+          <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
+        </div>
+      )}
+      {svg && (
+        <div
+          className="idc-svg-host"
+          dangerouslySetInnerHTML={{ __html: svg }}
+        />
+      )}
     </div>
   );
 }
 
-function IdCardBack({ emp }: { emp: Employee }) {
-  const waveId = `b${emp.name.replace(/[^a-z0-9]/gi, "")}`;
-  return (
-    <div className="idc">
-      <WaveDecor id={waveId} />
-      <div className="idc-back-inner">
-        <table className="idc-dtbl">
-          <tbody>
-            <tr>
-              <td className="idc-dlbl">EMPLOYEE ID</td>
-              <td className="idc-dcolon">:</td>
-              <td className="idc-dval idc-dvbold">{emp.name}</td>
-            </tr>
-            <tr>
-              <td className="idc-dlbl">DOJ</td>
-              <td className="idc-dcolon">:</td>
-              <td className="idc-dval">{formatDate(emp.date_of_joining)}</td>
-            </tr>
-            <tr>
-              <td className="idc-dlbl">DOB</td>
-              <td className="idc-dcolon">:</td>
-              <td className="idc-dval">{formatDate(emp.date_of_birth)}</td>
-            </tr>
-            <tr>
-              <td className="idc-dlbl">MOBILE NO</td>
-              <td className="idc-dcolon">:</td>
-              <td className="idc-dval">{emp.cell_number || ""}</td>
-            </tr>
-            <tr>
-              <td className="idc-dlbl">EMERGENCY CONTACT</td>
-              <td className="idc-dcolon">:</td>
-              <td className="idc-dval">{emp.emergency_phone || ""}</td>
-            </tr>
-            <tr>
-              <td className="idc-dlbl">BLOOD GROUP</td>
-              <td className="idc-dcolon">:</td>
-              <td className="idc-dval idc-dvbold">{emp.blood_group || ""}</td>
-            </tr>
-          </tbody>
-        </table>
-        <div className="idc-addr-section">
-          <div className="idc-dlbl">ADDRESS :</div>
-          <div className="idc-addr-box">{emp.permanent_address || ""}</div>
-        </div>
-        <div className="idc-sig-area">
-          <div className="idc-sig-line" />
-          <div className="idc-sig-label">Authorized Signature</div>
-        </div>
-        <div className="idc-co-block">
-          <div className="idc-co-name">
-            <strong>WTT INTERNATIONAL</strong>
-            <span className="idc-co-pvt">PVT.LTD,</span>
-          </div>
-          <div>No.3, College Cross Road,</div>
-          <div>Tirupur - 641602,</div>
-          <div>Tamil Nadu, INDIA</div>
-          <div>PH:+91-421-2241120-224 7707</div>
-          <div>WWW.WTTINT.COM</div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function EmployeeIdCard() {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -180,8 +127,8 @@ export default function EmployeeIdCard() {
       if (!res.ok) throw new Error(`Server error: ${res.status}`);
       const data: Employee[] = await res.json();
       setEmployees(data);
-    } catch (e: any) {
-      setError(e.message ?? "Failed to load employees");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to load employees");
     } finally {
       setLoading(false);
     }
@@ -220,235 +167,88 @@ export default function EmployeeIdCard() {
   }
 
   const selectedEmployees = employees.filter(e => selected.has(e.name));
+  const [showCutMarks, setShowCutMarks] = useState(true);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
-  function handlePrint() {
+  async function handleDownloadPdf() {
     if (!selectedEmployees.length) return;
-    window.print();
+    setPdfLoading(true);
+    try {
+      const byName = new Map(selectedEmployees.map(e => [e.name, e]));
+      await generateIdCardPdf(
+        selectedEmployees,
+        async (name, side) => {
+          const emp = byName.get(name);
+          if (!emp) throw new Error(`Employee ${name} not found`);
+          return fetchIdCardSvg(emp, side);
+        },
+        { cutMarks: showCutMarks },
+      );
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "PDF export failed");
+    } finally {
+      setPdfLoading(false);
+    }
   }
 
   return (
     <Layout>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap');
-
-        /* ── ID card base ── */
         .idc {
-          width: 190px; height: 295px;
+          width: 190px;
+          height: 295px;
           background: #fff;
-          position: relative; overflow: hidden;
+          position: relative;
+          overflow: hidden;
           border-radius: 6px;
           border: 1px solid #e2e8f0;
           box-shadow: 0 3px 10px rgba(0,0,0,.12);
-          font-family: 'Roboto', Arial, sans-serif;
           flex-shrink: 0;
         }
-        .idc-deco {
-          position: absolute; top: 0; left: 0;
-          width: 100%; height: 100%;
-          pointer-events: none;
+        .idc-svg-host,
+        .idc-svg-host svg {
+          width: 100%;
+          height: 100%;
+          display: block;
         }
-
-        /* ── FRONT ── */
-        .idc-front-inner {
-          position: relative;
-          display: flex; flex-direction: column; align-items: center;
-          padding: 10px 12px 6px;
-          height: 100%; box-sizing: border-box;
-        }
-        .idc-logo {
-          width: 50px; height: 50px;
-          object-fit: contain;
-          margin-bottom: 2px;
-          filter: drop-shadow(0 1px 2px rgba(0,0,0,.10));
-        }
-        .idc-wtt-text {
-          font-size: 22px; font-weight: 900;
-          color: #1e3a8a; letter-spacing: 2px; line-height: 1;
-          margin-bottom: 1px;
-          font-family: 'Roboto', Arial, sans-serif;
-        }
-        .idc-intl-text {
-          font-size: 7.5px; font-weight: 700;
-          color: #ea580c; letter-spacing: 3px;
-          text-transform: uppercase; line-height: 1.2;
-          margin-bottom: 1px;
-          font-family: 'Roboto', Arial, sans-serif;
-        }
-        .idc-tag-text {
-          font-size: 6px; color: #475569;
-          font-style: italic; margin-bottom: 8px;
-          font-family: 'Roboto', Arial, sans-serif;
-        }
-        .idc-photo-ring {
-          width: 76px; height: 76px; border-radius: 50%;
-          border: 4px solid #f97316;
-          box-shadow: 0 0 0 2px #fff, 0 0 0 5px #f97316;
-          overflow: hidden;
-          display: flex; align-items: center; justify-content: center;
-          background: #dbeafe;
-          margin-bottom: 8px;
-        }
-        .idc-photo-img {
-          width: 100%; height: 100%;
-          object-fit: cover; border-radius: 50%;
-        }
-        .idc-photo-fb {
-          width: 100%; height: 100%; border-radius: 50%;
-          background: #1e40af;
-          display: flex; align-items: center; justify-content: center;
-          color: #fff; font-size: 22px; font-weight: 700;
-        }
-        .idc-emp-name {
-          font-size: 16px; font-weight: 900;
-          color: #1e3a8a; letter-spacing: .5px;
-          text-align: center; line-height: 1.2;
-          margin-bottom: 2px;
-          font-family: 'Roboto', Arial, sans-serif;
-        }
-        .idc-emp-dept {
-          font-size: 10.4px; color: #475569;
-          font-weight: 600; text-align: center;
-          margin-bottom: 6px;
-          font-family: 'Roboto', Arial, sans-serif;
-        }
-        .idc-qr {
-          width: 52px; height: 52px;
-        }
-
-        /* ── BACK ── */
-        .idc-back-inner {
-          position: relative;
-          padding: 10px 14px 8px 20px;
-          height: 100%; box-sizing: border-box;
-          display: flex; flex-direction: column;
-        }
-        .idc-dtbl {
-          width: 100%; border-collapse: collapse;
-          margin-bottom: 4px;
-        }
-        .idc-dtbl tr { height: 16px; }
-        .idc-dlbl {
-          font-size: 9.1px; font-weight: 700;
-          color: #1e3a8a; white-space: nowrap;
-          padding-right: 1px; vertical-align: top;
-          font-family: 'Roboto', Arial, sans-serif;
-        }
-        .idc-dcolon {
-          font-size: 9.1px; color: #1e3a8a;
-          padding: 0 3px; vertical-align: top;
-          font-family: 'Roboto', Arial, sans-serif;
-        }
-        .idc-dval {
-          font-size: 9.1px; color: #1e293b;
-          vertical-align: top;
-          font-family: 'Roboto', Arial, sans-serif;
-        }
-        .idc-dvbold { font-weight: 700; }
-        .idc-addr-section { margin-bottom: 4px; }
-        .idc-addr-box {
-          border: .5px solid #94a3b8;
-          min-height: 30px; padding: 2px 4px;
-          font-size: 10.5px; color: #334155;
-          line-height: 1.5; border-radius: 2px;
-          margin-top: 1px;
-          font-family: 'Candara', 'Calibri', sans-serif;
-        }
-        .idc-sig-area {
-          flex: 1;
-          display: flex; flex-direction: column;
-          justify-content: center; align-items: flex-end;
-          padding-right: 6px; padding-bottom: 2px;
-        }
-        .idc-sig-line {
-          width: 65px; border-top: .7px solid #334155;
-          margin-bottom: 2px;
-        }
-        .idc-sig-label {
-          font-size: 5.5px; color: #475569; font-style: italic;
-        }
-        .idc-co-block {
+        .idc-loading,
+        .idc-err {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          padding: 8px;
+          font-size: 10px;
+          color: #64748b;
           text-align: center;
-          font-size: 5.5px; color: #1e3a8a; line-height: 1.6;
-          border-top: 1px solid #1e3a8a; padding-top: 3px;
         }
-        .idc-co-name {
-          font-size: 6.5px; font-weight: 700;
-          margin-bottom: 1px; color: #1e3a8a;
-        }
-        .idc-co-pvt { color: #ea580c; margin-left: 1px; }
+        .idc-err { color: #dc2626; flex-direction: column; }
 
-        /* ── screen card pair ── */
         .idc-pair {
-          display: flex; gap: 10px; align-items: flex-start;
+          display: flex;
+          gap: 1mm;
+          align-items: flex-start;
         }
         .idc-pair-label {
-          font-size: 9px; color: #94a3b8; text-align: center;
-          margin-bottom: 3px; font-weight: 600; letter-spacing: .5px;
-        }
-
-        /* ── PRINT ── */
-        @media print {
-          body > * { display: none !important; }
-          #id-print-area {
-            display: block !important;
-            position: fixed !important; top: 0 !important; left: 0 !important;
-            width: 210mm !important;
-            padding: 8mm !important;
-            background: #fff !important;
-          }
-          @page { size: A4 portrait; margin: 0; }
-
-          .id-print-grid {
-            display: grid !important;
-            grid-template-columns: repeat(3, 53.963mm) !important;
-            gap: 5mm 4mm !important;
-          }
-          .id-print-page2 {
-            page-break-before: always !important;
-          }
-
-          .idc {
-            width: 53.963mm !important; height: 84.088mm !important;
-            box-shadow: none !important;
-            border: .5px solid #94a3b8 !important;
-            border-radius: 2mm !important;
-          }
-          .idc-pair-label { display: none !important; }
-
-          /* front print */
-          .idc-front-inner { padding: 2.5mm 3mm 1.5mm !important; }
-          .idc-logo { width: 12mm !important; height: 12mm !important; }
-          .idc-wtt-text { font-size: 12pt !important; letter-spacing: 1.5px !important; font-family: 'Roboto', Arial, sans-serif !important; }
-          .idc-intl-text { font-size: 3.5pt !important; letter-spacing: 2px !important; font-family: 'Roboto', Arial, sans-serif !important; }
-          .idc-tag-text { font-size: 3pt !important; margin-bottom: 2mm !important; font-family: 'Roboto', Arial, sans-serif !important; }
-          .idc-photo-ring { width: 20mm !important; height: 20mm !important; border-width: 1mm !important; box-shadow: 0 0 0 .5mm #fff, 0 0 0 1.3mm #f97316 !important; margin-bottom: 2mm !important; }
-          .idc-emp-name { font-size: 12pt !important; font-family: 'Roboto', Arial, sans-serif !important; }
-          .idc-emp-dept { font-size: 7.8pt !important; margin-bottom: 1.5mm !important; font-family: 'Roboto', Arial, sans-serif !important; }
-          .idc-qr { width: 13mm !important; height: 13mm !important; }
-
-          /* back print */
-          .idc-back-inner { padding: 2.5mm 3.5mm 2mm 5mm !important; }
-          .idc-dtbl tr { height: 4.2mm !important; }
-          .idc-dlbl { font-size: 6.84pt !important; font-family: 'Roboto', Arial, sans-serif !important; }
-          .idc-dcolon { font-size: 6.84pt !important; font-family: 'Roboto', Arial, sans-serif !important; }
-          .idc-dval { font-size: 6.84pt !important; font-family: 'Roboto', Arial, sans-serif !important; }
-          .idc-addr-box { font-size: 7.9pt !important; min-height: 10mm !important; font-family: 'Candara', 'Calibri', sans-serif !important; }
-          .idc-sig-line { width: 18mm !important; }
-          .idc-sig-label { font-size: 4pt !important; font-family: 'Roboto', Arial, sans-serif !important; }
-          .idc-co-block { font-size: 4pt !important; padding-top: 1mm !important; font-family: 'Roboto', Arial, sans-serif !important; }
-          .idc-co-name { font-size: 5pt !important; font-family: 'Roboto', Arial, sans-serif !important; }
+          font-size: 9px;
+          color: #94a3b8;
+          text-align: center;
+          margin-bottom: 3px;
+          font-weight: 600;
+          letter-spacing: .5px;
         }
       `}</style>
 
       <div className="h-full flex flex-col bg-[#f1f5f9] overflow-hidden">
 
-        {/* Header */}
         <div className="bg-white border-b border-gray-100 px-6 py-3 flex items-center gap-4 shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <CreditCard className="w-4 h-4 text-yellow-500 shrink-0" />
             <h1 className="text-sm font-bold text-gray-900">Employee ID Cards</h1>
             <span className="text-xs text-gray-400 ml-1">
-              {employees.length > 0 ? `${employees.length} active employees` : "53.963 × 84.088 mm · print front & back on A4"}
+              {employees.length > 0 ? `${employees.length} active employees` : "53.963 × 84.088 mm · orignal.svg template"}
             </span>
           </div>
           <button
@@ -458,13 +258,25 @@ export default function EmployeeIdCard() {
           >
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
+          <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showCutMarks}
+              onChange={e => setShowCutMarks(e.target.checked)}
+              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-400"
+            />
+            <Scissors className="w-3.5 h-3.5" />
+            Cutting marks
+          </label>
           <button
-            onClick={handlePrint}
-            disabled={selectedEmployees.length === 0}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            onClick={handleDownloadPdf}
+            disabled={selectedEmployees.length === 0 || pdfLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            <Printer className="w-3.5 h-3.5" />
-            Print {selectedEmployees.length > 0 ? `(${selectedEmployees.length})` : ""} on A4
+            {pdfLoading
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <FileDown className="w-3.5 h-3.5" />}
+            A4 PDF
           </button>
         </div>
 
@@ -477,7 +289,6 @@ export default function EmployeeIdCard() {
 
         <div className="flex flex-1 overflow-hidden gap-4 p-4">
 
-          {/* Employee list */}
           <div className="w-72 flex-shrink-0 bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col overflow-hidden">
 
             <div className="px-3 pt-3 pb-2 flex flex-col gap-2 border-b border-gray-100">
@@ -530,7 +341,7 @@ export default function EmployeeIdCard() {
 
             {selected.size > 0 && (
               <div className="px-3 py-1.5 bg-indigo-50 border-b border-indigo-100 text-[10px] font-semibold text-indigo-700">
-                {selected.size} selected · {Math.ceil(selected.size / 9)} A4 sheet{Math.ceil(selected.size / 9) !== 1 ? "s" : ""} (9/page)
+                {selected.size} selected · PDF {Math.ceil(selected.size / PAIRS_PER_SHEET)} sheet{Math.ceil(selected.size / PAIRS_PER_SHEET) !== 1 ? "s" : ""} ({PAIRS_PER_SHEET} pairs/page)
               </div>
             )}
 
@@ -571,7 +382,6 @@ export default function EmployeeIdCard() {
             </div>
           </div>
 
-          {/* Preview area */}
           <div className="flex-1 overflow-y-auto">
             {selectedEmployees.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-4 text-center px-8">
@@ -581,39 +391,29 @@ export default function EmployeeIdCard() {
                 <div>
                   <div className="font-semibold text-gray-500 text-sm mb-1">No cards selected</div>
                   <div className="text-xs text-gray-400 leading-relaxed">
-                    Select employees to preview front &amp; back ID cards.<br />
-                    Cards are <strong className="text-gray-500">53.963 × 84.088 mm</strong> portrait,
-                    9 per A4 sheet.
+                    Select employees to preview front &amp; back ID cards from <strong className="text-gray-500">orignal.svg</strong>.<br />
+                    Cards are <strong className="text-gray-500">53.963 × 84.088 mm</strong>. PDF: A4 landscape, front|back pairs ({PAIRS_PER_SHEET}/page).
                   </div>
                 </div>
               </div>
             ) : (
               <div>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="text-xs text-gray-500">
-                    <span className="font-semibold text-gray-700">{selectedEmployees.length}</span> card{selectedEmployees.length !== 1 ? "s" : ""}
-                    &nbsp;·&nbsp;
-                    <span className="font-semibold text-gray-700">{Math.ceil(selectedEmployees.length / 9)}</span> A4 sheet{Math.ceil(selectedEmployees.length / 9) !== 1 ? "s" : ""}
-                    &nbsp;(9 per sheet, fronts page 1 · backs page 2)
-                  </div>
-                  <button
-                    onClick={handlePrint}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
-                  >
-                    <Printer className="w-3.5 h-3.5" />
-                    Print All
-                  </button>
+                <div className="text-xs text-gray-500 mb-4">
+                  <span className="font-semibold text-gray-700">{selectedEmployees.length}</span> card{selectedEmployees.length !== 1 ? "s" : ""}
+                  &nbsp;·&nbsp;
+                  <span className="font-semibold text-gray-700">{Math.ceil(selectedEmployees.length / PAIRS_PER_SHEET)}</span> PDF sheet{Math.ceil(selectedEmployees.length / PAIRS_PER_SHEET) !== 1 ? "s" : ""}
+                  &nbsp;(landscape, {PAIRS_PER_SHEET} pairs/page)
                 </div>
                 <div className="flex flex-wrap gap-6">
                   {selectedEmployees.map(emp => (
                     <div key={emp.name} className="flex flex-col gap-0">
                       <div className="flex gap-2 mb-1">
-                        <div style={{width:190, textAlign:"center"}} className="idc-pair-label">FRONT</div>
-                        <div style={{width:190, textAlign:"center"}} className="idc-pair-label">BACK</div>
+                        <div style={{ width: 190, textAlign: "center" }} className="idc-pair-label">FRONT</div>
+                        <div style={{ width: 190, textAlign: "center" }} className="idc-pair-label">BACK</div>
                       </div>
                       <div className="idc-pair">
-                        <IdCardFront emp={emp} />
-                        <IdCardBack emp={emp} />
+                        <IdCardSvgFace emp={emp} side="front" />
+                        <IdCardSvgFace emp={emp} side="back" />
                       </div>
                     </div>
                   ))}
@@ -621,18 +421,6 @@ export default function EmployeeIdCard() {
               </div>
             )}
           </div>
-        </div>
-      </div>
-
-      {/* Print area — always in DOM, hidden on screen */}
-      <div id="id-print-area" style={{ display: "none" }}>
-        {/* Page 1: all FRONTS */}
-        <div className="id-print-grid">
-          {selectedEmployees.map(emp => <IdCardFront key={emp.name} emp={emp} />)}
-        </div>
-        {/* Page 2: all BACKS */}
-        <div className="id-print-grid id-print-page2">
-          {selectedEmployees.map(emp => <IdCardBack key={emp.name} emp={emp} />)}
         </div>
       </div>
     </Layout>

@@ -8,97 +8,9 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { APP_MODULES, MODULE_GROUPS, ALL_MODULE_KEYS } from "@/lib/appModules";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
-
-// ── All app modules ───────────────────────────────────────────────────────────
-const APP_MODULES = [
-  { key: "dashboard",              label: "Dashboard",            group: "Core" },
-  { key: "calendar",               label: "Calendar",             group: "Core" },
-  { key: "tasks",                  label: "Tasks (Kanban)",       group: "Core" },
-  { key: "task-management",        label: "Task Management",      group: "Core" },
-  { key: "team-pulse",             label: "Team Pulse",           group: "Core" },
-  { key: "team-reporting",         label: "Team Reporting",       group: "Core" },
-  { key: "ip-call-logs",           label: "IP Call Logs",         group: "Core" },
-  { key: "ip-call-logs-hr",        label: "HR Recruitment Logs",  group: "IP Call Logs" },
-  { key: "ip-call-logs-project",   label: "Project Followups",    group: "IP Call Logs" },
-  { key: "ip-call-logs-purchase",  label: "Purchase Followups",   group: "IP Call Logs" },
-  { key: "ip-call-logs-marketing", label: "Marketing Followups",  group: "IP Call Logs" },
-  { key: "projects",               label: "Projects",             group: "Project Management" },
-  { key: "project-board",          label: "Project Board",        group: "Project Management" },
-  { key: "project-timeline",       label: "Project Timeline",     group: "Project Management" },
-  { key: "meeting-minutes",        label: "Meeting Minutes",      group: "Project Management" },
-  { key: "meeting-discussion",     label: "Project Discussion",   group: "Project Management" },
-  { key: "project-drawings",       label: "Project Drawings",     group: "Project Management" },
-  { key: "presentation",           label: "Presentation",         group: "Project Management" },
-  { key: "speech-translator",      label: "Speech Translator",    group: "Project Management" },
-  { key: "translator",             label: "Translator",           group: "Project Management" },
-  { key: "proposal-library",       label: "Proposal Library",     group: "Project Management" },
-  { key: "design-3d",              label: "Design 3D",            group: "Design & Engineering" },
-  { key: "pid",                    label: "P&ID Process",         group: "Design & Engineering" },
-  { key: "nesting",                label: "Nesting",              group: "Design & Engineering" },
-  { key: "om-chemical-consumption",  label: "Chemical Consumption", group: "O&M" },
-  { key: "om-lab-reports",           label: "Lab Reports",          group: "O&M" },
-  { key: "om-site-performance",      label: "Site Performance",     group: "O&M" },
-  { key: "plc-site-calls",          label: "PLC Site Calls",       group: "PLC & Automation" },
-  { key: "plc-service-reports",     label: "Service Reports",      group: "PLC & Automation" },
-  { key: "plc-programs",            label: "PLC Programs",         group: "PLC & Automation" },
-  { key: "plc-hmi-programs",        label: "HMI Programs",         group: "PLC & Automation" },
-  { key: "plc-pid-design",          label: "PID Design",           group: "PLC & Automation" },
-  { key: "plc-instruments",         label: "Instruments",          group: "PLC & Automation" },
-  { key: "plc-tags",                label: "PLC Tags",             group: "PLC & Automation" },
-  { key: "plc-panel-inspection",    label: "Panel Inspection",     group: "PLC & Automation" },
-  { key: "plc-support-tickets",     label: "Support Tickets",      group: "PLC & Automation" },
-  { key: "plc-device-config",       label: "PLC Device Config",    group: "PLC & Automation" },
-  { key: "plc-network-architecture",label: "Network Architecture", group: "PLC & Automation" },
-  { key: "material-request",        label: "Material Request",         group: "Procurement" },
-  { key: "purchase-order",         label: "Purchase Order",       group: "Procurement" },
-  { key: "purchase-orders",        label: "Purchase Orders",      group: "Procurement" },
-  { key: "purchase-dashboard",     label: "Purchase Dashboard",   group: "Procurement" },
-  { key: "stores-dashboard",       label: "Stores Dashboard",     group: "Procurement" },
-  { key: "stock-reports",          label: "Stock Reports",        group: "Procurement" },
-  { key: "logistics-dashboard",    label: "Logistics Dashboard",  group: "Procurement" },
-  { key: "process-proposal",       label: "Process & Proposal",   group: "Procurement" },
-  { key: "finance-dashboard",      label: "Finance Dashboard",    group: "Procurement" },
-  { key: "email",                  label: "Email",                group: "Communication" },
-  { key: "smart-inbox",            label: "Smart Inbox (AI)",     group: "Communication" },
-  { key: "chat",                   label: "FlowTalk",             group: "Communication" },
-  { key: "sheets",                 label: "Sheets",               group: "Communication" },
-  { key: "marketing",              label: "Marketing",            group: "Marketing & CRM" },
-  { key: "sales-dashboard",        label: "Sales Dashboard",      group: "Marketing & CRM" },
-  { key: "leads",                  label: "Leads",                group: "Marketing & CRM" },
-  { key: "campaigns",              label: "Campaigns",            group: "Marketing & CRM" },
-  { key: "vc-card-scanner",        label: "VC Card Scanner",      group: "Marketing & CRM" },
-  { key: "plant-enquiry",          label: "Plant Enquiry",        group: "Marketing & CRM" },
-  { key: "hrms",                   label: "HRMS",                 group: "HR" },
-  { key: "hrms-checkin",           label: "Attendance",           group: "HR" },
-  { key: "hrms-leave-request",     label: "Leave Request",        group: "HR" },
-  { key: "hrms-claims",            label: "Claims",               group: "HR" },
-  { key: "hrms-recruitment",       label: "Recruitment",          group: "HR" },
-  { key: "hrms-incidents",         label: "HR Incidents",         group: "HR" },
-  { key: "hrms-analytics",         label: "HR Analytics",         group: "HR" },
-  { key: "hrms-performance",       label: "Performance",          group: "HR" },
-  { key: "hrms-team-performance",  label: "Team Dashboard",       group: "HR" },
-  { key: "hrms-task-summary",      label: "Task Summary",         group: "HR" },
-  { key: "hrms-daily-reporting",   label: "Daily Reporting",      group: "HR" },
-  { key: "hrms-work-monitor",      label: "Work Monitor",         group: "HR" },
-  { key: "site-data",              label: "Site Data",            group: "Monitoring" },
-  { key: "plant-overview",         label: "Plant Overview",       group: "Monitoring" },
-  { key: "site-db",                label: "Site DB Viewer",       group: "Monitoring" },
-  { key: "site-db-analyze",        label: "Plant Analytics",      group: "Monitoring" },
-  { key: "site-db-system",         label: "Site DB System",       group: "Monitoring" },
-  { key: "cctv",                   label: "CCTV",                 group: "Monitoring" },
-  { key: "gallery",                label: "Gallery",              group: "Operations" },
-  { key: "workshop",               label: "Workshop",             group: "Operations" },
-  { key: "mis-report",             label: "MD Dashboard",         group: "Executive" },
-  { key: "payment-tracker",        label: "Bill & Recharge",      group: "Admin" },
-  { key: "user-management",        label: "User Management",      group: "Admin" },
-  { key: "agent-management",       label: "Agent Management",     group: "Admin" },
-  { key: "settings",               label: "Settings",             group: "Admin" },
-  { key: "email-settings",         label: "Email Settings",       group: "Admin" },
-];
-
-const MODULE_GROUPS = [...new Set(APP_MODULES.map(m => m.group))];
 
 type ModuleRole = "none" | "read" | "write";
 
@@ -156,8 +68,6 @@ function getTemplateColor(color: string) {
   return TEMPLATE_COLORS.find(c => c.value === color) ?? TEMPLATE_COLORS[0];
 }
 
-const ALL_MODULE_KEYS = APP_MODULES.map(m => m.key);
-
 const DEFAULT_ROLE_TEMPLATES: Omit<RoleTemplate, "id" | "createdAt" | "updatedAt">[] = [
   {
     name: "Admin",
@@ -171,7 +81,8 @@ const DEFAULT_ROLE_TEMPLATES: Omit<RoleTemplate, "id" | "createdAt" | "updatedAt
     color: "violet",
     moduleRoles: JSON.stringify(Object.fromEntries([
       ...["dashboard","calendar","tasks","projects","project-board","project-timeline","meeting-minutes","project-drawings",
-         "presentation","proposal-library","material-request","email","chat","sheets"].map(k => [k, "write"]),
+         "approved-drawings","presentation","proposal-library","proposal-wizard","proposals","process-proposal",
+         "material-request","email","chat","sheets","project-insights"].map(k => [k, "write"]),
       ...["purchase-order","purchase-orders","purchase-dashboard","stores-dashboard","logistics-dashboard","process-proposal",
          "finance-dashboard","design-3d","pid","nesting","hrms","hrms-checkin","hrms-leave-request","hrms-claims","hrms-analytics",
          "hrms-performance","hrms-team-performance","hrms-task-summary","hrms-daily-reporting",
@@ -208,7 +119,8 @@ const DEFAULT_ROLE_TEMPLATES: Omit<RoleTemplate, "id" | "createdAt" | "updatedAt
     color: "emerald",
     moduleRoles: JSON.stringify(Object.fromEntries([
       ...["dashboard","calendar","hrms","hrms-checkin","hrms-leave-request","hrms-claims","hrms-recruitment","hrms-incidents",
-         "hrms-analytics","hrms-performance","hrms-team-performance","hrms-task-summary","hrms-daily-reporting","hrms-work-monitor","email","chat"].map(k => [k, "write"]),
+         "hrms-analytics","hrms-performance","hrms-team-performance","hrms-task-summary","hrms-daily-reporting","hrms-work-monitor",
+         "hrms-id-cards","team","email","chat"].map(k => [k, "write"]),
       ...["tasks","projects","project-board","project-timeline","meeting-minutes"].map(k => [k, "read"]),
       ...["task-management","team-pulse","team-reporting","ip-call-logs","ip-call-logs-hr","ip-call-logs-project","ip-call-logs-purchase",
          "ip-call-logs-marketing","project-drawings","presentation","proposal-library","meeting-discussion","speech-translator","translator",

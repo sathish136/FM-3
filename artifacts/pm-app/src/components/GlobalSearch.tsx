@@ -42,10 +42,14 @@ const ALL_PAGES: SearchEntry[] = [
   { path: "/meeting-minutes",           label: "Meeting Minutes",        icon: FileText,         group: "Project Management",    keywords: "meeting notes actions" },
   { path: "/meeting-discussion",        label: "Project Discussion",     icon: MessageSquare,    group: "Project Management",    keywords: "meeting discussion chat project" },
   { path: "/project-drawings",          label: "Project Drawings",       icon: FolderOpen,       group: "Design & Engineering",  keywords: "drawings folder files" },
+  { path: "/approved-drawings",         label: "Approved Drawings",      icon: FolderOpen,       group: "Design & Engineering",  keywords: "approved drawings release" },
   { path: "/presentation",              label: "Presentation",           icon: MonitorPlay,      group: "Project Management",    keywords: "slides pptx deck" },
   { path: "/speech-translator",         label: "Speech Translator",      icon: Languages,        group: "Project Management",    keywords: "speech translator voice language" },
   { path: "/translator",                label: "Translator",             icon: Globe,            group: "Project Management",    keywords: "translator language translate" },
   { path: "/proposal-library",          label: "Proposal Library",       icon: Library,          group: "Project Management",    keywords: "proposal library pdf sync" },
+  { path: "/proposal-wizard",           label: "Proposal Wizard",        icon: Sparkles,         group: "Project Management",    keywords: "proposal wizard create" },
+  { path: "/proposals",                 label: "Proposal Requests",      icon: ClipboardList,    group: "Project Management",    keywords: "proposal requests admin" },
+  { path: "/project-insights",          label: "Project Insights",       icon: BarChart2,        group: "Project Management",    keywords: "project insights analytics" },
   // ── Design & Engineering ─────────────────────────────────────────────────────
   { path: "/design-3d",                 label: "Design 3D",              icon: Box,              group: "Design & Engineering",  keywords: "3d step model viewer" },
   { path: "/pid",                       label: "P&ID Process",           icon: GitBranch,        group: "Design & Engineering",  keywords: "pid piping instrumentation" },
@@ -108,6 +112,7 @@ const ALL_PAGES: SearchEntry[] = [
   { path: "/hrms/task-summary",         label: "Task Summary",           icon: ClipboardList,    group: "HR",                    keywords: "task summary report hrms" },
   { path: "/hrms/daily-reporting",      label: "Daily Reporting",        icon: FileText,         group: "HR",                    keywords: "daily report log hrms" },
   { path: "/hrms/work-monitor",         label: "Work Monitor",           icon: Activity,         group: "HR",                    keywords: "work monitor hrms productivity" },
+  { path: "/hrms/id-cards",             label: "Employee ID Cards",      icon: CreditCard,       group: "HR",                    keywords: "id card employee badge print" },
   // ── Admin ───────────────────────────────────────────────────────────────────
   { path: "/settings",                  label: "Settings",               icon: Settings,         group: "Admin",                 keywords: "settings config" },
   { path: "/email-settings",            label: "Email Settings",         icon: MailOpen,         group: "Admin",                 keywords: "email settings gmail" },

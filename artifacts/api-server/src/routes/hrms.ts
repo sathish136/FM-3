@@ -504,6 +504,67 @@ router.get("/hrms/employees/id-card-data", async (_req, res) => {
   }
 });
 
+// POST /api/hrms/id-card/render — fill orignal.svg with employee data (template file unchanged on disk)
+router.post("/hrms/id-card/render", async (req, res) => {
+  try {
+    const { employee, side } = req.body as {
+      employee?: import("../lib/idCardSvg").IdCardEmployee;
+      side?: import("../lib/idCardSvg").IdCardSide;
+    };
+    if (!employee?.name || !employee?.employee_name) {
+      return res.status(400).json({ error: "employee name and employee_name are required" });
+    }
+    if (side !== "front" && side !== "back") {
+      return res.status(400).json({ error: "side must be front or back" });
+    }
+    const { renderIdCardSvg, getIdCardTemplatePath, loadGmSignDataUri } = await import("../lib/idCardSvg");
+    if (!getIdCardTemplatePath()) {
+      return res.status(500).json({ error: "ID card template orignal.svg not found" });
+    }
+    const proto = req.get("x-forwarded-proto") || req.protocol;
+    const host = req.get("x-forwarded-host") || req.get("host") || "localhost:3000";
+    const assetBase = `${proto}://${host}`;
+
+    const assets: { photoDataUri?: string; signatureDataUri?: string; qrDataUri?: string } = {
+      signatureDataUri: loadGmSignDataUri(),
+    };
+    try {
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(employee.name)}&bgcolor=ffffff&color=012867`;
+      const qrResp = await fetch(qrUrl);
+      if (qrResp.ok) {
+        const buf = Buffer.from(await qrResp.arrayBuffer());
+        assets.qrDataUri = `data:image/png;base64,${buf.toString("base64")}`;
+      }
+    } catch {
+      /* fall back to external QR URL in SVG */
+    }
+    if (employee.image && ERPNEXT_URL && ERPNEXT_API_KEY && ERPNEXT_API_SECRET) {
+      try {
+        const imgUrl = employee.image.startsWith("http")
+          ? employee.image
+          : `${ERPNEXT_URL}${employee.image}`;
+        const imgResp = await fetch(imgUrl, {
+          headers: { Authorization: `token ${ERPNEXT_API_KEY}:${ERPNEXT_API_SECRET}` },
+        });
+        if (imgResp.ok) {
+          const buf = Buffer.from(await imgResp.arrayBuffer());
+          const ct = imgResp.headers.get("content-type") || "image/jpeg";
+          assets.photoDataUri = `data:${ct};base64,${buf.toString("base64")}`;
+        }
+      } catch {
+        /* fall back to image-proxy URL in SVG */
+      }
+    }
+
+    const svg = renderIdCardSvg(employee, side, assetBase, assets);
+    res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
+    res.setHeader("Cache-Control", "private, max-age=60");
+    res.send(svg);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 router.get("/hrms/leave-applications", async (req, res) => {
   try {
     const { status, employee } = req.query as Record<string, string>;

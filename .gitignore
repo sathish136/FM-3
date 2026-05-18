@@ -1,0 +1,12 @@
+# Large local files — never commit
+artifacts/api-server/.mesh-cache/
+artifacts/api-server/.local-3d-uploads/
+
+# Dependencies & build output
+node_modules/
+dist/
+*.log
+
+# OS / editor
+.DS_Store
+*.swp

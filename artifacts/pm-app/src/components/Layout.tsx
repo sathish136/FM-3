@@ -20,6 +20,7 @@ import { WaterDropAnimation } from "@/components/WaterAnimation";
 import { useTheme, THEME_PRESETS } from "@/hooks/useTheme";
 import { useNavStyle } from "@/hooks/useNavStyle";
 import { useSlideshowContext } from "@/contexts/SlideshowContext";
+import { PATH_TO_MODULE, isModuleRoleAllowed } from "@/lib/appModules";
 
 interface InAppNotification {
   id: number;
@@ -361,96 +362,6 @@ const allNavItems: NavItem[] = navGroups.flatMap(g => g.items).filter(
 );
 
 const ADMIN_EMAILS = ["edp@wttindia.com", "venkat@wttindia.com"];
-
-const PATH_TO_MODULE: Record<string, string> = {
-  "/":                      "dashboard",
-  "/calendar":              "calendar",
-  "/tasks":                 "tasks",
-  "/projects":              "projects",
-  "/project-board":         "project-board",
-  "/task-management":       "task-management",
-  "/team-pulse":            "team-pulse",
-  "/team-reporting":        "team-reporting",
-  "/ip-call-logs":          "ip-call-logs",
-  "/ip-call-logs/hr":        "ip-call-logs-hr",
-  "/ip-call-logs/project":   "ip-call-logs-project",
-  "/ip-call-logs/purchase":  "ip-call-logs-purchase",
-  "/ip-call-logs/marketing": "ip-call-logs-marketing",
-  "/project-timeline":      "project-timeline",
-  "/meeting-minutes":       "meeting-minutes",
-  "/meeting-discussion":    "meeting-discussion",
-  "/vc-card-scanner":       "vc-card-scanner",
-  "/speech-translator":     "speech-translator",
-  "/translator":            "translator",
-  "/project-drawings":      "project-drawings",
-  "/approved-drawings":     "approved-drawings",
-  "/presentation":          "presentation",
-  "/design-3d":             "design-3d",
-  "/pid":                   "pid",
-  "/nesting":               "nesting",
-  "/material-request":      "material-request",
-  "/purchase-order":        "purchase-order",
-  "/purchase-dashboard":    "purchase-dashboard",
-  "/stores-dashboard":      "stores-dashboard",
-  "/stock-reports":         "stock-reports",
-  "/logistics-dashboard":   "logistics-dashboard",
-  "/process-proposal":      "process-proposal",
-  "/finance-dashboard":     "finance-dashboard",
-  "/email":                 "email",
-  "/smart-inbox":           "smart-inbox",
-  "/chat":                  "chat",
-  "/sheets":                "sheets",
-  "/marketing":             "marketing",
-  "/leads":                 "leads",
-  "/campaigns":             "campaigns",
-  "/sales-dashboard":       "sales-dashboard",
-  "/sales":                 "sales-dashboard",
-  "/plant-enquiry":         "plant-enquiry",
-  "/hrms":                  "hrms",
-  "/hrms/checkin":          "hrms-checkin",
-  "/hrms/leave-request":    "hrms-leave-request",
-  "/hrms/claims":           "hrms-claims",
-  "/hrms/recruitment":      "hrms-recruitment",
-  "/hrms/incidents":        "hrms-incidents",
-  "/hrms/analytics":        "hrms-analytics",
-  "/hrms/performance":      "hrms-performance",
-  "/hrms/team-performance": "hrms-team-performance",
-  "/hrms/task-summary":     "hrms-task-summary",
-  "/hrms/daily-reporting":  "hrms-daily-reporting",
-  "/hrms/work-monitor":     "hrms-work-monitor",
-  "/hrms/id-cards":         "hrms-id-cards",
-  "/plant-overview":        "plant-overview",
-  "/site-data":             "site-data",
-  "/site-db":               "site-db",
-  "/site-db/analyze":       "site-db",
-  "/workshop":                      "workshop",
-  "/workshop/welder":               "workshop",
-  "/workshop/fitter":               "workshop",
-  "/proposal-wizard":       "proposal-wizard",
-  "/proposal-library":               "proposal-library",
-  "/proposals":                      "proposals",
-  "/om/chemical-consumption":            "om-chemical-consumption",
-  "/om/lab-reports":                     "om-lab-reports",
-  "/om/site-performance":                "om-site-performance",
-  "/plc-automation/site-calls":          "plc-site-calls",
-  "/plc-automation/service-reports":     "plc-service-reports",
-  "/plc-automation/panel-inspection":    "plc-panel-inspection",
-  "/plc-automation/support-tickets":     "plc-support-tickets",
-  "/plc-automation/device-config":       "plc-device-config",
-  "/plc-automation/network-architecture":"plc-network-architecture",
-  "/plc-automation/plc-programs":        "plc-programs",
-  "/plc-automation/hmi-programs":        "plc-hmi-programs",
-  "/plc-automation/pid-design":          "plc-pid-design",
-  "/plc-automation/instruments":         "plc-instruments",
-  "/plc-automation/tags":                "plc-tags",
-  "/cctv":                  "cctv",
-  "/mis-report":            "mis-report",
-  "/payment-tracker":       "payment-tracker",
-  "/user-management":       "user-management",
-  "/agent-management":      "agent-management",
-  "/settings":              "settings",
-  "/email-settings":        "email-settings",
-};
 
 const mobileBottomNav = [
   { path: "/", label: "Home", icon: LayoutDashboard, color: "text-sky-400" },
@@ -946,12 +857,7 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
       return AGENT_ALLOWED_PATHS.some(p => path === p || path.startsWith(p + "/"));
     }
     if (permLoading) return false;
-    if (moduleRoles === null) return true;
-    const key = PATH_TO_MODULE[path];
-    if (!key) return true;
-    const role = moduleRoles[key];
-    if (role === undefined) return false;
-    return role === "read" || role === "write";
+    return isModuleRoleAllowed(moduleRoles, path);
   }
 
   const visibleNavGroups = (() => {
