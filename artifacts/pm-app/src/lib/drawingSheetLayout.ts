@@ -78,6 +78,7 @@ export interface GaSheetRegions {
   leftW: number;
   rightW: number;
   front: SheetRegion;
+  /** @deprecated No plan view in single-page layout — kept for type compat */
   plan: SheetRegion;
   bom: SheetRegion;
   iso: SheetRegion;
@@ -90,8 +91,11 @@ export interface GaSheetRegions {
 }
 
 /**
- * Single A3 sheet — left: FRONT + PLAN; right: BOM + ISOMETRIC;
- * title block sits in the bottom-right corner (over isometric), like WTT reference.
+ * Single A3 sheet — WTT reference layout:
+ *   Left (60%): FRONT elevation, full height
+ *   Right top (40%): BOM table
+ *   Right bottom (40%): ISOMETRIC 3D view
+ * Title block sits in the bottom-right corner (over isometric).
  */
 export function getGaSheetRegions(pageW: number, pageH: number): GaSheetRegions {
   const m = SHEET.margin;
@@ -105,17 +109,17 @@ export function getGaSheetRegions(pageW: number, pageH: number): GaSheetRegions 
   const rightW = BOM_PANEL.width;
   const leftW = innerW - rightW - 3;
   const gap = 2;
-  const halfH = (innerH - gap) / 2;
   const rightX = innerL + leftW + 3;
-  const bomH = Math.min(132, halfH + 8);
+  const bomH = Math.min(110, innerH * 0.42);
+  const isoH = innerH - bomH - gap;
 
   return {
     leftW,
     rightW,
-    front: { x: innerL, y: innerT, w: leftW, h: halfH },
-    plan: { x: innerL, y: innerT + halfH + gap, w: leftW, h: halfH },
+    front: { x: innerL, y: innerT, w: leftW, h: innerH },
+    plan: { x: innerL, y: innerT, w: leftW, h: innerH },   // alias → same as front
     bom: { x: rightX, y: innerT, w: rightW, h: bomH },
-    iso: { x: rightX, y: innerT + bomH + gap, w: rightW, h: innerH - bomH - gap },
+    iso: { x: rightX, y: innerT + bomH + gap, w: rightW, h: isoH },
     titleX: innerR - TITLE_BLOCK.width,
     titleY: innerB - TITLE_BLOCK.height,
     innerL,

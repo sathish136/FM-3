@@ -1,14 +1,81 @@
 import { Link, useLocation } from "wouter";
 import {
-  LayoutDashboard, Box, GitBranch,
-  Briefcase, FileText,
-  LogOut, ChevronDown, ChevronRight as ChevronRightIcon, Menu, MoreHorizontal,
-  MonitorPlay, Table2, Settings, Zap, ShoppingCart, ShoppingBag, UserCircle, Users, LayoutGrid, Mail, MailOpen, GanttChartSquare, MessageSquare, Sun, Moon, Layers, FolderOpen, Sparkles, X, Activity, Bot, Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt, UserPlus, Grid3x3, PanelLeftClose, Search, Bell, CheckCheck, Trash2, TrendingUp, ListChecks, ClipboardList, Truck, Package,
-  Play, Square, Phone, ShieldOff, Loader2, Languages, Globe, Mic, Pause,
-  ScanLine, Factory, Database, UserCheck,
-  Code2, Monitor, Gauge, Tag, Ticket, Cpu, Network,
-  FlaskConical, TestTubes, CheckCircle2, CreditCard, PartyPopper, Ruler,
-  Cog, Building2, PenLine,
+  LayoutDashboard,
+  Box,
+  GitBranch,
+  Briefcase,
+  FileText,
+  LogOut,
+  ChevronDown,
+  ChevronRight as ChevronRightIcon,
+  Menu,
+  MoreHorizontal,
+  MonitorPlay,
+  Table2,
+  Settings,
+  Zap,
+  ShoppingCart,
+  ShoppingBag,
+  UserCircle,
+  Users,
+  LayoutGrid,
+  Mail,
+  MailOpen,
+  GanttChartSquare,
+  MessageSquare,
+  Sun,
+  Moon,
+  Layers,
+  FolderOpen,
+  Sparkles,
+  X,
+  Activity,
+  Bot,
+  Megaphone,
+  Warehouse,
+  Target,
+  BarChart3,
+  AlertTriangle,
+  Clock,
+  Calendar,
+  Receipt,
+  UserPlus,
+  Grid3x3,
+  PanelLeftClose,
+  Search,
+  Bell,
+  CheckCheck,
+  Trash2,
+  TrendingUp,
+  ListChecks,
+  ClipboardList,
+  Truck,
+  Package,
+  Play,
+  Square,
+  Phone,
+  ShieldOff,
+  Loader2,
+  Languages,
+  Globe,
+  Mic,
+  Pause,
+  ScanLine,
+  Factory,
+  Database,
+  UserCheck,
+  Code2,
+  Monitor,
+  Gauge,
+  Tag,
+  Ticket,
+  Cpu,
+  Network,
+  FlaskConical,
+  TestTubes,
+  CheckCircle2,
+  CreditCard,
+  PartyPopper,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -21,8 +88,7 @@ import { WaterDropAnimation } from "@/components/WaterAnimation";
 import { useTheme, THEME_PRESETS } from "@/hooks/useTheme";
 import { useNavStyle } from "@/hooks/useNavStyle";
 import { useSlideshowContext } from "@/contexts/SlideshowContext";
-import { APP_MODULES, ALL_MODULE_KEYS, isModuleRoleAllowed, OPEN_PATHS } from "@/lib/appModules";
-import { buildNavGroups, installedPathsFromModules, type NavItem } from "@/lib/buildNavGroups";
+import { PATH_TO_MODULE, isModuleRoleAllowed } from "@/lib/appModules";
 
 interface InAppNotification {
   id: number;
@@ -43,7 +109,9 @@ function NotificationBell({ email }: { email: string | undefined }) {
   const load = useCallback(async () => {
     if (!email) return;
     try {
-      const res = await fetch(`${BASE}/api/notifications?email=${encodeURIComponent(email)}`);
+      const res = await fetch(
+        `${BASE}/api/notifications?email=${encodeURIComponent(email)}`,
+      );
       if (res.ok) setNotifications(await res.json());
     } catch {}
   }, [email, BASE]);
@@ -56,13 +124,14 @@ function NotificationBell({ email }: { email: string | undefined }) {
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  const unread = notifications.filter(n => !n.read).length;
+  const unread = notifications.filter((n) => !n.read).length;
 
   const markAllRead = async () => {
     if (!email) return;
@@ -71,13 +140,16 @@ function NotificationBell({ email }: { email: string | undefined }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email }),
     });
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 
   const deleteNotif = async (id: number) => {
     if (!email) return;
-    await fetch(`${BASE}/api/notifications/${id}?email=${encodeURIComponent(email)}`, { method: "DELETE" });
-    setNotifications(prev => prev.filter(n => n.id !== id));
+    await fetch(
+      `${BASE}/api/notifications/${id}?email=${encodeURIComponent(email)}`,
+      { method: "DELETE" },
+    );
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
   const markRead = async (id: number) => {
@@ -87,22 +159,31 @@ function NotificationBell({ email }: { email: string | undefined }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, id }),
     });
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
+    );
   };
 
   const typeColor = (type: string) => {
     switch (type) {
-      case "success": return "text-green-500 bg-green-50";
-      case "warning": return "text-amber-500 bg-amber-50";
-      case "error": return "text-red-500 bg-red-50";
-      default: return "text-blue-500 bg-blue-50";
+      case "success":
+        return "text-green-500 bg-green-50";
+      case "warning":
+        return "text-amber-500 bg-amber-50";
+      case "error":
+        return "text-red-500 bg-red-50";
+      default:
+        return "text-blue-500 bg-blue-50";
     }
   };
 
   return (
     <div className="relative" ref={ref}>
       <button
-        onClick={() => { setOpen(v => !v); if (!open) load(); }}
+        onClick={() => {
+          setOpen((v) => !v);
+          if (!open) load();
+        }}
         className="relative p-2 rounded-xl text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-all"
         title="Notifications"
       >
@@ -117,9 +198,14 @@ function NotificationBell({ email }: { email: string | undefined }) {
       {open && (
         <div className="absolute right-0 top-12 z-50 w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-gray-100 dark:border-slate-700 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-slate-700">
-            <span className="font-semibold text-sm text-gray-800 dark:text-gray-100">Notifications</span>
+            <span className="font-semibold text-sm text-gray-800 dark:text-gray-100">
+              Notifications
+            </span>
             {unread > 0 && (
-              <button onClick={markAllRead} className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 transition-colors">
+              <button
+                onClick={markAllRead}
+                className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 transition-colors"
+              >
                 <CheckCheck className="w-3 h-3" /> Mark all read
               </button>
             )}
@@ -131,22 +217,46 @@ function NotificationBell({ email }: { email: string | undefined }) {
                 <p className="text-sm">No notifications yet</p>
               </div>
             ) : (
-              notifications.map(n => (
+              notifications.map((n) => (
                 <div
                   key={n.id}
                   onClick={() => markRead(n.id)}
-                  className={cn("flex items-start gap-3 px-4 py-3 border-b border-gray-50 dark:border-slate-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors", !n.read && "bg-blue-50/50 dark:bg-blue-900/10")}
+                  className={cn(
+                    "flex items-start gap-3 px-4 py-3 border-b border-gray-50 dark:border-slate-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors",
+                    !n.read && "bg-blue-50/50 dark:bg-blue-900/10",
+                  )}
                 >
-                  <span className={cn("w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5 text-xs", typeColor(n.type))}>
+                  <span
+                    className={cn(
+                      "w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5 text-xs",
+                      typeColor(n.type),
+                    )}
+                  >
                     <Bell className="w-3.5 h-3.5" />
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className={cn("text-sm font-medium leading-tight", n.read ? "text-gray-600 dark:text-gray-400" : "text-gray-900 dark:text-gray-100")}>{n.title}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-500 mt-0.5 line-clamp-2">{n.message}</p>
-                    <p className="text-[10px] text-gray-400 mt-1">{new Date(n.createdAt).toLocaleString()}</p>
+                    <p
+                      className={cn(
+                        "text-sm font-medium leading-tight",
+                        n.read
+                          ? "text-gray-600 dark:text-gray-400"
+                          : "text-gray-900 dark:text-gray-100",
+                      )}
+                    >
+                      {n.title}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-500 mt-0.5 line-clamp-2">
+                      {n.message}
+                    </p>
+                    <p className="text-[10px] text-gray-400 mt-1">
+                      {new Date(n.createdAt).toLocaleString()}
+                    </p>
                   </div>
                   <button
-                    onClick={e => { e.stopPropagation(); deleteNotif(n.id); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteNotif(n.id);
+                    }}
                     className="p-1 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors shrink-0"
                   >
                     <Trash2 className="w-3 h-3" />
@@ -161,22 +271,47 @@ function NotificationBell({ email }: { email: string | undefined }) {
   );
 }
 
-function UserAvatar({ user, size = "sm" }: { user: AuthUser | null; size?: "sm" | "md" | "lg" }) {
+function UserAvatar({
+  user,
+  size = "sm",
+}: {
+  user: AuthUser | null;
+  size?: "sm" | "md" | "lg";
+}) {
   const [imgError, setImgError] = useState(false);
-  const dim = size === "lg" ? "w-10 h-10" : size === "md" ? "w-9 h-9" : "w-7 h-7";
-  const text = size === "lg" ? "text-base" : size === "md" ? "text-sm" : "text-[10px]";
-  const initials = user?.full_name?.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase() ?? "??";
+  const dim =
+    size === "lg" ? "w-10 h-10" : size === "md" ? "w-9 h-9" : "w-7 h-7";
+  const text =
+    size === "lg" ? "text-base" : size === "md" ? "text-sm" : "text-[10px]";
+  const initials =
+    user?.full_name
+      ?.split(" ")
+      .map((w) => w[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() ?? "??";
 
   if (user?.photo && !imgError) {
     return (
-      <img src={user.photo} alt={user.full_name}
-        className={cn(dim, "rounded-full object-cover ring-2 ring-white/20 shrink-0")}
+      <img
+        src={user.photo}
+        alt={user.full_name}
+        className={cn(
+          dim,
+          "rounded-full object-cover ring-2 ring-white/20 shrink-0",
+        )}
         onError={() => setImgError(true)}
       />
     );
   }
   return (
-    <div className={cn(dim, "rounded-full bg-gradient-to-br from-sky-500 to-blue-700 flex items-center justify-center text-white font-bold shrink-0 shadow-lg", text)}>
+    <div
+      className={cn(
+        dim,
+        "rounded-full bg-gradient-to-br from-sky-500 to-blue-700 flex items-center justify-center text-white font-bold shrink-0 shadow-lg",
+        text,
+      )}
+    >
       {initials}
     </div>
   );
@@ -192,22 +327,682 @@ interface NavItem {
   children?: { path: string; label: string }[];
 }
 
-const navGroups = buildNavGroups(APP_MODULES);
-const installedModulePaths = installedPathsFromModules(APP_MODULES);
+const navGroups: { label: string; items: NavItem[] }[] = [
+  {
+    label: "Shortcuts",
+    items: [
+      {
+        path: "/purchase-dashboard",
+        label: "Purchase Dashboard",
+        icon: BarChart3,
+        color: "text-blue-400",
+        bgColor: "bg-blue-500/15",
+      },
+      {
+        path: "/stores-dashboard",
+        label: "Stores Dashboard",
+        icon: Warehouse,
+        color: "text-teal-400",
+        bgColor: "bg-teal-500/15",
+      },
+      {
+        path: "/finance-dashboard",
+        label: "Finance Dashboard",
+        icon: Receipt,
+        color: "text-emerald-400",
+        bgColor: "bg-emerald-500/15",
+      },
+      {
+        path: "/hrms/analytics",
+        label: "HR Analytics",
+        icon: BarChart3,
+        color: "text-indigo-400",
+        bgColor: "bg-indigo-500/15",
+      },
+      {
+        path: "/hrms/task-summary",
+        label: "Task Summary",
+        icon: ListChecks,
+        color: "text-lime-400",
+        bgColor: "bg-lime-500/15",
+      },
+      {
+        path: "/sales-dashboard",
+        label: "Sales Dashboard",
+        icon: BarChart3,
+        color: "text-emerald-400",
+        bgColor: "bg-emerald-500/15",
+      },
+    ],
+  },
+  {
+    label: "Work",
+    items: [
+      {
+        path: "/calendar",
+        label: "Calendar",
+        icon: Calendar,
+        color: "text-blue-400",
+        bgColor: "bg-blue-500/15",
+      },
+    ],
+  },
+  {
+    label: "Main",
+    items: [
+      {
+        path: "/",
+        label: "Dashboard",
+        icon: LayoutDashboard,
+        color: "text-sky-400",
+        bgColor: "bg-sky-500/15",
+      },
+      {
+        path: "/team-pulse",
+        label: "Team Pulse",
+        icon: Activity,
+        color: "text-emerald-400",
+        bgColor: "bg-emerald-500/15",
+      },
+      {
+        path: "/team-reporting",
+        label: "Team Reporting",
+        icon: ClipboardList,
+        color: "text-indigo-400",
+        bgColor: "bg-indigo-500/15",
+      },
+    ],
+  },
+  {
+    label: "IP Call Logs",
+    items: [
+      {
+        path: "/ip-call-logs/hr",
+        label: "HR Recruitment",
+        icon: UserPlus,
+        color: "text-emerald-400",
+        bgColor: "bg-emerald-500/15",
+      },
+      {
+        path: "/ip-call-logs/project",
+        label: "Project Followups",
+        icon: Briefcase,
+        color: "text-blue-400",
+        bgColor: "bg-blue-500/15",
+      },
+      {
+        path: "/ip-call-logs/purchase",
+        label: "Purchase Followups",
+        icon: ShoppingCart,
+        color: "text-amber-400",
+        bgColor: "bg-amber-500/15",
+      },
+      {
+        path: "/ip-call-logs/marketing",
+        label: "Marketing Followups",
+        icon: Megaphone,
+        color: "text-violet-400",
+        bgColor: "bg-violet-500/15",
+      },
+    ],
+  },
+  {
+    label: "Projects",
+    items: [
+      {
+        path: "/projects",
+        label: "Projects",
+        icon: Briefcase,
+        color: "text-blue-400",
+        bgColor: "bg-blue-500/15",
+      },
+      {
+        path: "/project-board",
+        label: "Project Board",
+        icon: LayoutGrid,
+        color: "text-indigo-400",
+        bgColor: "bg-indigo-500/15",
+      },
+      {
+        path: "/task-management",
+        label: "Task Management",
+        icon: Activity,
+        color: "text-purple-400",
+        bgColor: "bg-purple-500/15",
+      },
+      {
+        path: "/project-timeline",
+        label: "Timeline",
+        icon: GanttChartSquare,
+        color: "text-cyan-400",
+        bgColor: "bg-cyan-500/15",
+      },
+      {
+        path: "/meeting-minutes",
+        label: "Meeting Minutes",
+        icon: FileText,
+        color: "text-teal-400",
+        bgColor: "bg-teal-500/15",
+      },
+      {
+        path: "/meeting-discussion",
+        label: "Project Discussion",
+        icon: MessageSquare,
+        color: "text-blue-400",
+        bgColor: "bg-blue-500/15",
+      },
+      {
+        path: "/speech-translator",
+        label: "Speech Translator",
+        icon: Languages,
+        color: "text-violet-400",
+        bgColor: "bg-violet-500/15",
+      },
+      {
+        path: "/translator",
+        label: "Translator",
+        icon: Globe,
+        color: "text-blue-400",
+        bgColor: "bg-blue-500/15",
+      },
+      {
+        path: "/presentation",
+        label: "Presentation",
+        icon: MonitorPlay,
+        color: "text-orange-400",
+        bgColor: "bg-orange-500/15",
+      },
+    ],
+  },
+  {
+    label: "Design & Engineering",
+    items: [
+      {
+        path: "/design-3d",
+        label: "Design 3D",
+        icon: Box,
+        color: "text-violet-400",
+        bgColor: "bg-violet-500/15",
+      },
+      {
+        path: "/pid",
+        label: "P&ID Process",
+        icon: GitBranch,
+        color: "text-rose-400",
+        bgColor: "bg-rose-500/15",
+      },
+      {
+        path: "/nesting",
+        label: "Nesting",
+        icon: Layers,
+        color: "text-indigo-400",
+        bgColor: "bg-indigo-500/15",
+      },
+      {
+        path: "/project-drawings",
+        label: "Project Drawings",
+        icon: FolderOpen,
+        color: "text-sky-400",
+        bgColor: "bg-sky-500/15",
+      },
+      {
+        path: "/approved-drawings",
+        label: "Approved Drawings",
+        icon: CheckCircle2,
+        color: "text-emerald-400",
+        bgColor: "bg-emerald-500/15",
+      },
+    ],
+  },
+  {
+    label: "Procurement",
+    items: [
+      {
+        path: "/material-request",
+        label: "Material Request",
+        icon: ShoppingCart,
+        color: "text-amber-400",
+        bgColor: "bg-amber-500/15",
+      },
+      {
+        path: "/purchase-order",
+        label: "Purchase Order",
+        icon: ShoppingBag,
+        color: "text-orange-400",
+        bgColor: "bg-orange-500/15",
+      },
+      {
+        path: "/purchase-dashboard",
+        label: "Purchase Dashboard",
+        icon: BarChart3,
+        color: "text-blue-400",
+        bgColor: "bg-blue-500/15",
+      },
+      {
+        path: "/stores-dashboard",
+        label: "Stores Dashboard",
+        icon: Warehouse,
+        color: "text-teal-400",
+        bgColor: "bg-teal-500/15",
+      },
+      {
+        path: "/stock-reports",
+        label: "Stock Reports",
+        icon: Package,
+        color: "text-cyan-400",
+        bgColor: "bg-cyan-500/15",
+      },
+      {
+        path: "/finance-dashboard",
+        label: "Finance Dashboard",
+        icon: Receipt,
+        color: "text-emerald-400",
+        bgColor: "bg-emerald-500/15",
+      },
+    ],
+  },
+  {
+    label: "Communication",
+    items: [
+      {
+        path: "/email",
+        label: "Email",
+        icon: Mail,
+        color: "text-sky-400",
+        bgColor: "bg-sky-500/15",
+      },
+      {
+        path: "/smart-inbox",
+        label: "Smart Inbox (AI)",
+        icon: Bot,
+        color: "text-orange-400",
+        bgColor: "bg-orange-500/15",
+      },
+    ],
+  },
+  {
+    label: "Proposal",
+    items: [
+      {
+        path: "/proposal-wizard",
+        label: "Proposal Wizard",
+        icon: Sparkles,
+        color: "text-blue-400",
+        bgColor: "bg-blue-500/15",
+      },
+      {
+        path: "/proposal-library",
+        label: "Proposal Library",
+        icon: FileText,
+        color: "text-indigo-400",
+        bgColor: "bg-indigo-500/15",
+      },
+      {
+        path: "/proposals",
+        label: "Proposal Requests",
+        icon: ClipboardList,
+        color: "text-blue-400",
+        bgColor: "bg-blue-500/15",
+      },
+      {
+        path: "/process-proposal",
+        label: "Process & Proposal",
+        icon: Layers,
+        color: "text-sky-400",
+        bgColor: "bg-sky-500/15",
+      },
+    ],
+  },
+  {
+    label: "Marketing & CRM",
+    items: [
+      {
+        path: "/marketing",
+        label: "Marketing",
+        icon: Megaphone,
+        color: "text-violet-400",
+        bgColor: "bg-violet-500/15",
+      },
+      {
+        path: "/sales-dashboard",
+        label: "Sales Dashboard",
+        icon: BarChart3,
+        color: "text-emerald-400",
+        bgColor: "bg-emerald-500/15",
+      },
+      {
+        path: "/leads",
+        label: "Leads",
+        icon: Target,
+        color: "text-rose-400",
+        bgColor: "bg-rose-500/15",
+      },
+      {
+        path: "/vc-card-scanner",
+        label: "VC Card Scanner",
+        icon: ScanLine,
+        color: "text-amber-400",
+        bgColor: "bg-amber-500/15",
+      },
+      {
+        path: "/plant-enquiry",
+        label: "Plant Enquiry",
+        icon: Factory,
+        color: "text-blue-400",
+        bgColor: "bg-blue-500/15",
+      },
+      {
+        path: "/campaigns",
+        label: "Campaigns",
+        icon: BarChart3,
+        color: "text-pink-400",
+        bgColor: "bg-pink-500/15",
+      },
+    ],
+  },
+  {
+    label: "HR",
+    items: [
+      {
+        path: "/hrms",
+        label: "HRMS",
+        icon: UserCircle,
+        color: "text-emerald-400",
+        bgColor: "bg-emerald-500/15",
+      },
+      {
+        path: "/hrms/checkin",
+        label: "Attendance",
+        icon: Clock,
+        color: "text-teal-400",
+        bgColor: "bg-teal-500/15",
+      },
+      {
+        path: "/hrms/leave-request",
+        label: "Leave Request",
+        icon: Calendar,
+        color: "text-amber-400",
+        bgColor: "bg-amber-500/15",
+      },
+      {
+        path: "/hrms/claims",
+        label: "Claims",
+        icon: Receipt,
+        color: "text-violet-400",
+        bgColor: "bg-violet-500/15",
+      },
+      {
+        path: "/hrms/recruitment",
+        label: "Recruitment",
+        icon: UserPlus,
+        color: "text-blue-400",
+        bgColor: "bg-blue-500/15",
+      },
+      {
+        path: "/hrms/incidents",
+        label: "HR Incidents",
+        icon: AlertTriangle,
+        color: "text-rose-400",
+        bgColor: "bg-rose-500/15",
+      },
+      {
+        path: "/hrms/analytics",
+        label: "HR Analytics",
+        icon: BarChart3,
+        color: "text-indigo-400",
+        bgColor: "bg-indigo-500/15",
+      },
+      {
+        path: "/hrms/performance",
+        label: "Performance",
+        icon: TrendingUp,
+        color: "text-cyan-400",
+        bgColor: "bg-cyan-500/15",
+      },
+      {
+        path: "/hrms/team-performance",
+        label: "Team Dashboard",
+        icon: Activity,
+        color: "text-pink-400",
+        bgColor: "bg-pink-500/15",
+      },
+      {
+        path: "/hrms/task-summary",
+        label: "Task Summary",
+        icon: ListChecks,
+        color: "text-lime-400",
+        bgColor: "bg-lime-500/15",
+      },
+      {
+        path: "/hrms/daily-reporting",
+        label: "Daily Reporting",
+        icon: ClipboardList,
+        color: "text-orange-400",
+        bgColor: "bg-orange-500/15",
+      },
+      {
+        path: "/hrms/work-monitor",
+        label: "Work Monitor",
+        icon: Clock,
+        color: "text-blue-400",
+        bgColor: "bg-blue-500/15",
+      },
+      {
+        path: "/hrms/id-cards",
+        label: "ID Cards",
+        icon: CreditCard,
+        color: "text-yellow-400",
+        bgColor: "bg-yellow-500/15",
+      },
+      {
+        path: "/hrms/celebrations",
+        label: "Celebrations",
+        icon: PartyPopper,
+        color: "text-pink-400",
+        bgColor: "bg-pink-500/15",
+      },
+    ],
+  },
+  {
+    label: "Workshop",
+    items: [
+      {
+        path: "/workshop/welder",
+        label: "Welder Job Cards",
+        icon: Zap,
+        color: "text-rose-500",
+        bgColor: "bg-rose-500/15",
+      },
+      {
+        path: "/workshop/fitter",
+        label: "Fitter Job Cards",
+        icon: Activity,
+        color: "text-blue-400",
+        bgColor: "bg-blue-500/15",
+      },
+    ],
+  },
+  {
+    label: "O&M",
+    items: [
+      {
+        path: "/om/chemical-consumption",
+        label: "Chemical Consumption",
+        icon: FlaskConical,
+        color: "text-emerald-400",
+        bgColor: "bg-emerald-500/15",
+      },
+      {
+        path: "/om/lab-reports",
+        label: "Lab Reports",
+        icon: TestTubes,
+        color: "text-blue-400",
+        bgColor: "bg-blue-500/15",
+      },
+      {
+        path: "/om/site-performance",
+        label: "Site Performance",
+        icon: BarChart3,
+        color: "text-indigo-400",
+        bgColor: "bg-indigo-500/15",
+      },
+    ],
+  },
+  {
+    label: "PLC & Automation",
+    items: [
+      {
+        path: "/plc-automation/device-config",
+        label: "PLC Device Config",
+        icon: Cpu,
+        color: "text-sky-400",
+        bgColor: "bg-sky-500/15",
+      },
+      {
+        path: "/plc-automation/site-calls",
+        label: "Online Support Calls",
+        icon: Phone,
+        color: "text-cyan-400",
+        bgColor: "bg-cyan-500/15",
+      },
+      {
+        path: "/plc-automation/service-reports",
+        label: "Service Reports",
+        icon: ClipboardList,
+        color: "text-blue-400",
+        bgColor: "bg-blue-500/15",
+      },
+      {
+        path: "/plc-automation/panel-inspection",
+        label: "Panel Inspection",
+        icon: ClipboardList,
+        color: "text-orange-400",
+        bgColor: "bg-orange-500/15",
+      },
+      {
+        path: "/plc-automation/support-tickets",
+        label: "Support Tickets",
+        icon: Ticket,
+        color: "text-violet-400",
+        bgColor: "bg-violet-500/15",
+      },
+      {
+        path: "/plc-automation/network-architecture",
+        label: "Network Architecture",
+        icon: Network,
+        color: "text-blue-400",
+        bgColor: "bg-blue-500/15",
+      },
+    ],
+  },
+  {
+    label: "Monitoring",
+    items: [
+      {
+        path: "/site-data",
+        label: "Site Data",
+        icon: Activity,
+        color: "text-cyan-400",
+        bgColor: "bg-cyan-500/15",
+      },
+      {
+        path: "/site-db",
+        label: "Site DB Viewer",
+        icon: Database,
+        color: "text-indigo-400",
+        bgColor: "bg-indigo-500/15",
+      },
+      {
+        path: "/site-db/analyze",
+        label: "Plant Analytics",
+        icon: Sparkles,
+        color: "text-violet-400",
+        bgColor: "bg-violet-500/15",
+      },
+    ],
+  },
+  {
+    label: "Executive",
+    items: [
+      {
+        path: "/mis-report",
+        label: "MD Dashboard",
+        icon: BarChart3,
+        color: "text-violet-400",
+        bgColor: "bg-violet-500/15",
+      },
+    ],
+  },
+  {
+    label: "Admin",
+    items: [
+      {
+        path: "/payment-tracker",
+        label: "Bill & Recharge",
+        icon: Receipt,
+        color: "text-indigo-400",
+        bgColor: "bg-indigo-500/15",
+      },
+      {
+        path: "/user-management",
+        label: "User Management",
+        icon: Users,
+        color: "text-red-400",
+        bgColor: "bg-red-500/15",
+      },
+      {
+        path: "/agent-management",
+        label: "Agent Management",
+        icon: UserCheck,
+        color: "text-violet-400",
+        bgColor: "bg-violet-500/15",
+      },
+      {
+        path: "/settings",
+        label: "Settings",
+        icon: Settings,
+        color: "text-slate-400",
+        bgColor: "bg-slate-500/15",
+      },
+      {
+        path: "/email-settings",
+        label: "Email Settings",
+        icon: MailOpen,
+        color: "text-sky-400",
+        bgColor: "bg-sky-500/15",
+      },
+    ],
+  },
+];
 
-const allNavItems: NavItem[] = navGroups.flatMap(g => g.items).filter(
-  (item, idx, arr) => arr.findIndex(x => x.path === item.path) === idx
-);
+const allNavItems: NavItem[] = navGroups
+  .flatMap((g) => g.items)
+  .filter(
+    (item, idx, arr) => arr.findIndex((x) => x.path === item.path) === idx,
+  );
 
 const ADMIN_EMAILS = ["edp@wttindia.com", "venkat@wttindia.com"];
 
 const mobileBottomNav = [
   { path: "/", label: "Home", icon: LayoutDashboard, color: "text-sky-400" },
-  { path: "/project-board", label: "Board", icon: LayoutGrid, color: "text-indigo-400" },
+  {
+    path: "/project-board",
+    label: "Board",
+    icon: LayoutGrid,
+    color: "text-indigo-400",
+  },
   { path: "/hrms", label: "HRMS", icon: UserCircle, color: "text-emerald-400" },
 ];
 
-function AppLauncher({ open, onClose, visibleNavGroups: _visibleNavGroups }: { open: boolean; onClose: () => void; visibleNavGroups?: typeof navGroups }) {
+function AppLauncher({
+  open,
+  onClose,
+  visibleNavGroups: _visibleNavGroups,
+}: {
+  open: boolean;
+  onClose: () => void;
+  visibleNavGroups?: typeof navGroups;
+}) {
   const [location] = useLocation();
   const { theme } = useTheme();
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -217,28 +1012,42 @@ function AppLauncher({ open, onClose, visibleNavGroups: _visibleNavGroups }: { o
   useEffect(() => {
     if (!open) return;
     setSearch("");
-    const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [open, onClose]);
 
   if (!open) return null;
 
-  const allItems = groups.flatMap(g => g.items.map(i => ({ ...i, group: g.label })));
+  const allItems = groups.flatMap((g) =>
+    g.items.map((i) => ({ ...i, group: g.label })),
+  );
   const searchResults = search.trim()
-    ? allItems.filter(i => i.label.toLowerCase().includes(search.toLowerCase()))
+    ? allItems.filter((i) =>
+        i.label.toLowerCase().includes(search.toLowerCase()),
+      )
     : null;
 
   return (
     <div
       ref={overlayRef}
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backdropFilter: "blur(8px)", backgroundColor: "rgba(100,116,139,0.35)" }}
-      onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
+      style={{
+        backdropFilter: "blur(8px)",
+        backgroundColor: "rgba(100,116,139,0.35)",
+      }}
+      onClick={(e) => {
+        if (e.target === overlayRef.current) onClose();
+      }}
     >
       <div
         className="relative w-full max-w-[680px] max-h-[82vh] flex flex-col rounded-3xl shadow-[0_24px_60px_rgba(0,0,0,0.18)] overflow-hidden border border-slate-200"
-        style={{ background: "linear-gradient(160deg, #f8fafc 0%, #f1f5f9 60%, #f0f4ff 100%)" }}
+        style={{
+          background:
+            "linear-gradient(160deg, #f8fafc 0%, #f1f5f9 60%, #f0f4ff 100%)",
+        }}
       >
         {/* Glow top */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-80 h-px bg-gradient-to-r from-transparent via-indigo-300/80 to-transparent pointer-events-none" />
@@ -252,14 +1061,16 @@ function AppLauncher({ open, onClose, visibleNavGroups: _visibleNavGroups }: { o
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
             <input
               value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search apps…"
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search appsâ€¦"
               autoFocus
               className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-4 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all"
             />
           </div>
-          <button onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all shrink-0">
+          <button
+            onClick={onClose}
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all shrink-0"
+          >
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -269,21 +1080,40 @@ function AppLauncher({ open, onClose, visibleNavGroups: _visibleNavGroups }: { o
           {searchResults ? (
             <div>
               <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400 mb-3">
-                {searchResults.length} result{searchResults.length !== 1 ? "s" : ""}
+                {searchResults.length} result
+                {searchResults.length !== 1 ? "s" : ""}
               </p>
               <div className="grid grid-cols-5 gap-3">
-                {searchResults.map((item) => <AppItem key={item.path} item={item} location={location} theme={theme} onClose={onClose} />)}
+                {searchResults.map((item) => (
+                  <AppItem
+                    key={item.path}
+                    item={item}
+                    location={location}
+                    theme={theme}
+                    onClose={onClose}
+                  />
+                ))}
               </div>
             </div>
           ) : (
             groups.map((group) => (
               <div key={group.label}>
                 <div className="flex items-center gap-2 mb-3">
-                  <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400">{group.label}</p>
+                  <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400">
+                    {group.label}
+                  </p>
                   <div className="flex-1 h-px bg-slate-200" />
                 </div>
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
-                  {group.items.map((item) => <AppItem key={item.path} item={item} location={location} theme={theme} onClose={onClose} />)}
+                  {group.items.map((item) => (
+                    <AppItem
+                      key={item.path}
+                      item={item}
+                      location={location}
+                      theme={theme}
+                      onClose={onClose}
+                    />
+                  ))}
                 </div>
               </div>
             ))
@@ -292,7 +1122,9 @@ function AppLauncher({ open, onClose, visibleNavGroups: _visibleNavGroups }: { o
 
         {/* Footer */}
         <div className="shrink-0 px-6 py-3 border-t border-slate-200/80 flex items-center justify-between bg-white/60">
-          <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-widest">FlowMatriX</span>
+          <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-widest">
+            FlowMatriX
+          </span>
           <span className="text-[10px] text-slate-400">Press Esc to close</span>
         </div>
       </div>
@@ -300,39 +1132,76 @@ function AppLauncher({ open, onClose, visibleNavGroups: _visibleNavGroups }: { o
   );
 }
 
-function AppItem({ item, location, theme }: { item: any; location: string; theme: any; onClose: () => void }) {
-  const isActive = location === item.path || item.children?.some((c: any) => c.path === location);
+function AppItem({
+  item,
+  location,
+  theme,
+}: {
+  item: any;
+  location: string;
+  theme: any;
+  onClose: () => void;
+}) {
+  const isActive =
+    location === item.path ||
+    item.children?.some((c: any) => c.path === location);
   const Icon = item.icon;
-  // Convert dark-mode tints (bg-xxx-500/15, text-xxx-400) → solid light-mode versions
-  const lightBg    = (item.bgColor ?? "bg-slate-100").replace(/bg-(\w+)-\d+\/\d+/, "bg-$1-100");
-  const lightColor = (item.color  ?? "text-slate-500").replace(/text-(\w+)-\d+/,   "text-$1-600");
+  // Convert dark-mode tints (bg-xxx-500/15, text-xxx-400) â†’ solid light-mode versions
+  const lightBg = (item.bgColor ?? "bg-slate-100").replace(
+    /bg-(\w+)-\d+\/\d+/,
+    "bg-$1-100",
+  );
+  const lightColor = (item.color ?? "text-slate-500").replace(
+    /text-(\w+)-\d+/,
+    "text-$1-600",
+  );
   return (
     <Link href={item.path}>
-      <div className={cn(
-        "group flex flex-col items-center justify-center gap-2 py-4 px-2 rounded-2xl cursor-pointer transition-all duration-150 text-center relative overflow-hidden",
-        isActive
-          ? "bg-white shadow-md ring-2 ring-indigo-100"
-          : "hover:bg-white hover:shadow-sm hover:ring-1 hover:ring-slate-200"
-      )}>
-        {isActive && (
-          <div className="absolute inset-0 opacity-[0.06] pointer-events-none"
-            style={{ background: `radial-gradient(circle at 50% 20%, ${theme.accent}, transparent 75%)` }} />
+      <div
+        className={cn(
+          "group flex flex-col items-center justify-center gap-2 py-4 px-2 rounded-2xl cursor-pointer transition-all duration-150 text-center relative overflow-hidden",
+          isActive
+            ? "bg-white shadow-md ring-2 ring-indigo-100"
+            : "hover:bg-white hover:shadow-sm hover:ring-1 hover:ring-slate-200",
         )}
-        <div className={cn(
-          "w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-150 shadow-sm",
-          lightBg,
-          isActive ? "scale-105" : "group-hover:scale-105"
-        )}>
-          <Icon className={cn("w-6 h-6 transition-transform duration-150 group-hover:scale-110", lightColor)} />
+      >
+        {isActive && (
+          <div
+            className="absolute inset-0 opacity-[0.06] pointer-events-none"
+            style={{
+              background: `radial-gradient(circle at 50% 20%, ${theme.accent}, transparent 75%)`,
+            }}
+          />
+        )}
+        <div
+          className={cn(
+            "w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-150 shadow-sm",
+            lightBg,
+            isActive ? "scale-105" : "group-hover:scale-105",
+          )}
+        >
+          <Icon
+            className={cn(
+              "w-6 h-6 transition-transform duration-150 group-hover:scale-110",
+              lightColor,
+            )}
+          />
         </div>
-        <span className={cn(
-          "text-[11px] font-semibold leading-tight w-full transition-colors line-clamp-2",
-          isActive ? "text-slate-800" : "text-slate-500 group-hover:text-slate-700"
-        )}>
+        <span
+          className={cn(
+            "text-[11px] font-semibold leading-tight w-full transition-colors line-clamp-2",
+            isActive
+              ? "text-slate-800"
+              : "text-slate-500 group-hover:text-slate-700",
+          )}
+        >
           {item.label}
         </span>
         {isActive && (
-          <span className="w-5 h-0.5 rounded-full" style={{ backgroundColor: theme.accent }} />
+          <span
+            className="w-5 h-0.5 rounded-full"
+            style={{ backgroundColor: theme.accent }}
+          />
         )}
       </div>
     </Link>
@@ -343,17 +1212,35 @@ const SIDEBAR_SCROLL_KEY = "fm_sidebar_scroll";
 function useSidebarScrollMemory() {
   const ref = useRef<HTMLElement | null>(null);
   useEffect(() => {
-    const el = ref.current; if (!el) return;
+    const el = ref.current;
+    if (!el) return;
     const saved = Number(sessionStorage.getItem(SIDEBAR_SCROLL_KEY) || "0");
     if (!Number.isNaN(saved)) el.scrollTop = saved;
-    const onScroll = () => { sessionStorage.setItem(SIDEBAR_SCROLL_KEY, String(el.scrollTop)); };
+    const onScroll = () => {
+      sessionStorage.setItem(SIDEBAR_SCROLL_KEY, String(el.scrollTop));
+    };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
   return ref;
 }
 
-function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, toggleGroup, setCollapsed, setMobileSidebarOpen, aiTrigger, setAiTrigger, logout, theme, user, slideshowProps, visibleNavGroups: _visibleNavGroups }: any) {
+function FullSidebar({
+  location,
+  expandedItems,
+  toggleExpand,
+  expandedGroups,
+  toggleGroup,
+  setCollapsed,
+  setMobileSidebarOpen,
+  aiTrigger,
+  setAiTrigger,
+  logout,
+  theme,
+  user,
+  slideshowProps,
+  visibleNavGroups: _visibleNavGroups,
+}: any) {
   const navScrollRef = useSidebarScrollMemory();
   const ss = slideshowProps ?? {};
   const groups = (_visibleNavGroups ?? navGroups) as typeof navGroups;
@@ -367,14 +1254,37 @@ function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, to
           <WaterDropAnimation size="sm" />
           <div className="flex flex-col">
             <span className="text-lg font-black tracking-tight leading-none flex items-baseline gap-0">
-              <span style={{ background: "linear-gradient(90deg, #818cf8, #a78bfa, #60a5fa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>FlowMatri</span>
-              <span style={{ color: "#22d3ee", textShadow: "0 0 12px rgba(34,211,238,0.7)", fontSize: "1.35em", lineHeight: 1 }}>X</span>
+              <span
+                style={{
+                  background:
+                    "linear-gradient(90deg, #818cf8, #a78bfa, #60a5fa)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                }}
+              >
+                FlowMatri
+              </span>
+              <span
+                style={{
+                  color: "#22d3ee",
+                  textShadow: "0 0 12px rgba(34,211,238,0.7)",
+                  fontSize: "1.35em",
+                  lineHeight: 1,
+                }}
+              >
+                X
+              </span>
             </span>
-            <span className="text-[9px] font-semibold tracking-[0.15em] uppercase text-slate-600 mt-0.5">Project Management</span>
+            <span className="text-[9px] font-semibold tracking-[0.15em] uppercase text-slate-600 mt-0.5">
+              Project Management
+            </span>
           </div>
         </Link>
         <button
-          onClick={() => { setCollapsed(true); setMobileSidebarOpen(false); }}
+          onClick={() => {
+            setCollapsed(true);
+            setMobileSidebarOpen(false);
+          }}
           className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-400 hover:bg-indigo-500/10 transition-all group"
           title="Collapse sidebar"
         >
@@ -382,11 +1292,16 @@ function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, to
         </button>
       </div>
 
-      <nav ref={navScrollRef as any} className="relative flex-1 overflow-y-auto py-3 px-2 space-y-0.5 custom-scrollbar">
+      <nav
+        ref={navScrollRef as any}
+        className="relative flex-1 overflow-y-auto py-3 px-2 space-y-0.5 custom-scrollbar"
+      >
         {groups.map((group, gi) => {
           const isGroupExpanded = expandedGroups.includes(group.label);
           const groupHasActive = group.items.some(
-            item => item.path === location || item.children?.some((c: any) => c.path === location)
+            (item) =>
+              item.path === location ||
+              item.children?.some((c: any) => c.path === location),
           );
 
           return (
@@ -399,36 +1314,43 @@ function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, to
                     "flex-1 flex items-center justify-between px-3 py-2 rounded-lg transition-all duration-150 select-none cursor-pointer",
                     groupHasActive
                       ? "text-white"
-                      : "text-slate-300 hover:text-white hover:bg-white/[0.04]"
+                      : "text-slate-300 hover:text-white hover:bg-white/[0.04]",
                   )}
                 >
-                  <span className={cn(
-                    "text-[11px] font-semibold uppercase tracking-[0.08em]",
-                    groupHasActive ? "text-white/90" : "text-slate-300"
-                  )}>
+                  <span
+                    className={cn(
+                      "text-[11px] font-semibold uppercase tracking-[0.08em]",
+                      groupHasActive ? "text-white/90" : "text-slate-300",
+                    )}
+                  >
                     {group.label === "Main" ? "Home" : group.label}
                   </span>
-                  <ChevronDown className={cn(
-                    "w-3.5 h-3.5 shrink-0 transition-transform duration-200",
-                    groupHasActive ? "text-white/50" : "text-slate-400",
-                    isGroupExpanded ? "rotate-0" : "-rotate-90"
-                  )} />
+                  <ChevronDown
+                    className={cn(
+                      "w-3.5 h-3.5 shrink-0 transition-transform duration-200",
+                      groupHasActive ? "text-white/50" : "text-slate-400",
+                      isGroupExpanded ? "rotate-0" : "-rotate-90",
+                    )}
+                  />
                 </button>
                 {group.label === "Shortcuts" && (
                   <button
                     title={ss.ssActive ? "Stop slideshow" : "Start slideshow"}
-                    onClick={() => ss.ssActive ? ss.stopSlideshow() : ss.startSlideshow()}
+                    onClick={() =>
+                      ss.ssActive ? ss.stopSlideshow() : ss.startSlideshow()
+                    }
                     className={cn(
                       "flex-shrink-0 w-6 h-6 rounded-md flex items-center justify-center transition-all cursor-pointer border-0",
                       ss.ssActive
                         ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
-                        : "bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30"
+                        : "bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30",
                     )}
                   >
-                    {ss.ssActive
-                      ? <Square style={{ width: 10, height: 10 }} />
-                      : <Play style={{ width: 10, height: 10 }} />
-                    }
+                    {ss.ssActive ? (
+                      <Square style={{ width: 10, height: 10 }} />
+                    ) : (
+                      <Play style={{ width: 10, height: 10 }} />
+                    )}
                   </button>
                 )}
               </div>
@@ -437,10 +1359,13 @@ function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, to
                 <div className="mt-0.5 mb-2 space-y-0.5">
                   {group.items.map((item) => {
                     const isActive = location === item.path;
-                    const isChildActive = item.children?.some((c: any) => c.path === location);
+                    const isChildActive = item.children?.some(
+                      (c: any) => c.path === location,
+                    );
                     const isExpanded = expandedItems.includes(item.path);
                     const Icon = item.icon;
-                    const hasChildren = item.children && item.children.length > 0;
+                    const hasChildren =
+                      item.children && item.children.length > 0;
                     const iconColor = item.color ?? "text-slate-400";
 
                     return (
@@ -448,29 +1373,71 @@ function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, to
                         <div
                           className={cn(
                             "group flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-all duration-150 text-sm relative",
-                            (isActive || isChildActive) ? "bg-white/10 text-white shadow-sm" : "text-slate-200 hover:bg-white/[0.07] hover:text-white"
+                            isActive || isChildActive
+                              ? "bg-white/10 text-white shadow-sm"
+                              : "text-slate-200 hover:bg-white/[0.07] hover:text-white",
                           )}
-                          onClick={() => { if (hasChildren) toggleExpand(item.path); }}
+                          onClick={() => {
+                            if (hasChildren) toggleExpand(item.path);
+                          }}
                         >
                           {(isActive || isChildActive) && (
-                            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full" style={{ backgroundColor: theme.accent }} />
+                            <span
+                              className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full"
+                              style={{ backgroundColor: theme.accent }}
+                            />
                           )}
-                          <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all", (isActive || isChildActive) ? "bg-white/10" : "bg-white/[0.04] group-hover:bg-white/[0.08]")}>
+                          <div
+                            className={cn(
+                              "w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all",
+                              isActive || isChildActive
+                                ? "bg-white/10"
+                                : "bg-white/[0.04] group-hover:bg-white/[0.08]",
+                            )}
+                          >
                             {!hasChildren ? (
                               <Link href={item.path}>
-                                <Icon className={cn("w-3.5 h-3.5 transition-colors", (isActive || isChildActive) ? iconColor : "text-slate-300 group-hover:text-white")} style={{ width: 14, height: 14 }} />
+                                <Icon
+                                  className={cn(
+                                    "w-3.5 h-3.5 transition-colors",
+                                    isActive || isChildActive
+                                      ? iconColor
+                                      : "text-slate-300 group-hover:text-white",
+                                  )}
+                                  style={{ width: 14, height: 14 }}
+                                />
                               </Link>
                             ) : (
-                              <Icon className={cn("w-3.5 h-3.5 transition-colors", (isActive || isChildActive) ? iconColor : "text-slate-300 group-hover:text-white")} style={{ width: 14, height: 14 }} />
+                              <Icon
+                                className={cn(
+                                  "w-3.5 h-3.5 transition-colors",
+                                  isActive || isChildActive
+                                    ? iconColor
+                                    : "text-slate-300 group-hover:text-white",
+                                )}
+                                style={{ width: 14, height: 14 }}
+                              />
                             )}
                           </div>
                           {!hasChildren ? (
-                            <Link href={item.path} className="flex-1 truncate font-medium text-[14px]">{item.label}</Link>
+                            <Link
+                              href={item.path}
+                              className="flex-1 truncate font-medium text-[14px]"
+                            >
+                              {item.label}
+                            </Link>
                           ) : (
-                            <span className="flex-1 truncate font-medium text-[14px]">{item.label}</span>
+                            <span className="flex-1 truncate font-medium text-[14px]">
+                              {item.label}
+                            </span>
                           )}
                           {hasChildren && (
-                            <ChevronDown className={cn("w-3.5 h-3.5 shrink-0 text-slate-400 transition-transform duration-200", isExpanded ? "rotate-0" : "-rotate-90")} />
+                            <ChevronDown
+                              className={cn(
+                                "w-3.5 h-3.5 shrink-0 text-slate-400 transition-transform duration-200",
+                                isExpanded ? "rotate-0" : "-rotate-90",
+                              )}
+                            />
                           )}
                         </div>
 
@@ -480,10 +1447,27 @@ function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, to
                               <Link
                                 key={child.path + child.label}
                                 href={child.path}
-                                className={cn("flex items-center gap-2 py-1.5 px-2 text-[13px] rounded-lg transition-all", location === child.path ? "font-semibold bg-white/10" : "text-slate-200 hover:text-white hover:bg-white/[0.05]")}
-                                style={location === child.path ? { color: theme.accent } : {}}
+                                className={cn(
+                                  "flex items-center gap-2 py-1.5 px-2 text-[13px] rounded-lg transition-all",
+                                  location === child.path
+                                    ? "font-semibold bg-white/10"
+                                    : "text-slate-200 hover:text-white hover:bg-white/[0.05]",
+                                )}
+                                style={
+                                  location === child.path
+                                    ? { color: theme.accent }
+                                    : {}
+                                }
                               >
-                                <span className="w-1 h-1 rounded-full shrink-0" style={{ backgroundColor: location === child.path ? theme.accent : "#94a3b8" }} />
+                                <span
+                                  className="w-1 h-1 rounded-full shrink-0"
+                                  style={{
+                                    backgroundColor:
+                                      location === child.path
+                                        ? theme.accent
+                                        : "#94a3b8",
+                                  }}
+                                />
                                 {child.label}
                               </Link>
                             ))}
@@ -503,7 +1487,12 @@ function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, to
         <button
           onClick={() => setAiTrigger((t: number) => t + 1)}
           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all mb-1"
-          style={{ background: "linear-gradient(135deg, rgba(99,102,241,0.2), rgba(168,85,247,0.15))", border: "1px solid rgba(99,102,241,0.3)", color: "#a5b4fc" }}
+          style={{
+            background:
+              "linear-gradient(135deg, rgba(99,102,241,0.2), rgba(168,85,247,0.15))",
+            border: "1px solid rgba(99,102,241,0.3)",
+            color: "#a5b4fc",
+          }}
         >
           <Sparkles className="w-3.5 h-3.5 shrink-0 text-indigo-400" />
           Ask AI
@@ -517,14 +1506,30 @@ function FullSidebar({ location, expandedItems, toggleExpand, expandedGroups, to
         </button>
         <div className="flex items-center justify-center gap-1.5 pt-0.5">
           <Zap className="w-2.5 h-2.5 text-indigo-500/50" />
-          <p className="text-[9px] text-slate-700 tracking-widest uppercase font-semibold">FlowMatrix</p>
+          <p className="text-[9px] text-slate-700 tracking-widest uppercase font-semibold">
+            FlowMatrix
+          </p>
         </div>
       </div>
     </div>
   );
 }
 
-function MiniSidebar({ location, expandedItems, toggleExpand, setCollapsed, aiTrigger, setAiTrigger, logout, theme, user, darkMode, toggleDarkMode, setShowThemePicker, visibleAllNavItems: _visibleAllNavItems }: any) {
+function MiniSidebar({
+  location,
+  expandedItems,
+  toggleExpand,
+  setCollapsed,
+  aiTrigger,
+  setAiTrigger,
+  logout,
+  theme,
+  user,
+  darkMode,
+  toggleDarkMode,
+  setShowThemePicker,
+  visibleAllNavItems: _visibleAllNavItems,
+}: any) {
   const navScrollRef = useSidebarScrollMemory();
   const navItems = (_visibleAllNavItems ?? allNavItems) as typeof allNavItems;
   return (
@@ -532,29 +1537,83 @@ function MiniSidebar({ location, expandedItems, toggleExpand, setCollapsed, aiTr
       <div className="absolute inset-0 bg-gradient-to-b from-slate-900 via-[#0f172a] to-slate-950 pointer-events-none" />
       <div className="relative w-full flex justify-center py-3.5 border-b border-white/[0.07]">
         <span className="text-xs font-black tracking-tight flex items-baseline">
-          <span style={{ background: "linear-gradient(90deg, #818cf8, #a78bfa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>F</span>
-          <span style={{ color: "#22d3ee", textShadow: "0 0 8px rgba(34,211,238,0.8)" }}>M</span>
+          <span
+            style={{
+              background: "linear-gradient(90deg, #818cf8, #a78bfa)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+            }}
+          >
+            F
+          </span>
+          <span
+            style={{
+              color: "#22d3ee",
+              textShadow: "0 0 8px rgba(34,211,238,0.8)",
+            }}
+          >
+            M
+          </span>
         </span>
       </div>
-      <nav ref={navScrollRef as any} className="relative flex flex-col items-center gap-0.5 w-full px-2 flex-1 py-3 overflow-y-auto overflow-x-hidden scrollbar-none">
+      <nav
+        ref={navScrollRef as any}
+        className="relative flex flex-col items-center gap-0.5 w-full px-2 flex-1 py-3 overflow-y-auto overflow-x-hidden scrollbar-none"
+      >
         {navItems.map((item) => {
-          const isActive = location === item.path || item.children?.some((c: any) => c.path === location);
+          const isActive =
+            location === item.path ||
+            item.children?.some((c: any) => c.path === location);
           const Icon = item.icon;
           const hasChildren = item.children && item.children.length > 0;
           const iconColor = item.color ?? "text-slate-400";
           return (
-            <div key={`mini-${item.path}-${item.label}`} className="w-full relative group/tooltip">
+            <div
+              key={`mini-${item.path}-${item.label}`}
+              className="w-full relative group/tooltip"
+            >
               {!hasChildren ? (
                 <Link href={item.path}>
-                  <div className={cn("w-full h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer relative", isActive ? "bg-white/10 shadow-sm" : "text-slate-500 hover:bg-white/[0.07] hover:text-white")}>
-                    {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full" style={{ backgroundColor: theme.accent }} />}
-                    <Icon className={isActive ? iconColor : "text-slate-500"} style={{ width: 17, height: 17 }} />
+                  <div
+                    className={cn(
+                      "w-full h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer relative",
+                      isActive
+                        ? "bg-white/10 shadow-sm"
+                        : "text-slate-500 hover:bg-white/[0.07] hover:text-white",
+                    )}
+                  >
+                    {isActive && (
+                      <span
+                        className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full"
+                        style={{ backgroundColor: theme.accent }}
+                      />
+                    )}
+                    <Icon
+                      className={isActive ? iconColor : "text-slate-500"}
+                      style={{ width: 17, height: 17 }}
+                    />
                   </div>
                 </Link>
               ) : (
-                <div className={cn("w-full h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer relative", isActive ? "bg-white/10 shadow-sm" : "text-slate-500 hover:bg-white/[0.07] hover:text-white")} onClick={() => toggleExpand(item.path)}>
-                  {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full" style={{ backgroundColor: theme.accent }} />}
-                  <Icon className={isActive ? iconColor : "text-slate-500"} style={{ width: 17, height: 17 }} />
+                <div
+                  className={cn(
+                    "w-full h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer relative",
+                    isActive
+                      ? "bg-white/10 shadow-sm"
+                      : "text-slate-500 hover:bg-white/[0.07] hover:text-white",
+                  )}
+                  onClick={() => toggleExpand(item.path)}
+                >
+                  {isActive && (
+                    <span
+                      className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full"
+                      style={{ backgroundColor: theme.accent }}
+                    />
+                  )}
+                  <Icon
+                    className={isActive ? iconColor : "text-slate-500"}
+                    style={{ width: 17, height: 17 }}
+                  />
                 </div>
               )}
               <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 z-50 pointer-events-none opacity-0 group-hover/tooltip:opacity-100 transition-opacity delay-75">
@@ -568,19 +1627,53 @@ function MiniSidebar({ location, expandedItems, toggleExpand, setCollapsed, aiTr
         })}
       </nav>
       <div className="relative flex flex-col items-center gap-2 pt-2 pb-3 border-t border-white/[0.07] w-full px-2 shrink-0">
-        <button onClick={() => setAiTrigger((t: number) => t + 1)} className="w-full h-9 rounded-xl flex items-center justify-center transition-all" style={{ background: "linear-gradient(135deg, rgba(99,102,241,0.25), rgba(168,85,247,0.2))", border: "1px solid rgba(99,102,241,0.35)" }} title="Ask AI">
+        <button
+          onClick={() => setAiTrigger((t: number) => t + 1)}
+          className="w-full h-9 rounded-xl flex items-center justify-center transition-all"
+          style={{
+            background:
+              "linear-gradient(135deg, rgba(99,102,241,0.25), rgba(168,85,247,0.2))",
+            border: "1px solid rgba(99,102,241,0.35)",
+          }}
+          title="Ask AI"
+        >
           <Sparkles className="w-4 h-4 text-indigo-400" />
         </button>
-        <Link href="/profile" className="block hover:ring-2 hover:ring-indigo-500/40 rounded-full transition-all cursor-pointer">
+        <Link
+          href="/profile"
+          className="block hover:ring-2 hover:ring-indigo-500/40 rounded-full transition-all cursor-pointer"
+        >
           <UserAvatar user={user} size="md" />
         </Link>
-        <button onClick={toggleDarkMode} className="w-full h-8 rounded-xl flex items-center justify-center text-slate-500 hover:bg-white/10 hover:text-white transition-all" title={darkMode ? "Switch to Light mode" : "Switch to Dark mode"}>
-          {darkMode ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+        <button
+          onClick={toggleDarkMode}
+          className="w-full h-8 rounded-xl flex items-center justify-center text-slate-500 hover:bg-white/10 hover:text-white transition-all"
+          title={darkMode ? "Switch to Light mode" : "Switch to Dark mode"}
+        >
+          {darkMode ? (
+            <Sun className="w-3.5 h-3.5" />
+          ) : (
+            <Moon className="w-3.5 h-3.5" />
+          )}
         </button>
-        <button onClick={() => { setCollapsed(false); setShowThemePicker(true); }} className="w-full h-8 rounded-xl flex items-center justify-center text-slate-600 hover:bg-white/10 hover:text-white transition-all" title="Theme color">
-          <span className="w-3 h-3 rounded-full border border-white/20" style={{ backgroundColor: theme.accent }} />
+        <button
+          onClick={() => {
+            setCollapsed(false);
+            setShowThemePicker(true);
+          }}
+          className="w-full h-8 rounded-xl flex items-center justify-center text-slate-600 hover:bg-white/10 hover:text-white transition-all"
+          title="Theme color"
+        >
+          <span
+            className="w-3 h-3 rounded-full border border-white/20"
+            style={{ backgroundColor: theme.accent }}
+          />
         </button>
-        <button onClick={() => setCollapsed(false)} className="w-full h-8 rounded-xl flex items-center justify-center text-slate-600 hover:bg-white/10 hover:text-white transition-all" title="Expand sidebar">
+        <button
+          onClick={() => setCollapsed(false)}
+          className="w-full h-8 rounded-xl flex items-center justify-center text-slate-600 hover:bg-white/10 hover:text-white transition-all"
+          title="Expand sidebar"
+        >
           <ChevronRightIcon className="w-3.5 h-3.5" />
         </button>
       </div>
@@ -591,11 +1684,13 @@ function MiniSidebar({ location, expandedItems, toggleExpand, setCollapsed, aiTr
 const COLLAPSED_KEY = "fm_sidebar_collapsed";
 const EXPANDED_GROUPS_KEY = "fm_sidebar_expanded_groups";
 
-
 function getActiveGroupLabel(loc: string): string | null {
   for (const group of navGroups) {
     for (const item of group.items) {
-      if (item.path === loc || item.children?.some((c: any) => c.path === loc)) {
+      if (
+        item.path === loc ||
+        item.children?.some((c: any) => c.path === loc)
+      ) {
         return group.label;
       }
     }
@@ -603,7 +1698,13 @@ function getActiveGroupLabel(loc: string): string | null {
   return null;
 }
 
-export function Layout({ children, hideChrome }: { children: React.ReactNode; hideChrome?: boolean }) {
+export function Layout({
+  children,
+  hideChrome,
+}: {
+  children: React.ReactNode;
+  hideChrome?: boolean;
+}) {
   const [location] = useLocation();
   const { navStyle } = useNavStyle();
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
@@ -613,7 +1714,8 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
       const raw = localStorage.getItem(EXPANDED_GROUPS_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed.filter((x): x is string => typeof x === "string");
+        if (Array.isArray(parsed))
+          return parsed.filter((x): x is string => typeof x === "string");
       }
     } catch {}
     return [];
@@ -632,28 +1734,47 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   const { user, logout } = useAuth();
   const { theme, themeIndex, setTheme, darkMode, toggleDarkMode } = useTheme();
   const [showThemePicker, setShowThemePicker] = useState(false);
-  const [moduleRoles, setModuleRoles] = useState<Record<string, string> | null>(null);
+  const [moduleRoles, setModuleRoles] = useState<Record<string, string> | null>(
+    null,
+  );
   const [permLoading, setPermLoading] = useState(true);
-  const isAdmin = user ? ADMIN_EMAILS.includes(user.email.toLowerCase()) : false;
-  const isAgent = (user?.isAgent === true) && !isAdmin;
+  const isAdmin = user
+    ? ADMIN_EMAILS.includes(user.email.toLowerCase())
+    : false;
+  const isAgent = user?.isAgent === true && !isAdmin;
   const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
   const rec = useRecording();
   const live = useLiveMeeting();
-  const fmtDur = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
-  const fmtLiveDur = (s: number) => `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+  const fmtDur = (s: number) =>
+    `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+  const fmtLiveDur = (s: number) =>
+    `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
   useEffect(() => {
-    if (!user) { setPermLoading(false); return; }
-    if (isAdmin) { setModuleRoles(null); setPermLoading(false); return; }
+    if (!user) {
+      setPermLoading(false);
+      return;
+    }
+    if (isAdmin) {
+      setModuleRoles(null);
+      setPermLoading(false);
+      return;
+    }
     setPermLoading(true);
     fetch(`${BASE_URL}/api/user-permissions/${encodeURIComponent(user.email)}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (!data) { setModuleRoles({}); return; }
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) {
+          setModuleRoles({});
+          return;
+        }
         // Try new moduleRoles format first
         if (data.moduleRoles) {
           try {
-            const parsed = JSON.parse(data.moduleRoles) as Record<string, string>;
+            const parsed = JSON.parse(data.moduleRoles) as Record<
+              string,
+              string
+            >;
             if (Object.keys(parsed).length > 0) {
               setModuleRoles(parsed);
               return;
@@ -665,15 +1786,17 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
           try {
             const mods = JSON.parse(data.modules) as string[];
             if (mods.length > 0) {
-              const allKeys = [...ALL_MODULE_KEYS];
+              const allKeys = [...new Set(Object.values(PATH_TO_MODULE))];
               const roles: Record<string, string> = {};
-              allKeys.forEach(key => { roles[key] = mods.includes(key) ? "write" : "none"; });
+              allKeys.forEach((key) => {
+                roles[key] = mods.includes(key) ? "write" : "none";
+              });
               setModuleRoles(roles);
               return;
             }
           } catch {}
         }
-        // No permissions record or empty — deny all (admin must configure)
+        // No permissions record or empty â€” deny all (admin must configure)
         setModuleRoles({});
       })
       .catch(() => setModuleRoles(null))
@@ -681,9 +1804,15 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   }, [user?.email, isAdmin]);
 
   const AGENT_ALLOWED_PATHS = [
-    "/", "/marketing", "/leads", "/proposal-library",
-    "/vc-card-scanner", "/plant-enquiry", "/campaigns",
-    "/profile", "/settings",
+    "/",
+    "/marketing",
+    "/leads",
+    "/proposal-library",
+    "/vc-card-scanner",
+    "/plant-enquiry",
+    "/campaigns",
+    "/profile",
+    "/settings",
     "/sales-dashboard/lead",
     "/ip-call-logs/marketing",
     "/ip-call-logs",
@@ -692,7 +1821,9 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   function isPathAllowed(path: string): boolean {
     if (isAdmin) return true;
     if (isAgent) {
-      return AGENT_ALLOWED_PATHS.some(p => path === p || path.startsWith(p + "/"));
+      return AGENT_ALLOWED_PATHS.some(
+        (p) => path === p || path.startsWith(p + "/"),
+      );
     }
     if (permLoading) return false;
     return isModuleRoleAllowed(moduleRoles, path);
@@ -700,74 +1831,138 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
 
   const visibleNavGroups = (() => {
     if (isAgent) {
-      const AGENT_HIDDEN = ["/sales-dashboard", "/marketing", "/vc-card-scanner", "/campaigns"];
-      const mktGroup = navGroups.find(g => g.label === "Marketing & CRM");
+      const AGENT_HIDDEN = [
+        "/sales-dashboard",
+        "/marketing",
+        "/vc-card-scanner",
+        "/campaigns",
+      ];
+      const mktGroup = navGroups.find((g) => g.label === "Marketing & CRM");
       const filteredMkt = mktGroup
-        ? { ...mktGroup, items: mktGroup.items.filter(i => !AGENT_HIDDEN.includes(i.path)) }
+        ? {
+            ...mktGroup,
+            items: mktGroup.items.filter((i) => !AGENT_HIDDEN.includes(i.path)),
+          }
         : null;
       return [
-        { label: "Main", items: [{ path: "/", label: "Dashboard", icon: LayoutDashboard, color: "text-sky-400", bgColor: "bg-sky-500/15" }] },
+        {
+          label: "Main",
+          items: [
+            {
+              path: "/",
+              label: "Dashboard",
+              icon: LayoutDashboard,
+              color: "text-sky-400",
+              bgColor: "bg-sky-500/15",
+            },
+          ],
+        },
         ...(filteredMkt ? [filteredMkt] : []),
       ];
     }
-    return navGroups.map(group => ({
-      ...group,
-      items: group.items.filter(item => isPathAllowed(item.path)),
-    })).filter(group => group.items.length > 0);
+    return navGroups
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((item) => isPathAllowed(item.path)),
+      }))
+      .filter((group) => group.items.length > 0);
   })();
 
-  const visibleAllNavItems = visibleNavGroups.flatMap(g => g.items).filter(
-    (item, idx, arr) => arr.findIndex(x => x.path === item.path) === idx
-  );
+  const visibleAllNavItems = visibleNavGroups
+    .flatMap((g) => g.items)
+    .filter(
+      (item, idx, arr) => arr.findIndex((x) => x.path === item.path) === idx,
+    );
 
   const setCollapsed = (value: boolean) => {
     setCollapsedState(value);
-    try { localStorage.setItem(COLLAPSED_KEY, String(value)); } catch {}
+    try {
+      localStorage.setItem(COLLAPSED_KEY, String(value));
+    } catch {}
   };
 
-  // Sidebar always starts collapsed on app load — ignore any saved preference
+  // Sidebar always starts collapsed on app load â€” ignore any saved preference
   // that would expand it automatically. The user can still expand it manually.
 
-  // Submenu groups stay collapsed on navigation — the user expands them manually.
+  // Submenu groups stay collapsed on navigation â€” the user expands them manually.
 
   useEffect(() => {
-    if (navStyle === "sidebar" && (location === "/email" || location === "/smart-inbox" || location === "/plant-enquiry" || location === "/meeting-discussion")) {
+    if (
+      navStyle === "sidebar" &&
+      (location === "/email" ||
+        location === "/smart-inbox" ||
+        location === "/plant-enquiry" ||
+        location === "/meeting-discussion")
+    ) {
       setCollapsed(true);
     }
   }, [location, navStyle]);
 
   // Auto-expand the group containing the current page so the user always sees where they are.
   useEffect(() => {
-    const activeGroup = navGroups.find(g =>
-      g.items.some(item => item.path === location || item.children?.some((c: any) => c.path === location))
+    const activeGroup = navGroups.find((g) =>
+      g.items.some(
+        (item) =>
+          item.path === location ||
+          item.children?.some((c: any) => c.path === location),
+      ),
     );
     if (!activeGroup) return;
-    setExpandedGroups(prev => {
+    setExpandedGroups((prev) => {
       if (prev.includes(activeGroup.label)) return prev;
       const next = [...prev, activeGroup.label];
-      try { localStorage.setItem(EXPANDED_GROUPS_KEY, JSON.stringify(next)); } catch {}
+      try {
+        localStorage.setItem(EXPANDED_GROUPS_KEY, JSON.stringify(next));
+      } catch {}
       return next;
     });
   }, [location]);
 
   const toggleExpand = (path: string) => {
-    setExpandedItems(prev => prev.includes(path) ? prev.filter(p => p !== path) : [...prev, path]);
+    setExpandedItems((prev) =>
+      prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path],
+    );
   };
 
   const toggleGroup = (label: string) => {
-    setExpandedGroups(prev => {
-      const next = prev.includes(label) ? prev.filter(l => l !== label) : [...prev, label];
-      try { localStorage.setItem(EXPANDED_GROUPS_KEY, JSON.stringify(next)); } catch {}
+    setExpandedGroups((prev) => {
+      const next = prev.includes(label)
+        ? prev.filter((l) => l !== label)
+        : [...prev, label];
+      try {
+        localStorage.setItem(EXPANDED_GROUPS_KEY, JSON.stringify(next));
+      } catch {}
       return next;
     });
   };
 
-  const currentPage = allNavItems.find(i => i.path === location || i.children?.some(c => c.path === location));
+  const currentPage = allNavItems.find(
+    (i) => i.path === location || i.children?.some((c) => c.path === location),
+  );
   const pageTitle = currentPage?.label ?? "Dashboard";
   const CurrentIcon = currentPage?.icon;
 
   const slideshowProps = useSlideshowContext();
-  const sidebarProps = { location, expandedItems, toggleExpand, expandedGroups, toggleGroup, setCollapsed, setMobileSidebarOpen, aiTrigger, setAiTrigger, logout, theme, user, darkMode, toggleDarkMode, setShowThemePicker, slideshowProps, visibleNavGroups, visibleAllNavItems };
+  const sidebarProps = {
+    location,
+    expandedItems,
+    toggleExpand,
+    expandedGroups,
+    toggleGroup,
+    setCollapsed,
+    setMobileSidebarOpen,
+    aiTrigger,
+    setAiTrigger,
+    logout,
+    theme,
+    user,
+    darkMode,
+    toggleDarkMode,
+    setShowThemePicker,
+    slideshowProps,
+    visibleNavGroups,
+    visibleAllNavItems,
+  };
 
   if (hideChrome) {
     return <div className="min-h-screen bg-slate-100">{children}</div>;
@@ -776,20 +1971,41 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
   const isSidebar = navStyle === "sidebar";
 
   return (
-    <div className={cn("min-h-screen bg-[#f1f5f9] fm-bg-main overflow-hidden h-screen", isSidebar ? "flex flex-row" : "flex flex-col")}>
+    <div
+      className={cn(
+        "min-h-screen bg-[#f1f5f9] fm-bg-main overflow-hidden h-screen",
+        isSidebar ? "flex flex-row" : "flex flex-col",
+      )}
+    >
       {/* App Launcher overlay (launcher mode) */}
-      {!isSidebar && <AppLauncher open={launcherOpen} onClose={() => setLauncherOpen(false)} visibleNavGroups={visibleNavGroups} />}
+      {!isSidebar && (
+        <AppLauncher
+          open={launcherOpen}
+          onClose={() => setLauncherOpen(false)}
+          visibleNavGroups={visibleNavGroups}
+        />
+      )}
 
       {/* Sidebar mode */}
       {isSidebar && (
         <>
           {mobileSidebarOpen && (
-            <div className="fixed inset-0 bg-black/60 z-20 md:hidden backdrop-blur-sm" onClick={() => setMobileSidebarOpen(false)} />
+            <div
+              className="fixed inset-0 bg-black/60 z-20 md:hidden backdrop-blur-sm"
+              onClick={() => setMobileSidebarOpen(false)}
+            />
           )}
-          <aside className={cn("hidden md:flex flex-col flex-shrink-0 transition-all duration-300 h-screen sticky top-0 overflow-x-hidden", collapsed ? "w-[60px]" : "w-[220px]")}>
-            {collapsed
-              ? <MiniSidebar {...sidebarProps} />
-              : <FullSidebar {...sidebarProps} />}
+          <aside
+            className={cn(
+              "hidden md:flex flex-col flex-shrink-0 transition-all duration-300 h-screen sticky top-0 overflow-x-hidden",
+              collapsed ? "w-[60px]" : "w-[220px]",
+            )}
+          >
+            {collapsed ? (
+              <MiniSidebar {...sidebarProps} />
+            ) : (
+              <FullSidebar {...sidebarProps} />
+            )}
           </aside>
           {mobileSidebarOpen && (
             <aside className="fixed inset-y-0 left-0 z-30 w-[260px] flex flex-col md:hidden shadow-2xl">
@@ -800,7 +2016,12 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
       )}
 
       {/* Main area */}
-      <div className={cn("flex flex-col overflow-hidden", isSidebar ? "flex-1 h-screen min-w-0" : "flex-1 h-screen")}>
+      <div
+        className={cn(
+          "flex flex-col overflow-hidden",
+          isSidebar ? "flex-1 h-screen min-w-0" : "flex-1 h-screen",
+        )}
+      >
         {/* Header */}
         <header className="h-14 bg-white fm-bg-header border-b border-gray-100 fm-border flex items-center justify-between px-4 shrink-0 shadow-sm z-10">
           <div className="flex items-center gap-3">
@@ -815,22 +2036,50 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
             ) : (
               /* Launcher mode: waffle button */
               <button
-                onClick={() => setLauncherOpen(v => !v)}
-                className={cn("relative p-2 rounded-xl transition-all duration-200", launcherOpen ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/30" : "text-gray-500 hover:bg-gray-100 hover:text-gray-800")}
+                onClick={() => setLauncherOpen((v) => !v)}
+                className={cn(
+                  "relative p-2 rounded-xl transition-all duration-200",
+                  launcherOpen
+                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/30"
+                    : "text-gray-500 hover:bg-gray-100 hover:text-gray-800",
+                )}
                 title="App Launcher"
               >
                 <Grid3x3 className="w-5 h-5" />
-                {launcherOpen && <span className="absolute -bottom-px left-1/2 -translate-x-1/2 w-4 h-0.5 rounded-full bg-indigo-400" />}
+                {launcherOpen && (
+                  <span className="absolute -bottom-px left-1/2 -translate-x-1/2 w-4 h-0.5 rounded-full bg-indigo-400" />
+                )}
               </button>
             )}
 
             {/* Brand (only in launcher mode or mobile) */}
             {!isSidebar && (
-              <Link href="/" className="flex items-center gap-2 select-none cursor-pointer">
+              <Link
+                href="/"
+                className="flex items-center gap-2 select-none cursor-pointer"
+              >
                 <WaterDropAnimation size="sm" />
                 <span className="text-base font-black tracking-tight hidden sm:flex items-baseline">
-                  <span style={{ background: "linear-gradient(90deg, #818cf8, #a78bfa, #60a5fa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>FlowMatri</span>
-                  <span style={{ color: "#22d3ee", textShadow: "0 0 12px rgba(34,211,238,0.7)", fontSize: "1.2em", lineHeight: 1 }}>X</span>
+                  <span
+                    style={{
+                      background:
+                        "linear-gradient(90deg, #818cf8, #a78bfa, #60a5fa)",
+                      WebkitBackgroundClip: "text",
+                      WebkitTextFillColor: "transparent",
+                    }}
+                  >
+                    FlowMatri
+                  </span>
+                  <span
+                    style={{
+                      color: "#22d3ee",
+                      textShadow: "0 0 12px rgba(34,211,238,0.7)",
+                      fontSize: "1.2em",
+                      lineHeight: 1,
+                    }}
+                  >
+                    X
+                  </span>
                 </span>
               </Link>
             )}
@@ -838,62 +2087,110 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
             {/* Page breadcrumb */}
             {isSidebar ? (
               <div className="hidden md:flex items-center gap-1.5 text-xs text-gray-400">
-                <Link href="/" className="font-medium text-gray-300 hover:text-indigo-400 transition-colors cursor-pointer">FlowMatriX</Link>
+                <Link
+                  href="/"
+                  className="font-medium text-gray-300 hover:text-indigo-400 transition-colors cursor-pointer"
+                >
+                  FlowMatriX
+                </Link>
                 <ChevronRightIcon className="w-3 h-3 text-gray-300" />
-                <span className="font-semibold text-gray-700 fm-text-main">{pageTitle}</span>
+                <span className="font-semibold text-gray-700 fm-text-main">
+                  {pageTitle}
+                </span>
               </div>
             ) : (
               CurrentIcon && (
                 <>
                   <div className="w-px h-5 bg-gray-200 hidden sm:block" />
                   <div className="hidden sm:flex items-center gap-1.5">
-                    <CurrentIcon className={cn("w-3.5 h-3.5", currentPage?.color ?? "text-slate-400")} />
-                    <span className="text-sm font-semibold text-gray-700 fm-text-main">{pageTitle}</span>
+                    <CurrentIcon
+                      className={cn(
+                        "w-3.5 h-3.5",
+                        currentPage?.color ?? "text-slate-400",
+                      )}
+                    />
+                    <span className="text-sm font-semibold text-gray-700 fm-text-main">
+                      {pageTitle}
+                    </span>
                   </div>
                 </>
               )
             )}
-            <span className="sm:hidden text-sm font-semibold text-gray-800">{pageTitle}</span>
+            <span className="sm:hidden text-sm font-semibold text-gray-800">
+              {pageTitle}
+            </span>
           </div>
 
           {/* Center */}
           <div className="flex flex-1 items-center justify-center gap-2 px-4">
             <div className="hidden md:flex flex-1 max-w-sm">
-              <GlobalSearch allowedPaths={isAdmin ? installedModulePaths : new Set(visibleAllNavItems.map(i => i.path))} />
+              <GlobalSearch
+                allowedPaths={
+                  isAdmin
+                    ? undefined
+                    : new Set(visibleAllNavItems.map((i) => i.path))
+                }
+              />
             </div>
-            <AISearch currentPath={location} forceOpen={aiTrigger} hideTriggerOnMobile />
+            <AISearch
+              currentPath={location}
+              forceOpen={aiTrigger}
+              hideTriggerOnMobile
+            />
             {rec.isRecording && (
-              <Link href="/meeting-minutes"
-                className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition-colors shrink-0">
+              <Link
+                href="/meeting-minutes"
+                className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition-colors shrink-0"
+              >
                 <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                 REC {fmtDur(rec.duration)}
               </Link>
             )}
             {live.isLiveRecording && (
               <div className="hidden md:flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-1.5 py-1 shrink-0">
-                <Link href="/meeting-minutes"
-                  className="flex items-center gap-1.5 px-1.5 text-xs font-bold text-rose-700 hover:text-rose-900 transition-colors">
-                  {live.isLivePaused
-                    ? <Pause className="w-3 h-3 text-amber-600" />
-                    : <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />}
+                <Link
+                  href="/meeting-minutes"
+                  className="flex items-center gap-1.5 px-1.5 text-xs font-bold text-rose-700 hover:text-rose-900 transition-colors"
+                >
+                  {live.isLivePaused ? (
+                    <Pause className="w-3 h-3 text-amber-600" />
+                  ) : (
+                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                  )}
                   <Mic className="w-3 h-3" />
-                  <span>{live.isLivePaused ? "Paused" : "Live"} · {fmtLiveDur(live.liveDuration)}</span>
-                  {live.liveBlockCount > 0 && <span className="text-[10px] text-rose-500">· {live.liveBlockCount} ¶</span>}
+                  <span>
+                    {live.isLivePaused ? "Paused" : "Live"} Â·{" "}
+                    {fmtLiveDur(live.liveDuration)}
+                  </span>
+                  {live.liveBlockCount > 0 && (
+                    <span className="text-[10px] text-rose-500">
+                      Â· {live.liveBlockCount} Â¶
+                    </span>
+                  )}
                 </Link>
                 <div className="w-px h-4 bg-rose-200" />
                 {live.isLivePaused ? (
-                  <button onClick={live.resume} title="Resume recording"
-                    className="p-1 rounded-lg hover:bg-rose-100 text-emerald-600 transition-colors">
+                  <button
+                    onClick={live.resume}
+                    title="Resume recording"
+                    className="p-1 rounded-lg hover:bg-rose-100 text-emerald-600 transition-colors"
+                  >
                     <Play className="w-3 h-3" fill="currentColor" />
                   </button>
                 ) : (
-                  <button onClick={live.pause} title="Pause recording"
-                    className="p-1 rounded-lg hover:bg-rose-100 text-rose-600 transition-colors">
+                  <button
+                    onClick={live.pause}
+                    title="Pause recording"
+                    className="p-1 rounded-lg hover:bg-rose-100 text-rose-600 transition-colors"
+                  >
                     <Pause className="w-3 h-3" />
                   </button>
                 )}
-                <button onClick={live.stop} title="Stop & save meeting"
-                  className="p-1 rounded-lg hover:bg-rose-100 text-rose-700 transition-colors">
+                <button
+                  onClick={live.stop}
+                  title="Stop & save meeting"
+                  className="p-1 rounded-lg hover:bg-rose-100 text-rose-700 transition-colors"
+                >
                   <Square className="w-3 h-3" fill="currentColor" />
                 </button>
               </div>
@@ -902,22 +2199,42 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
 
           {/* Right */}
           <div className="flex items-center gap-2">
-            <button className="md:hidden p-2 rounded-xl text-gray-500 hover:bg-gray-100 transition-colors" onClick={() => setAiTrigger(t => t + 1)} title="Ask AI">
+            <button
+              className="md:hidden p-2 rounded-xl text-gray-500 hover:bg-gray-100 transition-colors"
+              onClick={() => setAiTrigger((t) => t + 1)}
+              title="Ask AI"
+            >
               <Sparkles className="w-4 h-4 text-indigo-500" />
             </button>
             <NotificationBell email={user?.email} />
-            <button onClick={toggleDarkMode} className="hidden sm:flex p-2 rounded-xl text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-all" title={darkMode ? "Light mode" : "Dark mode"}>
-              {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            <button
+              onClick={toggleDarkMode}
+              className="hidden sm:flex p-2 rounded-xl text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-all"
+              title={darkMode ? "Light mode" : "Dark mode"}
+            >
+              {darkMode ? (
+                <Sun className="w-4 h-4" />
+              ) : (
+                <Moon className="w-4 h-4" />
+              )}
             </button>
             <div className="w-px h-5 bg-gray-100 hidden sm:block" />
             <div className="hidden sm:flex items-center gap-2">
               <UserAvatar user={user} size="sm" />
               <div className="hidden md:block">
-                <p className="text-xs font-semibold text-gray-800 leading-tight">{user?.full_name ?? "User"}</p>
-                <p className="text-[10px] text-gray-400 leading-tight truncate max-w-[100px]">{user?.email ?? ""}</p>
+                <p className="text-xs font-semibold text-gray-800 leading-tight">
+                  {user?.full_name ?? "User"}
+                </p>
+                <p className="text-[10px] text-gray-400 leading-tight truncate max-w-[100px]">
+                  {user?.email ?? ""}
+                </p>
               </div>
             </div>
-            <button onClick={logout} className="p-2 rounded-xl hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors" title="Sign out">
+            <button
+              onClick={logout}
+              className="p-2 rounded-xl hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+              title="Sign out"
+            >
               <LogOut className="w-4 h-4" />
             </button>
           </div>
@@ -935,8 +2252,14 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
                 <ShieldOff className="w-8 h-8 text-red-400" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-gray-800">Access Denied</h2>
-                <p className="text-sm text-gray-500 mt-1">You don't have permission to view this page.<br />Contact your administrator to request access.</p>
+                <h2 className="text-lg font-bold text-gray-800">
+                  Access Denied
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  You don't have permission to view this page.
+                  <br />
+                  Contact your administrator to request access.
+                </p>
               </div>
             </div>
           ) : (
@@ -945,32 +2268,71 @@ export function Layout({ children, hideChrome }: { children: React.ReactNode; hi
         </main>
 
         {/* Mobile bottom nav */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white fm-bg-header border-t border-gray-100 fm-border flex items-stretch" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+        <nav
+          className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white fm-bg-header border-t border-gray-100 fm-border flex items-stretch"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        >
           {mobileBottomNav.map((item) => {
             const isActive = location === item.path;
             const Icon = item.icon;
             return (
-              <Link key={item.path} href={item.path} className={cn("relative flex-1 flex flex-col items-center justify-center gap-0.5 py-2 transition-colors min-h-[52px]", isActive ? "text-indigo-600" : "text-gray-400")}>
-                {isActive && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full" style={{ backgroundColor: theme.accent }} />}
-                <Icon className="w-5 h-5" style={isActive ? { color: theme.accent } : {}} />
-                <span className="text-[10px] font-medium" style={isActive ? { color: theme.accent } : {}}>{item.label}</span>
+              <Link
+                key={item.path}
+                href={item.path}
+                className={cn(
+                  "relative flex-1 flex flex-col items-center justify-center gap-0.5 py-2 transition-colors min-h-[52px]",
+                  isActive ? "text-indigo-600" : "text-gray-400",
+                )}
+              >
+                {isActive && (
+                  <span
+                    className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full"
+                    style={{ backgroundColor: theme.accent }}
+                  />
+                )}
+                <Icon
+                  className="w-5 h-5"
+                  style={isActive ? { color: theme.accent } : {}}
+                />
+                <span
+                  className="text-[10px] font-medium"
+                  style={isActive ? { color: theme.accent } : {}}
+                >
+                  {item.label}
+                </span>
               </Link>
             );
           })}
           {isSidebar ? (
-            <button className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-gray-400 min-h-[52px]" onClick={() => setMobileSidebarOpen(true)}>
+            <button
+              className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-gray-400 min-h-[52px]"
+              onClick={() => setMobileSidebarOpen(true)}
+            >
               <MoreHorizontal className="w-5 h-5" />
               <span className="text-[10px] font-medium">More</span>
             </button>
           ) : (
-            <button className={cn("flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] transition-colors", launcherOpen ? "text-indigo-600" : "text-gray-400")} onClick={() => setLauncherOpen(v => !v)}>
-              <Grid3x3 className="w-5 h-5" style={launcherOpen ? { color: theme.accent } : {}} />
-              <span className="text-[10px] font-medium" style={launcherOpen ? { color: theme.accent } : {}}>Apps</span>
+            <button
+              className={cn(
+                "flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] transition-colors",
+                launcherOpen ? "text-indigo-600" : "text-gray-400",
+              )}
+              onClick={() => setLauncherOpen((v) => !v)}
+            >
+              <Grid3x3
+                className="w-5 h-5"
+                style={launcherOpen ? { color: theme.accent } : {}}
+              />
+              <span
+                className="text-[10px] font-medium"
+                style={launcherOpen ? { color: theme.accent } : {}}
+              >
+                Apps
+              </span>
             </button>
           )}
         </nav>
       </div>
-
     </div>
   );
 }

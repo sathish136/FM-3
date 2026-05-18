@@ -4,7 +4,13 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
-const rawPort = process.env.PORT || "5173";
+const rawPort = process.env.PORT;
+
+if (!rawPort) {
+  throw new Error(
+    "PORT environment variable is required but was not provided.",
+  );
+}
 
 const port = Number(rawPort);
 
@@ -12,7 +18,13 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-const basePath = process.env.BASE_PATH || "/pm-app/";
+const basePath = process.env.BASE_PATH;
+
+if (!basePath) {
+  throw new Error(
+    "BASE_PATH environment variable is required but was not provided.",
+  );
+}
 
 export default defineConfig({
   base: basePath,
@@ -37,7 +49,12 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),
-      "@assets": path.resolve(import.meta.dirname, "..", "..", "attached_assets"),
+      "@assets": path.resolve(
+        import.meta.dirname,
+        "..",
+        "..",
+        "attached_assets",
+      ),
     },
     dedupe: ["react", "react-dom"],
   },
@@ -56,12 +73,14 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       "/api": {
-        target: process.env.VITE_API_PROXY_TARGET || "http://localhost:3000",
+        target: "http://localhost:8080",
         changeOrigin: true,
+        ws: true,
       },
       "/pm-app/api": {
-        target: process.env.VITE_API_PROXY_TARGET || "http://localhost:3000",
+        target: "http://localhost:8080",
         changeOrigin: true,
+        ws: true,
         rewrite: (path: string) => path.replace(/^\/pm-app/, ""),
       },
     },

@@ -43,9 +43,13 @@ function drawSheetBorder(pdf: jsPDF, pageW: number, pageH: number) {
 function drawQuadrantFrames(pdf: jsPDF, r: ReturnType<typeof getGaSheetRegions>) {
   pdf.setDrawColor(0, 0, 0);
   pdf.setLineWidth(0.35);
-  for (const region of [r.front, r.plan, r.bom, r.iso]) {
-    pdf.rect(region.x, region.y, region.w, region.h);
-  }
+  // Left: single full-height front elevation panel
+  pdf.rect(r.front.x, r.front.y, r.front.w, r.front.h);
+  // Right top: BOM
+  pdf.rect(r.bom.x, r.bom.y, r.bom.w, r.bom.h);
+  // Right bottom: isometric
+  pdf.rect(r.iso.x, r.iso.y, r.iso.w, r.iso.h);
+  // Vertical divider between left and right panels
   pdf.setLineWidth(0.2);
   pdf.line(r.front.x + r.front.w + 1.5, r.innerT, r.front.x + r.front.w + 1.5, r.innerB);
 }
@@ -184,15 +188,20 @@ function drawFabricationGaSheet(
   drawBorderGridPdf(pdf, pageW, pageH, r.innerL, r.innerT, r.innerR, r.innerB);
   drawQuadrantFrames(pdf, r);
 
+  // BOM table — top-right panel
   drawBomTable(pdf, bomRows, r.bom.x, r.bom.y, r.bom.w, r.bom.h);
 
+  // Front elevation — left panel, full height
   const viewOpts = { ...HD_MEASURED_VIEW, showBanner: false };
   const frontPng = renderAssemblyMeasured3dView(meshes, parts, "front", viewOpts);
   drawViewPanel(pdf, frontPng, r.front, "FRONT VIEW");
 
-  const planPng = renderAssemblyMeasured3dView(meshes, parts, "top", viewOpts);
-  drawViewPanel(pdf, planPng, r.plan, "PLAN VIEW");
+  // Scale label at bottom-left of front panel
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(6);
+  pdf.text(`SCALE ${meta.scale}`, r.front.x + 3, r.front.y + r.front.h - 4);
 
+  // Isometric 3D view — bottom-right panel
   const balloons = partBalloonLabels(parts, bomRows);
   const isoPng = renderAssemblyGaIso(meshes, parts, {
     ...HD_GA_ISO,
@@ -202,10 +211,6 @@ function drawFabricationGaSheet(
     drawingTitle: meta.title,
   });
   drawViewPanel(pdf, isoPng, r.iso, "ISOMETRIC VIEW");
-
-  pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(6);
-  pdf.text(`SCALE ${meta.scale}`, r.plan.x + 3, r.plan.y + r.plan.h - 4);
 
   drawWttTitleBlock(pdf, meta, r.titleX, r.titleY);
 }
