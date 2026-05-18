@@ -4,33 +4,33 @@ export const SHEET = {
   pageW: 420,
   pageH: 297,
   margin: 12,
-  borderWidth: 0.5,
+  borderWidth: 0.6,
 } as const;
 
 export const TITLE_BLOCK = {
-  width: 118,
-  height: 56,
+  width: 130,
+  height: 58,
 } as const;
 
 export const BOM_PANEL = {
-  width: 152,
+  width: 150,
   headerH: 9,
-  rowH: 6,
-  fontSize: 5.6,
+  rowH: 6.2,
+  fontSize: 5.5,
   headerFontSize: 6,
 } as const;
 
 /** WTT reference BOM — matches fabrication drawing table headers. */
 export const WTT_BOM_COLUMNS = [
-  { key: "sr", label: "Item Number", w: 11 },
-  { key: "description", label: "DESCRIPTION", w: 26 },
-  { key: "size", label: "SIZE", w: 10 },
-  { key: "moc", label: "MOC", w: 12 },
-  { key: "std", label: "STD", w: 10 },
-  { key: "pn", label: "PN-CLS-SCH", w: 13 },
-  { key: "type", label: "TYPE", w: 24 },
-  { key: "qty", label: "Quantity", w: 11 },
-  { key: "totalLength", label: "Total Length", w: 16 },
+  { key: "sr",          label: "Item No.",   w: 12  },
+  { key: "description", label: "Description",w: 28  },
+  { key: "size",        label: "Size",       w: 11  },
+  { key: "moc",        label: "MOC",        w: 13  },
+  { key: "std",         label: "STD",        w: 10  },
+  { key: "pn",          label: "PN / SCH",   w: 14  },
+  { key: "type",        label: "Type",       w: 26  },
+  { key: "qty",         label: "Qty",        w: 10  },
+  { key: "totalLength", label: "Length",     w: 16  },
 ] as const;
 
 /** @deprecated Use WTT_BOM_COLUMNS */
@@ -77,11 +77,15 @@ export interface SheetRegion {
 export interface GaSheetRegions {
   leftW: number;
   rightW: number;
+  /** Front elevation — top-left */
   front: SheetRegion;
-  /** @deprecated No plan view in single-page layout — kept for type compat */
+  /** Plan view (top view) — bottom-left */
   plan: SheetRegion;
+  /** BOM table — top-right */
   bom: SheetRegion;
+  /** Isometric view — bottom-right */
   iso: SheetRegion;
+  /** Title block position */
   titleX: number;
   titleY: number;
   innerL: number;
@@ -91,35 +95,41 @@ export interface GaSheetRegions {
 }
 
 /**
- * Single A3 sheet — WTT reference layout:
- *   Left (60%): FRONT elevation, full height
- *   Right top (40%): BOM table
- *   Right bottom (40%): ISOMETRIC 3D view
- * Title block sits in the bottom-right corner (over isometric).
+ * A3 landscape — WTT 4-panel layout:
+ *   Top-left    (62% wide × 57% tall): FRONT ELEVATION with dimensions
+ *   Bottom-left (62% wide × 43% tall): PLAN VIEW with dimensions
+ *   Top-right   (38% wide × 42% tall): BOM TABLE
+ *   Bottom-right(38% wide × 58% tall): ISOMETRIC 3D + Title block
  */
 export function getGaSheetRegions(pageW: number, pageH: number): GaSheetRegions {
   const m = SHEET.margin;
-  const innerL = m;
-  const innerT = m;
+  const innerL = m + 6;   // extra margin for zone labels
+  const innerT = m + 4;
   const innerR = pageW - m;
   const innerB = pageH - m;
   const innerW = innerR - innerL;
   const innerH = innerB - innerT;
 
   const rightW = BOM_PANEL.width;
-  const leftW = innerW - rightW - 3;
-  const gap = 2;
-  const rightX = innerL + leftW + 3;
-  const bomH = Math.min(110, innerH * 0.42);
-  const isoH = innerH - bomH - gap;
+  const divGap = 3;
+  const leftW = innerW - rightW - divGap;
+  const rightX = innerL + leftW + divGap;
+
+  // Left column: front 57% / plan 43%
+  const frontH = Math.round(innerH * 0.57);
+  const planH = innerH - frontH - divGap;
+
+  // Right column: BOM 40% / ISO 60%
+  const bomH = Math.round(innerH * 0.40);
+  const isoH = innerH - bomH - divGap;
 
   return {
     leftW,
     rightW,
-    front: { x: innerL, y: innerT, w: leftW, h: innerH },
-    plan: { x: innerL, y: innerT, w: leftW, h: innerH },   // alias → same as front
-    bom: { x: rightX, y: innerT, w: rightW, h: bomH },
-    iso: { x: rightX, y: innerT + bomH + gap, w: rightW, h: isoH },
+    front: { x: innerL, y: innerT,               w: leftW, h: frontH },
+    plan:  { x: innerL, y: innerT + frontH + divGap, w: leftW, h: planH  },
+    bom:   { x: rightX, y: innerT,               w: rightW, h: bomH  },
+    iso:   { x: rightX, y: innerT + bomH + divGap,  w: rightW, h: isoH  },
     titleX: innerR - TITLE_BLOCK.width,
     titleY: innerB - TITLE_BLOCK.height,
     innerL,
@@ -136,14 +146,10 @@ export function getDrawingArea(pageW: number, pageH: number, bomWidth: number) {
   const innerB = pageH - SHEET.margin;
   const drawR = innerR - bomWidth - 4;
   return {
-    x: innerL,
-    y: innerT,
+    x: innerL, y: innerT,
     w: drawR - innerL,
     h: innerB - innerT,
-    innerL,
-    innerT,
-    innerR,
-    innerB,
+    innerL, innerT, innerR, innerB,
     bomX: drawR + 2,
     bomY: innerT,
     bomW: bomWidth,
@@ -159,9 +165,7 @@ export function computeScaleLabel(modelSizeMm: number, drawAreaMm: number): stri
   if (ratio <= 0) return "NTS";
   const nice = [1, 2, 5, 10, 20, 25, 50, 100, 200, 500];
   let pick = nice[nice.length - 1];
-  for (const n of nice) {
-    if (ratio <= n) { pick = n; break; }
-  }
+  for (const n of nice) { if (ratio <= n) { pick = n; break; } }
   return `1:${pick}`;
 }
 

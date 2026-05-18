@@ -14,8 +14,22 @@ interface FabricationSheetPreviewProps {
   onSelectPart?: (part: PartDrawingInfo) => void;
 }
 
-/** On-screen preview of the single-page fabrication PDF (A3 proportions).
- *  Layout: Left full-height front elevation | Right-top BOM | Right-bottom ISO 3D
+function ViewLabel({ text }: { text: string }) {
+  return (
+    <div className="shrink-0 bg-[#1a1a2e] px-2 py-[3px] text-[8px] font-bold text-white uppercase tracking-widest">
+      {text}
+    </div>
+  );
+}
+
+/**
+ * On-screen preview — matches the exported PDF exactly.
+ * 4-panel A3 layout:
+ *   Top-left    (62% × 57%): FRONT ELEVATION with dimensions
+ *   Bottom-left (62% × 43%): PLAN VIEW with dimensions
+ *   Top-right   (38% × 40%): BOM TABLE
+ *   Bottom-right(38% × 60%): ISOMETRIC 3D
+ *   Title block sits inside the bottom-right panel.
  */
 export function FabricationSheetPreview({
   meshes,
@@ -25,114 +39,176 @@ export function FabricationSheetPreview({
   onSelectPart,
 }: FabricationSheetPreviewProps) {
   const bomRows = partsToBomRows(parts);
+  const today = new Date();
+  const dateStr = `${String(today.getDate()).padStart(2,"0")}-${String(today.getMonth()+1).padStart(2,"0")}-${today.getFullYear()}`;
 
   return (
     <div
-      className="mx-auto w-full max-w-[1200px] border-2 border-black bg-white shadow-2xl"
+      className="mx-auto w-full max-w-[1240px] bg-white shadow-2xl relative font-mono"
       style={{ aspectRatio: "420 / 297" }}
     >
-      {/* 3-panel layout: left (60%) full-height front view | right (40%) top BOM + bottom ISO */}
-      <div className="grid h-full w-full grid-cols-[1fr_280px] gap-0">
+      {/* ── Outer border ── */}
+      <div className="absolute inset-0 border-[2.5px] border-black pointer-events-none z-10" />
 
-        {/* ── LEFT: Full-height front elevation ── */}
-        <div className="border-r border-black min-h-0 flex flex-col">
-          <div className="bg-black px-2 py-0.5 text-[9px] font-bold text-white uppercase tracking-wider shrink-0">
-            Front view
-          </div>
-          <div className="flex-1 min-h-0">
-            <MeasuredOrthoPreview meshes={meshes} parts={parts} variant="front" className="h-full" />
+      {/* ── Inner content with margins ── */}
+      <div className="absolute inset-[3%] flex flex-col gap-0">
+        {/* Zone label row (top) */}
+        <div className="shrink-0 flex" style={{ height: "4%" }}>
+          <div className="flex-1 border-b border-neutral-300 flex">
+            {["A","B","C","D"].map(l => (
+              <div key={l} className="flex-1 flex items-center justify-center text-[7px] font-bold text-neutral-400 border-r border-neutral-200 last:border-r-0">{l}</div>
+            ))}
           </div>
         </div>
 
-        {/* ── RIGHT: BOM (top) + ISO 3D (bottom) ── */}
-        <div className="flex flex-col min-h-0">
+        {/* Main grid */}
+        <div className="flex-1 min-h-0 flex gap-0 border border-black">
+          {/* ── LEFT COLUMN (62%) ── */}
+          <div className="flex flex-col border-r border-black" style={{ flex: "62" }}>
+            {/* FRONT VIEW — top 57% */}
+            <div className="flex flex-col border-b border-black" style={{ flex: "57" }}>
+              <ViewLabel text="FRONT VIEW — ALL DIMENSIONS IN mm" />
+              <div className="flex-1 min-h-0 bg-white">
+                <MeasuredOrthoPreview meshes={meshes} parts={parts} variant="front" className="h-full" />
+              </div>
+            </div>
 
-          {/* BOM table — upper ~42% */}
-          <div className="border-b border-black flex flex-col min-h-0" style={{ flex: "0 0 42%" }}>
-            <div className="bg-neutral-200 px-2 py-1 text-[9px] font-bold text-center border-b border-black uppercase tracking-wide shrink-0">
-              Bill of materials
-            </div>
-            <div className="overflow-auto flex-1 text-[7.5px]">
-              <table className="w-full border-collapse">
-                <thead className="bg-neutral-100 sticky top-0">
-                  <tr>
-                    {WTT_BOM_COLUMNS.map(col => (
-                      <th key={col.key} className="border border-neutral-300 px-0.5 py-0.5 text-left font-bold whitespace-nowrap">
-                        {col.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {bomRows.map(row => (
-                    <tr
-                      key={row.sr}
-                      className="cursor-pointer hover:bg-sky-50"
-                      onClick={() => {
-                        const p = firstPartForBomRow(parts, row);
-                        if (p) onSelectPart?.(p);
-                      }}
-                    >
-                      <td className="border border-neutral-200 px-0.5 text-center font-semibold">{row.sr}</td>
-                      <td className="border border-neutral-200 px-0.5">{row.description}</td>
-                      <td className="border border-neutral-200 px-0.5">{row.size}</td>
-                      <td className="border border-neutral-200 px-0.5">{row.moc}</td>
-                      <td className="border border-neutral-200 px-0.5">{row.std}</td>
-                      <td className="border border-neutral-200 px-0.5">{row.pn}</td>
-                      <td className="border border-neutral-200 px-0.5 truncate max-w-[50px]" title={row.type}>
-                        {row.type}
-                      </td>
-                      <td className="border border-neutral-200 px-0.5 text-center">
-                        {row.description === "PIPE" ? "" : row.qty}
-                      </td>
-                      <td className="border border-neutral-200 px-0.5 text-right">{row.totalLength}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Isometric 3D view — lower ~58% */}
-          <div className="relative flex-1 min-h-0 flex flex-col">
-            <div className="bg-black px-2 py-0.5 text-[9px] font-bold text-white uppercase tracking-wider shrink-0 z-10">
-              Isometric view
-            </div>
-            <div className="flex-1 min-h-0 relative">
-              <ShadedMeshImage
-                meshes={meshes}
-                parts={parts}
-                gaIso
-                drawingNumber={drawingNumber}
-                drawingTitle={drawingTitle}
-                width={HD_GA_ISO.width}
-                height={HD_GA_ISO.height}
-                pixelRatio={1}
-                className="h-full w-full"
-                alt="Isometric"
-              />
-              {/* Title block overlay */}
-              <div className="absolute bottom-0 right-0 w-[52%] min-w-[110px] border border-black bg-white p-1 text-[6px] leading-tight pointer-events-none">
-                <p className="font-bold text-[6.5px]">WTT INTERNATIONAL PVT LTD</p>
-                <p className="italic text-neutral-600">NOTE: ALL DIMENSIONS ARE IN mm</p>
-                <div className="flex gap-2 mt-0.5">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-neutral-400 text-[5px]">DWG NO</p>
-                    <p className="font-semibold truncate">{drawingNumber}</p>
-                  </div>
-                </div>
-                <div className="mt-0.5">
-                  <p className="text-neutral-400 text-[5px]">TITLE</p>
-                  <p className="truncate">{drawingTitle}</p>
-                </div>
-                <div className="flex justify-between mt-0.5 text-neutral-500 text-[5px]">
-                  <span>SHEET 1 OF 1</span>
-                  <span>REV 01</span>
-                </div>
+            {/* PLAN VIEW — bottom 43% */}
+            <div className="flex flex-col" style={{ flex: "43" }}>
+              <ViewLabel text="PLAN VIEW (TOP) — ALL DIMENSIONS IN mm" />
+              <div className="flex-1 min-h-0 bg-white">
+                <MeasuredOrthoPreview meshes={meshes} parts={parts} variant="plan" className="h-full" />
               </div>
             </div>
           </div>
 
+          {/* ── RIGHT COLUMN (38%) ── */}
+          <div className="flex flex-col" style={{ flex: "38" }}>
+            {/* BOM TABLE — top 40% */}
+            <div className="flex flex-col border-b border-black" style={{ flex: "40" }}>
+              {/* BOM header */}
+              <div className="shrink-0 bg-neutral-200 border-b border-black py-0.5 text-center text-[8px] font-black uppercase tracking-widest">
+                Bill of Materials
+              </div>
+
+              {/* Column headers */}
+              <div className="shrink-0 border-b border-black bg-neutral-100 flex">
+                {WTT_BOM_COLUMNS.map(col => (
+                  <div
+                    key={col.key}
+                    className="border-r border-neutral-400 last:border-r-0 px-[2px] py-[1px] text-[6px] font-black uppercase truncate"
+                    style={{ flex: col.w }}
+                  >
+                    {col.label}
+                  </div>
+                ))}
+              </div>
+
+              {/* BOM rows */}
+              <div className="flex-1 overflow-hidden">
+                {bomRows.map((row, ri) => (
+                  <div
+                    key={row.sr}
+                    onClick={() => { const p = firstPartForBomRow(parts, row); if (p) onSelectPart?.(p); }}
+                    className={`flex border-b border-neutral-200 cursor-pointer hover:bg-sky-50 text-[5.5px] ${ri % 2 === 0 ? "" : "bg-neutral-50"}`}
+                  >
+                    <div className="border-r border-neutral-300 px-[2px] py-[1px] font-bold text-center" style={{ flex: 12 }}>{row.sr}</div>
+                    <div className="border-r border-neutral-300 px-[2px] py-[1px] truncate" style={{ flex: 28 }}>{row.description}</div>
+                    <div className="border-r border-neutral-300 px-[2px] py-[1px] truncate" style={{ flex: 11 }}>{row.size}</div>
+                    <div className="border-r border-neutral-300 px-[2px] py-[1px] truncate" style={{ flex: 13 }}>{row.moc}</div>
+                    <div className="border-r border-neutral-300 px-[2px] py-[1px] truncate" style={{ flex: 10 }}>{row.std}</div>
+                    <div className="border-r border-neutral-300 px-[2px] py-[1px] truncate" style={{ flex: 14 }}>{row.pn}</div>
+                    <div className="border-r border-neutral-300 px-[2px] py-[1px] truncate" style={{ flex: 26 }} title={row.type}>{row.type}</div>
+                    <div className="border-r border-neutral-300 px-[2px] py-[1px] text-center" style={{ flex: 10 }}>
+                      {row.description === "PIPE" ? "" : row.qty}
+                    </div>
+                    <div className="px-[2px] py-[1px] text-right" style={{ flex: 16 }}>{row.totalLength}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ISOMETRIC VIEW — bottom 60% */}
+            <div className="flex flex-col relative" style={{ flex: "60" }}>
+              <ViewLabel text="Isometric View" />
+              <div className="flex-1 min-h-0 relative bg-white overflow-hidden">
+                <ShadedMeshImage
+                  meshes={meshes}
+                  parts={parts}
+                  gaIso
+                  drawingNumber={drawingNumber}
+                  drawingTitle={drawingTitle}
+                  width={HD_GA_ISO.width}
+                  height={HD_GA_ISO.height}
+                  pixelRatio={1}
+                  className="h-full w-full"
+                  alt="Isometric"
+                />
+
+                {/* ── Title Block (absolute, bottom-right) ── */}
+                <div className="absolute bottom-0 right-0 border-t border-l border-black bg-white"
+                     style={{ width: "66%", fontSize: "5.5px", lineHeight: 1.3 }}>
+                  {/* Company name row */}
+                  <div className="border-b border-black px-1 py-[2px] bg-neutral-50">
+                    <span className="font-black text-[7px] tracking-wide">WTT INTERNATIONAL PVT LTD</span>
+                  </div>
+
+                  {/* Main block: left fields | right signoff grid */}
+                  <div className="flex">
+                    {/* Left: DWG NO + TITLE */}
+                    <div className="flex-1 border-r border-black min-w-0 flex flex-col">
+                      <div className="border-b border-black px-1 py-[2px] flex-1">
+                        <div className="text-neutral-400 text-[4.5px] uppercase font-bold tracking-wider">Drawing No.</div>
+                        <div className="font-black text-[6px] truncate">{drawingNumber}</div>
+                      </div>
+                      <div className="px-1 py-[2px] flex-1">
+                        <div className="text-neutral-400 text-[4.5px] uppercase font-bold tracking-wider">Title</div>
+                        <div className="font-semibold truncate">{drawingTitle}</div>
+                      </div>
+                    </div>
+
+                    {/* Right: 2×3 grid (Drawn / Checked / Approved | Scale / Rev / Sheet) */}
+                    <div className="flex flex-col" style={{ minWidth: "30%" }}>
+                      {[
+                        ["Drawn by", "AUTO / STEP"],
+                        ["Checked",  "—"],
+                        ["Approved", "—"],
+                      ].map(([label, val]) => (
+                        <div key={label} className="flex border-b border-black last:border-b-0">
+                          <div className="border-r border-black px-1 py-[1px] text-neutral-400 uppercase tracking-wider flex-1" style={{fontSize:"4px"}}>{label}</div>
+                          <div className="px-1 py-[1px] font-semibold flex-1">{val}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Footer: Scale / Rev / Date / Sheet */}
+                  <div className="border-t border-black flex">
+                    {[
+                      ["SCALE", "NTS"],
+                      ["REV",   "01"],
+                      ["DATE",  dateStr],
+                      ["SHEET", "1 OF 1"],
+                    ].map(([label, val]) => (
+                      <div key={label} className="flex-1 border-r border-black last:border-r-0 px-1 py-[1px]">
+                        <div className="text-neutral-400 uppercase tracking-wider" style={{fontSize:"4px"}}>{label}</div>
+                        <div className="font-black" style={{fontSize:"5.5px"}}>{val}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Zone label row (bottom) */}
+        <div className="shrink-0 flex" style={{ height: "4%" }}>
+          <div className="flex-1 border-t border-neutral-300 flex">
+            {[1,2,3,4].map(n => (
+              <div key={n} className="flex-1 flex items-center justify-center text-[7px] font-bold text-neutral-400 border-r border-neutral-200 last:border-r-0">{n}</div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
