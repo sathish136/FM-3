@@ -346,4 +346,101 @@ export function downloadStepPartDrawingPdf(
   pdf.save(`${number}.pdf`);
 }
 
+// ─── Custom layout PDF (drag-and-drop builder export) ────────────────────────
+
+export interface CustomPanelLayout {
+  x: number; y: number; w: number; h: number; visible: boolean;
+}
+
+export interface CustomLayoutPdfConfig {
+  drawingNumber: string;
+  drawingTitle: string;
+  /** Panel positions in mm (converted from canvas pixels by caller) */
+  panels: Record<"front" | "plan" | "iso" | "bom", CustomPanelLayout>;
+  /** Pre-rendered PNG data URLs from the builder's image cache */
+  images: { front: string; plan: string; iso: string };
+  parts: PartDrawingInfo[];
+}
+
+export async function generateCustomLayoutPdf(cfg: CustomLayoutPdfConfig): Promise<void> {
+  const { drawingNumber, drawingTitle, panels, images, parts } = cfg;
+  const bomRows = partsToBomRows(parts);
+
+  const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+
+  pdf.setProperties({ title: `${drawingNumber} — ${drawingTitle}`, subject: "WTT Fabrication GA" });
+
+  drawSheetBorder(pdf, pageW, pageH);
+
+  // Zone grid (light guide lines)
+  const m = SHEET.margin;
+  drawBorderGridPdf(pdf, pageW, pageH, m + 6, m + 4, pageW - m, pageH - m);
+
+  const LH = 5.5; // panel label bar height mm
+  const PAD = 2;
+
+  // Helper to draw a panel outline + dark label bar
+  function drawPanel(r: CustomPanelLayout, label: string) {
+    if (!r.visible) return;
+    pdf.setDrawColor(0, 0, 0);
+    pdf.setLineWidth(0.4);
+    pdf.rect(r.x, r.y, r.w, r.h);
+    pdf.setFillColor(26, 26, 46);
+    pdf.rect(r.x, r.y, r.w, LH, "F");
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(5.5);
+    pdf.setTextColor(255, 255, 255);
+    pdf.text(label, r.x + 2, r.y + 3.8);
+    pdf.setTextColor(0, 0, 0);
+  }
+
+  // Front view
+  if (panels.front.visible) {
+    drawPanel(panels.front, "FRONT VIEW — ALL DIMENSIONS IN mm");
+    pdf.addImage(images.front, "PNG",
+      panels.front.x + PAD, panels.front.y + LH + PAD,
+      panels.front.w - PAD * 2, panels.front.h - LH - PAD * 2);
+  }
+
+  // Plan view
+  if (panels.plan.visible) {
+    drawPanel(panels.plan, "PLAN VIEW (TOP) — ALL DIMENSIONS IN mm");
+    pdf.addImage(images.plan, "PNG",
+      panels.plan.x + PAD, panels.plan.y + LH + PAD,
+      panels.plan.w - PAD * 2, panels.plan.h - LH - PAD * 2);
+  }
+
+  // Isometric view
+  if (panels.iso.visible) {
+    drawPanel(panels.iso, "ISOMETRIC VIEW");
+    pdf.addImage(images.iso, "PNG",
+      panels.iso.x + PAD, panels.iso.y + LH + PAD,
+      panels.iso.w - PAD * 2, panels.iso.h - LH - PAD * 2);
+  }
+
+  // BOM table
+  if (panels.bom.visible) {
+    drawBomTable(pdf, bomRows, panels.bom.x, panels.bom.y, panels.bom.w, panels.bom.h);
+  }
+
+  // Title block — always bottom-right
+  const meta: SheetMeta = {
+    drawingNumber,
+    title: drawingTitle,
+    revision: "01",
+    scale: "NTS",
+    sheet: "1 OF 1",
+    date: formatSheetDate(),
+    drawnBy: "AUTO / STEP",
+    checkedBy: "—",
+    approvedBy: "—",
+    project: "WTT",
+  };
+  drawWttTitleBlock(pdf, meta, pageW - SHEET.margin - TITLE_BLOCK.width, pageH - SHEET.margin - TITLE_BLOCK.height);
+
+  pdf.save(`${drawingNumber}.pdf`);
+}
+
 export type { PartDrawingInfo };
