@@ -60,7 +60,47 @@ type ReportSummary = {
   date: string;
   status: string;
   modified: string;
+  employee_image?: string | null;
 };
+
+const HRMS_IMAGE_BASE = API_BASE;
+
+function avatarColor(seed: string) {
+  const colors = [
+    "bg-indigo-500","bg-blue-500","bg-violet-500","bg-cyan-600",
+    "bg-teal-500","bg-emerald-600","bg-rose-500","bg-orange-500","bg-amber-500",
+  ];
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return colors[h % colors.length];
+}
+
+function EmpAvatar({ image, name, size = 28 }: { image?: string | null; name: string; size?: number }) {
+  const [err, setErr] = useState(false);
+  const initials = name.split(" ").map(w => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase() || "?";
+  const proxySrc = image
+    ? `${HRMS_IMAGE_BASE}/hrms/image-proxy?path=${encodeURIComponent(image)}`
+    : null;
+  if (proxySrc && !err) {
+    return (
+      <img
+        src={proxySrc}
+        alt={name}
+        onError={() => setErr(true)}
+        style={{ width: size, height: size }}
+        className="rounded-full object-cover shrink-0"
+      />
+    );
+  }
+  return (
+    <div
+      style={{ width: size, height: size, fontSize: size < 30 ? 10 : 12 }}
+      className={`rounded-full flex items-center justify-center font-black text-white shrink-0 ${avatarColor(name)}`}
+    >
+      {initials}
+    </div>
+  );
+}
 
 type ReportDetail = ReportSummary & { [key: string]: any };
 
@@ -617,14 +657,11 @@ function TodayCoverage({
                   <td className="px-4 py-2.5 text-gray-300 text-[10px] font-bold">{i + 1}</td>
                   <td className="px-4 py-2.5">
                     <div className="flex items-center gap-2">
-                      <div className={cn(
-                        "w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shrink-0",
-                        isSubmitted ? "bg-emerald-500 text-white" :
-                        isDraft     ? "bg-amber-400 text-white"   :
-                                      "bg-gray-200 text-gray-400"
-                      )}>
-                        {emp.name[0]}
-                      </div>
+                      <EmpAvatar
+                        image={reportedMap.get(emp.id)?.employee_image}
+                        name={emp.name}
+                        size={28}
+                      />
                       <p className="font-bold text-gray-800">{emp.name}</p>
                     </div>
                   </td>
@@ -907,9 +944,11 @@ export default function DailyReporting() {
                         onClick={() => setSelectedReport(r.name)}>
                         <td className="px-4 py-2.5">
                           <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-blue-400 flex items-center justify-center shrink-0">
-                              <span className="text-white text-[9px] font-black">{(r.employee_name || r.employee || "?")[0].toUpperCase()}</span>
-                            </div>
+                            <EmpAvatar
+                              image={r.employee_image}
+                              name={r.employee_name || r.employee || "?"}
+                              size={28}
+                            />
                             <div>
                               <p className="font-bold text-gray-800 leading-tight">{r.employee_name || r.employee}</p>
                               <div className="flex items-center gap-1.5 flex-wrap">

@@ -222,6 +222,30 @@ router.get("/daily-reporting", async (req, res) => {
       status: mapDocStatus(row.docstatus),
     }));
 
+    // Batch-fetch employee images for unique employee IDs
+    const uniqueEmpIds = [...new Set(rows.map(r => r.employee).filter(Boolean))];
+    const empImageMap = new Map<string, string>();
+    if (uniqueEmpIds.length > 0) {
+      try {
+        const empFields = JSON.stringify(["name", "image"]);
+        const empFilters = JSON.stringify([["name", "in", uniqueEmpIds]]);
+        const empParams = new URLSearchParams({ fields: empFields, filters: empFilters, limit_page_length: "500" });
+        const empRes = await fetch(`${ERP_URL}/api/resource/Employee?${empParams}`, {
+          headers: { Authorization: auth() },
+        });
+        if (empRes.ok) {
+          const empJson = await empRes.json() as { data: any[] };
+          for (const e of (empJson.data || [])) {
+            if (e.name && e.image) empImageMap.set(e.name, e.image);
+          }
+        }
+      } catch { /* non-fatal — fall back to initials */ }
+    }
+    rows = rows.map(row => ({
+      ...row,
+      employee_image: empImageMap.get(row.employee) || null,
+    }));
+
     // Server-side filtering
     if (from_date) rows = rows.filter(r => r.date && r.date >= from_date);
     if (to_date)   rows = rows.filter(r => r.date && r.date <= to_date);
