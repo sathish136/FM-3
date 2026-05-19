@@ -101,6 +101,8 @@ import PLCPanelInspection from "@/pages/PLCPanelInspection";
 import PLCSupportTickets from "@/pages/PLCSupportTickets";
 import PLCDeviceConfig from "@/pages/PLCDeviceConfig";
 import PLCNetworkArchitecture from "@/pages/PLCNetworkArchitecture";
+import PLCModificationLog from "@/pages/PLCModificationLog";
+import PLCFieldDevices from "@/pages/PLCFieldDevices";
 import OmChemicalConsumption from "@/pages/OmChemicalConsumption";
 import OmLabReport from "@/pages/OmLabReport";
 import OmSitePerformance from "@/pages/OmSitePerformance";
@@ -298,6 +300,8 @@ function ProtectedRoutes() {
       <Route path="/plc-automation/support-tickets"   component={PLCSupportTickets}   />
       <Route path="/plc-automation/device-config"      component={PLCDeviceConfig}      />
       <Route path="/plc-automation/network-architecture" component={PLCNetworkArchitecture} />
+      <Route path="/plc-automation/modification-log"    component={PLCModificationLog}    />
+      <Route path="/plc-automation/field-devices"       component={PLCFieldDevices}        />
       <Route path="/om/chemical-consumption" component={OmChemicalConsumption} />
       <Route path="/om/lab-reports"          component={OmLabReport} />
       <Route path="/om/site-performance"     component={OmSitePerformance} />

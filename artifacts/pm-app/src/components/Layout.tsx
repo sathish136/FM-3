@@ -901,6 +901,20 @@ const navGroups: { label: string; items: NavItem[] }[] = [
         color: "text-blue-400",
         bgColor: "bg-blue-500/15",
       },
+      {
+        path: "/plc-automation/modification-log",
+        label: "Modification Log",
+        icon: GitBranch,
+        color: "text-sky-400",
+        bgColor: "bg-sky-500/15",
+      },
+      {
+        path: "/plc-automation/field-devices",
+        label: "Field Instruments",
+        icon: Activity,
+        color: "text-emerald-400",
+        bgColor: "bg-emerald-500/15",
+      },
     ],
   },
   {

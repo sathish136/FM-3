@@ -2497,4 +2497,382 @@ router.delete("/plc/network-architectures/:id", async (req, res) => {
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Programming Modification Log ────────────────────────────────────────────
+
+(async () => {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS plc_modification_logs (
+        id                  SERIAL PRIMARY KEY,
+        mod_no              TEXT,
+        project_number      TEXT,
+        project_name        TEXT,
+        device_type         TEXT NOT NULL DEFAULT 'PLC',
+        device_make         TEXT,
+        device_model        TEXT,
+        program_ref         TEXT,
+        modification_date   TEXT,
+        modified_by         TEXT,
+        modification_type   TEXT NOT NULL DEFAULT 'Bug Fix',
+        description         TEXT,
+        reason              TEXT,
+        changes_before      TEXT,
+        changes_after       TEXT,
+        impact_assessment   TEXT,
+        testing_done        TEXT,
+        approved_by         TEXT,
+        approval_date       TEXT,
+        status              TEXT NOT NULL DEFAULT 'Draft',
+        remarks             TEXT,
+        created_by          TEXT,
+        created_at          TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at          TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+  } catch (e) {
+    console.error("plc_modification_logs init error:", e);
+  }
+})();
+
+router.get("/plc/modification-logs", async (req, res) => {
+  try {
+    const { search = "", status = "" } = req.query as any;
+    let result;
+    const s = `%${search}%`;
+    if (status && status !== "All" && search) {
+      result = await db.execute(sql`SELECT * FROM plc_modification_logs WHERE status = ${status} AND (mod_no ILIKE ${s} OR project_name ILIKE ${s} OR project_number ILIKE ${s} OR modified_by ILIKE ${s} OR description ILIKE ${s}) ORDER BY created_at DESC LIMIT 300`);
+    } else if (status && status !== "All") {
+      result = await db.execute(sql`SELECT * FROM plc_modification_logs WHERE status = ${status} ORDER BY created_at DESC LIMIT 300`);
+    } else if (search) {
+      result = await db.execute(sql`SELECT * FROM plc_modification_logs WHERE mod_no ILIKE ${s} OR project_name ILIKE ${s} OR project_number ILIKE ${s} OR modified_by ILIKE ${s} OR description ILIKE ${s} ORDER BY created_at DESC LIMIT 300`);
+    } else {
+      result = await db.execute(sql`SELECT * FROM plc_modification_logs ORDER BY created_at DESC LIMIT 300`);
+    }
+    res.json(result.rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.get("/plc/modification-logs/stats", async (req, res) => {
+  try {
+    const total    = await db.execute(sql`SELECT COUNT(*) FROM plc_modification_logs`);
+    const pending  = await db.execute(sql`SELECT COUNT(*) FROM plc_modification_logs WHERE status = 'Pending Approval'`);
+    const approved = await db.execute(sql`SELECT COUNT(*) FROM plc_modification_logs WHERE status = 'Approved'`);
+    const thisMonth= await db.execute(sql`SELECT COUNT(*) FROM plc_modification_logs WHERE created_at >= date_trunc('month', NOW())`);
+    res.json({
+      total:    Number(total.rows[0]?.count ?? 0),
+      pending:  Number(pending.rows[0]?.count ?? 0),
+      approved: Number(approved.rows[0]?.count ?? 0),
+      thisMonth:Number(thisMonth.rows[0]?.count ?? 0),
+    });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.get("/plc/modification-logs/:id", async (req, res) => {
+  try {
+    const r = await db.execute(sql`SELECT * FROM plc_modification_logs WHERE id = ${Number(req.params.id)}`);
+    if (!r.rows.length) return res.status(404).json({ error: "Not found" });
+    res.json(r.rows[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.post("/plc/modification-logs", async (req, res) => {
+  try {
+    const b = req.body;
+    const countR = await db.execute(sql`SELECT COUNT(*) FROM plc_modification_logs`);
+    const mod_no = b.mod_no || `MCL-${String(Number(countR.rows[0]?.count ?? 0) + 1).padStart(4, "0")}`;
+    const r = await db.execute(sql`
+      INSERT INTO plc_modification_logs
+        (mod_no, project_number, project_name, device_type, device_make, device_model,
+         program_ref, modification_date, modified_by, modification_type, description,
+         reason, changes_before, changes_after, impact_assessment, testing_done,
+         approved_by, approval_date, status, remarks, created_by)
+      VALUES
+        (${mod_no}, ${b.project_number||null}, ${b.project_name||null},
+         ${b.device_type||"PLC"}, ${b.device_make||null}, ${b.device_model||null},
+         ${b.program_ref||null}, ${b.modification_date||null}, ${b.modified_by||null},
+         ${b.modification_type||"Bug Fix"}, ${b.description||null}, ${b.reason||null},
+         ${b.changes_before||null}, ${b.changes_after||null}, ${b.impact_assessment||null},
+         ${b.testing_done||null}, ${b.approved_by||null}, ${b.approval_date||null},
+         ${b.status||"Draft"}, ${b.remarks||null}, ${b.created_by||null})
+      RETURNING *
+    `);
+    res.json(r.rows[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.patch("/plc/modification-logs/:id", async (req, res) => {
+  try {
+    const b = req.body;
+    const r = await db.execute(sql`
+      UPDATE plc_modification_logs SET
+        project_number    = ${b.project_number??null},
+        project_name      = ${b.project_name??null},
+        device_type       = COALESCE(${b.device_type??null}, device_type),
+        device_make       = ${b.device_make??null},
+        device_model      = ${b.device_model??null},
+        program_ref       = ${b.program_ref??null},
+        modification_date = ${b.modification_date??null},
+        modified_by       = ${b.modified_by??null},
+        modification_type = COALESCE(${b.modification_type??null}, modification_type),
+        description       = ${b.description??null},
+        reason            = ${b.reason??null},
+        changes_before    = ${b.changes_before??null},
+        changes_after     = ${b.changes_after??null},
+        impact_assessment = ${b.impact_assessment??null},
+        testing_done      = ${b.testing_done??null},
+        approved_by       = ${b.approved_by??null},
+        approval_date     = ${b.approval_date??null},
+        status            = COALESCE(${b.status??null}, status),
+        remarks           = ${b.remarks??null},
+        updated_at        = NOW()
+      WHERE id = ${Number(req.params.id)} RETURNING *
+    `);
+    if (!r.rows.length) return res.status(404).json({ error: "Not found" });
+    res.json(r.rows[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete("/plc/modification-logs/:id", async (req, res) => {
+  try {
+    await db.execute(sql`DELETE FROM plc_modification_logs WHERE id = ${Number(req.params.id)}`);
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Field Instrument & Device Configuration ─────────────────────────────────
+
+(async () => {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS plc_field_devices (
+        id                    SERIAL PRIMARY KEY,
+        device_no             TEXT,
+        project_number        TEXT,
+        project_name          TEXT,
+        tag_no                TEXT,
+        device_category       TEXT NOT NULL DEFAULT 'Sensor',
+        make                  TEXT,
+        model                 TEXT,
+        serial_no             TEXT,
+        location              TEXT,
+        process_variable      TEXT,
+        range_min             TEXT,
+        range_max             TEXT,
+        unit                  TEXT,
+        power_supply          TEXT,
+        enclosure_rating      TEXT,
+        installation_date     TEXT,
+        last_calibration_date TEXT,
+        next_calibration_date TEXT,
+        calibration_by        TEXT,
+        calibration_interval  TEXT,
+        calibration_notes     TEXT,
+        comm_type             TEXT NOT NULL DEFAULT '4-20mA',
+        comm_config           JSONB NOT NULL DEFAULT '{}',
+        channels              JSONB NOT NULL DEFAULT '[]',
+        vfd_params            JSONB NOT NULL DEFAULT '{}',
+        param_backup          JSONB NOT NULL DEFAULT '[]',
+        status                TEXT NOT NULL DEFAULT 'Active',
+        notes                 TEXT,
+        created_by            TEXT,
+        created_at            TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at            TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+  } catch (e) { console.error("plc_field_devices init error:", e); }
+})();
+
+router.get("/plc/field-devices/stats", async (req, res) => {
+  try {
+    const total   = await db.execute(sql`SELECT COUNT(*) FROM plc_field_devices`);
+    const active  = await db.execute(sql`SELECT COUNT(*) FROM plc_field_devices WHERE status='Active'`);
+    const fault   = await db.execute(sql`SELECT COUNT(*) FROM plc_field_devices WHERE status='Fault'`);
+    const calDue  = await db.execute(sql`SELECT COUNT(*) FROM plc_field_devices WHERE next_calibration_date IS NOT NULL AND next_calibration_date <= to_char(NOW() + interval '30 days','YYYY-MM-DD')`);
+    res.json({
+      total:   Number(total.rows[0]?.count  ?? 0),
+      active:  Number(active.rows[0]?.count ?? 0),
+      fault:   Number(fault.rows[0]?.count  ?? 0),
+      calDue:  Number(calDue.rows[0]?.count ?? 0),
+    });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.get("/plc/field-devices", async (req, res) => {
+  try {
+    const { search = "", category = "", status = "" } = req.query as any;
+    const s = `%${search}%`;
+    let result;
+    const hasSearch = search.trim();
+    const hasCat = category && category !== "All";
+    const hasSt = status && status !== "All";
+    if (hasSearch && hasCat && hasSt) {
+      result = await db.execute(sql`SELECT * FROM plc_field_devices WHERE device_category=${category} AND status=${status} AND (tag_no ILIKE ${s} OR project_name ILIKE ${s} OR make ILIKE ${s} OR model ILIKE ${s} OR device_no ILIKE ${s}) ORDER BY created_at DESC LIMIT 400`);
+    } else if (hasSearch && hasCat) {
+      result = await db.execute(sql`SELECT * FROM plc_field_devices WHERE device_category=${category} AND (tag_no ILIKE ${s} OR project_name ILIKE ${s} OR make ILIKE ${s} OR model ILIKE ${s} OR device_no ILIKE ${s}) ORDER BY created_at DESC LIMIT 400`);
+    } else if (hasSearch && hasSt) {
+      result = await db.execute(sql`SELECT * FROM plc_field_devices WHERE status=${status} AND (tag_no ILIKE ${s} OR project_name ILIKE ${s} OR make ILIKE ${s} OR model ILIKE ${s} OR device_no ILIKE ${s}) ORDER BY created_at DESC LIMIT 400`);
+    } else if (hasCat && hasSt) {
+      result = await db.execute(sql`SELECT * FROM plc_field_devices WHERE device_category=${category} AND status=${status} ORDER BY created_at DESC LIMIT 400`);
+    } else if (hasSearch) {
+      result = await db.execute(sql`SELECT * FROM plc_field_devices WHERE tag_no ILIKE ${s} OR project_name ILIKE ${s} OR make ILIKE ${s} OR model ILIKE ${s} OR device_no ILIKE ${s} ORDER BY created_at DESC LIMIT 400`);
+    } else if (hasCat) {
+      result = await db.execute(sql`SELECT * FROM plc_field_devices WHERE device_category=${category} ORDER BY created_at DESC LIMIT 400`);
+    } else if (hasSt) {
+      result = await db.execute(sql`SELECT * FROM plc_field_devices WHERE status=${status} ORDER BY created_at DESC LIMIT 400`);
+    } else {
+      result = await db.execute(sql`SELECT * FROM plc_field_devices ORDER BY created_at DESC LIMIT 400`);
+    }
+    res.json(result.rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.get("/plc/field-devices/:id", async (req, res) => {
+  try {
+    const r = await db.execute(sql`SELECT * FROM plc_field_devices WHERE id=${Number(req.params.id)}`);
+    if (!r.rows.length) return res.status(404).json({ error: "Not found" });
+    res.json(r.rows[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.post("/plc/field-devices", async (req, res) => {
+  try {
+    const b = req.body;
+    const countR = await db.execute(sql`SELECT COUNT(*) FROM plc_field_devices`);
+    const device_no = b.device_no || `FD-${String(Number(countR.rows[0]?.count ?? 0) + 1).padStart(4,"0")}`;
+    const r = await db.execute(sql`
+      INSERT INTO plc_field_devices
+        (device_no,project_number,project_name,tag_no,device_category,make,model,serial_no,
+         location,process_variable,range_min,range_max,unit,power_supply,enclosure_rating,
+         installation_date,last_calibration_date,next_calibration_date,calibration_by,
+         calibration_interval,calibration_notes,comm_type,comm_config,channels,vfd_params,
+         param_backup,status,notes,created_by)
+      VALUES
+        (${device_no},${b.project_number||null},${b.project_name||null},${b.tag_no||null},
+         ${b.device_category||"Sensor"},${b.make||null},${b.model||null},${b.serial_no||null},
+         ${b.location||null},${b.process_variable||null},${b.range_min||null},${b.range_max||null},
+         ${b.unit||null},${b.power_supply||null},${b.enclosure_rating||null},
+         ${b.installation_date||null},${b.last_calibration_date||null},${b.next_calibration_date||null},
+         ${b.calibration_by||null},${b.calibration_interval||null},${b.calibration_notes||null},
+         ${b.comm_type||"4-20mA"},${JSON.stringify(b.comm_config||{})}::jsonb,
+         ${JSON.stringify(b.channels||[])}::jsonb,${JSON.stringify(b.vfd_params||{})}::jsonb,
+         ${JSON.stringify(b.param_backup||[])}::jsonb,${b.status||"Active"},${b.notes||null},
+         ${b.created_by||null})
+      RETURNING *
+    `);
+    res.json(r.rows[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.patch("/plc/field-devices/:id", async (req, res) => {
+  try {
+    const b = req.body;
+    const r = await db.execute(sql`
+      UPDATE plc_field_devices SET
+        project_number        = ${b.project_number??null},
+        project_name          = ${b.project_name??null},
+        tag_no                = ${b.tag_no??null},
+        device_category       = COALESCE(${b.device_category??null}, device_category),
+        make                  = ${b.make??null},
+        model                 = ${b.model??null},
+        serial_no             = ${b.serial_no??null},
+        location              = ${b.location??null},
+        process_variable      = ${b.process_variable??null},
+        range_min             = ${b.range_min??null},
+        range_max             = ${b.range_max??null},
+        unit                  = ${b.unit??null},
+        power_supply          = ${b.power_supply??null},
+        enclosure_rating      = ${b.enclosure_rating??null},
+        installation_date     = ${b.installation_date??null},
+        last_calibration_date = ${b.last_calibration_date??null},
+        next_calibration_date = ${b.next_calibration_date??null},
+        calibration_by        = ${b.calibration_by??null},
+        calibration_interval  = ${b.calibration_interval??null},
+        calibration_notes     = ${b.calibration_notes??null},
+        comm_type             = COALESCE(${b.comm_type??null}, comm_type),
+        comm_config           = ${JSON.stringify(b.comm_config||{})}::jsonb,
+        channels              = ${JSON.stringify(b.channels||[])}::jsonb,
+        vfd_params            = ${JSON.stringify(b.vfd_params||{})}::jsonb,
+        param_backup          = ${JSON.stringify(b.param_backup||[])}::jsonb,
+        status                = COALESCE(${b.status??null}, status),
+        notes                 = ${b.notes??null},
+        updated_at            = NOW()
+      WHERE id=${Number(req.params.id)} RETURNING *
+    `);
+    if (!r.rows.length) return res.status(404).json({ error: "Not found" });
+    res.json(r.rows[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete("/plc/field-devices/:id", async (req, res) => {
+  try {
+    await db.execute(sql`DELETE FROM plc_field_devices WHERE id=${Number(req.params.id)}`);
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.post("/plc/modification-logs/:id/pdf", async (req, res) => {
+  try {
+    const r = await db.execute(sql`SELECT * FROM plc_modification_logs WHERE id = ${Number(req.params.id)}`);
+    if (!r.rows.length) return res.status(404).json({ error: "Not found" });
+    const m: any = r.rows[0];
+    const buf = await pdfBuf((doc, addY, getY) => {
+      let y = 30;
+      // Header
+      doc.rect(L, y, W, 72).fill(NAVY);
+      doc.fillColor("#fff").fontSize(15).font("Helvetica-Bold")
+         .text("PROGRAMMING MODIFICATION LOG", L + 14, y + 10, { width: W - 28 });
+      doc.fillColor("#93c5fd").fontSize(8).font("Helvetica")
+         .text(`Ref: ${m.mod_no || "—"}  ·  WTT International  ·  PLC & Automation`, L + 14, y + 32, { width: W - 28 });
+      doc.fillColor("#cbd5e1").fontSize(7.5)
+         .text(`Status: ${m.status || "Draft"}  ·  Generated: ${fmtDatePdf(new Date().toISOString())}`, L + 14, y + 48, { width: W - 28 });
+      y += 82;
+
+      // Basic Info
+      y = secHeader(doc, "Modification Details", y);
+      const col = W / 3;
+      labelVal(doc, "Mod No",            m.mod_no||"—",              L,           y, col - 10);
+      labelVal(doc, "Project Number",    m.project_number||"—",      L + col,     y, col - 10);
+      labelVal(doc, "Project Name",      m.project_name||"—",        L + col*2,   y, col - 10);
+      y += 30;
+      labelVal(doc, "Device Type",       m.device_type||"—",         L,           y, col - 10);
+      labelVal(doc, "Device Make",       m.device_make||"—",         L + col,     y, col - 10);
+      labelVal(doc, "Device Model",      m.device_model||"—",        L + col*2,   y, col - 10);
+      y += 30;
+      labelVal(doc, "Program Reference", m.program_ref||"—",         L,           y, col - 10);
+      labelVal(doc, "Modification Date", fmtDatePdf(m.modification_date), L + col, y, col - 10);
+      labelVal(doc, "Modified By",       m.modified_by||"—",         L + col*2,   y, col - 10);
+      y += 30;
+      labelVal(doc, "Modification Type", m.modification_type||"—",   L,           y, col - 10);
+      y += 36;
+
+      y = checkPageBreak(doc, y, 60);
+      y = textSection(doc, "Description of Modification", m.description, y);
+      y = checkPageBreak(doc, y, 60);
+      y = textSection(doc, "Reason / Justification", m.reason, y);
+      y = checkPageBreak(doc, y, 60);
+      y = textSection(doc, "Changes Before Modification", m.changes_before, y);
+      y = checkPageBreak(doc, y, 60);
+      y = textSection(doc, "Changes After Modification",  m.changes_after,  y);
+      y = checkPageBreak(doc, y, 60);
+      y = textSection(doc, "Impact Assessment",           m.impact_assessment, y);
+      y = checkPageBreak(doc, y, 60);
+      y = textSection(doc, "Testing Done",                m.testing_done, y);
+      y = checkPageBreak(doc, y, 60);
+      y = textSection(doc, "Remarks",                     m.remarks, y);
+
+      // Approval
+      y = checkPageBreak(doc, y, 70);
+      y = secHeader(doc, "Approval", y);
+      labelVal(doc, "Approved By",   m.approved_by||"—",            L,         y, col - 10);
+      labelVal(doc, "Approval Date", fmtDatePdf(m.approval_date),   L + col,   y, col - 10);
+      labelVal(doc, "Status",        m.status||"—",                 L + col*2, y, col - 10);
+      y += 36;
+
+      pdfFooter(doc);
+    });
+    res.set({ "Content-Type": "application/pdf", "Content-Disposition": `inline; filename="MCL-${m.mod_no||m.id}.pdf"` });
+    res.send(buf);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 export default router;
