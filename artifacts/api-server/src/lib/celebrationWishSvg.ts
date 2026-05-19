@@ -514,7 +514,10 @@ export function renderCelebrationWishSvg(opts: RenderWishOptions): string {
   const accentFont = "Georgia, 'Palatino Linotype', serif";
 
   const nameY = kind === "anniversary" && opts.yearsOfService ? 910 : 830;
-  const msgY = nameY + (designation ? 118 : 86);
+  // Stack: name @ nameY, designation @ nameY+52, dept @ nameY+90 (if both present)
+  const desigY  = nameY + 52;
+  const deptY   = designation ? nameY + 90 : nameY + 48;
+  const msgY    = (designation && dept ? nameY + 136 : designation || dept ? nameY + 100 : nameY + 72);
 
   const msgLines = lines
     .map(
@@ -537,7 +540,6 @@ export function renderCelebrationWishSvg(opts: RenderWishOptions): string {
       : "";
 
   const gradD = theme.gradD || theme.gradA;
-  const deptY = designation ? nameY + 50 : nameY + 42;
 
   // Gradient overlay strip behind name area
   const nameAreaY = nameY - 70;
@@ -590,7 +592,7 @@ export function renderCelebrationWishSvg(opts: RenderWishOptions): string {
     fill="${theme.text}" filter="url(#shadow)"
     letter-spacing="-0.3">${escapeXml(name)}</text>
   ${designation
-    ? `<text x="${W / 2}" y="${nameY + 46}" text-anchor="middle"
+    ? `<text x="${W / 2}" y="${desigY}" text-anchor="middle"
         font-family="${escapeXml(bodyFont)}" font-size="26" font-weight="500"
         fill="${theme.subtext}" letter-spacing="0.5">${escapeXml(designation)}</text>`
     : ""}
