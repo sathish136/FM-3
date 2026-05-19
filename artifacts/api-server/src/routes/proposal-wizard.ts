@@ -367,29 +367,88 @@ function mimeFor(filename: string): string {
   return "application/octet-stream";
 }
 
-/** Format counter as WTT-BAN-XXXX (zero-padded to 4 digits) */
-function formatWttNumber(n: number): string {
-  return `WTT-BAN-${String(n).padStart(4, "0")}`;
+// ── Country prefix map ────────────────────────────────────────────────────────
+// Each code produces a 7-char prefix so the full WTT number is always 12 chars:
+//   WTT-IND = 7, + "-" + 4 digits = 12  ✓  (same as legacy WTT-BAN-0001)
+const COUNTRY_PREFIX: Record<string, string> = {
+  IND:   "WTT-IND",
+  BGD:   "WTT-BAN",
+  ARE:   "WTT-UAE",
+  LKA:   "WTT-SRI",
+  NPL:   "WTT-NEP",
+  QAT:   "WTT-QAT",
+  SAU:   "WTT-SAU",
+  MYS:   "WTT-MYS",
+  OMN:   "WTT-OMN",
+  SGP:   "WTT-SGP",
+  OTHER: "WTT-INT",
+};
+
+function prefixForCountry(cc?: string): string {
+  return (cc && COUNTRY_PREFIX[cc.toUpperCase()]) || "WTT-INT";
 }
 
+/** Format counter with country prefix, zero-padded to 4 digits (total 12 chars) */
+function formatWttNumber(n: number, countryCode?: string): string {
+  return `${prefixForCountry(countryCode)}-${String(n).padStart(4, "0")}`;
+}
+
+// ── DB migration: add country_code column to counter table ────────────────────
+pool.query(`
+  ALTER TABLE proposal_wizard_counter ADD COLUMN IF NOT EXISTS country_code TEXT DEFAULT 'BGD';
+  UPDATE proposal_wizard_counter SET country_code = 'BGD' WHERE id = 1 AND country_code IS NULL;
+`).then(() =>
+  pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS proposal_wizard_counter_cc_idx
+     ON proposal_wizard_counter(country_code) WHERE country_code IS NOT NULL`
+  )
+).catch(() => {/* table may not exist yet — init handled elsewhere */});
+
 /**
- * Atomically increment the counter and return the NEW value.
+ * Atomically increment the counter for a given country and return the NEW value.
+ * Upserts a new row when the country is seen for the first time.
  */
 async function nextCounter(
   customer: string,
   flowRate: string,
+  countryCode = "BGD",
 ): Promise<number> {
-  const rows = await db.execute(sql`
-    UPDATE proposal_wizard_counter
-    SET counter = counter + 1,
-        last_used_at = NOW(),
-        last_customer = ${customer},
-        last_flow_rate = ${flowRate}
-    WHERE id = 1
-    RETURNING counter
-  `);
-  const value = (rows as any).rows?.[0]?.counter ?? (rows as any)[0]?.counter;
-  return Number(value);
+  const cc = countryCode.toUpperCase();
+  // Try upsert (requires unique index on country_code)
+  try {
+    const rows = await db.execute(sql`
+      INSERT INTO proposal_wizard_counter (country_code, counter, last_used_at, last_customer, last_flow_rate)
+      VALUES (${cc}, 1, NOW(), ${customer}, ${flowRate})
+      ON CONFLICT (country_code) DO UPDATE
+        SET counter        = proposal_wizard_counter.counter + 1,
+            last_used_at   = NOW(),
+            last_customer  = EXCLUDED.last_customer,
+            last_flow_rate = EXCLUDED.last_flow_rate
+      RETURNING counter
+    `);
+    const value = (rows as any).rows?.[0]?.counter ?? (rows as any)[0]?.counter;
+    return Number(value);
+  } catch {
+    // Fallback: legacy single-row update (Bangladesh, id=1)
+    const rows = await db.execute(sql`
+      UPDATE proposal_wizard_counter
+      SET counter = counter + 1,
+          last_used_at = NOW(),
+          last_customer = ${customer},
+          last_flow_rate = ${flowRate}
+      WHERE id = 1
+      RETURNING counter
+    `);
+    const value = (rows as any).rows?.[0]?.counter ?? (rows as any)[0]?.counter;
+    return Number(value);
+  }
+}
+
+// ── In-memory OTP store for email verification (5-min TTL) ───────────────────
+const wizardOtpStore = new Map<string, { otp: string; expires: number }>();
+
+function generateWizardOtp(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
 }
 
 /**
@@ -615,8 +674,8 @@ function processXlsx(
         );
         changed = true;
       }
-      if (content.includes("WTT-BAN-0001")) {
-        content = content.replace(/WTT-BAN-0001/g, wttNumber);
+      if (/WTT-[A-Z]{3}-0001/.test(content)) {
+        content = content.replace(/WTT-[A-Z]{3}-0001/g, wttNumber);
         changed = true;
       }
       // Replace date placeholder "01.Jan.2026" with today (same 11-char length)
@@ -720,7 +779,24 @@ function processDoc(
 
   // Same-length only — keeps Word 97 binary valid for LibreOffice .doc → PDF
   replaceAllInPlace("COMPANY NAME", padAscii(customerName, 12));
-  replaceAllInPlace("WTT-BAN-0001", wttNumber);
+
+  // Replace any WTT-XXX-0001 placeholder (12 chars) with the generated wttNumber (also 12 chars)
+  {
+    const wttPlaceholderPattern = /WTT-[A-Z]{3}-0001/g;
+    const wttPrefix = Buffer.from("WTT-", "ascii");
+    let pos = 0;
+    while ((pos = result.indexOf(wttPrefix, pos)) !== -1) {
+      if (pos + 12 <= result.length) {
+        const candidate = result.subarray(pos, pos + 12).toString("ascii");
+        if (/^WTT-[A-Z]{3}-\d{4}$/.test(candidate) && candidate.endsWith("0001")) {
+          const replBuf = Buffer.from(wttNumber.padEnd(12, " ").slice(0, 12), "ascii");
+          replBuf.copy(result, pos);
+        }
+      }
+      pos += 4;
+    }
+    void wttPlaceholderPattern;
+  }
   replaceAllInPlace("01-Jan-26", todayShort());
   replaceAllInPlace("01.Jan.2026", todayLong());
 
@@ -772,7 +848,7 @@ function buildFilename(
 ): string {
   return original
     .replace(/COMPANY NAME/gi, customerName.toUpperCase().trim())
-    .replace(/WTT-BAN-0001/g, wttNumber);
+    .replace(/WTT-[A-Z]{3}-0001/g, wttNumber);
 }
 
 /** Body text (matches email / UI). Titles use {@link PROPOSAL_TITLE_FONT}. */
@@ -977,8 +1053,8 @@ function patchDocxZip(
       content = content.replace(/COMPANY NAME/g, cnUpper);
       changed = true;
     }
-    if (content.includes("WTT-BAN-0001")) {
-      content = content.replace(/WTT-BAN-0001/g, wttNumber);
+    if (/WTT-[A-Z]{3}-0001/.test(content)) {
+      content = content.replace(/WTT-[A-Z]{3}-0001/g, wttNumber);
       changed = true;
     }
     if (content.includes("01.Jan.2026")) {
@@ -1461,7 +1537,7 @@ async function recordProposalRequest(
 ): Promise<void> {
   try {
     const noteText =
-      params.notes?.trim() || `Bangladesh Wizard — ${params.wttNumber}`;
+      params.notes?.trim() || `${params.country || "Wizard"} — ${params.wttNumber}`;
     await pool.query(
       `INSERT INTO proposal_requests
         (proposal_no, company_name, city, country, contact_person, email, phone, system_option, flow_rate, status, notes)
@@ -1487,6 +1563,78 @@ async function recordProposalRequest(
 
 // ── routes ─────────────────────────────────────────────────────────────────
 
+// POST /api/proposal-wizard/request-otp — send 6-digit code to customer email
+router.post("/proposal-wizard/request-otp", async (req, res) => {
+  const { email } = req.body as { email?: string };
+  if (!email || !email.includes("@"))
+    return res.status(400).json({ error: "Valid email required" });
+
+  const smtpUser = process.env.PROPOSAL_SMTP_USER || process.env.SMTP_USER;
+  const smtpPass = process.env.PROPOSAL_SMTP_PASSWORD || process.env.SMTP_PASSWORD;
+  if (!smtpUser || !smtpPass)
+    return res.status(503).json({ error: "Email not configured. Please contact WTT directly." });
+
+  const otp = generateWizardOtp();
+  wizardOtpStore.set(email.toLowerCase().trim(), {
+    otp,
+    expires: Date.now() + 5 * 60 * 1000,
+  });
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host: "smtp.office365.com",
+      port: 587,
+      secure: false,
+      requireTLS: true,
+      auth: { user: smtpUser, pass: smtpPass },
+    });
+    await transporter.sendMail({
+      from: `"WTT International" <${smtpUser}>`,
+      to: email.trim(),
+      subject: "WTT Proposal – Email Verification Code",
+      html: `
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#f8fafc;border-radius:16px;">
+          <h2 style="color:#1a365d;margin:0 0 4px;">WTT International</h2>
+          <p style="color:#64748b;font-size:13px;margin:0 0 24px;">Proposal Request — Email Verification</p>
+          <p style="color:#1e293b;font-size:15px;margin:0 0 8px;">Please use the code below to verify your email address:</p>
+          <div style="background:#fff;border:2px solid #bee3f8;border-radius:12px;padding:24px;text-align:center;margin:20px 0;">
+            <span style="font-size:38px;font-weight:900;letter-spacing:14px;color:#1a365d;">${otp}</span>
+          </div>
+          <p style="color:#64748b;font-size:13px;">This code expires in <strong>5 minutes</strong>. Do not share it with anyone.</p>
+          <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;" />
+          <p style="color:#94a3b8;font-size:11px;text-align:center;">© ${new Date().getFullYear()} WTT International Pvt. Ltd. | Water Loving Technology</p>
+        </div>
+      `,
+    });
+    res.json({ status: "otp_sent", message: "Verification code sent to your email." });
+  } catch (err: any) {
+    console.error("[proposal-wizard] OTP send error:", err);
+    wizardOtpStore.delete(email.toLowerCase().trim());
+    res.status(500).json({ error: "Could not send verification email. Please try again." });
+  }
+});
+
+// POST /api/proposal-wizard/verify-otp — verify the code
+router.post("/proposal-wizard/verify-otp", (req, res) => {
+  const { email, otp } = req.body as { email?: string; otp?: string };
+  if (!email || !otp)
+    return res.status(400).json({ error: "Email and OTP are required" });
+
+  const key = email.toLowerCase().trim();
+  const entry = wizardOtpStore.get(key);
+  if (!entry)
+    return res.status(401).json({ error: "No verification pending for this email. Please request a new code." });
+  if (Date.now() > entry.expires) {
+    wizardOtpStore.delete(key);
+    return res.status(401).json({ error: "Verification code has expired. Please request a new one." });
+  }
+  if (entry.otp !== String(otp).trim())
+    return res.status(401).json({ error: "Incorrect code. Please try again." });
+
+  wizardOtpStore.delete(key);
+  res.json({ verified: true, message: "Email verified successfully." });
+});
+
 // GET /api/proposal-wizard/flow-rates
 router.get("/proposal-wizard/flow-rates", (_req, res) => {
   const folders = getFlowRateFolders();
@@ -1506,16 +1654,17 @@ router.get("/proposal-wizard/files", (req, res) => {
   res.json({ files: result });
 });
 
-// GET /api/proposal-wizard/counter — peek without incrementing
-router.get("/proposal-wizard/counter", async (_req, res) => {
+// GET /api/proposal-wizard/counter — peek without incrementing (all countries or specific)
+router.get("/proposal-wizard/counter", async (req, res) => {
+  const cc = ((req.query.countryCode as string) || "BGD").toUpperCase();
   try {
     const rows = await db.execute(
-      sql`SELECT counter FROM proposal_wizard_counter WHERE id = 1`,
+      sql`SELECT counter FROM proposal_wizard_counter WHERE country_code = ${cc}`,
     );
     const counter = Number(
-      (rows as any).rows?.[0]?.counter ?? (rows as any)[0]?.counter ?? 1,
+      (rows as any).rows?.[0]?.counter ?? (rows as any)[0]?.counter ?? 0,
     );
-    res.json({ counter, next: formatWttNumber(counter + 1) });
+    res.json({ counter, next: formatWttNumber(counter + 1, cc) });
   } catch {
     res.status(500).json({ error: "Could not read counter" });
   }
@@ -1523,13 +1672,10 @@ router.get("/proposal-wizard/counter", async (_req, res) => {
 
 // POST /api/proposal-wizard/assign-number — increment once, return the new WTT number
 router.post("/proposal-wizard/assign-number", async (req, res) => {
-  const { customerName = "", flowRate = "" } = req.body as Record<
-    string,
-    string
-  >;
+  const { customerName = "", flowRate = "", countryCode = "BGD" } = req.body as Record<string, string>;
   try {
-    const counter = await nextCounter(customerName, flowRate);
-    res.json({ wttNumber: formatWttNumber(counter), counter });
+    const counter = await nextCounter(customerName, flowRate, countryCode);
+    res.json({ wttNumber: formatWttNumber(counter, countryCode), counter });
   } catch (err) {
     console.error("assign-number error:", err);
     res.status(500).json({ error: "Could not assign proposal number" });
@@ -1558,9 +1704,9 @@ router.get("/proposal-wizard/download", async (req, res) => {
 
   try {
     const wttNumber =
-      wttParam && /^WTT-BAN-\d{4}$/.test(wttParam)
+      wttParam && /^WTT-[A-Z]{3}-\d{4}$/.test(wttParam)
         ? wttParam
-        : formatWttNumber(await nextCounter(customer, flowRate));
+        : formatWttNumber(await nextCounter(customer, flowRate, "BGD"), "BGD");
 
     const modifiedBuf = buildModifiedFile(filePath, customer, wttNumber);
     const renamedFilename = buildFilename(
@@ -1630,9 +1776,9 @@ router.post("/proposal-wizard/send-email", async (req, res) => {
 
     const customer = customerName.toUpperCase().trim();
     const wttNumber =
-      wttParam && /^WTT-BAN-\d{4}$/.test(wttParam)
+      wttParam && /^WTT-[A-Z]{3}-\d{4}$/.test(wttParam)
         ? wttParam
-        : formatWttNumber(await nextCounter(customer, flowRate));
+        : formatWttNumber(await nextCounter(customer, flowRate, "BGD"), "BGD");
 
     const kld = kldFromFolder(flowRate);
 
@@ -1708,6 +1854,8 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
       phone,
       city,
       country,
+      countryCode,
+      plantType,
       notes,
     } = req.body as {
       flowRate: string;
@@ -1717,6 +1865,8 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
       phone?: string;
       city?: string;
       country?: string;
+      countryCode?: string;
+      plantType?: string;
       notes?: string;
     };
 
@@ -1746,9 +1896,13 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
         .status(404)
         .json({ error: "No files found for selected flow rate" });
 
-    const customer = customerName.toUpperCase().trim();
-    const counter = await nextCounter(customer, flowRate);
-    const wttNumber = formatWttNumber(counter);
+    const customer   = customerName.toUpperCase().trim();
+    const cc         = (countryCode || "BGD").toUpperCase();
+    const countryName = country || "Bangladesh";
+    const counter    = await nextCounter(customer, flowRate, cc);
+    const wttNumber  = formatWttNumber(counter, cc);
+    const noteText   = notes?.trim() ||
+      `${countryName} Wizard — ${plantType || "STP"} — ${wttNumber}`;
 
     await recordProposalRequest(
       {
@@ -1758,9 +1912,9 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
         email: toEmail,
         phone: phone || "",
         flowRate,
-        country: country || "Bangladesh",
-        city: city || "Bangladesh",
-        notes: notes?.trim(),
+        country: countryName,
+        city: city || countryName,
+        notes: noteText,
       },
       "pending",
     );
@@ -1772,8 +1926,8 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
       contactPerson: contactPerson || customerName,
       phone: phone || "",
       city: city || "",
-      country: country || "Bangladesh",
-      notes: notes?.trim(),
+      country: countryName,
+      notes: noteText,
       wttNumber,
     });
 
