@@ -2,12 +2,12 @@ import { Layout } from "@/components/Layout";
 import { ShadedMeshImage } from "@/components/ShadedMeshImage";
 import { FabricationSheetBuilder } from "@/components/FabricationSheetBuilder";
 import StepViewer3D, { type ViewerRef, type ViewMode, type BgColor } from "@/components/StepViewer3D";
-import { useState, useCallback, useRef, useMemo } from "react";
+import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import {
   Upload, FileBox, Loader2, Download, Ruler, Layers,
   Box, Sparkles, Grid3X3, Maximize2, LayoutGrid,
   Move3d, ScanLine, Crosshair, ArrowUpDown, Eye,
-  ChevronRight, Package, Info,
+  ChevronRight, ChevronLeft, Package, Info, PanelLeftClose, PanelLeftOpen,
 } from "lucide-react";
 import { loadStepFile, type MeshData, type TreeNode } from "@/lib/stepLoader";
 import {
@@ -67,47 +67,42 @@ function PartDrawingSheet({
     >
       {/* ── inner border frame ── */}
       <div className="absolute pointer-events-none z-10"
-        style={{ inset: "1.8%", border: "1px solid #111", pointerEvents: "none" }} />
+        style={{ inset: "1.8%", border: "1px solid #111" }} />
 
       {/* ── sheet content ── */}
       <div className="absolute flex flex-col" style={{ inset: "3%", overflow: "hidden" }}>
 
-        {/* ①  PART HEADER BAR  — flex: 7 */}
-        <div
-          className="shrink-0 border border-black flex items-stretch"
-          style={{ flex: "0 0 7%", minHeight: 0 }}
-        >
+        {/* ①  PART HEADER BAR  — 9% */}
+        <div className="shrink-0 border border-black flex items-stretch" style={{ flex: "0 0 9%", minHeight: 0 }}>
           {/* Company */}
-          <div
-            className="flex flex-col items-center justify-center border-r border-black shrink-0"
-            style={{ width: "28%", background: "#1e2a45", padding: "1px" }}
-          >
-            <span style={{ fontSize: "5px", fontWeight: 900, color: "#fff", letterSpacing: "0.05em", textAlign: "center", lineHeight: 1.2 }}>
+          <div className="flex flex-col items-center justify-center border-r border-black shrink-0"
+            style={{ width: "27%", background: "#1e2a45", padding: "3px 4px" }}>
+            <span style={{ fontSize: "11px", fontWeight: 900, color: "#fff", letterSpacing: "0.03em", textAlign: "center", lineHeight: 1.2 }}>
               WTT INTERNATIONAL PVT LTD
             </span>
           </div>
           {/* Part name */}
-          <div className="flex flex-col justify-center border-r border-black flex-1 min-w-0" style={{ padding: "2px 4px" }}>
-            <span style={{ fontSize: "3.5px", color: "#888", textTransform: "uppercase", letterSpacing: "0.08em" }}>Part Name</span>
-            <span className="font-black truncate" style={{ fontSize: "6.5px", lineHeight: 1.1, marginTop: "1px" }}>{part.name}</span>
+          <div className="flex flex-col justify-center border-r border-black flex-1 min-w-0" style={{ padding: "3px 8px" }}>
+            <span style={{ fontSize: "8px", color: "#888", textTransform: "uppercase", letterSpacing: "0.08em" }}>Part Name</span>
+            <span className="font-black truncate" style={{ fontSize: "14px", lineHeight: 1.1, marginTop: "2px" }}>{part.name}</span>
           </div>
           {/* Part No */}
-          <div className="flex flex-col justify-center border-r border-black shrink-0" style={{ width: "17%", padding: "2px 4px" }}>
-            <span style={{ fontSize: "3.5px", color: "#888", textTransform: "uppercase" }}>Part No.</span>
-            <span className="font-black" style={{ fontSize: "6px", lineHeight: 1.1, marginTop: "1px" }}>{part.partNo}</span>
+          <div className="flex flex-col justify-center border-r border-black shrink-0" style={{ width: "17%", padding: "3px 6px" }}>
+            <span style={{ fontSize: "8px", color: "#888", textTransform: "uppercase" }}>Part No.</span>
+            <span className="font-black" style={{ fontSize: "13px", lineHeight: 1.1, marginTop: "2px" }}>{part.partNo}</span>
           </div>
           {/* Assembly */}
-          <div className="flex flex-col justify-center shrink-0" style={{ width: "17%", padding: "2px 4px" }}>
-            <span style={{ fontSize: "3.5px", color: "#888", textTransform: "uppercase" }}>Assembly</span>
-            <span className="font-semibold truncate" style={{ fontSize: "5px", lineHeight: 1.1, marginTop: "1px" }}>{drawingNumber}</span>
+          <div className="flex flex-col justify-center shrink-0" style={{ width: "18%", padding: "3px 6px" }}>
+            <span style={{ fontSize: "8px", color: "#888", textTransform: "uppercase" }}>Assembly</span>
+            <span className="font-semibold truncate" style={{ fontSize: "11px", lineHeight: 1.1, marginTop: "2px" }}>{drawingNumber}</span>
           </div>
         </div>
 
-        {/* ②  2×2 ORTHOGRAPHIC VIEWS  — flex: 58 */}
+        {/* ②  2×2 ORTHOGRAPHIC VIEWS  — flex: 56 */}
         <div
           className="shrink-0 border border-t-0 border-black overflow-hidden"
           style={{
-            flex: "58",
+            flex: "56",
             minHeight: 0,
             display: "grid",
             gridTemplateColumns: "1fr 1fr",
@@ -124,20 +119,21 @@ function PartDrawingSheet({
               }}
             >
               <div
-                className="shrink-0 flex items-center justify-center"
+                className="shrink-0 flex items-center justify-center gap-2"
                 style={{
                   background: v.dark ? "#1e2a45" : "#2d2d2d",
                   color: "#fff",
-                  fontSize: "4px",
+                  fontSize: "9px",
                   fontWeight: 900,
-                  letterSpacing: "0.15em",
+                  letterSpacing: "0.14em",
                   textTransform: "uppercase",
-                  height: "10px",
+                  height: "18px",
+                  flexShrink: 0,
                 }}
               >
                 {v.label}
                 {v.key !== "iso" && (
-                  <span style={{ fontSize: "3px", color: "#aaa", marginLeft: "4px" }}>ALL DIM IN mm</span>
+                  <span style={{ fontSize: "7px", color: "#bbb", fontWeight: 400, letterSpacing: "0.06em" }}>ALL DIM IN mm</span>
                 )}
               </div>
               <div className="flex-1 min-h-0 overflow-hidden bg-white">
@@ -163,18 +159,19 @@ function PartDrawingSheet({
         >
           {/* Dimensions */}
           <div className="flex flex-col border-r border-black overflow-hidden shrink-0" style={{ width: "24%" }}>
-            <div className="shrink-0 flex items-center border-b border-neutral-400" style={{ background: "#ddd", height: "10px", paddingLeft: "3px" }}>
-              <span style={{ fontSize: "4px", fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em", color: "#333" }}>DIMENSIONS (mm)</span>
+            <div className="shrink-0 flex items-center border-b border-neutral-400"
+              style={{ background: "#d4d4d4", height: "16px", paddingLeft: "6px" }}>
+              <span style={{ fontSize: "8px", fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em", color: "#333" }}>DIMENSIONS (mm)</span>
             </div>
-            <div className="flex-1 overflow-hidden flex flex-col justify-around" style={{ padding: "2px 4px" }}>
+            <div className="flex-1 overflow-hidden flex flex-col justify-around" style={{ padding: "4px 8px" }}>
               {[
                 { l: "LENGTH", v: part.bounds.length },
                 { l: "WIDTH",  v: part.bounds.width  },
                 { l: "HEIGHT", v: part.bounds.height },
               ].map(({ l, v }) => (
                 <div key={l} className="flex items-center justify-between">
-                  <span style={{ fontSize: "3.5px", color: "#777", textTransform: "uppercase" }}>{l}</span>
-                  <span style={{ fontSize: "6px", fontWeight: 900 }}>
+                  <span style={{ fontSize: "8px", color: "#666", textTransform: "uppercase", fontWeight: 700 }}>{l}</span>
+                  <span style={{ fontSize: "13px", fontWeight: 900, fontFamily: "monospace" }}>
                     {isFinite(v) && !isNaN(v) ? v.toFixed(1) : "—"}
                   </span>
                 </div>
@@ -184,15 +181,16 @@ function PartDrawingSheet({
 
           {/* BOM & Spec */}
           <div className="flex flex-col flex-1 border-r border-black overflow-hidden min-w-0">
-            <div className="shrink-0 flex items-center border-b border-neutral-400" style={{ background: "#ddd", height: "10px", paddingLeft: "3px" }}>
-              <span style={{ fontSize: "4px", fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em", color: "#333" }}>MATERIAL & SPECIFICATION</span>
+            <div className="shrink-0 flex items-center border-b border-neutral-400"
+              style={{ background: "#d4d4d4", height: "16px", paddingLeft: "6px" }}>
+              <span style={{ fontSize: "8px", fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em", color: "#333" }}>MATERIAL & SPECIFICATION</span>
             </div>
-            <div className="flex-1 overflow-hidden" style={{ padding: "2px 4px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 6px", alignContent: "start" }}>
+            <div className="flex-1 overflow-hidden" style={{ padding: "4px 8px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "3px 10px", alignContent: "start" }}>
                 {BOM_FIELDS.map(([l, v]) => (
                   <div key={l} className="flex flex-col overflow-hidden">
-                    <span style={{ fontSize: "3px", color: "#999", textTransform: "uppercase", letterSpacing: "0.06em" }}>{l}</span>
-                    <span className="font-bold truncate" style={{ fontSize: "5px", lineHeight: 1.2 }}>{v || "—"}</span>
+                    <span style={{ fontSize: "7px", color: "#888", textTransform: "uppercase", letterSpacing: "0.06em" }}>{l}</span>
+                    <span className="font-bold truncate" style={{ fontSize: "11px", lineHeight: 1.2 }}>{v || "—"}</span>
                   </div>
                 ))}
               </div>
@@ -201,17 +199,18 @@ function PartDrawingSheet({
 
           {/* Notes */}
           <div className="flex flex-col overflow-hidden shrink-0" style={{ width: "23%" }}>
-            <div className="shrink-0 flex items-center border-b border-neutral-400" style={{ background: "#ddd", height: "10px", paddingLeft: "3px" }}>
-              <span style={{ fontSize: "4px", fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em", color: "#333" }}>NOTES</span>
+            <div className="shrink-0 flex items-center border-b border-neutral-400"
+              style={{ background: "#d4d4d4", height: "16px", paddingLeft: "6px" }}>
+              <span style={{ fontSize: "8px", fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.1em", color: "#333" }}>NOTES</span>
             </div>
-            <div className="flex-1 overflow-hidden" style={{ padding: "3px 4px" }}>
+            <div className="flex-1 overflow-hidden" style={{ padding: "5px 8px" }}>
               {[
                 "1. ALL DIMENSIONS IN mm",
                 "2. UNLESS OTHERWISE NOTED",
                 "3. TOLERANCES: ±0.1 mm",
                 "4. THIRD ANGLE PROJECTION",
               ].map((note, i) => (
-                <div key={i} style={{ fontSize: "3.5px", color: "#555", lineHeight: 1.6 }}>{note}</div>
+                <div key={i} style={{ fontSize: "8px", color: "#555", lineHeight: 1.7 }}>{note}</div>
               ))}
             </div>
           </div>
@@ -224,19 +223,17 @@ function PartDrawingSheet({
         >
           {/* Company + Signoff */}
           <div className="flex flex-col border-r border-black overflow-hidden shrink-0" style={{ width: "32%" }}>
-            <div
-              className="shrink-0 flex items-center justify-center border-b border-black"
-              style={{ background: "#1e2a45", flex: "40", minHeight: 0 }}
-            >
-              <span style={{ fontSize: "5.5px", fontWeight: 900, color: "#fff", letterSpacing: "0.04em", textAlign: "center" }}>
+            <div className="shrink-0 flex items-center justify-center border-b border-black"
+              style={{ background: "#1e2a45", flex: "0 0 40%", minHeight: 0 }}>
+              <span style={{ fontSize: "11px", fontWeight: 900, color: "#fff", letterSpacing: "0.04em", textAlign: "center" }}>
                 WTT INTERNATIONAL PVT LTD
               </span>
             </div>
             <div className="flex flex-1 overflow-hidden">
               {[["Drawn", "AUTO"], ["Checked", "—"], ["Approved", "—"]].map(([l, v]) => (
-                <div key={l} className="flex-1 border-r border-black last:border-r-0 flex flex-col justify-center" style={{ padding: "1px 3px" }}>
-                  <div style={{ fontSize: "3px", color: "#888", textTransform: "uppercase" }}>{l}</div>
-                  <div style={{ fontSize: "5px", fontWeight: 700 }}>{v}</div>
+                <div key={l} className="flex-1 border-r border-black last:border-r-0 flex flex-col justify-center" style={{ padding: "2px 4px" }}>
+                  <div style={{ fontSize: "7px", color: "#888", textTransform: "uppercase" }}>{l}</div>
+                  <div style={{ fontSize: "10px", fontWeight: 700 }}>{v}</div>
                 </div>
               ))}
             </div>
@@ -244,27 +241,27 @@ function PartDrawingSheet({
 
           {/* Title & drawing no */}
           <div className="flex-1 flex flex-col border-r border-black overflow-hidden min-w-0">
-            <div className="flex-1 flex flex-col justify-center border-b border-black min-h-0" style={{ padding: "1px 5px" }}>
-              <span style={{ fontSize: "3.5px", color: "#888", textTransform: "uppercase" }}>Part Name / Title</span>
-              <span className="font-black truncate" style={{ fontSize: "7px", lineHeight: 1.1 }}>{part.name}</span>
+            <div className="flex-1 flex flex-col justify-center border-b border-black min-h-0" style={{ padding: "2px 8px" }}>
+              <span style={{ fontSize: "7px", color: "#888", textTransform: "uppercase" }}>Part Name / Title</span>
+              <span className="font-black truncate" style={{ fontSize: "14px", lineHeight: 1.1 }}>{part.name}</span>
             </div>
-            <div className="flex-1 flex flex-col justify-center min-h-0" style={{ padding: "1px 5px" }}>
-              <span style={{ fontSize: "3.5px", color: "#888", textTransform: "uppercase" }}>Assembly / Drawing</span>
-              <span className="font-semibold truncate" style={{ fontSize: "5.5px", lineHeight: 1.1 }}>{drawingNumber}</span>
+            <div className="flex-1 flex flex-col justify-center min-h-0" style={{ padding: "2px 8px" }}>
+              <span style={{ fontSize: "7px", color: "#888", textTransform: "uppercase" }}>Assembly Drawing</span>
+              <span className="font-semibold truncate" style={{ fontSize: "11px", lineHeight: 1.1 }}>{drawingNumber}</span>
             </div>
           </div>
 
-          {/* Scale / Rev / Date / Sheet */}
+          {/* Part No + meta */}
           <div className="flex flex-col overflow-hidden shrink-0" style={{ width: "22%" }}>
-            <div className="flex-1 flex flex-col justify-center border-b border-black min-h-0" style={{ padding: "1px 4px" }}>
-              <span style={{ fontSize: "3.5px", color: "#888", textTransform: "uppercase" }}>Part No.</span>
-              <span className="font-black" style={{ fontSize: "6.5px", lineHeight: 1.1 }}>{part.partNo}</span>
+            <div className="flex-1 flex flex-col justify-center border-b border-black min-h-0" style={{ padding: "2px 6px" }}>
+              <span style={{ fontSize: "7px", color: "#888", textTransform: "uppercase" }}>Part No.</span>
+              <span className="font-black" style={{ fontSize: "13px", lineHeight: 1.1 }}>{part.partNo}</span>
             </div>
             <div className="flex flex-1 overflow-hidden">
               {[["Scale", "1:1"], ["Rev", "A"], ["Date", dateStr]].map(([l, v]) => (
-                <div key={l} className="flex-1 border-r border-black last:border-r-0 flex flex-col justify-center" style={{ padding: "1px 2px" }}>
-                  <div style={{ fontSize: "3px", color: "#888", textTransform: "uppercase" }}>{l}</div>
-                  <div style={{ fontSize: v.length > 5 ? "3.5px" : "5px", fontWeight: 900 }}>{v}</div>
+                <div key={l} className="flex-1 border-r border-black last:border-r-0 flex flex-col justify-center" style={{ padding: "2px 4px" }}>
+                  <div style={{ fontSize: "7px", color: "#888", textTransform: "uppercase" }}>{l}</div>
+                  <div style={{ fontSize: v.length > 5 ? "8px" : "10px", fontWeight: 900 }}>{v}</div>
                 </div>
               ))}
             </div>
@@ -286,8 +283,9 @@ export default function StepPartDrawings() {
   const [root,     setRoot]     = useState<TreeNode | null>(null);
   const [parts,    setParts]    = useState<PartDrawingInfo[]>([]);
   const [selected, setSelected] = useState<PartDrawingInfo | null>(null);
-  const [viewTab,  setViewTab]  = useState<MainTab>("assembly");
-  const [isDragging, setIsDragging] = useState(false);
+  const [viewTab,     setViewTab]     = useState<MainTab>("assembly");
+  const [isDragging,  setIsDragging]  = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [viewMode,     setViewMode]     = useState<ViewMode>("shaded");
@@ -298,8 +296,17 @@ export default function StepPartDrawings() {
   const [measureResult, setMeasureResult] = useState<string | null>(null);
   const [explorerSelectedIdx, setExplorerSelectedIdx] = useState<number | null>(null);
 
-  const detailViewerRef  = useRef<ViewerRef>(null);
+  const detailViewerRef   = useRef<ViewerRef>(null);
   const explorerViewerRef = useRef<ViewerRef>(null);
+
+  useEffect(() => {
+    if (viewTab === "detail" && selected) {
+      const timer = setTimeout(() => {
+        detailViewerRef.current?.fitToPart?.([selected.meshIndex]);
+      }, 120);
+      return () => clearTimeout(timer);
+    }
+  }, [selected, viewTab]);
 
   const processFile = useCallback(async (file: File) => {
     const ext = file.name.split(".").pop()?.toLowerCase();
@@ -456,17 +463,35 @@ export default function StepPartDrawings() {
           <div className="flex flex-1 min-h-0 overflow-hidden">
 
             {/* ── SIDEBAR ── */}
-            <aside className="w-[230px] shrink-0 border-r border-slate-200 dark:border-slate-800 flex flex-col bg-white dark:bg-slate-900 overflow-hidden">
+            <aside
+              className="shrink-0 border-r border-slate-200 dark:border-slate-800 flex flex-col bg-white dark:bg-slate-900 overflow-hidden transition-all duration-200"
+              style={{ width: sidebarOpen ? "230px" : "40px" }}
+            >
+              {/* Collapse toggle */}
+              <div className="shrink-0 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-2 py-1.5 bg-slate-50 dark:bg-slate-800/60">
+                {sidebarOpen && (
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Box className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest truncate">{meta.number}</span>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSidebarOpen(v => !v)}
+                  title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+                  className={`p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors shrink-0 ${!sidebarOpen ? "mx-auto" : "ml-auto"}`}
+                >
+                  {sidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
+                </button>
+              </div>
 
+              {sidebarOpen && (
+                <>
               {/* Assembly summary */}
-              <div className="shrink-0 border-b border-slate-200 dark:border-slate-800 p-3 bg-slate-50 dark:bg-slate-800/60">
-                <div className="flex items-center gap-2 mb-1.5">
-                  <Box className="w-3.5 h-3.5 text-sky-600 shrink-0" />
-                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Assembly</p>
-                </div>
+              <div className="shrink-0 border-b border-slate-200 dark:border-slate-800 px-3 py-2.5 bg-slate-50 dark:bg-slate-800/60">
                 <p className="font-black text-[11px] text-slate-900 dark:text-white leading-snug truncate" title={meta.number}>{meta.number}</p>
                 {meta.title && <p className="text-[9px] text-slate-500 truncate mt-0.5">{meta.title}</p>}
-                <div className="flex gap-1.5 mt-2 flex-wrap">
+                <div className="flex gap-1.5 mt-1.5 flex-wrap">
                   <span className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-md bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300 font-semibold">
                     <Layers className="w-2 h-2" /> {parts.length} parts
                   </span>
@@ -528,6 +553,8 @@ export default function StepPartDrawings() {
                   );
                 })}
               </div>
+                </>
+              )}
             </aside>
 
             {/* ── MAIN CONTENT ── */}
