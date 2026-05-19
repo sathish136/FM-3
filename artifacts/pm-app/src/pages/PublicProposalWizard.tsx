@@ -124,7 +124,7 @@ export default function PublicProposalWizard() {
 
   const canSubmit =
     form.customerName.trim() &&
-    form.flowRate &&
+    (form.plantType === "ETP" || form.flowRate) &&
     form.contactPerson.trim() &&
     emailValid &&
     emailVerified &&
@@ -268,7 +268,10 @@ export default function PublicProposalWizard() {
               <ChevronRight className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none rotate-90" />
               <select
                 value={form.plantType}
-                onChange={(e) => update({ plantType: e.target.value as PlantType })}
+                onChange={(e) => {
+                  const pt = e.target.value as PlantType;
+                  update({ plantType: pt, flowRate: pt === "ETP" ? "" : form.flowRate });
+                }}
                 required
                 className="w-full px-3 pr-10 py-3 text-sm border-2 border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 appearance-none cursor-pointer font-medium text-gray-700"
               >
@@ -303,27 +306,29 @@ export default function PublicProposalWizard() {
           </div>
         </div>
 
-        {/* ── Flow Rate ── */}
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-            Select Flow Rate <span className="text-red-500">*</span>
-          </label>
-          <div className="relative">
-            <Droplets className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-400 pointer-events-none" />
-            <select
-              value={form.flowRate}
-              onChange={(e) => update({ flowRate: e.target.value })}
-              required
-              className="w-full pl-10 pr-10 py-3 text-sm border-2 border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 appearance-none cursor-pointer font-medium text-gray-700"
-            >
-              <option value="">— Choose {form.plantType} capacity —</option>
-              {flowRates.map((fr) => (
-                <option key={fr} value={fr}>{fr}</option>
-              ))}
-            </select>
-            <ChevronRight className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none rotate-90" />
+        {/* ── Flow Rate (STP only) ── */}
+        {form.plantType === "STP" && (
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+              Select Flow Rate <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <Droplets className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-400 pointer-events-none" />
+              <select
+                value={form.flowRate}
+                onChange={(e) => update({ flowRate: e.target.value })}
+                required
+                className="w-full pl-10 pr-10 py-3 text-sm border-2 border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 appearance-none cursor-pointer font-medium text-gray-700"
+              >
+                <option value="">— Choose STP capacity —</option>
+                {flowRates.map((fr) => (
+                  <option key={fr} value={fr}>{fr}</option>
+                ))}
+              </select>
+              <ChevronRight className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none rotate-90" />
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="border-t border-gray-100" />
 

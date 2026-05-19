@@ -1569,8 +1569,8 @@ router.post("/proposal-wizard/request-otp", async (req, res) => {
   if (!email || !email.includes("@"))
     return res.status(400).json({ error: "Valid email required" });
 
-  const smtpUser = process.env.PROPOSAL_SMTP_USER || process.env.SMTP_USER;
-  const smtpPass = process.env.PROPOSAL_SMTP_PASSWORD || process.env.SMTP_PASSWORD;
+  const smtpUser = process.env.SMTP_USER || process.env.PROPOSAL_SMTP_USER;
+  const smtpPass = process.env.SMTP_PASSWORD || process.env.PROPOSAL_SMTP_PASSWORD;
   if (!smtpUser || !smtpPass)
     return res.status(503).json({ error: "Email not configured. Please contact WTT directly." });
 
