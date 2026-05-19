@@ -802,6 +802,41 @@ router.post("/hrms/celebrations/post-raven-one", async (req, res) => {
   }
 });
 
+// POST /api/hrms/celebrations/generate-message — AI-style personalized wish message
+router.post("/hrms/celebrations/generate-message", async (req, res) => {
+  try {
+    const body = req.body as {
+      employee_name?: string;
+      name?: string;
+      kind?: "birthday" | "anniversary";
+      years_of_service?: number | null;
+      department?: string | null;
+      designation?: string | null;
+    };
+    if (!body.employee_name || !body.kind) {
+      return res.status(400).json({ error: "employee_name and kind are required" });
+    }
+    const { generateCelebrationMessage } = await import("../lib/celebrationsService");
+    const entry = {
+      name: body.name || body.employee_name,
+      employee_name: body.employee_name,
+      kind: body.kind,
+      years_of_service: body.years_of_service ?? null,
+      department: body.department ?? null,
+      designation: body.designation ?? null,
+      date_of_joining: null,
+      date_of_birth: null,
+      image: null,
+      celebration_date: null,
+      default_theme: "birthday-confetti" as import("../lib/celebrationWishSvg").WishThemeId,
+    };
+    const message = generateCelebrationMessage(entry);
+    res.json({ message });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 router.get("/hrms/leave-applications", async (req, res) => {
   try {
     const { status, employee } = req.query as Record<string, string>;

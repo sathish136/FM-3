@@ -139,6 +139,99 @@ export async function renderCelebrationCard(
   });
 }
 
+// ─── AI-style message generation ─────────────────────────────────────────────
+
+const BIRTHDAY_OPENERS = [
+  "Wishing you a birthday as bright and brilliant as you are",
+  "May this special day bring you all the joy you bring to those around you",
+  "Here's to celebrating the amazing person you are",
+  "Today is all about you — and you absolutely deserve it",
+  "Another year of greatness — may this one be your best yet",
+  "The WTT family is so lucky to have someone as wonderful as you",
+  "May your birthday be filled with warmth, laughter, and everything you love",
+  "On your special day, we celebrate not just your birthday, but the incredible person you are",
+  "You make every day at WTT brighter — today, we celebrate you",
+  "Wishing you a day as remarkable as the impact you make every single day",
+];
+
+const BIRTHDAY_MIDDLE = [
+  "Your dedication and positive energy inspire everyone around you.",
+  "Your talent and hard work make a real difference at WTT.",
+  "The passion and commitment you bring every day is truly appreciated.",
+  "Your smile and enthusiasm light up the entire workplace.",
+  "You bring so much value and warmth to our team.",
+  "Your creativity and drive never cease to amaze us.",
+  "The team is so much better because of your contributions.",
+  "Your kindness and professionalism set a wonderful example for all of us.",
+];
+
+const BIRTHDAY_CLOSERS = [
+  "Have a spectacular birthday celebration! 🎂",
+  "May this year bring you new heights of happiness and success! 🎉",
+  "Enjoy every moment of your special day to the fullest! 🎈",
+  "From the entire WTT family — many happy returns of the day! 🥳",
+  "Here's to a fantastic year ahead filled with joy and achievement! ✨",
+  "May all your birthday wishes come true! 🌟",
+  "Sending you lots of love and best wishes today and always! 💫",
+];
+
+const ANNIVERSARY_OPENERS = [
+  "Congratulations on this incredible milestone",
+  "Today we celebrate your journey with the WTT family",
+  "What an amazing achievement — thank you for choosing WTT",
+  "Your commitment and loyalty to WTT have been truly inspiring",
+  "We are so grateful to have you as part of our team",
+  "Today marks another year of your outstanding contributions to WTT",
+  "Your dedication to WTT is something we deeply cherish and admire",
+  "Celebrating the day you became an invaluable part of the WTT family",
+];
+
+const ANNIVERSARY_MIDDLE = [
+  "Your expertise and dedication have been the backbone of our success.",
+  "Every year with you on the team has made WTT stronger and better.",
+  "Your contributions have left a lasting mark on everything we do.",
+  "The energy and passion you bring are what make WTT truly special.",
+  "Through your hard work and perseverance, you've helped shape WTT into what it is today.",
+  "Your professionalism and commitment are an inspiration to the entire team.",
+  "You have grown with WTT, and WTT has grown because of you.",
+];
+
+const ANNIVERSARY_CLOSERS = [
+  "Thank you for your continued dedication — here's to many more years together! 🏆",
+  "Wishing you continued success and fulfillment in the years ahead! 🌟",
+  "Here's to celebrating many more milestones with you! 🎊",
+  "The WTT family is so proud to have you — congratulations! ✨",
+  "May this anniversary be a reminder of the incredible journey ahead! 💫",
+  "Your best years at WTT are still ahead — congratulations! 🥂",
+];
+
+/** Generates a varied, personalized wish message for a celebration. */
+export function generateCelebrationMessage(entry: CelebrationEntry): string {
+  const first = entry.employee_name.split(" ")[0] || entry.employee_name;
+  // Use a hash of the name + today's date for variety that is consistent per person per day
+  const today = new Date();
+  const seed = entry.name.length + today.getDate() + today.getMonth() * 31 + (entry.years_of_service ?? 0);
+
+  function pick<T>(arr: T[], offset = 0): T {
+    return arr[(seed + offset) % arr.length];
+  }
+
+  if (entry.kind === "birthday") {
+    const opener = pick(BIRTHDAY_OPENERS, 0);
+    const middle = pick(BIRTHDAY_MIDDLE, 3);
+    const closer = pick(BIRTHDAY_CLOSERS, 7);
+    return `${opener}, ${first}!\n${middle}\n${closer}`;
+  }
+
+  const years = entry.years_of_service ?? 1;
+  const yearLabel = years === 1 ? "1 remarkable year" : `${years} remarkable years`;
+  const opener = pick(ANNIVERSARY_OPENERS, 0);
+  const middle = pick(ANNIVERSARY_MIDDLE, 3);
+  const closer = pick(ANNIVERSARY_CLOSERS, 5);
+  return `${opener}, ${first} — ${yearLabel} with WTT!\n${middle}\n${closer}`;
+}
+
+/** Build a short caption for Raven channel messages. */
 export function buildWishCaption(entry: CelebrationEntry): string {
   const dept = (entry.department || "").replace(/ - WTT.*$/i, "").trim();
   if (entry.kind === "birthday") {

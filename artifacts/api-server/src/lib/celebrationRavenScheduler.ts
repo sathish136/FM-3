@@ -1,7 +1,8 @@
 import { pool } from "@workspace/db";
-import type { WishThemeId } from "./celebrationWishSvg";
+import { getThemesForKind, type WishThemeId } from "./celebrationWishSvg";
 import {
   buildWishCaption,
+  generateCelebrationMessage,
   getTodayCelebrations,
   isCelebrationsConfigured,
   renderCelebrationCard,
@@ -88,9 +89,11 @@ export async function postCelebrationToRaven(
     return { ok: true, messageId: "skipped" };
   }
 
-  const caption = opts?.customMessage?.trim() || buildWishCaption(entry);
+  // Use AI-generated message for the card if no custom message provided
+  const aiMessage = opts?.customMessage?.trim() || generateCelebrationMessage(entry);
+  const caption = buildWishCaption(entry);
   try {
-    const svg = await renderCelebrationCard(entry, opts?.theme, opts?.customMessage);
+    const svg = await renderCelebrationCard(entry, opts?.theme, aiMessage);
     const safeName = entry.employee_name.replace(/[^\w.-]+/g, "_").slice(0, 40);
     const filename = `${entry.kind}-${safeName}-${postDate}.svg`;
     const fileUrl = await uploadFileToErp(filename, Buffer.from(svg, "utf8"), "image/svg+xml");
@@ -156,8 +159,20 @@ export async function runDailyCelebrationRavenPost(force = false): Promise<Raven
     await sendRavenText(channelId, parts.join("\n"));
   }
 
+  // Track used themes per kind so same-day people get variety
+  const usedBdThemes = new Set<string>();
+  const usedAnnThemes = new Set<string>();
+
   for (const entry of entries) {
-    const r = await postCelebrationToRaven(entry, channelId, postDate, force);
+    // Pick a random theme, avoiding repeats for same-day people
+    const availThemes = getThemesForKind(entry.kind);
+    const usedSet = entry.kind === "birthday" ? usedBdThemes : usedAnnThemes;
+    const unusedThemes = availThemes.filter(t => !usedSet.has(t));
+    const pool2 = unusedThemes.length > 0 ? unusedThemes : availThemes;
+    const randomTheme = pool2[Math.floor(Math.random() * pool2.length)];
+    usedSet.add(randomTheme);
+
+    const r = await postCelebrationToRaven(entry, channelId, postDate, force, { theme: randomTheme });
     result.details.push({
       employee: entry.employee_name,
       kind: entry.kind,

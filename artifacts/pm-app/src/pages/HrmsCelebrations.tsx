@@ -2,7 +2,7 @@ import { Layout } from "@/components/Layout";
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Cake, Award, Calendar, RefreshCw, Loader2, Download,
-  Sparkles, ChevronLeft, ChevronRight, PartyPopper, Heart, Send, Info,
+  Sparkles, ChevronLeft, ChevronRight, PartyPopper, Heart, Send, Info, Wand2,
 } from "lucide-react";
 import { apiFetch, apiJson } from "@/lib/apiClient";
 
@@ -25,13 +25,22 @@ interface CelebrationItem {
   default_theme: string;
 }
 
-const THEME_LABELS: Record<string, string> = {
-  "birthday-confetti": "Confetti Party",
-  "birthday-bloom": "Floral Bloom",
-  "birthday-sunset": "Sunset Glow",
-  "anniversary-navy": "Navy Classic",
-  "anniversary-emerald": "Emerald Milestone",
-  "anniversary-royal": "Royal Gold",
+const THEME_META: Record<string, { label: string; colors: [string, string] }> = {
+  "birthday-confetti":   { label: "Confetti Party",    colors: ["#ff6b9d", "#f8b500"] },
+  "birthday-bloom":      { label: "Floral Bloom",       colors: ["#a855f7", "#ec4899"] },
+  "birthday-sunset":     { label: "Sunset Glow",        colors: ["#f97316", "#fbbf24"] },
+  "birthday-galaxy":     { label: "Galaxy Night",       colors: ["#1a1040", "#7c3aed"] },
+  "birthday-tropical":   { label: "Tropical Fiesta",    colors: ["#059669", "#34d399"] },
+  "birthday-rose-gold":  { label: "Rose Gold Glam",     colors: ["#e8a0bf", "#c9733a"] },
+  "birthday-ocean":      { label: "Ocean Breeze",       colors: ["#0891b2", "#06b6d4"] },
+  "birthday-midnight":   { label: "Midnight Spark",     colors: ["#0f172a", "#6366f1"] },
+  "anniversary-navy":    { label: "Navy Classic",       colors: ["#1e3a5f", "#fbbf24"] },
+  "anniversary-emerald": { label: "Emerald Milestone",  colors: ["#047857", "#fde68a"] },
+  "anniversary-royal":   { label: "Royal Gold",         colors: ["#4c1d95", "#fcd34d"] },
+  "anniversary-crimson": { label: "Crimson Prestige",   colors: ["#7f1d1d", "#fbbf24"] },
+  "anniversary-sapphire":{ label: "Sapphire Elite",     colors: ["#1e3a8a", "#93c5fd"] },
+  "anniversary-bronze":  { label: "Bronze Legacy",      colors: ["#78350f", "#fde68a"] },
+  "anniversary-midnight":{ label: "Midnight Honor",     colors: ["#0f172a", "#e2e8f0"] },
 };
 
 function formatCelebrationDate(iso: string | null): string {
@@ -65,6 +74,40 @@ function EmpAvatar({ src, name, size = 40 }: { src: string | null; name: string;
     );
   }
   return <img src={proxied} alt={name} style={style} onError={() => setErr(true)} />;
+}
+
+function ThemeSwatch({ themeId, selected, onClick }: { themeId: string; selected: boolean; onClick: () => void }) {
+  const meta = THEME_META[themeId];
+  if (!meta) return null;
+  const [c1, c2] = meta.colors;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={meta.label}
+      className={`group relative flex items-center gap-2.5 px-3 py-2 rounded-xl border transition-all text-left ${
+        selected
+          ? "border-primary ring-2 ring-primary/30 bg-primary/5 shadow-sm"
+          : "border-border hover:border-primary/40 hover:bg-muted/60"
+      }`}
+    >
+      <div
+        className="w-8 h-8 rounded-lg shrink-0 shadow-sm"
+        style={{ background: `linear-gradient(135deg, ${c1}, ${c2})` }}
+      />
+      <span className={`text-sm font-medium truncate ${selected ? "text-primary" : "text-foreground"}`}>
+        {meta.label}
+      </span>
+      {selected && (
+        <span className="ml-auto shrink-0 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
+          <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+            <path d="M1 4l2 2 4-4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </span>
+      )}
+    </button>
+  );
 }
 
 function WishCardPreview({
@@ -139,8 +182,8 @@ function WishCardPreview({
     <div className="flex flex-col items-center gap-3">
       <div
         ref={hostRef}
-        className="rounded-2xl overflow-hidden shadow-xl border border-border bg-white max-w-full"
-        style={{ width: 320, aspectRatio: "1080/1350" }}
+        className="rounded-2xl overflow-hidden shadow-2xl border border-border/50 bg-white max-w-full"
+        style={{ width: 300, aspectRatio: "1080/1350" }}
       >
         {error && (
           <div className="flex items-center justify-center h-full text-sm text-rose-600 p-4 text-center">
@@ -163,10 +206,10 @@ function WishCardPreview({
         type="button"
         onClick={download}
         disabled={!svg}
-        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50 hover:opacity-90 transition-opacity"
       >
         <Download className="w-4 h-4" />
-        Download wish card
+        Download card
       </button>
     </div>
   );
@@ -187,6 +230,7 @@ export default function HrmsCelebrations() {
   const [selected, setSelected] = useState<CelebrationItem | null>(null);
   const [theme, setTheme] = useState("");
   const [customMessage, setCustomMessage] = useState("");
+  const [aiGenerating, setAiGenerating] = useState(false);
   const [ravenPosting, setRavenPosting] = useState(false);
   const [ravenOnePosting, setRavenOnePosting] = useState(false);
   const [ravenResult, setRavenResult] = useState<string | null>(null);
@@ -237,6 +281,30 @@ export default function HrmsCelebrations() {
     selected?.kind === "anniversary" ? themes.anniversary : themes.birthday;
 
   const monthLabel = new Date(2000, month - 1, 1).toLocaleString("en", { month: "long" });
+
+  const generateAiMessage = async () => {
+    if (!selected) return;
+    setAiGenerating(true);
+    try {
+      const d = await apiJson<{ message: string }>("/hrms/celebrations/generate-message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employee_name: selected.employee_name,
+          name: selected.name,
+          kind: selected.kind,
+          years_of_service: selected.years_of_service,
+          department: selected.department,
+          designation: selected.designation,
+        }),
+      });
+      setCustomMessage(d.message);
+    } catch (e) {
+      console.error("[celebrations] generate message failed:", e);
+    } finally {
+      setAiGenerating(false);
+    }
+  };
 
   const postAllTodayToRaven = async () => {
     setRavenPosting(true);
@@ -302,9 +370,10 @@ export default function HrmsCelebrations() {
   return (
     <Layout>
       <div className="flex flex-col h-full overflow-hidden">
+        {/* Header */}
         <div className="bg-card border-b border-border px-6 py-4 shrink-0">
           <div className="flex items-center gap-3 w-full flex-wrap">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-violet-600 flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-violet-600 flex items-center justify-center shrink-0 shadow-md">
               <PartyPopper className="w-5 h-5 text-white" />
             </div>
             <div className="flex-1 min-w-[200px]">
@@ -316,7 +385,7 @@ export default function HrmsCelebrations() {
             <button
               type="button"
               onClick={checkRavenStatus}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs font-medium hover:bg-muted"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs font-medium hover:bg-muted transition-colors"
               title="Check Raven connection and today's count"
             >
               <Info className="w-4 h-4" />
@@ -326,14 +395,18 @@ export default function HrmsCelebrations() {
               type="button"
               onClick={postAllTodayToRaven}
               disabled={ravenPosting}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-600 text-white text-xs font-medium hover:bg-violet-700 disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-600 text-white text-xs font-medium hover:bg-violet-700 disabled:opacity-50 transition-colors shadow-sm"
               title="Post all of today's birthdays & anniversaries"
             >
               {ravenPosting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               Post all today
             </button>
           </div>
-          {ravenResult && <p className="text-xs mt-2 text-muted-foreground">{ravenResult}</p>}
+          {ravenResult && (
+            <p className="text-xs mt-2 text-muted-foreground bg-muted/60 px-3 py-1.5 rounded-lg">
+              {ravenResult}
+            </p>
+          )}
 
           <div className="flex flex-wrap items-center gap-2 mt-4">
             {(["today", "month"] as FilterMode[]).map(f => (
@@ -343,7 +416,7 @@ export default function HrmsCelebrations() {
                 onClick={() => setFilter(f)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                   filter === f
-                    ? "bg-primary text-primary-foreground border-primary"
+                    ? "bg-primary text-primary-foreground border-primary shadow-sm"
                     : "bg-muted/50 border-border text-muted-foreground hover:bg-muted"
                 }`}
               >
@@ -351,10 +424,10 @@ export default function HrmsCelebrations() {
               </button>
             ))}
             {filter === "month" && (
-              <div className="flex items-center gap-1 ml-2 border border-border rounded-lg overflow-hidden">
+              <div className="flex items-center gap-1 ml-2 border border-border rounded-lg overflow-hidden bg-card">
                 <button
                   type="button"
-                  className="p-1.5 hover:bg-muted"
+                  className="p-1.5 hover:bg-muted transition-colors"
                   onClick={() => setMonth(m => (m <= 1 ? 12 : m - 1))}
                 >
                   <ChevronLeft className="w-4 h-4" />
@@ -362,7 +435,7 @@ export default function HrmsCelebrations() {
                 <span className="px-2 text-xs font-semibold min-w-[100px] text-center">{monthLabel}</span>
                 <button
                   type="button"
-                  className="p-1.5 hover:bg-muted"
+                  className="p-1.5 hover:bg-muted transition-colors"
                   onClick={() => setMonth(m => (m >= 12 ? 1 : m + 1))}
                 >
                   <ChevronRight className="w-4 h-4" />
@@ -372,7 +445,7 @@ export default function HrmsCelebrations() {
             <button
               type="button"
               onClick={load}
-              className="ml-auto p-2 rounded-lg border border-border hover:bg-muted"
+              className="ml-auto p-2 rounded-lg border border-border hover:bg-muted transition-colors"
               title="Refresh"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
@@ -389,7 +462,7 @@ export default function HrmsCelebrations() {
                 key={id}
                 type="button"
                 onClick={() => { setTab(id); setSelected(null); }}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border ${
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                   tab === id
                     ? id === "birthday"
                       ? "bg-pink-500/15 border-pink-500/40 text-pink-700 dark:text-pink-300"
@@ -408,7 +481,8 @@ export default function HrmsCelebrations() {
         </div>
 
         <div className="flex flex-1 min-h-0 overflow-hidden">
-          <div className="w-96 shrink-0 border-r border-border flex flex-col overflow-hidden bg-card/50">
+          {/* Left: employee list */}
+          <div className="w-80 shrink-0 border-r border-border flex flex-col overflow-hidden bg-card/50">
             {loading ? (
               <div className="flex items-center justify-center flex-1">
                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -419,15 +493,15 @@ export default function HrmsCelebrations() {
                 <p className="text-sm">No celebrations for this period.</p>
               </div>
             ) : (
-              <div className="overflow-y-auto flex-1 p-2 space-y-1">
+              <div className="overflow-y-auto flex-1 p-2 space-y-0.5">
                 {list.map(item => (
                   <button
                     key={`${item.kind}-${item.name}`}
                     type="button"
                     onClick={() => setSelected(item)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-xl text-left transition-colors ${
+                    className={`w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all ${
                       selected?.name === item.name && selected?.kind === item.kind
-                        ? "bg-primary/10 ring-1 ring-primary/30"
+                        ? "bg-primary/10 ring-1 ring-primary/30 shadow-sm"
                         : "hover:bg-muted/80"
                     }`}
                   >
@@ -457,61 +531,97 @@ export default function HrmsCelebrations() {
             )}
           </div>
 
+          {/* Right: editor + preview */}
           <div className="flex-1 overflow-y-auto p-6 bg-muted/20">
             {!selected ? (
               <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground max-w-md mx-auto">
                 <Heart className="w-12 h-12 mb-3 text-pink-400/60" />
                 <p className="font-medium text-foreground">Select an employee</p>
                 <p className="text-sm mt-1">
-                  Choose someone from the list to preview and download their personalized wish card.
+                  Choose someone from the list to preview and customise their wish card.
                 </p>
               </div>
             ) : (
               <div className="flex flex-col lg:flex-row gap-8 items-start justify-center">
-                <div className="flex-1 max-w-md space-y-4">
+                {/* Controls */}
+                <div className="flex-1 max-w-sm space-y-5">
+                  {/* Employee name + kind badge */}
+                  <div className="flex items-center gap-3 pb-1 border-b border-border">
+                    <EmpAvatar src={selected.image} name={selected.employee_name} size={48} />
+                    <div>
+                      <p className="font-bold text-base leading-tight">{selected.employee_name}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {selected.kind === "birthday" ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-pink-600 dark:text-pink-400">
+                            <Cake className="w-3.5 h-3.5" /> Birthday
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+                            <Award className="w-3.5 h-3.5" /> {selected.years_of_service} Year Anniversary
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Theme picker */}
                   <div>
-                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      Wish theme
-                    </label>
-                    <div className="grid grid-cols-1 gap-2 mt-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2.5">
+                      Wish Theme
+                    </p>
+                    <div className="grid grid-cols-1 gap-1.5">
                       {themeOptions.map(t => (
-                        <button
+                        <ThemeSwatch
                           key={t}
-                          type="button"
+                          themeId={t}
+                          selected={theme === t}
                           onClick={() => setTheme(t)}
-                          className={`px-3 py-2 rounded-lg text-sm text-left border transition-colors ${
-                            theme === t
-                              ? "border-primary bg-primary/10 font-medium"
-                              : "border-border hover:bg-muted"
-                          }`}
-                        >
-                          {THEME_LABELS[t] || t}
-                        </button>
+                        />
                       ))}
                     </div>
                   </div>
+
+                  {/* Custom message */}
                   <div>
-                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      Custom message (optional)
-                    </label>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+                        Message
+                      </p>
+                      <button
+                        type="button"
+                        onClick={generateAiMessage}
+                        disabled={aiGenerating}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-violet-400/40 bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 text-xs font-medium hover:bg-violet-100 dark:hover:bg-violet-900/50 disabled:opacity-50 transition-colors"
+                        title="Generate an AI-crafted personalised message"
+                      >
+                        {aiGenerating
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : <Wand2 className="w-3 h-3" />}
+                        {aiGenerating ? "Generating…" : "✨ AI Generate"}
+                      </button>
+                    </div>
                     <textarea
                       value={customMessage}
                       onChange={e => setCustomMessage(e.target.value)}
-                      rows={3}
-                      placeholder="Leave blank for default wish text"
-                      className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm resize-none"
+                      rows={4}
+                      placeholder="Leave blank for default wish text, or generate with AI above"
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 transition-shadow"
                     />
                   </div>
+
+                  {/* Send to Raven */}
                   <button
                     type="button"
                     onClick={postSelectedToRaven}
                     disabled={ravenOnePosting}
-                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 disabled:opacity-50"
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-50 transition-colors shadow-md"
                   >
                     {ravenOnePosting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                     Send this wish to Raven
                   </button>
                 </div>
+
+                {/* Card preview */}
                 <WishCardPreview
                   item={selected}
                   theme={theme || selected.default_theme}
