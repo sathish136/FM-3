@@ -640,6 +640,24 @@ export function UserManagementContent() {
   const [togglingEnabled, setTogglingEnabled] = useState(false);
 
 
+  // Expand/collapse state for module groups (empty = all expanded)
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [tmplCollapsedGroups, setTmplCollapsedGroups] = useState<Set<string>>(new Set());
+
+  function toggleGroupCollapse(group: string, setter: React.Dispatch<React.SetStateAction<Set<string>>>) {
+    setter(prev => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group); else next.add(group);
+      return next;
+    });
+  }
+  function collapseAll(setter: React.Dispatch<React.SetStateAction<Set<string>>>) {
+    setter(new Set(MODULE_GROUPS));
+  }
+  function expandAll(setter: React.Dispatch<React.SetStateAction<Set<string>>>) {
+    setter(new Set());
+  }
+
   // Role template editor state
   const [tmplEditing, setTmplEditing]         = useState<RoleTemplate | null>(null);
   const [tmplCreating, setTmplCreating]       = useState(false);
@@ -1071,7 +1089,18 @@ export function UserManagementContent() {
                   <div>
                     <div className="flex items-center justify-between mb-3">
                       <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Module Permissions</label>
-                      <div className="flex gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        <div className="flex items-center gap-1 border border-border rounded-lg overflow-hidden">
+                          <button onClick={() => expandAll(setTmplCollapsedGroups)}
+                            className="text-[10px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted px-2 py-1 transition-colors">
+                            Expand all
+                          </button>
+                          <span className="w-px h-4 bg-border" />
+                          <button onClick={() => collapseAll(setTmplCollapsedGroups)}
+                            className="text-[10px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted px-2 py-1 transition-colors">
+                            Collapse all
+                          </button>
+                        </div>
                         <button onClick={() => setTmplRoles(buildDefaultRoles("write"))}
                           className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 px-2 py-1 rounded-lg hover:bg-emerald-50 transition-colors border border-emerald-200">All Write</button>
                         <button onClick={() => setTmplRoles(buildDefaultRoles("read"))}
@@ -1080,26 +1109,60 @@ export function UserManagementContent() {
                           className="text-[11px] font-semibold text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted transition-colors border border-border">All None</button>
                       </div>
                     </div>
-                    <div className="space-y-4">
-                      {MODULE_GROUPS.map(group => (
-                        <div key={group}>
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5">{group}</p>
-                          <div className="space-y-1">
-                            {APP_MODULES.filter(m => m.group === group).map(mod => {
-                              const role = tmplRoles[mod.key] ?? "none";
-                              return (
-                                <div key={mod.key} className={`flex items-center gap-3 px-4 py-2 rounded-xl border transition-all ${
-                                  role === "write" ? "bg-emerald-50 border-emerald-200" : role === "read" ? "bg-blue-50 border-blue-200" : "bg-card border-border"
-                                }`}>
-                                  <span className={`w-2 h-2 rounded-full shrink-0 ${role === "write" ? "bg-emerald-500" : role === "read" ? "bg-blue-500" : "bg-muted-foreground/30"}`} />
-                                  <span className={`text-xs font-medium flex-1 ${role === "write" ? "text-emerald-800" : role === "read" ? "text-blue-800" : "text-muted-foreground"}`}>{mod.label}</span>
-                                  <RolePicker role={role} onChange={r => setTmplRoles(prev => ({ ...prev, [mod.key]: r }))} />
-                                </div>
-                              );
-                            })}
+                    <div className="space-y-2">
+                      {MODULE_GROUPS.map(group => {
+                        const groupMods = APP_MODULES.filter(m => m.group === group);
+                        const groupRoles = groupMods.map(m => tmplRoles[m.key] ?? "none");
+                        const wCount = groupRoles.filter(r => r === "write").length;
+                        const rCount = groupRoles.filter(r => r === "read").length;
+                        const nCount = groupRoles.filter(r => r === "none").length;
+                        const allWrite = wCount === groupMods.length;
+                        const allRead  = rCount === groupMods.length;
+                        const allNone  = nCount === groupMods.length;
+                        const groupSummary = allWrite ? "write" : allRead ? "read" : allNone ? "none" : "mixed";
+                        const isCollapsed = tmplCollapsedGroups.has(group);
+                        return (
+                          <div key={group} className="rounded-xl border border-border overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={() => toggleGroupCollapse(group, setTmplCollapsedGroups)}
+                              className="w-full flex items-center gap-3 px-4 py-2.5 bg-muted/40 hover:bg-muted/70 transition-colors text-left"
+                            >
+                              <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground/60 shrink-0 transition-transform ${isCollapsed ? "-rotate-90" : ""}`} />
+                              <p className="text-[11px] font-bold uppercase tracking-widest text-foreground flex-1">{group}</p>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {wCount > 0 && <span className="text-[9px] font-bold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">{wCount}W</span>}
+                                {rCount > 0 && <span className="text-[9px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">{rCount}R</span>}
+                                {nCount > 0 && <span className="text-[9px] font-bold bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">{nCount}—</span>}
+                              </div>
+                              <div className="flex items-center gap-0.5 shrink-0 ml-1" onClick={e => e.stopPropagation()}>
+                                <button onClick={() => { const u: Record<string,ModuleRole> = {}; groupMods.forEach(m => { u[m.key] = "write"; }); setTmplRoles(prev => ({ ...prev, ...u })); }}
+                                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition-colors ${groupSummary === "write" ? "bg-emerald-500 text-white" : "text-muted-foreground hover:text-emerald-700 hover:bg-emerald-100"}`}>W</button>
+                                <button onClick={() => { const u: Record<string,ModuleRole> = {}; groupMods.forEach(m => { u[m.key] = "read"; }); setTmplRoles(prev => ({ ...prev, ...u })); }}
+                                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition-colors ${groupSummary === "read" ? "bg-blue-500 text-white" : "text-muted-foreground hover:text-blue-700 hover:bg-blue-100"}`}>R</button>
+                                <button onClick={() => { const u: Record<string,ModuleRole> = {}; groupMods.forEach(m => { u[m.key] = "none"; }); setTmplRoles(prev => ({ ...prev, ...u })); }}
+                                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition-colors ${groupSummary === "none" ? "bg-muted-foreground/20 text-foreground/60" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}>—</button>
+                              </div>
+                            </button>
+                            {!isCollapsed && (
+                              <div className="divide-y divide-border/50">
+                                {groupMods.map(mod => {
+                                  const role = tmplRoles[mod.key] ?? "none";
+                                  return (
+                                    <div key={mod.key} className={`flex items-center gap-3 px-4 py-2 transition-colors ${
+                                      role === "write" ? "bg-emerald-50/60" : role === "read" ? "bg-blue-50/60" : "bg-card"
+                                    }`}>
+                                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${role === "write" ? "bg-emerald-500" : role === "read" ? "bg-blue-500" : "bg-muted-foreground/25"}`} />
+                                      <span className={`text-xs font-medium flex-1 ${role === "write" ? "text-emerald-800" : role === "read" ? "text-blue-800" : "text-muted-foreground"}`}>{mod.label}</span>
+                                      <RolePicker role={role} onChange={r => setTmplRoles(prev => ({ ...prev, [mod.key]: r }))} />
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
@@ -1443,7 +1506,18 @@ export function UserManagementContent() {
                         <h3 className="text-base font-bold text-foreground mb-1">Module Permissions</h3>
                         <p className="text-sm text-muted-foreground">Fine-tune access for each module.</p>
                       </div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        <div className="flex items-center gap-1 border border-border rounded-lg overflow-hidden">
+                          <button onClick={() => expandAll(setCollapsedGroups)}
+                            className="text-[10px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted px-2 py-1.5 transition-colors">
+                            Expand all
+                          </button>
+                          <span className="w-px h-4 bg-border" />
+                          <button onClick={() => collapseAll(setCollapsedGroups)}
+                            className="text-[10px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted px-2 py-1.5 transition-colors">
+                            Collapse all
+                          </button>
+                        </div>
                         <button onClick={() => setDraftRoles(buildDefaultRoles("write"))}
                           className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 px-2 py-1.5 rounded-lg hover:bg-emerald-50 transition-colors border border-emerald-200">
                           <Pencil className="w-2.5 h-2.5" /> All Write
@@ -1466,42 +1540,62 @@ export function UserManagementContent() {
                       </div>
                     )}
 
-                    <div className="space-y-4">
+                    <div className="space-y-2">
                       {MODULE_GROUPS.map(group => {
                         const groupMods = APP_MODULES.filter(m => m.group === group);
                         const groupRoles = groupMods.map(m => draftRoles[m.key] ?? "none");
-                        const allWrite = groupRoles.every(r => r === "write");
-                        const allRead  = groupRoles.every(r => r === "read");
-                        const allNone  = groupRoles.every(r => r === "none");
+                        const wCount = groupRoles.filter(r => r === "write").length;
+                        const rCount = groupRoles.filter(r => r === "read").length;
+                        const nCount = groupRoles.filter(r => r === "none").length;
+                        const allWrite = wCount === groupMods.length;
+                        const allRead  = rCount === groupMods.length;
+                        const allNone  = nCount === groupMods.length;
                         const groupSummary = allWrite ? "write" : allRead ? "read" : allNone ? "none" : "mixed";
+                        const isCollapsed = collapsedGroups.has(group);
 
                         return (
-                          <div key={group}>
-                            <div className="flex items-center gap-2 mb-1.5">
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex-1">{group}</p>
-                              <div className="flex items-center gap-1">
-                                <button onClick={() => setGroupRole(group, "write")}
-                                  className={`text-[9px] font-semibold px-1.5 py-0.5 rounded transition-colors ${groupSummary === "write" ? "bg-emerald-100 text-emerald-700" : "text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50"}`}>W</button>
-                                <button onClick={() => setGroupRole(group, "read")}
-                                  className={`text-[9px] font-semibold px-1.5 py-0.5 rounded transition-colors ${groupSummary === "read" ? "bg-blue-100 text-blue-700" : "text-muted-foreground hover:text-blue-600 hover:bg-blue-50"}`}>R</button>
-                                <button onClick={() => setGroupRole(group, "none")}
-                                  className={`text-[9px] font-semibold px-1.5 py-0.5 rounded transition-colors ${groupSummary === "none" ? "bg-muted text-foreground/70" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}>—</button>
+                          <div key={group} className="rounded-xl border border-border overflow-hidden">
+                            {/* Group header — click to expand/collapse */}
+                            <button
+                              type="button"
+                              onClick={() => toggleGroupCollapse(group, setCollapsedGroups)}
+                              className="w-full flex items-center gap-3 px-4 py-2.5 bg-muted/40 hover:bg-muted/70 transition-colors text-left"
+                            >
+                              <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground/60 shrink-0 transition-transform ${isCollapsed ? "-rotate-90" : ""}`} />
+                              <p className="text-[11px] font-bold uppercase tracking-widest text-foreground flex-1">{group}</p>
+                              {/* Permission summary pills */}
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {wCount > 0 && <span className="text-[9px] font-bold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">{wCount}W</span>}
+                                {rCount > 0 && <span className="text-[9px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">{rCount}R</span>}
+                                {nCount > 0 && <span className="text-[9px] font-bold bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">{nCount}—</span>}
                               </div>
-                            </div>
-                            <div className="space-y-1">
-                              {groupMods.map(mod => {
-                                const role = draftRoles[mod.key] ?? "none";
-                                return (
-                                  <div key={mod.key} className={`flex items-center gap-3 px-4 py-2 rounded-xl border transition-all ${
-                                    role === "write" ? "bg-emerald-50 border-emerald-200" : role === "read" ? "bg-blue-50 border-blue-200" : "bg-card border-border"
-                                  }`}>
-                                    <span className={`w-2 h-2 rounded-full shrink-0 ${role === "write" ? "bg-emerald-500" : role === "read" ? "bg-blue-500" : "bg-muted-foreground/30"}`} />
-                                    <span className={`text-xs font-medium flex-1 ${role === "write" ? "text-emerald-800" : role === "read" ? "text-blue-800" : "text-muted-foreground"}`}>{mod.label}</span>
-                                    <RolePicker role={role} onChange={r => setRole(mod.key, r)} />
-                                  </div>
-                                );
-                              })}
-                            </div>
+                              {/* Bulk set buttons */}
+                              <div className="flex items-center gap-0.5 shrink-0 ml-1" onClick={e => e.stopPropagation()}>
+                                <button onClick={() => setGroupRole(group, "write")}
+                                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition-colors ${groupSummary === "write" ? "bg-emerald-500 text-white" : "text-muted-foreground hover:text-emerald-700 hover:bg-emerald-100"}`}>W</button>
+                                <button onClick={() => setGroupRole(group, "read")}
+                                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition-colors ${groupSummary === "read" ? "bg-blue-500 text-white" : "text-muted-foreground hover:text-blue-700 hover:bg-blue-100"}`}>R</button>
+                                <button onClick={() => setGroupRole(group, "none")}
+                                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition-colors ${groupSummary === "none" ? "bg-muted-foreground/20 text-foreground/60" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}>—</button>
+                              </div>
+                            </button>
+                            {/* Module rows */}
+                            {!isCollapsed && (
+                              <div className="divide-y divide-border/50">
+                                {groupMods.map(mod => {
+                                  const role = draftRoles[mod.key] ?? "none";
+                                  return (
+                                    <div key={mod.key} className={`flex items-center gap-3 px-4 py-2 transition-colors ${
+                                      role === "write" ? "bg-emerald-50/60" : role === "read" ? "bg-blue-50/60" : "bg-card"
+                                    }`}>
+                                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${role === "write" ? "bg-emerald-500" : role === "read" ? "bg-blue-500" : "bg-muted-foreground/25"}`} />
+                                      <span className={`text-xs font-medium flex-1 ${role === "write" ? "text-emerald-800" : role === "read" ? "text-blue-800" : "text-muted-foreground"}`}>{mod.label}</span>
+                                      <RolePicker role={role} onChange={r => setRole(mod.key, r)} />
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
