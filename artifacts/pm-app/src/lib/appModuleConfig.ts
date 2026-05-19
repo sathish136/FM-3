@@ -3,6 +3,11 @@
  * Add a module key here to hide it from nav, search, and user-management permissions.
  */
 export const DISABLED_MODULE_KEYS = new Set<string>([
+  // PLC & Automation — not yet built
+  "plc-device-config",
+  "plc-panel-inspection",
+  "plc-support-tickets",
+  "plc-network-architecture",
   // IP call sub-logs (parent ip-call-logs stays)
   "ip-call-logs-hr",
   "ip-call-logs-project",

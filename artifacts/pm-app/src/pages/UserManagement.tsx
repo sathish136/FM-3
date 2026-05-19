@@ -640,9 +640,9 @@ export function UserManagementContent() {
   const [togglingEnabled, setTogglingEnabled] = useState(false);
 
 
-  // Expand/collapse state for module groups (empty = all expanded)
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-  const [tmplCollapsedGroups, setTmplCollapsedGroups] = useState<Set<string>>(new Set());
+  // Expand/collapse state for module groups (all collapsed by default)
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set(MODULE_GROUPS));
+  const [tmplCollapsedGroups, setTmplCollapsedGroups] = useState<Set<string>>(() => new Set(MODULE_GROUPS));
 
   function toggleGroupCollapse(group: string, setter: React.Dispatch<React.SetStateAction<Set<string>>>) {
     setter(prev => {
