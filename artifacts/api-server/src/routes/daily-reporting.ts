@@ -148,9 +148,16 @@ function generateReportPDF(report: any): Promise<Buffer> {
 }
 
 // ─── Send document via UltraMsg ────────────────────────────────────────────────
-async function sendWhatsAppDocument(to: string, docUrl: string, filename: string, caption: string): Promise<{ success: boolean; error?: string }> {
+// Accepts either a publicly reachable URL string OR a Buffer (sent as base64 data URI).
+async function sendWhatsAppDocument(to: string, docSource: string | Buffer, filename: string, caption: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const params = new URLSearchParams({ token: ULTRAMSG_TOKEN, to, document: docUrl, filename, caption, priority: "10" });
+    let document: string;
+    if (Buffer.isBuffer(docSource)) {
+      document = `data:application/pdf;base64,${docSource.toString("base64")}`;
+    } else {
+      document = docSource;
+    }
+    const params = new URLSearchParams({ token: ULTRAMSG_TOKEN, to, document, filename, caption, priority: "10" });
     const res = await fetch(`https://api.ultramsg.com/${ULTRAMSG_INSTANCE}/messages/document`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -314,12 +321,6 @@ router.post("/daily-reporting/:name/send-whatsapp", async (req, res) => {
     const filename = `DailyReport_${empName}_${dateTag}.pdf`;
     pdfStore.set(id, { buf: pdfBuf, filename, expires: Date.now() + 5 * 60_000 });
 
-    // Build a publicly accessible URL using the Replit dev domain
-    const host = process.env.REPLIT_DEV_DOMAIN
-      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-      : `http://localhost:${process.env.PORT || 8080}`;
-    const pdfUrl = `${host}/api/daily-reporting/pdf/${id}`;
-
     const dept = (report.department || "").replace(/ - WTT$/i, "");
     const dateStr = report.date
       ? new Date(report.date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
@@ -327,7 +328,8 @@ router.post("/daily-reporting/:name/send-whatsapp", async (req, res) => {
     const caption = [`Daily Report — ${report.employee_name || report.employee || ""}`,
       dept, dateStr, `Status: ${report.status || "Draft"}`].filter(Boolean).join("  |  ");
 
-    const result = await sendWhatsAppDocument(to, pdfUrl, filename, caption);
+    // Send PDF buffer directly as base64 — works in localhost & production alike
+    const result = await sendWhatsAppDocument(to, pdfBuf, filename, caption);
 
     if (result.success) {
       res.json({ success: true, to, filename });
@@ -583,16 +585,11 @@ router.post("/daily-reporting/send-combined", async (req, res) => {
     const filename = `DailySummary_${dateTag}.pdf`;
     pdfStore.set(id, { buf: pdfBuf, filename, expires: Date.now() + 10 * 60_000 });
 
-    // 6. Build a publicly accessible URL
-    const host = process.env.REPLIT_DEV_DOMAIN
-      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-      : `http://localhost:${process.env.PORT || 8080}`;
-    const pdfUrl = `${host}/api/daily-reporting/pdf/${id}`;
-
     const dateStr = new Date(date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
     const caption = `Daily Report Summary — ${dateStr}\nWTT International`;
 
-    const result = await sendWhatsAppDocument(to, pdfUrl, filename, caption);
+    // 6. Send PDF buffer directly as base64 — works in localhost & production alike
+    const result = await sendWhatsAppDocument(to, pdfBuf, filename, caption);
 
     if (result.success) {
       res.json({ success: true, to, filename, reported: detailed.length, notReported: notReported.length });
