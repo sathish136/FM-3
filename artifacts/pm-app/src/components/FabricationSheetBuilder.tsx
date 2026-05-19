@@ -330,18 +330,18 @@ export function FabricationSheetBuilder({
         </button>
       </div>
 
-      {/* ── Sheet area — scrollable background ── */}
-      <div className="flex-1 min-h-0 overflow-auto bg-slate-300/60 dark:bg-slate-800/60 p-3 flex items-start justify-center">
+      {/* ── Sheet area — fills remaining space, sheet scales to fit ── */}
+      <div className="flex-1 min-h-0 overflow-hidden bg-slate-300/60 dark:bg-slate-800/60 p-2 flex items-center justify-center">
 
-        {/* A3 sheet (420:297) — fills container maintaining aspect ratio */}
+        {/* A3 sheet (420:297) — height-driven so it always fills the panel */}
         <div
           ref={sheetRef}
           className="bg-white shadow-2xl relative"
           style={{
             aspectRatio: "420 / 297",
-            maxHeight: "100%",
-            maxWidth: "calc(100% - 12px)",
+            height: "100%",
             width: "auto",
+            maxWidth: "100%",
             border: "2px solid #444",
             fontFamily: "monospace",
           }}
