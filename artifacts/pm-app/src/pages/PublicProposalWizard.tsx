@@ -248,7 +248,7 @@ export default function PublicProposalWizard() {
       <div className="flex flex-col items-center mb-6 text-center">
         <img src={LOGO_URL} alt="WTT International" className="h-20 object-contain mb-4" />
         <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">
-          {country.name} — {form.plantType} Proposal Request
+          {form.plantType === "ETP" ? "Effluent Treatment Plant" : "Sewage Treatment Plant"} Proposal
         </h1>
         <p className="text-sm text-gray-500 mt-1.5 max-w-sm">
           Fill in your details and we'll email your customised {form.plantType} proposal documents instantly.
