@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   Building2, Droplets, ChevronRight, CheckCircle2,
   Send, Loader2, Mail, Phone, User, MapPin, MessageSquare,
-  Globe, ShieldCheck, RefreshCw, Factory,
+  Globe, ShieldCheck,
 } from "lucide-react";
 
 const API = "/api";
@@ -10,45 +10,37 @@ const LOGO_URL = "https://res.cloudinary.com/dd8fsxba6/image/upload/v1755166473/
 
 // ─── Country & city configuration ────────────────────────────────────────────
 const COUNTRIES = [
-  { code: "IND", name: "India",        prefix: "WTT-IND", city: "Chennai / Mumbai / Delhi",   phone: "+91 " },
-  { code: "BGD", name: "Bangladesh",   prefix: "WTT-BAN", city: "Dhaka / Chittagong",         phone: "+880 " },
-  { code: "ARE", name: "UAE",          prefix: "WTT-UAE", city: "Dubai / Abu Dhabi",           phone: "+971 " },
-  { code: "LKA", name: "Sri Lanka",    prefix: "WTT-SRI", city: "Colombo / Kandy",             phone: "+94 " },
-  { code: "NPL", name: "Nepal",        prefix: "WTT-NEP", city: "Kathmandu / Pokhara",         phone: "+977 " },
-  { code: "QAT", name: "Qatar",        prefix: "WTT-QAT", city: "Doha",                        phone: "+974 " },
-  { code: "SAU", name: "Saudi Arabia", prefix: "WTT-SAU", city: "Riyadh / Jeddah",             phone: "+966 " },
-  { code: "MYS", name: "Malaysia",     prefix: "WTT-MYS", city: "Kuala Lumpur / Johor Bahru",  phone: "+60 " },
-  { code: "OMN", name: "Oman",         prefix: "WTT-OMN", city: "Muscat / Sohar",              phone: "+968 " },
-  { code: "SGP", name: "Singapore",    prefix: "WTT-SGP", city: "Singapore",                   phone: "+65 " },
-  { code: "OTHER", name: "Other",      prefix: "WTT-INT", city: "Your city",                   phone: "+" },
+  { code: "IND", name: "India",        prefix: "WTT-IND", city: "Chennai / Mumbai / Delhi",  phone: "+91 " },
+  { code: "BGD", name: "Bangladesh",   prefix: "WTT-BAN", city: "Dhaka / Chittagong",        phone: "+880 " },
+  { code: "ARE", name: "UAE",          prefix: "WTT-UAE", city: "Dubai / Abu Dhabi",          phone: "+971 " },
+  { code: "LKA", name: "Sri Lanka",    prefix: "WTT-SRI", city: "Colombo / Kandy",            phone: "+94 " },
+  { code: "NPL", name: "Nepal",        prefix: "WTT-NEP", city: "Kathmandu / Pokhara",        phone: "+977 " },
+  { code: "QAT", name: "Qatar",        prefix: "WTT-QAT", city: "Doha",                       phone: "+974 " },
+  { code: "SAU", name: "Saudi Arabia", prefix: "WTT-SAU", city: "Riyadh / Jeddah",            phone: "+966 " },
+  { code: "MYS", name: "Malaysia",     prefix: "WTT-MYS", city: "Kuala Lumpur / Johor Bahru", phone: "+60 " },
+  { code: "OMN", name: "Oman",         prefix: "WTT-OMN", city: "Muscat / Sohar",             phone: "+968 " },
+  { code: "SGP", name: "Singapore",    prefix: "WTT-SGP", city: "Singapore",                  phone: "+65 " },
+  { code: "OTHER", name: "Other",      prefix: "WTT-INT", city: "Your city",                  phone: "+" },
 ] as const;
 
 type CountryCode = typeof COUNTRIES[number]["code"];
-
-// ─── Plant type ───────────────────────────────────────────────────────────────
-const PLANT_TYPES = [
-  { value: "STP", label: "STP", full: "Sewage Treatment Plant" },
-  { value: "ETP", label: "ETP", full: "Effluent Treatment Plant" },
-] as const;
-
 type PlantType = "STP" | "ETP";
 
-// ─── Form data ────────────────────────────────────────────────────────────────
 interface FormData {
-  plantType:    PlantType;
-  countryCode:  CountryCode;
-  customerName: string;
-  flowRate:     string;
+  plantType:     PlantType;
+  countryCode:   CountryCode;
+  customerName:  string;
+  flowRate:      string;
   contactPerson: string;
-  email:        string;
-  phone:        string;
-  city:         string;
-  remarks:      string;
+  email:         string;
+  phone:         string;
+  city:          string;
+  remarks:       string;
 }
 
 const INIT: FormData = {
-  plantType:    "STP",
-  countryCode:  "IND",
+  plantType:     "STP",
+  countryCode:   "IND",
   customerName:  "",
   flowRate:      "",
   contactPerson: "",
@@ -58,32 +50,32 @@ const INIT: FormData = {
   remarks:       "",
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 function countryFor(code: CountryCode) {
   return COUNTRIES.find((c) => c.code === code) ?? COUNTRIES[0];
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
 export default function PublicProposalWizard() {
-  const [form, setForm]       = useState<FormData>(INIT);
+  const [form, setForm]           = useState<FormData>(INIT);
   const [flowRates, setFlowRates] = useState<string[]>([]);
 
   // OTP state
-  const [otpSent,     setOtpSent]     = useState(false);
-  const [otpSending,  setOtpSending]  = useState(false);
-  const [otpCode,     setOtpCode]     = useState("");
-  const [otpVerifying,setOtpVerifying]= useState(false);
-  const [emailVerified,setEmailVerified]=useState(false);
-  const [otpError,    setOtpError]    = useState<string | null>(null);
-  const [otpCooldown, setOtpCooldown] = useState(0);
-  const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [otpSent,      setOtpSent]      = useState(false);
+  const [otpSending,   setOtpSending]   = useState(false);
+  const [otpCode,      setOtpCode]      = useState("");
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const [emailVerified,setEmailVerified]= useState(false);
+  const [otpError,     setOtpError]     = useState<string | null>(null);
+  const [otpCooldown,  setOtpCooldown]  = useState(0);
 
   // Submit state
   const [sending, setSending] = useState(false);
   const [result,  setResult]  = useState<{ wttNumber: string } | null>(null);
   const [error,   setError]   = useState<string | null>(null);
 
-  const update = (f: Partial<FormData>) => setForm((p) => ({ ...p, ...f }));
+  const cooldownRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoOtpTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const update  = (f: Partial<FormData>) => setForm((p) => ({ ...p, ...f }));
   const country = countryFor(form.countryCode);
 
   // Load flow rates
@@ -94,24 +86,41 @@ export default function PublicProposalWizard() {
       .catch(() => {});
   }, []);
 
-  // Reset OTP state whenever email changes
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim());
+  const phoneValid = /^\+?[\d\s\-().]{7,15}$/.test(form.phone.trim());
+
+  // ── Auto-send OTP when a valid email is entered (1.5 s debounce) ─────────
   useEffect(() => {
+    // Reset OTP state on every email change
     setOtpSent(false);
     setEmailVerified(false);
     setOtpCode("");
     setOtpError(null);
+    setOtpCooldown(0);
+    if (autoOtpTimer.current) clearTimeout(autoOtpTimer.current);
+
+    if (!emailValid) return;
+
+    // Wait 1.5 s after the user stops typing, then fire automatically
+    autoOtpTimer.current = setTimeout(() => {
+      sendOtp(form.email.trim());
+    }, 1500);
+
+    return () => {
+      if (autoOtpTimer.current) clearTimeout(autoOtpTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.email]);
 
-  // Cooldown ticker
+  // Cooldown countdown ticker
   useEffect(() => {
     if (otpCooldown <= 0) return;
-    cooldownRef.current = setInterval(() =>
-      setOtpCooldown((n) => Math.max(0, n - 1)), 1000);
+    cooldownRef.current = setInterval(
+      () => setOtpCooldown((n) => Math.max(0, n - 1)),
+      1000,
+    );
     return () => { if (cooldownRef.current) clearInterval(cooldownRef.current); };
   }, [otpCooldown]);
-
-  const emailValid  = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim());
-  const phoneValid  = /^\+?[\d\s\-().]{7,15}$/.test(form.phone.trim());
 
   const canSubmit =
     form.customerName.trim() &&
@@ -122,16 +131,16 @@ export default function PublicProposalWizard() {
     phoneValid &&
     form.city.trim();
 
-  // ── OTP: send ──────────────────────────────────────────────────────────────
-  const sendOtp = async () => {
-    if (!emailValid || otpSending || otpCooldown > 0) return;
+  // ── Send OTP ───────────────────────────────────────────────────────────────
+  const sendOtp = async (email: string) => {
+    if (otpSending || otpCooldown > 0) return;
     setOtpSending(true);
     setOtpError(null);
     try {
       const res = await fetch(`${API}/proposal-wizard/request-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: form.email.trim() }),
+        body: JSON.stringify({ email }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to send OTP");
@@ -144,7 +153,7 @@ export default function PublicProposalWizard() {
     }
   };
 
-  // ── OTP: verify ────────────────────────────────────────────────────────────
+  // ── Verify OTP ────────────────────────────────────────────────────────────
   const verifyOtp = async () => {
     if (!otpCode.trim() || otpVerifying) return;
     setOtpVerifying(true);
@@ -166,7 +175,7 @@ export default function PublicProposalWizard() {
     }
   };
 
-  // ── Submit ─────────────────────────────────────────────────────────────────
+  // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSubmit) return;
@@ -199,7 +208,7 @@ export default function PublicProposalWizard() {
     }
   };
 
-  // ── Success screen ─────────────────────────────────────────────────────────
+  // ── Success screen ────────────────────────────────────────────────────────
   if (result) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/30 flex flex-col items-center justify-center p-4">
@@ -219,8 +228,10 @@ export default function PublicProposalWizard() {
           <p className="text-xs text-gray-400 mb-6">
             Please quote this reference number in all future correspondence with WTT International.
           </p>
-          <button onClick={() => { setResult(null); setForm(INIT); setEmailVerified(false); setOtpSent(false); setOtpCode(""); }}
-            className="text-sm text-blue-600 hover:underline font-medium">
+          <button
+            onClick={() => { setResult(null); setForm(INIT); setEmailVerified(false); setOtpSent(false); setOtpCode(""); }}
+            className="text-sm text-blue-600 hover:underline font-medium"
+          >
             Submit another request →
           </button>
         </div>
@@ -229,7 +240,7 @@ export default function PublicProposalWizard() {
     );
   }
 
-  // ── Form ───────────────────────────────────────────────────────────────────
+  // ── Form ──────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/30 flex flex-col items-center justify-center py-8 px-4">
 
@@ -246,65 +257,56 @@ export default function PublicProposalWizard() {
 
       <form onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-lg border border-gray-100 p-6 sm:p-8 w-full max-w-xl space-y-5">
 
-        {/* ── Plant Type: ETP / STP ── */}
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-2">
-            Plant Type <span className="text-red-500">*</span>
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            {PLANT_TYPES.map((pt) => (
-              <button
-                key={pt.value}
-                type="button"
-                onClick={() => update({ plantType: pt.value })}
-                className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border-2 text-sm font-semibold transition-all ${
-                  form.plantType === pt.value
-                    ? "border-blue-500 bg-blue-50 text-blue-700"
-                    : "border-gray-200 text-gray-600 hover:border-blue-200 hover:bg-blue-50/30"
-                }`}
+        {/* ── Plant Type + Country (side by side) ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Plant Type dropdown */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+              Plant Type <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <ChevronRight className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none rotate-90" />
+              <select
+                value={form.plantType}
+                onChange={(e) => update({ plantType: e.target.value as PlantType })}
+                required
+                className="w-full px-3 pr-10 py-3 text-sm border-2 border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 appearance-none cursor-pointer font-medium text-gray-700"
               >
-                <Factory className={`w-4 h-4 ${form.plantType === pt.value ? "text-blue-500" : "text-gray-400"}`} />
-                <div className="text-left">
-                  <div className="font-bold">{pt.label}</div>
-                  <div className="text-[10px] font-normal opacity-70">{pt.full}</div>
-                </div>
-              </button>
-            ))}
+                <option value="STP">STP — Sewage Treatment</option>
+                <option value="ETP">ETP — Effluent Treatment</option>
+              </select>
+            </div>
           </div>
-        </div>
 
-        {/* ── Country ── */}
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-            Country <span className="text-red-500">*</span>
-          </label>
-          <div className="relative">
-            <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-400 pointer-events-none" />
-            <select
-              value={form.countryCode}
-              onChange={(e) => {
-                const cc = e.target.value as CountryCode;
-                update({ countryCode: cc, city: "", phone: "" });
-              }}
-              required
-              className="w-full pl-10 pr-10 py-3 text-sm border-2 border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 appearance-none cursor-pointer font-medium text-gray-700"
-            >
-              {COUNTRIES.map((c) => (
-                <option key={c.code} value={c.code}>{c.name}</option>
-              ))}
-            </select>
-            <ChevronRight className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none rotate-90" />
+          {/* Country dropdown */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+              Country <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-400 pointer-events-none" />
+              <select
+                value={form.countryCode}
+                onChange={(e) => {
+                  const cc = e.target.value as CountryCode;
+                  update({ countryCode: cc, city: "", phone: "" });
+                }}
+                required
+                className="w-full pl-10 pr-10 py-3 text-sm border-2 border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 appearance-none cursor-pointer font-medium text-gray-700"
+              >
+                {COUNTRIES.map((c) => (
+                  <option key={c.code} value={c.code}>{c.name}</option>
+                ))}
+              </select>
+              <ChevronRight className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none rotate-90" />
+            </div>
           </div>
-          {/* Preview WTT number prefix */}
-          <p className="text-[11px] text-blue-500 mt-1 font-medium">
-            Proposal ref will be assigned as: <span className="font-mono font-bold">{country.prefix}-XXXX</span>
-          </p>
         </div>
 
         {/* ── Flow Rate ── */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-            Select Flow Rate ({form.plantType} Capacity) <span className="text-red-500">*</span>
+            Select Flow Rate <span className="text-red-500">*</span>
           </label>
           <div className="relative">
             <Droplets className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-400 pointer-events-none" />
@@ -359,63 +361,77 @@ export default function PublicProposalWizard() {
           </div>
         </div>
 
-        {/* ── Email + OTP ── */}
+        {/* ── Email + auto-OTP ── */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-1.5">
             Email Address <span className="text-red-500">*</span>
           </label>
 
-          {/* Email input + Send OTP button */}
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="email"
-                value={form.email}
-                onChange={(e) => update({ email: e.target.value })}
-                placeholder="you@company.com"
-                required
-                disabled={emailVerified}
-                className={`w-full pl-10 py-2.5 text-sm border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
-                  emailVerified ? "bg-green-50 border-green-300 text-green-800" : "border-gray-200"
-                }`}
-              />
-              {emailVerified && (
-                <ShieldCheck className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />
-              )}
-            </div>
-            {!emailVerified && (
-              <button
-                type="button"
-                onClick={sendOtp}
-                disabled={!emailValid || otpSending || otpCooldown > 0}
-                className="shrink-0 px-3 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 transition-colors whitespace-nowrap"
-              >
-                {otpSending
-                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  : otpCooldown > 0
-                    ? <RefreshCw className="w-3.5 h-3.5" />
-                    : <Send className="w-3.5 h-3.5" />}
-                {otpCooldown > 0 ? `Resend (${otpCooldown}s)` : otpSent ? "Resend OTP" : "Send OTP"}
-              </button>
+          <div className="relative">
+            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => update({ email: e.target.value })}
+              placeholder="you@company.com"
+              required
+              disabled={emailVerified}
+              className={`w-full pl-10 pr-10 py-2.5 text-sm border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                emailVerified
+                  ? "bg-green-50 border-green-300 text-green-800"
+                  : "border-gray-200"
+              }`}
+            />
+            {/* Right icon: spinner while sending, tick when verified */}
+            {otpSending && (
+              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-400 animate-spin" />
+            )}
+            {emailVerified && (
+              <ShieldCheck className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />
             )}
           </div>
 
+          {/* Status lines */}
           {emailVerified && (
             <p className="text-xs text-green-600 mt-1 font-medium flex items-center gap-1">
               <CheckCircle2 className="w-3.5 h-3.5" /> Email verified successfully
             </p>
           )}
+          {otpSending && (
+            <p className="text-[11px] text-blue-500 mt-1">Sending verification code…</p>
+          )}
+          {otpSent && !emailVerified && !otpSending && (
+            <p className="text-[11px] text-gray-400 mt-1">
+              A 6-digit code was sent to <strong>{form.email}</strong>. Check your inbox (and spam).
+              {otpCooldown === 0 && (
+                <button
+                  type="button"
+                  onClick={() => sendOtp(form.email.trim())}
+                  className="ml-1.5 text-blue-500 hover:underline font-medium"
+                >
+                  Resend
+                </button>
+              )}
+              {otpCooldown > 0 && (
+                <span className="ml-1.5 text-gray-400">Resend in {otpCooldown}s</span>
+              )}
+            </p>
+          )}
 
-          {/* OTP input row */}
+          {/* OTP entry — shown after code is sent and email not yet verified */}
           {otpSent && !emailVerified && (
-            <div className="mt-2 flex gap-2 items-center">
+            <div className="mt-2.5 flex gap-2 items-center">
               <input
                 type="text"
+                inputMode="numeric"
                 value={otpCode}
-                onChange={(e) => { setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6)); setOtpError(null); }}
-                placeholder="Enter 6-digit OTP"
+                onChange={(e) => {
+                  setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6));
+                  setOtpError(null);
+                }}
+                placeholder="Enter 6-digit code"
                 maxLength={6}
+                autoFocus
                 className="flex-1 px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono tracking-widest text-center"
                 onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), verifyOtp())}
               />
@@ -423,18 +439,14 @@ export default function PublicProposalWizard() {
                 type="button"
                 onClick={verifyOtp}
                 disabled={otpCode.length < 6 || otpVerifying}
-                className="px-4 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 transition-colors"
+                className="px-4 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 transition-colors whitespace-nowrap"
               >
-                {otpVerifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                {otpVerifying
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <ShieldCheck className="w-3.5 h-3.5" />}
                 Verify
               </button>
             </div>
-          )}
-
-          {otpSent && !emailVerified && (
-            <p className="text-[11px] text-gray-400 mt-1">
-              A 6-digit code was sent to <strong>{form.email}</strong>. Check your inbox (and spam).
-            </p>
           )}
 
           {otpError && (
@@ -490,18 +502,12 @@ export default function PublicProposalWizard() {
             <textarea
               value={form.remarks}
               onChange={(e) => update({ remarks: e.target.value })}
-              placeholder="Brief requirement or message..."
+              placeholder="Brief requirement or message…"
               rows={3}
               className="w-full pl-10 pr-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             />
           </div>
         </div>
-
-        {!emailVerified && form.email.trim() && emailValid && !otpSent && (
-          <div className="px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-700">
-            Please verify your email address by clicking <strong>Send OTP</strong> before submitting.
-          </div>
-        )}
 
         {error && (
           <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
