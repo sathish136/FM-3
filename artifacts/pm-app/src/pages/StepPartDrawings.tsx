@@ -369,11 +369,11 @@ export default function StepPartDrawings() {
                         </div>
 
                         {/* Middle: 2×2 orthographic views */}
-                        <div className="grid grid-rows-2 grid-cols-2 min-h-0 overflow-hidden" style={{ flex: "5" }}>
+                        <div className="overflow-hidden" style={{ flex: "5", minHeight: 0, display: "grid", gridTemplateRows: "1fr 1fr", gridTemplateColumns: "1fr 1fr" }}>
                           {ORTHO_VIEWS.map(({ view, label }) => (
-                            <div key={view} className="border-b border-r border-border last:border-r-0 flex flex-col min-h-0 overflow-hidden">
+                            <div key={view} className="border-b border-r border-border last:border-r-0 flex flex-col overflow-hidden" style={{ minHeight: 0 }}>
                               <div className="shrink-0 bg-slate-800 dark:bg-slate-900 px-1 py-0.5 text-[7px] font-bold text-white uppercase tracking-wider text-center">{label}</div>
-                              <div className="flex-1 min-h-0 bg-white dark:bg-slate-50 overflow-hidden">
+                              <div className="min-h-0 flex-1 bg-white dark:bg-slate-50 overflow-hidden">
                                 <ShadedMeshImage meshes={meshes} meshIndices={selectedIndices} view={view}
                                   width={HD_PART.width} height={HD_PART.height} pixelRatio={2}
                                   className="h-full w-full" alt={`${selected.partNo} ${label}`} />
