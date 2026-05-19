@@ -1123,10 +1123,11 @@ export function UserManagementContent() {
                         const isCollapsed = tmplCollapsedGroups.has(group);
                         return (
                           <div key={group} className="rounded-xl border border-border overflow-hidden">
-                            <button
-                              type="button"
+                            <div
+                              role="button" tabIndex={0}
                               onClick={() => toggleGroupCollapse(group, setTmplCollapsedGroups)}
-                              className="w-full flex items-center gap-3 px-4 py-2.5 bg-muted/40 hover:bg-muted/70 transition-colors text-left"
+                              onKeyDown={e => e.key === "Enter" && toggleGroupCollapse(group, setTmplCollapsedGroups)}
+                              className="w-full flex items-center gap-3 px-4 py-2.5 bg-muted/40 hover:bg-muted/70 transition-colors cursor-pointer select-none"
                             >
                               <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground/60 shrink-0 transition-transform ${isCollapsed ? "-rotate-90" : ""}`} />
                               <p className="text-[11px] font-bold uppercase tracking-widest text-foreground flex-1">{group}</p>
@@ -1143,7 +1144,7 @@ export function UserManagementContent() {
                                 <button onClick={() => { const u: Record<string,ModuleRole> = {}; groupMods.forEach(m => { u[m.key] = "none"; }); setTmplRoles(prev => ({ ...prev, ...u })); }}
                                   className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition-colors ${groupSummary === "none" ? "bg-muted-foreground/20 text-foreground/60" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}>—</button>
                               </div>
-                            </button>
+                            </div>
                             {!isCollapsed && (
                               <div className="divide-y divide-border/50">
                                 {groupMods.map(mod => {
@@ -1556,10 +1557,11 @@ export function UserManagementContent() {
                         return (
                           <div key={group} className="rounded-xl border border-border overflow-hidden">
                             {/* Group header — click to expand/collapse */}
-                            <button
-                              type="button"
+                            <div
+                              role="button" tabIndex={0}
                               onClick={() => toggleGroupCollapse(group, setCollapsedGroups)}
-                              className="w-full flex items-center gap-3 px-4 py-2.5 bg-muted/40 hover:bg-muted/70 transition-colors text-left"
+                              onKeyDown={e => e.key === "Enter" && toggleGroupCollapse(group, setCollapsedGroups)}
+                              className="w-full flex items-center gap-3 px-4 py-2.5 bg-muted/40 hover:bg-muted/70 transition-colors cursor-pointer select-none"
                             >
                               <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground/60 shrink-0 transition-transform ${isCollapsed ? "-rotate-90" : ""}`} />
                               <p className="text-[11px] font-bold uppercase tracking-widest text-foreground flex-1">{group}</p>
@@ -1578,7 +1580,7 @@ export function UserManagementContent() {
                                 <button onClick={() => setGroupRole(group, "none")}
                                   className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition-colors ${groupSummary === "none" ? "bg-muted-foreground/20 text-foreground/60" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}>—</button>
                               </div>
-                            </button>
+                            </div>
                             {/* Module rows */}
                             {!isCollapsed && (
                               <div className="divide-y divide-border/50">

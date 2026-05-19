@@ -590,6 +590,9 @@ export default function PLCFieldDevices() {
   const [saving, setSaving]       = useState(false);
   const [error, setError]         = useState("");
   const [stats, setStats]         = useState({total:0,active:0,fault:0,calDue:0});
+  const [projects, setProjects]   = useState<{name:string; erpnextName?:string}[]>([]);
+  const [projSearch, setProjSearch] = useState("");
+  const [projOpen, setProjOpen]   = useState(false);
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
@@ -612,6 +615,13 @@ export default function PLCFieldDevices() {
   }, []);
 
   useEffect(() => { fetchItems(); fetchStats(); }, [fetchItems,fetchStats]);
+
+  useEffect(() => {
+    fetch(`${BASE}/api/projects`)
+      .then(r => r.json())
+      .then(data => setProjects(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
 
   function openNew() {
     setForm({...EMPTY, created_by:userName});
@@ -749,26 +759,6 @@ export default function PLCFieldDevices() {
         {/* ── List View ─────────────────────────────────────────────────── */}
         {!inDetail && (
           <div className="flex-1 overflow-y-auto p-6">
-            {/* Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              {[
-                {label:"Total Devices",  value:stats.total,  icon:Activity,      color:"text-blue-600",    bg:"bg-blue-50",    border:"border-blue-200"},
-                {label:"Active",         value:stats.active, icon:CheckCircle2,  color:"text-emerald-600", bg:"bg-emerald-50", border:"border-emerald-200"},
-                {label:"Fault",          value:stats.fault,  icon:AlertTriangle, color:"text-red-600",     bg:"bg-red-50",     border:"border-red-200"},
-                {label:"Cal Due (30d)",  value:stats.calDue, icon:Calendar,      color:"text-amber-600",   bg:"bg-amber-50",   border:"border-amber-200"},
-              ].map(s=>(
-                <div key={s.label} className={cn("bg-white border rounded-xl p-4 flex items-center gap-3",s.border)}>
-                  <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0",s.bg)}>
-                    <s.icon size={18} className={s.color}/>
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold text-gray-900">{s.value}</div>
-                    <div className="text-xs text-gray-500">{s.label}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
             {loading ? (
               <div className="flex justify-center items-center h-40 text-gray-400">
                 <Loader2 size={22} className="animate-spin mr-2"/> Loading…
@@ -863,10 +853,59 @@ export default function PLCFieldDevices() {
                   <div>
                     <SectionHead icon={FolderOpen} title="Project & Identification"/>
                     <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-                      <Field label="Project Number" value={form.project_number||""} onChange={v=>sf("project_number",v)} placeholder="e.g. WTT-2024-001"/>
-                      <Field label="Project Name"   value={form.project_name||""}   onChange={v=>sf("project_name",v)}   placeholder="Site / Customer name"/>
-                      <Field label="Tag No"          value={form.tag_no||""}          onChange={v=>sf("tag_no",v)}          placeholder="e.g. FIT-001, pH-101"/>
-                      <Field label="Location"        value={form.location||""}        onChange={v=>sf("location",v)}        placeholder="e.g. Feed Inlet, MBR Tank 1"/>
+                      {/* Project picker */}
+                      <div className="col-span-2">
+                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Project</label>
+                        <div className="relative">
+                          <div className={`flex items-center border rounded-lg bg-white overflow-hidden ${projOpen ? "border-blue-500 ring-2 ring-blue-500/20" : "border-gray-300"}`}>
+                            <FolderOpen size={14} className="ml-3 text-gray-400 flex-shrink-0"/>
+                            <input
+                              value={projOpen ? projSearch : (form.project_name||"")}
+                              onFocus={()=>{ setProjOpen(true); setProjSearch(""); }}
+                              onChange={e=>setProjSearch(e.target.value)}
+                              onBlur={()=>setTimeout(()=>setProjOpen(false),160)}
+                              placeholder="Search and select project…"
+                              className="flex-1 px-3 py-2 text-sm text-gray-800 focus:outline-none bg-transparent placeholder-gray-400"
+                            />
+                            {form.project_name && !projOpen && (
+                              <button type="button" onClick={()=>{ sf("project_name",""); sf("project_number",""); }}
+                                className="px-2 text-gray-400 hover:text-red-500 transition-colors">
+                                <X size={13}/>
+                              </button>
+                            )}
+                            <ChevronDown size={13} className={`mr-2.5 text-gray-400 transition-transform flex-shrink-0 ${projOpen?"rotate-180":""}`}/>
+                          </div>
+                          {projOpen && (
+                            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-56 overflow-y-auto">
+                              {projects
+                                .filter(p=>!projSearch.trim()||p.name.toLowerCase().includes(projSearch.toLowerCase()))
+                                .slice(0,40)
+                                .map(p=>(
+                                  <button key={p.name} type="button"
+                                    onMouseDown={()=>{
+                                      sf("project_name",p.name);
+                                      sf("project_number",p.erpnextName&&p.erpnextName!==p.name?p.erpnextName:"");
+                                      setProjOpen(false); setProjSearch("");
+                                    }}
+                                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 border-b border-gray-100 last:border-0 transition-colors">
+                                    <p className="font-medium text-gray-800">{p.name}</p>
+                                    {p.erpnextName&&p.erpnextName!==p.name&&(
+                                      <p className="text-xs text-blue-500 font-mono mt-0.5">{p.erpnextName}</p>
+                                    )}
+                                  </button>
+                                ))}
+                              {projects.filter(p=>!projSearch.trim()||p.name.toLowerCase().includes(projSearch.toLowerCase())).length===0&&(
+                                <p className="px-4 py-3 text-sm text-gray-400 text-center">No matching projects</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        {form.project_number&&(
+                          <p className="text-xs text-blue-500 font-mono mt-1 ml-1">{form.project_number}</p>
+                        )}
+                      </div>
+                      <Field label="Tag No"   value={form.tag_no||""}   onChange={v=>sf("tag_no",v)}   placeholder="e.g. FIT-001, pH-101"/>
+                      <Field label="Location" value={form.location||""} onChange={v=>sf("location",v)} placeholder="e.g. Feed Inlet, MBR Tank 1"/>
                     </div>
                   </div>
 

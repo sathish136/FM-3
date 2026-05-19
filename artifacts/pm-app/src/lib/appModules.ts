@@ -68,6 +68,8 @@ const ALL_APP_MODULES: AppModule[] = [
   { key: "plc-pid-design", label: "PID Design", group: "PLC & Automation", paths: ["/plc-automation/pid-design"] },
   { key: "plc-instruments", label: "Instruments", group: "PLC & Automation", paths: ["/plc-automation/instruments"] },
   { key: "plc-tags", label: "PLC Tags", group: "PLC & Automation", paths: ["/plc-automation/tags"] },
+  { key: "plc-modification-log", label: "Modification Log", group: "PLC & Automation", paths: ["/plc-automation/modification-log"] },
+  { key: "plc-field-devices", label: "Field Instruments", group: "PLC & Automation", paths: ["/plc-automation/field-devices"] },
   { key: "plc-panel-inspection", label: "Panel Inspection", group: "PLC & Automation", paths: ["/plc-automation/panel-inspection"] },
   { key: "plc-support-tickets", label: "Support Tickets", group: "PLC & Automation", paths: ["/plc-automation/support-tickets"] },
   { key: "plc-network-architecture", label: "Network Architecture", group: "PLC & Automation", paths: ["/plc-automation/network-architecture"] },
