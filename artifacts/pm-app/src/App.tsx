@@ -84,6 +84,9 @@ import SiteDbSystem from "@/pages/SiteDbSystem";
 import ProposalRequest from "@/pages/ProposalRequest";
 import PublicProposalWizard from "@/pages/PublicProposalWizard";
 import ProposalAdmin from "@/pages/ProposalAdmin";
+import StartupSheet from "@/pages/StartupSheet";
+import ROStandardItems from "@/pages/ROStandardItems";
+import CostWorkingTool from "@/pages/CostWorkingTool";
 import AgentManagement from "@/pages/AgentManagement";
 import HrmsWorkMonitor from "@/pages/HrmsWorkMonitor";
 import EmployeeIdCard from "@/pages/EmployeeIdCard";
@@ -286,6 +289,9 @@ function ProtectedRoutes() {
       <Route path="/site-db/analyze" component={SiteDbAnalytics} />
       <Route path="/site-db/system" component={SiteDbSystem} />
       <Route path="/proposals" component={ProposalAdmin} />
+      <Route path="/startup-sheet" component={StartupSheet} />
+      <Route path="/ro-standard-items" component={ROStandardItems} />
+      <Route path="/cost-working-tool" component={CostWorkingTool} />
       <Route path="/workshop" component={Workshop} />
       <Route path="/workshop/welder" component={Workshop} />
       <Route path="/workshop/fitter" component={Workshop} />
