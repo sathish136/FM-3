@@ -7,7 +7,7 @@ import {
   Calculator, Save, Edit2, X, FileText, TrendingUp,
   Wrench, Cpu, Droplets, Zap, Wind, Filter, Settings2, Package,
   IndianRupee, DollarSign, Euro, ChevronLeft, ChevronRight,
-  AlertCircle,
+  AlertCircle, CheckCircle2, XCircle, RotateCcw, GitBranch,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -527,7 +527,7 @@ function DetailsTab({
 }
 
 // ── New Record Modal ──────────────────────────────────────────────────────────
-function NewRecordModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+function NewRecordModal({ onClose, onCreated }: { onClose: () => void; onCreated: (newName: string) => void }) {
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ project: "", project_startup_sheet: "", flow: "", revision: "REV - 00", usd: "97", eur: "112" });
@@ -550,8 +550,10 @@ function NewRecordModal({ onClose, onCreated }: { onClose: () => void; onCreated
         }),
       });
       if (!r.ok) { const d = await r.json(); throw new Error(d.error ?? "Failed"); }
-      toast({ title: "Created in ERPNext" });
-      onCreated(); onClose();
+      const created = await r.json();
+      toast({ title: "Created in ERPNext", description: created.name ?? "" });
+      onCreated(created.name ?? "");
+      onClose();
     } catch (e: any) {
       toast({ title: "Create failed", description: e.message, variant: "destructive" });
     } finally { setSaving(false); }
@@ -610,16 +612,12 @@ function NewRecordModal({ onClose, onCreated }: { onClose: () => void; onCreated
 
 // ── Detail View (tabs + edit) ─────────────────────────────────────────────────
 function CostDetail({
-  doc, onRefresh, editMode, editForm, setField, onSave, onDiscard, saving,
+  doc, editMode, editForm, setField,
 }: {
   doc: ErpDoc;
-  onRefresh: () => void;
   editMode: boolean;
   editForm: Record<string, string>;
   setField: (k: string, v: string) => void;
-  onSave: () => void;
-  onDiscard: () => void;
-  saving: boolean;
 }) {
   const [activeTab, setActiveTab] = useState("details");
   const tabBarRef = useRef<HTMLDivElement>(null);
@@ -666,25 +664,14 @@ function CostDetail({
           <ChevronRight className="w-3.5 h-3.5" />
         </button>
 
-        {/* Edit/Save/Discard in tab bar right */}
-        <div className="flex-none flex items-center gap-2 px-3 border-l border-gray-100">
-          {editMode ? (
-            <>
-              <span className="text-[10px] text-amber-600 font-bold flex items-center gap-1 hidden sm:flex">
-                <AlertCircle className="w-3 h-3" /> Editing
-              </span>
-              <button onClick={onDiscard}
-                className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
-                Discard
-              </button>
-              <button onClick={onSave} disabled={saving}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-50">
-                {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-                {saving ? "Saving…" : "Save"}
-              </button>
-            </>
-          ) : null}
-        </div>
+        {/* Edit mode indicator pill */}
+        {editMode && (
+          <div className="flex-none flex items-center px-3 border-l border-amber-200 bg-amber-50">
+            <span className="text-[10px] text-amber-600 font-bold flex items-center gap-1">
+              <AlertCircle className="w-3 h-3" /> Editing
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Tab content */}
@@ -717,6 +704,7 @@ export default function CostWorkingTool() {
   const [editMode, setEditMode] = useState(false);
   const [editForm, setEditFormState] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [workflowLoading, setWorkflowLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -792,6 +780,62 @@ export default function CostWorkingTool() {
   }
 
   function closeDetail() { setSelectedDoc(null); setDocLoading(false); setEditMode(false); }
+
+  async function openByName(name: string) {
+    setDocLoading(true);
+    setSelectedDoc(null);
+    setEditMode(false);
+    try {
+      const r = await fetch(`${BASE}/api/cost-working/erp/${encodeURIComponent(name)}`);
+      if (!r.ok) throw new Error(await r.text());
+      setSelectedDoc(await r.json());
+    } catch (e: any) {
+      toast({ title: "Failed to open document", description: e.message, variant: "destructive" });
+    } finally { setDocLoading(false); }
+  }
+
+  async function submitDoc() {
+    if (!selectedDoc) return;
+    if (!confirm(`Submit "${selectedDoc.name}"?\n\nOnce submitted, the document can only be cancelled or amended.`)) return;
+    setWorkflowLoading(true);
+    try {
+      const r = await fetch(`${BASE}/api/cost-working/erp/${encodeURIComponent(selectedDoc.name)}/submit`, { method: "POST" });
+      if (!r.ok) { const d = await r.json(); throw new Error(d.error ?? "Submit failed"); }
+      toast({ title: "Document submitted" });
+      await refreshDoc();
+    } catch (e: any) {
+      toast({ title: "Submit failed", description: e.message, variant: "destructive" });
+    } finally { setWorkflowLoading(false); }
+  }
+
+  async function cancelDoc() {
+    if (!selectedDoc) return;
+    if (!confirm(`Cancel "${selectedDoc.name}"?\n\nThis will mark the document as Cancelled in ERPNext.`)) return;
+    setWorkflowLoading(true);
+    try {
+      const r = await fetch(`${BASE}/api/cost-working/erp/${encodeURIComponent(selectedDoc.name)}/cancel`, { method: "POST" });
+      if (!r.ok) { const d = await r.json(); throw new Error(d.error ?? "Cancel failed"); }
+      toast({ title: "Document cancelled" });
+      await refreshDoc();
+    } catch (e: any) {
+      toast({ title: "Cancel failed", description: e.message, variant: "destructive" });
+    } finally { setWorkflowLoading(false); }
+  }
+
+  async function amendDoc() {
+    if (!selectedDoc) return;
+    if (!confirm(`Amend "${selectedDoc.name}"?\n\nThis creates a new Draft copy that you can edit.`)) return;
+    setWorkflowLoading(true);
+    try {
+      const r = await fetch(`${BASE}/api/cost-working/erp/${encodeURIComponent(selectedDoc.name)}/amend`, { method: "POST" });
+      if (!r.ok) { const d = await r.json(); throw new Error(d.error ?? "Amend failed"); }
+      const amended = await r.json();
+      toast({ title: "Amendment created", description: amended.name ?? "" });
+      if (amended.name) { load(); await openByName(amended.name); }
+    } catch (e: any) {
+      toast({ title: "Amend failed", description: e.message, variant: "destructive" });
+    } finally { setWorkflowLoading(false); }
+  }
 
   async function syncERP() {
     setSyncing(true);
@@ -884,10 +928,59 @@ export default function CostWorkingTool() {
                     className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
                     <ExternalLink className="w-3.5 h-3.5" /> Open in ERP
                   </a>
-                  {!editMode && (
-                    <button onClick={startEdit}
-                      className="flex items-center gap-1.5 px-3.5 py-2 border border-gray-300 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
-                      <Edit2 className="w-3.5 h-3.5" /> Edit
+
+                  {/* Draft (0): Edit + Submit */}
+                  {selectedDoc.docstatus === 0 && !editMode && (
+                    <>
+                      <button onClick={startEdit}
+                        className="flex items-center gap-1.5 px-3.5 py-2 border border-gray-300 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+                        <Edit2 className="w-3.5 h-3.5" /> Edit
+                      </button>
+                      <button onClick={submitDoc} disabled={workflowLoading}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50">
+                        {workflowLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                        Submit
+                      </button>
+                    </>
+                  )}
+
+                  {/* Edit mode: Save/Discard */}
+                  {selectedDoc.docstatus === 0 && editMode && (
+                    <>
+                      <button onClick={() => setEditMode(false)}
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+                        Discard
+                      </button>
+                      <button onClick={saveEdit} disabled={saving}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50">
+                        {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                        {saving ? "Saving…" : "Save"}
+                      </button>
+                    </>
+                  )}
+
+                  {/* Submitted (1): Cancel + Amend */}
+                  {selectedDoc.docstatus === 1 && (
+                    <>
+                      <button onClick={cancelDoc} disabled={workflowLoading}
+                        className="flex items-center gap-1.5 px-3.5 py-2 border border-red-300 text-red-600 hover:bg-red-50 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50">
+                        {workflowLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
+                        Cancel
+                      </button>
+                      <button onClick={amendDoc} disabled={workflowLoading}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50">
+                        {workflowLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GitBranch className="w-3.5 h-3.5" />}
+                        Amend
+                      </button>
+                    </>
+                  )}
+
+                  {/* Cancelled (2): Amend only */}
+                  {selectedDoc.docstatus === 2 && (
+                    <button onClick={amendDoc} disabled={workflowLoading}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50">
+                      {workflowLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                      Amend
                     </button>
                   )}
                 </>
@@ -975,19 +1068,23 @@ export default function CostWorkingTool() {
           <div className="flex-1 min-h-0">
             <CostDetail
               doc={selectedDoc}
-              onRefresh={refreshDoc}
               editMode={editMode}
               editForm={editForm}
               setField={(k, v) => setEditFormState(f => ({ ...f, [k]: v }))}
-              onSave={saveEdit}
-              onDiscard={() => setEditMode(false)}
-              saving={saving}
             />
           </div>
         )}
 
         {/* New Record Modal */}
-        {showNew && <NewRecordModal onClose={() => setShowNew(false)} onCreated={load} />}
+        {showNew && (
+          <NewRecordModal
+            onClose={() => setShowNew(false)}
+            onCreated={async (newName) => {
+              load();
+              if (newName) await openByName(newName);
+            }}
+          />
+        )}
       </div>
     </Layout>
   );

@@ -206,6 +206,66 @@ router.put("/cost-working/erp/:name", async (req, res) => {
   }
 });
 
+/** Submit a document (docstatus 0 → 1) */
+router.post("/cost-working/erp/:name/submit", async (req, res) => {
+  if (!isErpNextConfigured()) return res.status(503).json({ error: "ERPNext not configured" });
+  try {
+    const r = await fetch(`${ERPNEXT_URL}/api/method/frappe.client.submit`, {
+      method: "POST",
+      headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify({ doc: { doctype: DOCTYPE, name: req.params.name } }),
+    });
+    if (!r.ok) {
+      const body = await r.text();
+      return res.status(r.status).json({ error: body });
+    }
+    const json = await r.json();
+    res.json(json.message ?? json);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Cancel a submitted document (docstatus 1 → 2) */
+router.post("/cost-working/erp/:name/cancel", async (req, res) => {
+  if (!isErpNextConfigured()) return res.status(503).json({ error: "ERPNext not configured" });
+  try {
+    const r = await fetch(`${ERPNEXT_URL}/api/method/frappe.client.cancel`, {
+      method: "POST",
+      headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify({ doctype: DOCTYPE, name: req.params.name }),
+    });
+    if (!r.ok) {
+      const body = await r.text();
+      return res.status(r.status).json({ error: body });
+    }
+    const json = await r.json();
+    res.json(json.message ?? json);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Amend a cancelled document — creates a new draft copy */
+router.post("/cost-working/erp/:name/amend", async (req, res) => {
+  if (!isErpNextConfigured()) return res.status(503).json({ error: "ERPNext not configured" });
+  try {
+    const r = await fetch(`${ERPNEXT_URL}/api/method/frappe.client.amend_document`, {
+      method: "POST",
+      headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify({ doctype: DOCTYPE, docname: req.params.name }),
+    });
+    if (!r.ok) {
+      const body = await r.text();
+      return res.status(r.status).json({ error: body });
+    }
+    const json = await r.json();
+    res.json(json.message ?? json);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get("/cost-working/:id", async (req, res) => {
   try {
     const { rows } = await pool.query(
