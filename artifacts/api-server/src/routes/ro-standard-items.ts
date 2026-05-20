@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
+import { isErpNextConfigured, authHeader } from "../lib/erpnext";
 
 const router = Router();
 
@@ -44,6 +45,53 @@ router.get("/ro-standard-items/:id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch item" });
+  }
+});
+
+router.post("/ro-standard-items/sync", async (_req, res) => {
+  if (!isErpNextConfigured()) {
+    return res.status(503).json({ error: "ERPNext is not configured (ERPNEXT_URL, ERPNEXT_API_KEY, ERPNEXT_API_SECRET required)" });
+  }
+  try {
+    const erpUrl = process.env.ERPNEXT_URL!.replace(/\/$/, "");
+    const fields = JSON.stringify([
+      "item_code", "item_name", "item_group", "brand", "description",
+      "stock_uom", "standard_rate",
+    ]);
+    const filters = JSON.stringify([["item_group", "like", "%RO%"]]);
+    const url = `${erpUrl}/api/resource/Item?fields=${encodeURIComponent(fields)}&filters=${encodeURIComponent(filters)}&limit_page_length=500`;
+    const r = await fetch(url, { headers: { Authorization: authHeader() } });
+    if (!r.ok) throw new Error(`ERPNext returned ${r.status}`);
+    const json = await r.json();
+    const rows: any[] = json.data ?? [];
+    let synced = 0;
+    for (const row of rows) {
+      await pool.query(
+        `INSERT INTO ro_standard_items (item_code, item_name, category, make, specifications, unit, unit_rate)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)
+         ON CONFLICT (item_code) DO UPDATE SET
+           item_name = EXCLUDED.item_name,
+           category = EXCLUDED.category,
+           make = EXCLUDED.make,
+           specifications = EXCLUDED.specifications,
+           unit = EXCLUDED.unit,
+           unit_rate = EXCLUDED.unit_rate`,
+        [
+          row.item_code,
+          row.item_name,
+          row.item_group ?? "Other",
+          row.brand ?? null,
+          row.description ?? null,
+          row.stock_uom ?? "No.",
+          row.standard_rate ?? null,
+        ]
+      );
+      synced++;
+    }
+    res.json({ ok: true, synced });
+  } catch (err: any) {
+    console.error(err);
+    res.status(500).json({ error: err.message ?? "Sync failed" });
   }
 });
 

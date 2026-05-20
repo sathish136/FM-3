@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
+import { isErpNextConfigured, authHeader } from "../lib/erpnext";
 
 const router = Router();
 
@@ -26,6 +27,7 @@ pool.query(`
     status TEXT NOT NULL DEFAULT 'Draft',
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
   );
+  ALTER TABLE cost_working ADD COLUMN IF NOT EXISTS erp_name TEXT UNIQUE;
 `).catch(console.error);
 
 router.get("/cost-working", async (_req, res) => {
@@ -51,6 +53,64 @@ router.get("/cost-working/:id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch record" });
+  }
+});
+
+router.post("/cost-working/sync", async (_req, res) => {
+  if (!isErpNextConfigured()) {
+    return res.status(503).json({ error: "ERPNext is not configured (ERPNEXT_URL, ERPNEXT_API_KEY, ERPNEXT_API_SECRET required)" });
+  }
+  try {
+    const erpUrl = process.env.ERPNEXT_URL!.replace(/\/$/, "");
+    const fields = JSON.stringify([
+      "name", "quotation_to", "party_name", "transaction_date",
+      "grand_total", "net_total", "status",
+    ]);
+    const url = `${erpUrl}/api/resource/Quotation?fields=${encodeURIComponent(fields)}&limit_page_length=500&order_by=transaction_date desc`;
+    const r = await fetch(url, { headers: { Authorization: authHeader() } });
+    if (!r.ok) throw new Error(`ERPNext returned ${r.status}`);
+    const json = await r.json();
+    const rows: any[] = json.data ?? [];
+    const MAX_NUMERIC = 999_999_999_999.99;
+    let synced = 0;
+    for (const row of rows) {
+      const netTotal = Math.min(Number(row.net_total ?? 0), MAX_NUMERIC);
+      const grandTotal = Math.min(Number(row.grand_total ?? 0), MAX_NUMERIC);
+      const gstAmt = grandTotal - netTotal;
+      const gstPct = Math.min(netTotal > 0 ? Math.round((gstAmt / netTotal) * 100) : 18, 100);
+      try {
+        await pool.query(
+          `INSERT INTO cost_working
+            (erp_name, quote_no, project_name, customer, date, equipment_cost, gst_pct, status)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+           ON CONFLICT (erp_name) DO UPDATE SET
+             quote_no = EXCLUDED.quote_no,
+             project_name = EXCLUDED.project_name,
+             customer = EXCLUDED.customer,
+             date = EXCLUDED.date,
+             equipment_cost = EXCLUDED.equipment_cost,
+             gst_pct = EXCLUDED.gst_pct,
+             status = EXCLUDED.status`,
+          [
+            row.name,
+            row.name,
+            row.name,
+            row.party_name ?? "—",
+            row.transaction_date ?? null,
+            netTotal,
+            gstPct,
+            row.status === "Submitted" ? "Sent" : row.status === "Cancelled" ? "Lost" : "Draft",
+          ]
+        );
+        synced++;
+      } catch (rowErr: any) {
+        console.warn(`Skipping ERP row ${row.name}:`, rowErr.message);
+      }
+    }
+    res.json({ ok: true, synced });
+  } catch (err: any) {
+    console.error(err);
+    res.status(500).json({ error: err.message ?? "Sync failed" });
   }
 });
 
