@@ -4,9 +4,13 @@ import { isErpNextConfigured, authHeader } from "../lib/erpnext";
 
 const router = Router();
 
+const ERPNEXT_URL = process.env.ERPNEXT_URL?.replace(/\/$/, "");
+const DOCTYPE = "Cost Working Tool";
+
 pool.query(`
   CREATE TABLE IF NOT EXISTS cost_working (
     id SERIAL PRIMARY KEY,
+    erp_name TEXT UNIQUE,
     quote_no TEXT NOT NULL,
     project_name TEXT NOT NULL,
     customer TEXT NOT NULL,
@@ -27,18 +31,155 @@ pool.query(`
     status TEXT NOT NULL DEFAULT 'Draft',
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
   );
-  ALTER TABLE cost_working ADD COLUMN IF NOT EXISTS erp_name TEXT UNIQUE;
+  ALTER TABLE cost_working ADD COLUMN IF NOT EXISTS erp_name TEXT;
+  CREATE UNIQUE INDEX IF NOT EXISTS cost_working_erp_name_uidx ON cost_working(erp_name) WHERE erp_name IS NOT NULL;
 `).catch(console.error);
 
+async function erpFetch(path: string) {
+  const res = await fetch(`${ERPNEXT_URL}${path}`, {
+    headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`ERPNext ${res.status}: ${body.slice(0, 300)}`);
+  }
+  return res.json();
+}
+
 router.get("/cost-working", async (_req, res) => {
+  if (isErpNextConfigured()) {
+    try {
+      const fields = JSON.stringify([
+        "name", "project", "startup_sheet", "flow", "revision",
+        "exchange_rate_usd", "exchange_rate_eur", "modified", "creation",
+        "docstatus",
+      ]);
+      const params = new URLSearchParams({
+        fields,
+        limit_page_length: "500",
+        order_by: "modified desc",
+      });
+      const json = await erpFetch(`/api/resource/${encodeURIComponent(DOCTYPE)}?${params}`);
+      return res.json({ source: "erp", data: json.data ?? [] });
+    } catch (err: any) {
+      console.error("ERPNext list fetch failed:", err.message);
+    }
+  }
   try {
     const { rows } = await pool.query(
       "SELECT * FROM cost_working ORDER BY date DESC, created_at DESC"
     );
-    res.json(rows);
+    res.json({ source: "local", data: rows });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch cost workings" });
+  }
+});
+
+router.get("/cost-working/erp/:name", async (req, res) => {
+  if (!isErpNextConfigured()) {
+    return res.status(503).json({ error: "ERPNext not configured" });
+  }
+  try {
+    const json = await erpFetch(
+      `/api/resource/${encodeURIComponent(DOCTYPE)}/${encodeURIComponent(req.params.name)}`
+    );
+    res.json(json.data ?? json);
+  } catch (err: any) {
+    console.error("ERPNext doc fetch failed:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/cost-working/sync", async (_req, res) => {
+  if (!isErpNextConfigured()) {
+    return res.status(503).json({ error: "ERPNext not configured (ERPNEXT_URL, ERPNEXT_API_KEY, ERPNEXT_API_SECRET required)" });
+  }
+  try {
+    const fields = JSON.stringify([
+      "name", "project", "startup_sheet", "flow", "revision",
+      "exchange_rate_usd", "exchange_rate_eur", "modified", "creation",
+    ]);
+    const params = new URLSearchParams({
+      fields,
+      limit_page_length: "500",
+      order_by: "modified desc",
+    });
+    const json = await erpFetch(`/api/resource/${encodeURIComponent(DOCTYPE)}?${params}`);
+    const rows: any[] = json.data ?? [];
+    let synced = 0;
+    for (const row of rows) {
+      try {
+        await pool.query(
+          `INSERT INTO cost_working (erp_name, quote_no, project_name, customer, date, status)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT (erp_name) DO UPDATE SET
+             quote_no = EXCLUDED.quote_no,
+             project_name = EXCLUDED.project_name,
+             date = EXCLUDED.date`,
+          [
+            row.name,
+            row.name,
+            row.project ?? row.name,
+            row.startup_sheet ?? "—",
+            row.creation ? row.creation.slice(0, 10) : null,
+            "Synced",
+          ]
+        );
+        synced++;
+      } catch (rowErr: any) {
+        console.warn(`Skipping row ${row.name}:`, rowErr.message);
+      }
+    }
+    res.json({ ok: true, synced, total: rows.length });
+  } catch (err: any) {
+    console.error(err);
+    res.status(500).json({ error: err.message ?? "Sync failed" });
+  }
+});
+
+router.post("/cost-working/erp", async (req, res) => {
+  if (!isErpNextConfigured()) {
+    return res.status(503).json({ error: "ERPNext not configured" });
+  }
+  try {
+    const r = await fetch(`${ERPNEXT_URL}/api/resource/${encodeURIComponent(DOCTYPE)}`, {
+      method: "POST",
+      headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+    });
+    if (!r.ok) {
+      const body = await r.text();
+      return res.status(r.status).json({ error: body });
+    }
+    const json = await r.json();
+    res.status(201).json(json.data ?? json);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put("/cost-working/erp/:name", async (req, res) => {
+  if (!isErpNextConfigured()) {
+    return res.status(503).json({ error: "ERPNext not configured" });
+  }
+  try {
+    const r = await fetch(
+      `${ERPNEXT_URL}/api/resource/${encodeURIComponent(DOCTYPE)}/${encodeURIComponent(req.params.name)}`,
+      {
+        method: "PUT",
+        headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+        body: JSON.stringify(req.body),
+      }
+    );
+    if (!r.ok) {
+      const body = await r.text();
+      return res.status(r.status).json({ error: body });
+    }
+    const json = await r.json();
+    res.json(json.data ?? json);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -53,64 +194,6 @@ router.get("/cost-working/:id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch record" });
-  }
-});
-
-router.post("/cost-working/sync", async (_req, res) => {
-  if (!isErpNextConfigured()) {
-    return res.status(503).json({ error: "ERPNext is not configured (ERPNEXT_URL, ERPNEXT_API_KEY, ERPNEXT_API_SECRET required)" });
-  }
-  try {
-    const erpUrl = process.env.ERPNEXT_URL!.replace(/\/$/, "");
-    const fields = JSON.stringify([
-      "name", "quotation_to", "party_name", "transaction_date",
-      "grand_total", "net_total", "status",
-    ]);
-    const url = `${erpUrl}/api/resource/Quotation?fields=${encodeURIComponent(fields)}&limit_page_length=500&order_by=transaction_date desc`;
-    const r = await fetch(url, { headers: { Authorization: authHeader() } });
-    if (!r.ok) throw new Error(`ERPNext returned ${r.status}`);
-    const json = await r.json();
-    const rows: any[] = json.data ?? [];
-    const MAX_NUMERIC = 999_999_999_999.99;
-    let synced = 0;
-    for (const row of rows) {
-      const netTotal = Math.min(Number(row.net_total ?? 0), MAX_NUMERIC);
-      const grandTotal = Math.min(Number(row.grand_total ?? 0), MAX_NUMERIC);
-      const gstAmt = grandTotal - netTotal;
-      const gstPct = Math.min(netTotal > 0 ? Math.round((gstAmt / netTotal) * 100) : 18, 100);
-      try {
-        await pool.query(
-          `INSERT INTO cost_working
-            (erp_name, quote_no, project_name, customer, date, equipment_cost, gst_pct, status)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-           ON CONFLICT (erp_name) DO UPDATE SET
-             quote_no = EXCLUDED.quote_no,
-             project_name = EXCLUDED.project_name,
-             customer = EXCLUDED.customer,
-             date = EXCLUDED.date,
-             equipment_cost = EXCLUDED.equipment_cost,
-             gst_pct = EXCLUDED.gst_pct,
-             status = EXCLUDED.status`,
-          [
-            row.name,
-            row.name,
-            row.name,
-            row.party_name ?? "—",
-            row.transaction_date ?? null,
-            netTotal,
-            gstPct,
-            row.status === "Submitted" ? "Sent" : row.status === "Cancelled" ? "Lost" : "Draft",
-          ]
-        );
-        synced++;
-      } catch (rowErr: any) {
-        console.warn(`Skipping ERP row ${row.name}:`, rowErr.message);
-      }
-    }
-    res.json({ ok: true, synced });
-  } catch (err: any) {
-    console.error(err);
-    res.status(500).json({ error: err.message ?? "Sync failed" });
   }
 });
 
