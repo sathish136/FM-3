@@ -1,13 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Layout } from "@/components/Layout";
+import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Search, Droplets, Gauge, FlaskConical } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  Plus, Search, Loader2, Trash2, X, Droplets, Gauge, FlaskConical,
+  Edit2, Send, RefreshCw, ChevronDown,
+} from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -54,42 +53,63 @@ const EMPTY = {
   remarks: "",
   operator: "",
 };
-
 type FormState = typeof EMPTY;
 
-const PLANT_TYPE_COLOR: Record<string, string> = {
-  RO: "bg-blue-500/20 text-blue-300",
-  MBR: "bg-teal-500/20 text-teal-300",
-  STP: "bg-amber-500/20 text-amber-300",
-  ETP: "bg-rose-500/20 text-rose-300",
-  UF: "bg-violet-500/20 text-violet-300",
+const PLANT_TYPES = ["RO", "MBR", "STP", "ETP", "UF", "Other"];
+
+const PLANT_COLOR: Record<string, string> = {
+  RO: "bg-blue-50 text-blue-700 border-blue-100",
+  MBR: "bg-teal-50 text-teal-700 border-teal-100",
+  STP: "bg-amber-50 text-amber-700 border-amber-100",
+  ETP: "bg-rose-50 text-rose-700 border-rose-100",
+  UF: "bg-violet-50 text-violet-700 border-violet-100",
+  Other: "bg-slate-100 text-slate-600 border-slate-200",
 };
 
+type Tab = "site" | "flow" | "quality" | "chemical";
+
+function SectionLabel({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
+  return (
+    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+      <Icon className="w-3.5 h-3.5" />
+      <span className="flex-1 h-px bg-slate-100" />
+      {label}
+      <span className="flex-1 h-px bg-slate-100" />
+    </h3>
+  );
+}
+
 export default function StartupSheet() {
+  const { user } = useAuth();
   const { toast } = useToast();
   const [records, setRecords] = useState<StartupRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [open, setOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [typeFilter, setTypeFilter] = useState("All");
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<StartupRecord | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY);
+  const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [tab, setTab] = useState<Tab>("site");
 
   const load = useCallback(async () => {
+    setLoading(true);
     try {
       const r = await fetch(`${BASE}/api/startup-sheets`);
       setRecords(await r.json());
-    } catch { /* ignore */ } finally {
-      setLoading(false);
-    }
+    } catch { toast({ title: "Load failed", variant: "destructive" }); }
+    finally { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
   function openNew() {
     setEditing(null);
-    setForm(EMPTY);
-    setOpen(true);
+    setForm({ ...EMPTY, operator: user?.name ?? "" });
+    setTab("site");
+    setDrawerOpen(true);
   }
 
   function openEdit(r: StartupRecord) {
@@ -114,11 +134,14 @@ export default function StartupSheet() {
       remarks: r.remarks ?? "",
       operator: r.operator ?? "",
     });
-    setOpen(true);
+    setTab("site");
+    setDrawerOpen(true);
   }
 
+  function closeDrawer() { setDrawerOpen(false); setEditing(null); setForm(EMPTY); }
+
   async function save() {
-    if (!form.site_name) return;
+    if (!form.site_name.trim()) { toast({ title: "Site name required", variant: "destructive" }); return; }
     setSaving(true);
     const body = {
       site_name: form.site_name,
@@ -142,255 +165,310 @@ export default function StartupSheet() {
     };
     try {
       const url = editing ? `${BASE}/api/startup-sheets/${editing.id}` : `${BASE}/api/startup-sheets`;
-      const r = await fetch(url, {
-        method: editing ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) throw new Error();
+      const r = await fetch(url, { method: editing ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!r.ok) throw new Error(await r.text());
       toast({ title: editing ? "Record updated" : "Record saved" });
-      setOpen(false);
-      load();
-    } catch {
-      toast({ title: "Save failed", variant: "destructive" });
-    } finally {
-      setSaving(false);
-    }
+      closeDrawer(); load();
+    } catch (e: any) { toast({ title: "Save failed", description: e.message, variant: "destructive" }); }
+    finally { setSaving(false); }
   }
 
   async function del(id: number) {
-    await fetch(`${BASE}/api/startup-sheets/${id}`, { method: "DELETE" });
-    load();
+    try {
+      await fetch(`${BASE}/api/startup-sheets/${id}`, { method: "DELETE" });
+      toast({ title: "Deleted" }); setDeleteId(null); load();
+    } catch { toast({ title: "Delete failed", variant: "destructive" }); }
   }
 
-  function setF(k: keyof FormState, v: string) {
-    setForm(f => ({ ...f, [k]: v }));
+  async function syncERP() {
+    setSyncing(true);
+    try {
+      const r = await fetch(`${BASE}/api/startup-sheets/sync`, { method: "POST" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? "Sync failed");
+      toast({ title: `Synced ${d.synced ?? 0} records from ERP` });
+      load();
+    } catch (e: any) { toast({ title: "Sync failed", description: e.message, variant: "destructive" }); }
+    finally { setSyncing(false); }
   }
 
-  function numField(k: keyof FormState, label: string, unit?: string) {
+  function setF(k: keyof FormState, v: string) { setForm(f => ({ ...f, [k]: v })); }
+
+  function NumInput({ k, label, unit }: { k: keyof FormState; label: string; unit?: string }) {
     return (
       <div>
-        <Label className="text-xs text-slate-400">
-          {label}{unit && <span className="ml-1 text-slate-500">({unit})</span>}
-        </Label>
-        <Input
-          type="number"
-          step="any"
+        <label className="block text-xs font-semibold text-slate-600 mb-1">
+          {label}{unit && <span className="text-slate-400 font-normal ml-1">({unit})</span>}
+        </label>
+        <input
+          type="number" step="any"
           value={form[k] as string}
           onChange={e => setF(k, e.target.value)}
-          className="mt-1 bg-slate-800 border-slate-700 h-8 text-sm"
+          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-300"
         />
       </div>
     );
   }
 
-  const filtered = records.filter(r =>
-    r.site_name.toLowerCase().includes(search.toLowerCase()) ||
-    r.plant_type.toLowerCase().includes(search.toLowerCase()),
-  );
+  const filtered = records.filter(r => {
+    const q = search.toLowerCase();
+    const matchSearch = !q || r.site_name.toLowerCase().includes(q) || (r.operator ?? "").toLowerCase().includes(q);
+    const matchType = typeFilter === "All" || r.plant_type === typeFilter;
+    return matchSearch && matchType;
+  });
+
+  const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
+    { id: "site", label: "Site Info", icon: Droplets },
+    { id: "flow", label: "Flow & Pressure", icon: Gauge },
+    { id: "quality", label: "Water Quality", icon: FlaskConical },
+    { id: "chemical", label: "Chemicals", icon: FlaskConical },
+  ];
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-white flex items-center gap-2">
-            <Droplets className="w-5 h-5 text-cyan-400" />
-            Startup Sheet
-          </h1>
-          <p className="text-sm text-slate-400 mt-0.5">Plant startup parameters log — flow, pressure, chemical doses</p>
+    <Layout>
+      <div className="flex flex-col h-full bg-slate-50">
+        <div className="bg-white border-b border-slate-200 px-6 py-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-cyan-600 shadow-sm shadow-cyan-200">
+                <Droplets className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-slate-800">Startup Sheet</h1>
+                <p className="text-xs text-slate-500 mt-0.5">Plant startup parameters — flow, pressure & chemical doses</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={syncERP} disabled={syncing}
+                className="flex items-center gap-2 px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50">
+                <RefreshCw className={cn("w-4 h-4", syncing && "animate-spin")} />
+                {syncing ? "Syncing…" : "Sync from ERP"}
+              </button>
+              <button onClick={openNew}
+                className="flex items-center gap-2 px-4 py-2.5 bg-cyan-600 text-white rounded-xl text-sm font-semibold hover:bg-cyan-700 transition-colors shadow-sm">
+                <Plus className="w-4 h-4" /> New Record
+              </button>
+            </div>
+          </div>
         </div>
-        <Button onClick={openNew} className="bg-cyan-600 hover:bg-cyan-700 text-white gap-1.5">
-          <Plus className="w-4 h-4" /> New Record
-        </Button>
-      </div>
 
-      <div className="relative w-72">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-        <Input
-          placeholder="Search site or plant type…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="pl-9 bg-slate-800 border-slate-700 text-sm"
-        />
-      </div>
-
-      <div className="rounded-xl border border-slate-700/60 overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-slate-800/60 border-slate-700/60">
-              <TableHead className="text-slate-400 text-xs">Site</TableHead>
-              <TableHead className="text-slate-400 text-xs">Date</TableHead>
-              <TableHead className="text-slate-400 text-xs">Type</TableHead>
-              <TableHead className="text-slate-400 text-xs">Capacity (m³/d)</TableHead>
-              <TableHead className="text-slate-400 text-xs">Feed Flow (LPH)</TableHead>
-              <TableHead className="text-slate-400 text-xs">Perm. Flow (LPH)</TableHead>
-              <TableHead className="text-slate-400 text-xs">Feed TDS (ppm)</TableHead>
-              <TableHead className="text-slate-400 text-xs">Perm. TDS (ppm)</TableHead>
-              <TableHead className="text-slate-400 text-xs">Feed pH</TableHead>
-              <TableHead className="text-slate-400 text-xs">Operator</TableHead>
-              <TableHead className="text-slate-400 text-xs w-16"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow><TableCell colSpan={11} className="text-center py-10 text-slate-500">Loading…</TableCell></TableRow>
-            ) : filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={11} className="text-center py-10 text-slate-500">No startup records found</TableCell></TableRow>
-            ) : filtered.map(r => (
-              <TableRow key={r.id} className="border-slate-700/40 hover:bg-slate-800/40">
-                <TableCell className="font-medium text-white text-sm">{r.site_name}</TableCell>
-                <TableCell className="text-slate-300 text-sm">{r.startup_date?.slice(0, 10)}</TableCell>
-                <TableCell>
-                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${PLANT_TYPE_COLOR[r.plant_type] ?? "bg-slate-700 text-slate-300"}`}>
-                    {r.plant_type}
-                  </span>
-                </TableCell>
-                <TableCell className="text-slate-300 text-sm">{r.capacity_m3_per_day ?? "—"}</TableCell>
-                <TableCell className="text-slate-300 text-sm">{r.feed_flow_lph ?? "—"}</TableCell>
-                <TableCell className="text-slate-300 text-sm">{r.permeate_flow_lph ?? "—"}</TableCell>
-                <TableCell className="text-slate-300 text-sm">{r.feed_tds_ppm ?? "—"}</TableCell>
-                <TableCell className="text-slate-300 text-sm">{r.permeate_tds_ppm ?? "—"}</TableCell>
-                <TableCell className="text-slate-300 text-sm">{r.feed_ph ?? "—"}</TableCell>
-                <TableCell className="text-slate-300 text-sm">{r.operator ?? "—"}</TableCell>
-                <TableCell>
-                  <div className="flex gap-1">
-                    <Button size="icon" variant="ghost" className="h-7 w-7 text-slate-400 hover:text-white" onClick={() => openEdit(r)}>
-                      <Pencil className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button size="icon" variant="ghost" className="h-7 w-7 text-slate-400 hover:text-red-400" onClick={() => del(r.id)}>
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="bg-slate-900 border-slate-700 max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-white">{editing ? "Edit Startup Record" : "New Startup Record"}</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-5 py-2">
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                <Droplets className="w-3.5 h-3.5" /> Site Info
-              </p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs text-slate-400">Site Name *</Label>
-                  <Input
-                    value={form.site_name}
-                    onChange={e => setF("site_name", e.target.value)}
-                    placeholder="e.g. Rajkot STP Phase 2"
-                    className="mt-1 bg-slate-800 border-slate-700 h-8 text-sm"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs text-slate-400">Startup Date</Label>
-                  <Input
-                    type="date"
-                    value={form.startup_date}
-                    onChange={e => setF("startup_date", e.target.value)}
-                    className="mt-1 bg-slate-800 border-slate-700 h-8 text-sm"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs text-slate-400">Plant Type</Label>
-                  <Select value={form.plant_type} onValueChange={v => setF("plant_type", v)}>
-                    <SelectTrigger className="mt-1 bg-slate-800 border-slate-700 h-8 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-slate-800 border-slate-700">
-                      {["RO", "MBR", "STP", "ETP", "UF", "Other"].map(t => (
-                        <SelectItem key={t} value={t}>{t}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-xs text-slate-400">Operator / Engineer</Label>
-                  <Input
-                    value={form.operator}
-                    onChange={e => setF("operator", e.target.value)}
-                    placeholder="Name"
-                    className="mt-1 bg-slate-800 border-slate-700 h-8 text-sm"
-                  />
-                </div>
-              </div>
+        <div className="flex-1 overflow-y-auto">
+          <div className="px-6 pt-5 pb-3 flex gap-3 flex-wrap">
+            <div className="relative flex-1 min-w-48">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search site name or operator…"
+                className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-300" />
             </div>
-
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                <Gauge className="w-3.5 h-3.5" /> Flow & Pressure Parameters
-              </p>
-              <div className="grid grid-cols-3 gap-3">
-                {numField("capacity_m3_per_day", "Capacity", "m³/day")}
-                {numField("feed_flow_lph", "Feed Flow", "LPH")}
-                {numField("permeate_flow_lph", "Permeate Flow", "LPH")}
-                {numField("reject_flow_lph", "Reject Flow", "LPH")}
-                {numField("feed_pressure_bar", "Feed Pressure", "bar")}
-                {numField("op_pressure_bar", "Op. Pressure", "bar")}
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                <FlaskConical className="w-3.5 h-3.5" /> Water Quality
-              </p>
-              <div className="grid grid-cols-3 gap-3">
-                {numField("feed_tds_ppm", "Feed TDS", "ppm")}
-                {numField("permeate_tds_ppm", "Permeate TDS", "ppm")}
-                {numField("feed_ph", "Feed pH")}
-                {numField("permeate_ph", "Permeate pH")}
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Chemical Doses</p>
-              <div className="grid grid-cols-2 gap-3">
-                {numField("antiscalant_dose_ppm", "Antiscalant", "ppm")}
-                {numField("chlorine_dose_ppm", "Chlorine Dose", "ppm")}
-              </div>
-              <div className="mt-3">
-                <Label className="text-xs text-slate-400">Chemical Notes</Label>
-                <Textarea
-                  value={form.chemical_notes}
-                  onChange={e => setF("chemical_notes", e.target.value)}
-                  placeholder="Dosing schedule, chemical names, etc."
-                  className="mt-1 bg-slate-800 border-slate-700 text-sm resize-none"
-                  rows={2}
-                />
-              </div>
-            </div>
-
-            <div>
-              <Label className="text-xs text-slate-400">Remarks</Label>
-              <Textarea
-                value={form.remarks}
-                onChange={e => setF("remarks", e.target.value)}
-                placeholder="Any observations or issues during startup…"
-                className="mt-1 bg-slate-800 border-slate-700 text-sm resize-none"
-                rows={2}
-              />
+            <div className="relative">
+              <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
+                className="appearance-none pl-3 pr-8 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
+                <option value="All">All Types</option>
+                {PLANT_TYPES.map(t => <option key={t}>{t}</option>)}
+              </select>
+              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
             </div>
           </div>
 
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setOpen(false)} className="text-slate-400">Cancel</Button>
-            <Button
-              onClick={save}
-              disabled={!form.site_name || saving}
-              className="bg-cyan-600 hover:bg-cyan-700 text-white"
-            >
-              {saving ? "Saving…" : editing ? "Update" : "Save"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+          <div className="px-6 pb-6">
+            {loading ? (
+              <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-cyan-500" /></div>
+            ) : filtered.length === 0 ? (
+              <div className="bg-white rounded-xl border border-slate-200 text-center py-20 text-slate-400">
+                <Droplets className="w-12 h-12 mx-auto mb-3 opacity-25" />
+                <p className="font-semibold text-slate-500">No startup records found</p>
+                <p className="text-sm mt-1">Click "New Record" to add your first startup sheet</p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Site</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Type</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Capacity (m³/d)</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Feed Flow (LPH)</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Perm. Flow (LPH)</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Feed TDS (ppm)</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Perm. TDS (ppm)</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Feed pH</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Operator</th>
+                      <th className="px-3 py-3" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filtered.map(r => (
+                      <tr key={r.id} className="hover:bg-cyan-50/40 transition-colors group cursor-pointer" onClick={() => openEdit(r)}>
+                        <td className="px-4 py-2.5 font-bold text-slate-800">{r.site_name}</td>
+                        <td className="px-4 py-2.5 text-slate-500 text-xs">{r.startup_date?.slice(0, 10) ?? "—"}</td>
+                        <td className="px-4 py-2.5">
+                          <span className={cn("px-2 py-0.5 rounded-md text-xs font-bold border", PLANT_COLOR[r.plant_type] ?? "bg-slate-100 text-slate-600 border-slate-200")}>
+                            {r.plant_type}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-slate-600 text-sm">{r.capacity_m3_per_day ?? <span className="text-slate-300">—</span>}</td>
+                        <td className="px-4 py-2.5 text-slate-600 text-sm">{r.feed_flow_lph ?? <span className="text-slate-300">—</span>}</td>
+                        <td className="px-4 py-2.5 text-slate-600 text-sm">{r.permeate_flow_lph ?? <span className="text-slate-300">—</span>}</td>
+                        <td className="px-4 py-2.5 text-slate-600 text-sm">{r.feed_tds_ppm ?? <span className="text-slate-300">—</span>}</td>
+                        <td className="px-4 py-2.5 text-slate-600 text-sm">{r.permeate_tds_ppm ?? <span className="text-slate-300">—</span>}</td>
+                        <td className="px-4 py-2.5 text-slate-600 text-sm">{r.feed_ph ?? <span className="text-slate-300">—</span>}</td>
+                        <td className="px-4 py-2.5 text-slate-500 text-xs">{r.operator ?? <span className="text-slate-300">—</span>}</td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={e => { e.stopPropagation(); openEdit(r); }}
+                              className="p-1.5 rounded-lg hover:bg-cyan-100 text-slate-400 hover:text-cyan-600 transition-colors">
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={e => { e.stopPropagation(); setDeleteId(r.id); }}
+                              className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-100 text-xs text-slate-400">
+                  {filtered.length} record{filtered.length !== 1 ? "s" : ""}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {drawerOpen && (
+          <div className="fixed inset-0 z-50 flex">
+            <div className="flex-1 bg-black/40 backdrop-blur-sm" onClick={closeDrawer} />
+            <div className="w-full max-w-lg bg-white shadow-2xl flex flex-col overflow-hidden">
+              <div className="px-6 py-4 bg-gradient-to-r from-cyan-700 to-cyan-600 flex items-center justify-between">
+                <div>
+                  <h2 className="text-white font-bold text-lg">{editing ? "Edit Startup Record" : "New Startup Record"}</h2>
+                  <p className="text-cyan-200 text-xs mt-0.5">Plant startup parameters log</p>
+                </div>
+                <button onClick={closeDrawer} className="p-2 rounded-lg hover:bg-white/10 text-white/80 hover:text-white transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex border-b border-slate-200 bg-slate-50 flex-shrink-0">
+                {tabs.map(t => (
+                  <button key={t.id} onClick={() => setTab(t.id)}
+                    className={cn("flex-1 py-2.5 text-xs font-semibold flex flex-col items-center gap-0.5 border-b-2 transition-colors",
+                      tab === t.id ? "border-cyan-600 text-cyan-700 bg-white" : "border-transparent text-slate-400 hover:text-slate-600")}>
+                    <t.icon className="w-3.5 h-3.5" />
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6">
+                {tab === "site" && (
+                  <div className="space-y-4">
+                    <SectionLabel icon={Droplets} label="Site Info" />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="col-span-2">
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">Site Name <span className="text-red-500">*</span></label>
+                        <input value={form.site_name} onChange={e => setF("site_name", e.target.value)}
+                          placeholder="e.g. Rajkot STP Phase 2"
+                          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-300" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">Startup Date</label>
+                        <input type="date" value={form.startup_date} onChange={e => setF("startup_date", e.target.value)}
+                          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-300" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">Plant Type</label>
+                        <select value={form.plant_type} onChange={e => setF("plant_type", e.target.value)}
+                          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
+                          {PLANT_TYPES.map(t => <option key={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">Operator / Engineer</label>
+                        <input value={form.operator} onChange={e => setF("operator", e.target.value)}
+                          placeholder="Name"
+                          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-300" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">Remarks</label>
+                      <textarea value={form.remarks} onChange={e => setF("remarks", e.target.value)} rows={3}
+                        placeholder="Any observations or issues during startup…"
+                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500/30 resize-none" />
+                    </div>
+                  </div>
+                )}
+
+                {tab === "flow" && (
+                  <div className="space-y-4">
+                    <SectionLabel icon={Gauge} label="Flow & Pressure Parameters" />
+                    <div className="grid grid-cols-2 gap-3">
+                      <NumInput k="capacity_m3_per_day" label="Capacity" unit="m³/day" />
+                      <NumInput k="feed_flow_lph" label="Feed Flow" unit="LPH" />
+                      <NumInput k="permeate_flow_lph" label="Permeate Flow" unit="LPH" />
+                      <NumInput k="reject_flow_lph" label="Reject Flow" unit="LPH" />
+                      <NumInput k="feed_pressure_bar" label="Feed Pressure" unit="bar" />
+                      <NumInput k="op_pressure_bar" label="Op. Pressure" unit="bar" />
+                    </div>
+                  </div>
+                )}
+
+                {tab === "quality" && (
+                  <div className="space-y-4">
+                    <SectionLabel icon={FlaskConical} label="Water Quality" />
+                    <div className="grid grid-cols-2 gap-3">
+                      <NumInput k="feed_tds_ppm" label="Feed TDS" unit="ppm" />
+                      <NumInput k="permeate_tds_ppm" label="Permeate TDS" unit="ppm" />
+                      <NumInput k="feed_ph" label="Feed pH" />
+                      <NumInput k="permeate_ph" label="Permeate pH" />
+                    </div>
+                  </div>
+                )}
+
+                {tab === "chemical" && (
+                  <div className="space-y-4">
+                    <SectionLabel icon={FlaskConical} label="Chemical Doses" />
+                    <div className="grid grid-cols-2 gap-3">
+                      <NumInput k="antiscalant_dose_ppm" label="Antiscalant" unit="ppm" />
+                      <NumInput k="chlorine_dose_ppm" label="Chlorine Dose" unit="ppm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">Chemical Notes</label>
+                      <textarea value={form.chemical_notes} onChange={e => setF("chemical_notes", e.target.value)} rows={4}
+                        placeholder="Dosing schedule, chemical names…"
+                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500/30 resize-none" />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="px-6 py-4 border-t border-slate-100 flex gap-3 justify-end bg-slate-50">
+                <button onClick={closeDrawer} className="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors">Cancel</button>
+                <button onClick={save} disabled={saving}
+                  className="px-5 py-2 bg-cyan-600 text-white text-sm rounded-lg hover:bg-cyan-700 disabled:opacity-60 flex items-center gap-2 transition-colors font-semibold">
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  {editing ? "Update" : "Save"} Record
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {deleteId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4 border border-slate-100">
+              <h3 className="font-bold text-slate-800 mb-1">Delete Startup Record?</h3>
+              <p className="text-sm text-slate-500 mb-5">This action cannot be undone.</p>
+              <div className="flex gap-3 justify-end">
+                <button onClick={() => setDeleteId(null)} className="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Cancel</button>
+                <button onClick={() => del(deleteId)} className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold">Delete</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </Layout>
   );
 }
