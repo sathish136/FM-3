@@ -86,10 +86,8 @@ router.get("/cost-working", async (_req, res) => {
   if (isErpNextConfigured()) {
     try {
       const data = await erpListWithRetry(DOCTYPE, [
-        "name", "project", "flow", "revision",
-        "exchange_rate_usd", "exchange_rate_eur",
-        "modified", "creation", "docstatus",
-        "startup_sheet",
+        "name", "project", "project_name", "flow", "revision",
+        "usd", "eur", "modified", "creation", "docstatus",
       ], { limit_page_length: "500", order_by: "modified desc" });
       return res.json({ source: "erp", data });
     } catch (err: any) {
