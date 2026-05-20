@@ -41,26 +41,57 @@ async function erpFetch(path: string) {
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`ERPNext ${res.status}: ${body.slice(0, 300)}`);
+    throw new Error(`ERPNext ${res.status}: ${body.slice(0, 400)}`);
   }
   return res.json();
+}
+
+/** Fetches ERPNext resource list with automatic 417 field-drop retries. */
+async function erpListWithRetry(
+  doctype: string,
+  fields: string[],
+  extraParams: Record<string, string> = {},
+): Promise<any[]> {
+  let currentFields = [...fields];
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const params = new URLSearchParams({
+      ...extraParams,
+      fields: JSON.stringify(currentFields),
+    });
+    const url = `${ERPNEXT_URL}/api/resource/${encodeURIComponent(doctype)}?${params}`;
+    const res = await fetch(url, {
+      headers: { Authorization: authHeader(), "Content-Type": "application/json" },
+    });
+    if (res.ok) {
+      const json = await res.json();
+      return json.data ?? [];
+    }
+    if (res.status === 417) {
+      const body = await res.text().catch(() => "");
+      const match = body.match(/Field not permitted in query:\s*([A-Za-z0-9_]+)/);
+      if (match && currentFields.includes(match[1])) {
+        console.warn(`[cost-working] ERPNext blocked field "${match[1]}", retrying without it`);
+        currentFields = currentFields.filter(f => f !== match[1]);
+        continue;
+      }
+      throw new Error(`ERPNext 417 (unresolvable): ${body.slice(0, 300)}`);
+    }
+    const body = await res.text().catch(() => "");
+    throw new Error(`ERPNext ${res.status}: ${body.slice(0, 300)}`);
+  }
+  throw new Error("ERPNext: too many blocked fields");
 }
 
 router.get("/cost-working", async (_req, res) => {
   if (isErpNextConfigured()) {
     try {
-      const fields = JSON.stringify([
-        "name", "project", "startup_sheet", "flow", "revision",
-        "exchange_rate_usd", "exchange_rate_eur", "modified", "creation",
-        "docstatus",
-      ]);
-      const params = new URLSearchParams({
-        fields,
-        limit_page_length: "500",
-        order_by: "modified desc",
-      });
-      const json = await erpFetch(`/api/resource/${encodeURIComponent(DOCTYPE)}?${params}`);
-      return res.json({ source: "erp", data: json.data ?? [] });
+      const data = await erpListWithRetry(DOCTYPE, [
+        "name", "project", "flow", "revision",
+        "exchange_rate_usd", "exchange_rate_eur",
+        "modified", "creation", "docstatus",
+        "startup_sheet",
+      ], { limit_page_length: "500", order_by: "modified desc" });
+      return res.json({ source: "erp", data });
     } catch (err: any) {
       console.error("ERPNext list fetch failed:", err.message);
     }
@@ -96,17 +127,11 @@ router.post("/cost-working/sync", async (_req, res) => {
     return res.status(503).json({ error: "ERPNext not configured (ERPNEXT_URL, ERPNEXT_API_KEY, ERPNEXT_API_SECRET required)" });
   }
   try {
-    const fields = JSON.stringify([
+    const rows = await erpListWithRetry(DOCTYPE, [
       "name", "project", "startup_sheet", "flow", "revision",
       "exchange_rate_usd", "exchange_rate_eur", "modified", "creation",
-    ]);
-    const params = new URLSearchParams({
-      fields,
-      limit_page_length: "500",
-      order_by: "modified desc",
-    });
-    const json = await erpFetch(`/api/resource/${encodeURIComponent(DOCTYPE)}?${params}`);
-    const rows: any[] = json.data ?? [];
+    ], { limit_page_length: "500", order_by: "modified desc" });
+
     let synced = 0;
     for (const row of rows) {
       try {
@@ -121,7 +146,7 @@ router.post("/cost-working/sync", async (_req, res) => {
             row.name,
             row.name,
             row.project ?? row.name,
-            row.startup_sheet ?? "—",
+            row.startup_sheet ?? row.name,
             row.creation ? row.creation.slice(0, 10) : null,
             "Synced",
           ]
