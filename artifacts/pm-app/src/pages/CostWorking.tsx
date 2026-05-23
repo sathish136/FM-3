@@ -110,6 +110,8 @@ export default function CostWorking() {
   // STEP Upload
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const dropUploadRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
 
   // 3D Viewer
   const [show3D, setShow3D] = useState(true);
@@ -345,6 +347,34 @@ export default function CostWorking() {
     }
   }
 
+  async function autoCreateAndUpload(file: File) {
+    if (!file.name.match(/\.(step|stp)$/i)) {
+      toast({ title: "Please upload a .STEP or .STP file", variant: "destructive" }); return;
+    }
+    setUploading(true);
+    try {
+      const name = file.name.replace(/\.(step|stp)$/i, "").replace(/[_\-]+/g, " ").trim();
+      const cr = await fetch(`${BASE}/api/cost-working/sessions`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, created_by: user?.fullName }),
+      });
+      const sess = await cr.json();
+      if (!cr.ok) throw new Error(sess.error || "Failed to create session");
+      const fd = new FormData(); fd.append("file", file);
+      const ur = await fetch(`${BASE}/api/cost-working/sessions/${sess.id}/upload-step`, { method: "POST", body: fd });
+      const updated = await ur.json();
+      if (!ur.ok) throw new Error(updated.error || "Upload failed");
+      await loadSessions();
+      setActiveSession({ ...updated, item_count: 0, total_cost: 0 });
+      toast({ title: "3D model uploaded — extracting parts…" });
+    } catch (e: any) {
+      toast({ title: e.message, variant: "destructive" });
+    } finally {
+      setUploading(false);
+      if (dropUploadRef.current) dropUploadRef.current.value = "";
+    }
+  }
+
   async function uploadStep(e: React.ChangeEvent<HTMLInputElement>) {
     if (!activeSession || !e.target.files?.[0]) return;
     const file = e.target.files[0];
@@ -498,14 +528,23 @@ export default function CostWorking() {
 
         {/* ── Left Panel: Session List ────────────────────────────────── */}
         <div className="w-72 shrink-0 flex flex-col border-r border-slate-200 bg-white">
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-semibold text-slate-800">Cost Working</h2>
-              <p className="text-xs text-slate-400 mt-0.5">3D Part Cost Analysis</p>
+          <div className="p-4 border-b border-slate-100">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-800">Cost Working</h2>
+                <p className="text-xs text-slate-400 mt-0.5">Session history</p>
+              </div>
+              <button onClick={() => { setEditSess({}); setSessDrawer(true); }}
+                title="New blank session"
+                className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 p-1.5 rounded-lg transition-colors">
+                <Plus className="w-3.5 h-3.5" />
+              </button>
             </div>
-            <button onClick={() => { setEditSess({}); setSessDrawer(true); }}
-              className="flex items-center gap-1 text-xs bg-indigo-600 text-white px-2.5 py-1.5 rounded-lg hover:bg-indigo-700 transition-colors">
-              <Plus className="w-3.5 h-3.5" /> New
+            <button onClick={() => dropUploadRef.current?.click()}
+              disabled={uploading}
+              className="w-full flex items-center justify-center gap-1.5 text-xs bg-violet-600 text-white px-3 py-2 rounded-lg hover:bg-violet-700 transition-colors disabled:opacity-60">
+              {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+              {uploading ? "Uploading…" : "Upload STEP Model"}
             </button>
           </div>
           <div className="p-3 border-b border-slate-100">
@@ -554,13 +593,69 @@ export default function CostWorking() {
           </div>
         </div>
 
+        {/* Hidden global file input for auto-create-and-upload */}
+        <input ref={dropUploadRef} type="file" accept=".step,.stp,.STEP,.STP" className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) autoCreateAndUpload(f); }} />
+
         {/* ── Right Panel: Session Detail ─────────────────────────────── */}
         <div className="flex-1 flex overflow-hidden">
           {!activeSession ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
-              <FolderOpen className="w-14 h-14 mb-3 opacity-20" />
-              <p className="text-sm font-medium">Select or create a session</p>
-              <p className="text-xs mt-1 opacity-70">Upload a STEP file, then build your cost breakdown</p>
+            /* ── Upload Drop Zone (initial state) ── */
+            <div
+              className="flex-1 flex flex-col items-center justify-center"
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
+              onDrop={e => {
+                e.preventDefault(); setDragOver(false);
+                const f = e.dataTransfer.files[0]; if (f) autoCreateAndUpload(f);
+              }}
+            >
+              <div
+                onClick={() => !uploading && dropUploadRef.current?.click()}
+                className={cn(
+                  "border-2 border-dashed rounded-3xl p-16 text-center max-w-lg w-full mx-8 cursor-pointer transition-all duration-200",
+                  dragOver
+                    ? "border-violet-500 bg-violet-50 scale-[1.03] shadow-lg shadow-violet-100"
+                    : "border-slate-200 bg-white hover:border-violet-400 hover:bg-violet-50/40 hover:shadow-md"
+                )}
+              >
+                <div className={cn("w-24 h-24 rounded-2xl flex items-center justify-center mx-auto mb-5 transition-colors",
+                  dragOver ? "bg-violet-100 border-violet-200" : "bg-slate-50 border border-slate-100")}>
+                  {uploading
+                    ? <Loader2 className="w-12 h-12 text-violet-400 animate-spin" />
+                    : <Boxes className={cn("w-12 h-12 transition-colors", dragOver ? "text-violet-500" : "text-violet-300")} />
+                  }
+                </div>
+                <h3 className="text-xl font-semibold text-slate-800 mb-2">
+                  {uploading ? "Uploading 3D model…" : "Upload your 3D Model"}
+                </h3>
+                {uploading ? (
+                  <p className="text-sm text-violet-500">Creating session and preparing analysis…</p>
+                ) : (
+                  <>
+                    <p className="text-sm text-slate-500 mb-1">
+                      {dragOver ? "Drop to upload" : "Drag & drop your STEP file here, or click to browse"}
+                    </p>
+                    <p className="text-xs text-slate-400">Supports .STEP / .STP · Up to 200 MB</p>
+                    <div className="mt-5 flex flex-col gap-2 text-left border-t border-slate-100 pt-4">
+                      <p className="text-[11px] text-slate-400 font-medium uppercase tracking-wide">What happens next</p>
+                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                        <span className="w-5 h-5 rounded-full bg-violet-100 text-violet-600 flex items-center justify-center text-[10px] font-bold shrink-0">1</span>
+                        3D model is parsed and all assembly parts are extracted
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                        <span className="w-5 h-5 rounded-full bg-violet-100 text-violet-600 flex items-center justify-center text-[10px] font-bold shrink-0">2</span>
+                        Part names are matched against ERPNext item master
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                        <span className="w-5 h-5 rounded-full bg-violet-100 text-violet-600 flex items-center justify-center text-[10px] font-bold shrink-0">3</span>
+                        Latest PO price is fetched for each matched item
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+              <p className="text-xs text-slate-400 mt-4">Or pick a previous session from the panel on the left</p>
             </div>
           ) : (
             <>
