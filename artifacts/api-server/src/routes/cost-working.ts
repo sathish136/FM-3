@@ -224,12 +224,42 @@ router.delete("/cost-working/items/:id", async (req, res) => {
 
 router.get("/cost-working/erp/projects", async (_req, res) => {
   try {
-    const data = await erpFetch("wtt_module.customization.custom.rfq.get_project");
-    const raw: string = data?.message ?? "";
-    const projects = raw.trim().split("\n").filter(Boolean).map(line => {
-      const parts = line.split(" - ", 2);
-      return { code: parts[0].trim(), name: parts[1]?.trim() ?? parts[0].trim() };
-    });
+    const [activeResult, standardResult] = await Promise.allSettled([
+      erpFetch("wtt_module.customization.custom.rfq.get_project"),
+      (async () => {
+        const fields = encodeURIComponent('["name","project_name","status"]');
+        const filters = encodeURIComponent('[["status","in",["Open","Active"]]]');
+        const r = await fetch(
+          `${ERP_URL}/api/resource/Project?filters=${filters}&fields=${fields}&limit=500&order_by=name+asc`,
+          { headers: { Authorization: ERP_AUTH(), Accept: "application/json" } }
+        );
+        if (!r.ok) return { data: [] };
+        return r.json();
+      })(),
+    ]);
+
+    const seen = new Set<string>();
+    const projects: { code: string; name: string }[] = [];
+
+    if (activeResult.status === "fulfilled") {
+      const raw: string = activeResult.value?.message ?? "";
+      raw.trim().split("\n").filter(Boolean).forEach(line => {
+        const parts = line.split(" - ", 2);
+        const code = parts[0].trim();
+        const name = parts[1]?.trim() ?? code;
+        if (code && !seen.has(code)) { seen.add(code); projects.push({ code, name }); }
+      });
+    }
+
+    if (standardResult.status === "fulfilled") {
+      const list: any[] = (standardResult.value as any)?.data ?? [];
+      list.forEach((p: any) => {
+        const code = (p.name ?? "").trim();
+        const name = (p.project_name ?? code).trim();
+        if (code && !seen.has(code)) { seen.add(code); projects.push({ code, name }); }
+      });
+    }
+
     res.json({ projects });
   } catch (e: any) {
     res.status(502).json({ error: e.message, projects: [] });
