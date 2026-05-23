@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import { Layout } from "@/components/Layout";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -6,8 +6,12 @@ import { cn } from "@/lib/utils";
 import {
   Plus, Search, Loader2, Trash2, X, Upload, Download, ChevronDown,
   Edit2, FileBox, DollarSign, Package, BarChart3, ShoppingBag,
-  RefreshCw, FolderOpen, CheckCircle2, AlertCircle, Info
+  RefreshCw, FolderOpen, CheckCircle2, AlertCircle, Info, Boxes, Eye
 } from "lucide-react";
+import { loadStepFile, prewarmWorker, type MeshData, type TreeNode } from "@/lib/stepLoader";
+import type { ViewerRef } from "@/components/StepViewer3D";
+
+const StepViewer3D = lazy(() => import("@/components/StepViewer3D"));
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -107,6 +111,22 @@ export default function CostWorking() {
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // 3D Viewer
+  const [show3D, setShow3D] = useState(true);
+  const [viewerMeshes, setViewerMeshes] = useState<MeshData[]>([]);
+  const [viewerRoot, setViewerRoot] = useState<TreeNode | null>(null);
+  const [viewerStatus, setViewerStatus] = useState<"idle"|"loading"|"loaded"|"error">("idle");
+  const [viewerProgress, setViewerProgress] = useState("");
+  const viewerRef = useRef<ViewerRef>(null);
+  const hiddenMeshes = new Set<number>();
+
+  // Discovered parts from 3D tree
+  const [discoveredParts, setDiscoveredParts] = useState<string[]>([]);
+  const [partLookupLoading, setPartLookupLoading] = useState(false);
+  const [partMatches, setPartMatches] = useState<ErpItemMatch[]>([]);
+  const [selectedDiscovered, setSelectedDiscovered] = useState<Set<number>>(new Set());
+  const [addingDiscovered, setAddingDiscovered] = useState(false);
+
   // ERP Item Lookup (post-upload)
   const [itemLookupModal, setItemLookupModal] = useState(false);
   const [itemLookupQuery, setItemLookupQuery] = useState("");
@@ -118,8 +138,114 @@ export default function CostWorking() {
   // ERP Projects
   const [erpProjects, setErpProjects] = useState<{ code: string; name: string }[]>([]);
 
-  useEffect(() => { loadSessions(); loadErpProjects(); }, []);
-  useEffect(() => { if (activeSession) loadItems(activeSession.id); }, [activeSession]);
+  useEffect(() => { loadSessions(); loadErpProjects(); prewarmWorker(); }, []);
+  useEffect(() => {
+    if (activeSession) {
+      loadItems(activeSession.id);
+      if (activeSession.step_file_name) {
+        loadStepViewer(activeSession.id);
+      } else {
+        setViewerStatus("idle");
+        setViewerMeshes([]);
+        setViewerRoot(null);
+        setDiscoveredParts([]);
+        setPartMatches([]);
+      }
+    }
+  }, [activeSession?.id]);
+
+  function collectPartNames(node: TreeNode, out: Set<string>) {
+    const name = (node.name ?? "").trim();
+    const skip = ["", "compound", "solid", "body", "part", "shape", "root", "assembly", "brep", "face", "edge"];
+    if (name.length > 2 && node.meshIndices.length > 0 && !skip.includes(name.toLowerCase()) && !/^\d+$/.test(name)) {
+      out.add(name);
+    }
+    for (const child of node.children) collectPartNames(child, out);
+  }
+
+  async function loadStepViewer(sessionId: number) {
+    setViewerStatus("loading");
+    setViewerProgress("Fetching STEP file…");
+    setViewerMeshes([]);
+    setViewerRoot(null);
+    setDiscoveredParts([]);
+    setPartMatches([]);
+    setSelectedDiscovered(new Set());
+    try {
+      const r = await fetch(`${BASE}/api/cost-working/sessions/${sessionId}/step-download`);
+      if (!r.ok) throw new Error("Download failed");
+      const buf = await r.arrayBuffer();
+      setViewerProgress("Parsing 3D geometry…");
+      const result = await loadStepFile(buf, msg => setViewerProgress(msg));
+      setViewerMeshes(result.meshes);
+      setViewerRoot(result.root);
+      setViewerStatus("loaded");
+      const nameSet = new Set<string>();
+      collectPartNames(result.root, nameSet);
+      const names = Array.from(nameSet);
+      setDiscoveredParts(names);
+      if (names.length > 0) lookupPartsInERP(names);
+    } catch (e: any) {
+      setViewerStatus("error");
+      setViewerProgress(e.message || "Failed to load STEP");
+    }
+  }
+
+  async function lookupPartsInERP(names: string[]) {
+    setPartLookupLoading(true);
+    setPartMatches([]);
+    try {
+      const toSearch = names.slice(0, 25);
+      const results = await Promise.all(
+        toSearch.map(name =>
+          fetch(`${BASE}/api/cost-working/erp/item-lookup?q=${encodeURIComponent(name)}`)
+            .then(r => r.json())
+            .then(d => (d.items ?? []) as ErpItemMatch[])
+            .catch(() => [] as ErpItemMatch[])
+        )
+      );
+      const seen = new Set<string>();
+      const all: ErpItemMatch[] = [];
+      for (const items of results) {
+        for (const it of items) {
+          if (!seen.has(it.item_code)) { seen.add(it.item_code); all.push(it); }
+        }
+      }
+      setPartMatches(all);
+    } finally {
+      setPartLookupLoading(false);
+    }
+  }
+
+  async function addDiscoveredItems() {
+    if (!activeSession || selectedDiscovered.size === 0) return;
+    setAddingDiscovered(true);
+    try {
+      const toAdd = partMatches.filter((_, i) => selectedDiscovered.has(i));
+      for (const it of toAdd) {
+        await fetch(`${BASE}/api/cost-working/sessions/${activeSession.id}/items`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            part_name: it.item_name || it.item_code,
+            material_category: "General",
+            description: it.description,
+            quantity: 1,
+            unit_price: it.latest_po_rate ?? 0,
+            erp_po_no: it.latest_po_no,
+            erp_item_code: it.item_code,
+            uom: it.latest_uom || "Nos",
+            source: "erp_po",
+          }),
+        });
+      }
+      await loadItems(activeSession.id);
+      await loadSessions();
+      setSelectedDiscovered(new Set());
+      toast({ title: `${toAdd.length} item(s) added from 3D parts` });
+    } finally {
+      setAddingDiscovered(false);
+    }
+  }
 
   async function loadSessions() {
     setSessLoading(true);
@@ -429,7 +555,7 @@ export default function CostWorking() {
         </div>
 
         {/* ── Right Panel: Session Detail ─────────────────────────────── */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex overflow-hidden">
           {!activeSession ? (
             <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
               <FolderOpen className="w-14 h-14 mb-3 opacity-20" />
@@ -438,6 +564,8 @@ export default function CostWorking() {
             </div>
           ) : (
             <>
+              {/* ── Cost Content ── */}
+              <div className="flex-1 flex flex-col overflow-hidden min-w-0">
               {/* Header */}
               <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0">
                 <div>
@@ -454,6 +582,13 @@ export default function CostWorking() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  {activeSession.step_file_name && (
+                    <button onClick={() => setShow3D(v => !v)}
+                      className={cn("flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors",
+                        show3D ? "bg-violet-600 text-white border-violet-600" : "border-violet-200 text-violet-600 hover:bg-violet-50")}>
+                      <Boxes className="w-3.5 h-3.5" /> 3D View
+                    </button>
+                  )}
                   <button onClick={openImport}
                     className="flex items-center gap-1.5 text-xs border border-indigo-200 text-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-50 transition-colors">
                     <ShoppingBag className="w-3.5 h-3.5" /> Import from ERP PO
@@ -649,6 +784,148 @@ export default function CostWorking() {
                 </div>
 
               </div>
+              </div>{/* end cost-content */}
+
+              {/* ── 3D Viewer Panel ────────────────────────────────────────── */}
+              {show3D && activeSession.step_file_name && (
+                <div className="w-[440px] shrink-0 border-l border-slate-200 flex flex-col bg-slate-900 overflow-hidden">
+
+                  {/* Panel header */}
+                  <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/10 shrink-0">
+                    <div className="flex items-center gap-2">
+                      <Boxes className="w-4 h-4 text-violet-400" />
+                      <span className="text-xs font-semibold text-white">3D Model</span>
+                      {viewerStatus === "loaded" && (
+                        <span className="text-[10px] text-slate-400">{viewerMeshes.length} meshes · {discoveredParts.length} parts</span>
+                      )}
+                    </div>
+                    {viewerStatus === "error" && (
+                      <button onClick={() => loadStepViewer(activeSession.id)}
+                        className="flex items-center gap-1 text-[10px] text-amber-400 hover:text-amber-300">
+                        <RefreshCw className="w-3 h-3" /> Retry
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Viewer canvas */}
+                  <div className="relative flex-[2] min-h-0 bg-slate-800">
+                    {viewerStatus === "loading" && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 z-10">
+                        <Loader2 className="w-8 h-8 animate-spin text-violet-400" />
+                        <p className="text-xs text-slate-300">{viewerProgress || "Loading…"}</p>
+                      </div>
+                    )}
+                    {viewerStatus === "error" && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 z-10">
+                        <AlertCircle className="w-8 h-8 text-red-400" />
+                        <p className="text-xs text-red-300">{viewerProgress}</p>
+                      </div>
+                    )}
+                    {viewerStatus === "loaded" && viewerMeshes.length > 0 && (
+                      <Suspense fallback={<div className="absolute inset-0 flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-violet-400" /></div>}>
+                        <StepViewer3D
+                          ref={viewerRef}
+                          meshes={viewerMeshes}
+                          hiddenMeshes={hiddenMeshes}
+                          viewMode="shaded"
+                          bgColor="dark"
+                          showGrid={false}
+                          showAxes={false}
+                          measureMode={false}
+                          onMeasureResult={() => {}}
+                          onCameraChange={() => {}}
+                          onPartClick={() => {}}
+                        />
+                      </Suspense>
+                    )}
+                    {viewerStatus === "idle" && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <p className="text-xs text-slate-500">No model loaded</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Parts discovery panel */}
+                  <div className="flex-[1.2] min-h-0 flex flex-col border-t border-white/10 overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-2 shrink-0 border-b border-white/10">
+                      <div className="flex items-center gap-2">
+                        <Package className="w-3.5 h-3.5 text-indigo-400" />
+                        <span className="text-xs font-semibold text-white">Part Discovery</span>
+                        {partLookupLoading && <Loader2 className="w-3 h-3 animate-spin text-indigo-300" />}
+                        {!partLookupLoading && partMatches.length > 0 && (
+                          <span className="text-[10px] text-slate-400">{partMatches.length} ERP matches</span>
+                        )}
+                      </div>
+                      {selectedDiscovered.size > 0 && (
+                        <button onClick={addDiscoveredItems} disabled={addingDiscovered}
+                          className="flex items-center gap-1 text-[10px] bg-indigo-600 text-white px-2 py-0.5 rounded hover:bg-indigo-700 disabled:opacity-50">
+                          {addingDiscovered ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                          Add {selectedDiscovered.size} to sheet
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto">
+                      {viewerStatus !== "loaded" && discoveredParts.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-full gap-1 text-slate-500">
+                          <Eye className="w-5 h-5 opacity-40" />
+                          <p className="text-[10px]">Parts will appear after STEP loads</p>
+                        </div>
+                      ) : partLookupLoading ? (
+                        <div className="flex flex-col items-center justify-center h-full gap-2 text-slate-400">
+                          <Loader2 className="w-5 h-5 animate-spin text-indigo-400" />
+                          <p className="text-[10px]">Looking up {discoveredParts.length} parts in ERPNext…</p>
+                        </div>
+                      ) : partMatches.length === 0 && discoveredParts.length > 0 ? (
+                        <div className="p-4 text-center">
+                          <p className="text-[10px] text-slate-400">No ERPNext items matched the {discoveredParts.length} parts found in this assembly.</p>
+                          <div className="mt-2 space-y-0.5 max-h-24 overflow-y-auto">
+                            {discoveredParts.map(n => (
+                              <p key={n} className="text-[10px] text-slate-600 truncate">{n}</p>
+                            ))}
+                          </div>
+                        </div>
+                      ) : partMatches.length > 0 ? (
+                        <div className="divide-y divide-white/5">
+                          {partMatches.map((it, i) => (
+                            <label key={it.item_code} className={cn(
+                              "flex items-start gap-2.5 px-4 py-2.5 cursor-pointer hover:bg-white/5 transition-colors",
+                              selectedDiscovered.has(i) && "bg-indigo-900/30"
+                            )}>
+                              <input type="checkbox" className="mt-0.5 shrink-0 accent-indigo-500"
+                                checked={selectedDiscovered.has(i)}
+                                onChange={e => {
+                                  setSelectedDiscovered(prev => {
+                                    const next = new Set(prev);
+                                    e.target.checked ? next.add(i) : next.delete(i);
+                                    return next;
+                                  });
+                                }} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[11px] font-medium text-white truncate">{it.item_name || it.item_code}</p>
+                                <p className="text-[10px] text-slate-400 truncate">{it.item_code}</p>
+                                {it.description && <p className="text-[10px] text-slate-500 truncate">{it.description}</p>}
+                              </div>
+                              <div className="shrink-0 text-right">
+                                {it.latest_po_rate != null ? (
+                                  <>
+                                    <p className="text-[11px] font-semibold text-emerald-400">
+                                      ₹{Number(it.latest_po_rate).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </p>
+                                    <p className="text-[9px] text-slate-500">{it.latest_uom || "Nos"} · {it.latest_po_no}</p>
+                                  </>
+                                ) : (
+                                  <p className="text-[10px] text-slate-500">No PO price</p>
+                                )}
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
