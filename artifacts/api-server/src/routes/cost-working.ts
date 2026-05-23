@@ -258,6 +258,55 @@ router.get("/cost-working/erp/purchase-orders", async (req, res) => {
   }
 });
 
+router.get("/cost-working/erp/item-lookup", async (req, res) => {
+  const q = ((req.query.q as string) || "").trim();
+  if (!q) return res.json({ items: [] });
+  try {
+    const params = new URLSearchParams({
+      fields: JSON.stringify(["item_code", "item_name", "description", "stock_uom"]),
+      filters: JSON.stringify([["item_name", "like", `%${q}%`], ["disabled", "=", 0]]),
+      limit_page_length: "20",
+      order_by: "item_name asc",
+    });
+    const itemsUrl = `${ERP_URL}/api/resource/Item?${params}`;
+    const itemsRes = await fetch(itemsUrl, { headers: { Authorization: ERP_AUTH() } });
+    if (!itemsRes.ok) throw new Error(`ERP ${itemsRes.status}`);
+    const itemsJson = await itemsRes.json();
+    const items: any[] = itemsJson.data ?? [];
+
+    const enriched = await Promise.all(items.map(async (item: any) => {
+      try {
+        const poParams = new URLSearchParams({
+          fields: JSON.stringify(["item_code", "item_name", "rate", "uom", "parent", "qty"]),
+          filters: JSON.stringify([
+            ["item_code", "=", item.item_code],
+            ["docstatus", "=", 1],
+          ]),
+          limit_page_length: "1",
+          order_by: "creation desc",
+        });
+        const poUrl = `${ERP_URL}/api/resource/Purchase Order Item?${poParams}`;
+        const poRes = await fetch(poUrl, { headers: { Authorization: ERP_AUTH() } });
+        if (!poRes.ok) return { ...item, latest_po_rate: null, latest_po_no: null, latest_uom: item.stock_uom };
+        const poJson = await poRes.json();
+        const poItem = (poJson.data ?? [])[0];
+        return {
+          ...item,
+          latest_po_rate: poItem?.rate ?? null,
+          latest_po_no: poItem?.parent ?? null,
+          latest_uom: poItem?.uom ?? item.stock_uom,
+        };
+      } catch {
+        return { ...item, latest_po_rate: null, latest_po_no: null, latest_uom: item.stock_uom };
+      }
+    }));
+
+    res.json({ items: enriched });
+  } catch (e: any) {
+    res.status(502).json({ error: e.message, items: [] });
+  }
+});
+
 router.get("/cost-working/erp/po-items/:poName", async (req, res) => {
   const poName = req.params.poName;
   try {
