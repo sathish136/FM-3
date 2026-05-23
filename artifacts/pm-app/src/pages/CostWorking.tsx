@@ -347,6 +347,13 @@ export default function CostWorking() {
     }
   }
 
+  async function safeJson(r: Response) {
+    const text = await r.text();
+    try { return JSON.parse(text); } catch {
+      throw new Error(`Server error (${r.status}): ${text.replace(/<[^>]+>/g, "").trim().substring(0, 120)}`);
+    }
+  }
+
   async function autoCreateAndUpload(file: File) {
     if (!file.name.match(/\.(step|stp)$/i)) {
       toast({ title: "Please upload a .STEP or .STP file", variant: "destructive" }); return;
@@ -358,11 +365,11 @@ export default function CostWorking() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, created_by: user?.fullName }),
       });
-      const sess = await cr.json();
+      const sess = await safeJson(cr);
       if (!cr.ok) throw new Error(sess.error || "Failed to create session");
-      const fd = new FormData(); fd.append("file", file);
+      const fd = new FormData(); fd.append("step_file", file);
       const ur = await fetch(`${BASE}/api/cost-working/sessions/${sess.id}/upload-step`, { method: "POST", body: fd });
-      const updated = await ur.json();
+      const updated = await safeJson(ur);
       if (!ur.ok) throw new Error(updated.error || "Upload failed");
       await loadSessions();
       setActiveSession({ ...updated, item_count: 0, total_cost: 0 });
@@ -542,7 +549,7 @@ export default function CostWorking() {
             </div>
             <button onClick={() => dropUploadRef.current?.click()}
               disabled={uploading}
-              className="w-full flex items-center justify-center gap-1.5 text-xs bg-violet-600 text-white px-3 py-2 rounded-lg hover:bg-violet-700 transition-colors disabled:opacity-60">
+              className="mx-auto flex items-center justify-center gap-1.5 text-xs bg-violet-600 text-white px-4 py-2 rounded-lg hover:bg-violet-700 transition-colors disabled:opacity-60">
               {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
               {uploading ? "Uploading…" : "Upload STEP Model"}
             </button>
@@ -633,10 +640,15 @@ export default function CostWorking() {
                   <p className="text-sm text-violet-500">Creating session and preparing analysis…</p>
                 ) : (
                   <>
-                    <p className="text-sm text-slate-500 mb-1">
-                      {dragOver ? "Drop to upload" : "Drag & drop your STEP file here, or click to browse"}
+                    <p className="text-sm text-slate-500 mb-3">
+                      {dragOver ? "Drop to upload" : "Drag & drop your STEP file here"}
                     </p>
-                    <p className="text-xs text-slate-400">Supports .STEP / .STP · Up to 200 MB</p>
+                    <button
+                      onClick={e => { e.stopPropagation(); dropUploadRef.current?.click(); }}
+                      className="mx-auto flex items-center gap-2 bg-violet-600 text-white text-sm font-medium px-6 py-2.5 rounded-xl hover:bg-violet-700 active:scale-95 transition-all shadow-sm shadow-violet-200">
+                      <Upload className="w-4 h-4" /> Browse File
+                    </button>
+                    <p className="text-xs text-slate-400 mt-3">Supports .STEP / .STP · Up to 200 MB</p>
                     <div className="mt-5 flex flex-col gap-2 text-left border-t border-slate-100 pt-4">
                       <p className="text-[11px] text-slate-400 font-medium uppercase tracking-wide">What happens next</p>
                       <div className="flex items-center gap-2 text-xs text-slate-500">
