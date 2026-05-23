@@ -345,7 +345,9 @@ function getFilesInFolder(folder: string): string[] {
 
 /** Proposal templates: PDF (T&C) + Excel (OPEX / Technical Spec). */
 function getProposalTemplateFiles(folder: string): string[] {
-  const files = getFilesInFolder(folder).filter((f) => /\.(pdf|xlsx)$/i.test(f));
+  const files = getFilesInFolder(folder).filter((f) =>
+    /\.(pdf|xlsx)$/i.test(f),
+  );
   return files.sort((a, b) => {
     const rank = (f: string) => {
       if (isProposalPdfFilename(f)) return 0;
@@ -367,7 +369,14 @@ function buildAllProposalAttachments(
   country: string,
 ): { filename: string; content: Buffer; contentType: string }[] {
   const built = files.map((f) =>
-    buildProposalAttachment(join(dir, f), f, customer, wttNumber, city, country),
+    buildProposalAttachment(
+      join(dir, f),
+      f,
+      customer,
+      wttNumber,
+      city,
+      country,
+    ),
   );
 
   const hasProposalPdf = built.some((a) => isProposalPdfFilename(a.filename));
@@ -405,21 +414,62 @@ function mimeFor(filename: string): string {
 // Each code produces a 7-char prefix so the full WTT number is always 12 chars:
 //   WTT-IND = 7, + "-" + 4 digits = 12  ✓  (same as legacy WTT-BAN-0001)
 const COUNTRY_PREFIX: Record<string, string> = {
-  IND:   "WTT-IND",
-  BGD:   "WTT-BAN",
-  ARE:   "WTT-UAE",
-  LKA:   "WTT-SRI",
-  NPL:   "WTT-NEP",
-  QAT:   "WTT-QAT",
-  SAU:   "WTT-SAU",
-  MYS:   "WTT-MYS",
-  OMN:   "WTT-OMN",
-  SGP:   "WTT-SGP",
+  IND: "WTT-IND",
+  BGD: "WTT-BAN",
+  ARE: "WTT-UAE",
+  LKA: "WTT-SRI",
+  NPL: "WTT-NEP",
+  QAT: "WTT-QAT",
+  SAU: "WTT-SAU",
+  MYS: "WTT-MYS",
+  OMN: "WTT-OMN",
+  SGP: "WTT-SGP",
   OTHER: "WTT-INT",
+  KEN: "WTT-KEN",
+  GOA: "WTT-GOA",
 };
 
+/** Map typed country names (Other) → 3-letter counter code. */
+const COUNTRY_NAME_TO_CODE: Record<string, string> = {
+  india: "IND",
+  bangladesh: "BGD",
+  nepal: "NPL",
+  kenya: "KEN",
+  "sri lanka": "LKA",
+  uae: "ARE",
+  "united arab emirates": "ARE",
+  qatar: "QAT",
+  "saudi arabia": "SAU",
+  malaysia: "MYS",
+  oman: "OMN",
+  singapore: "SGP",
+};
+
+function deriveCountryCodeFromName(countryName: string): string {
+  const key = countryName.trim().toLowerCase().replace(/\s+/g, " ");
+  if (COUNTRY_NAME_TO_CODE[key]) return COUNTRY_NAME_TO_CODE[key];
+  const letters = key.replace(/[^a-z]/g, "").toUpperCase();
+  if (letters.length >= 3) return letters.slice(0, 3);
+  return "INT";
+}
+
+/** Resolve DB/counter code: dropdown code, or derived from typed name when Other. */
+function resolveProposalCountryCode(
+  countryCode: string,
+  countryName?: string,
+): string {
+  const cc = (countryCode || "BGD").toUpperCase();
+  if (cc === "OTHER" && countryName?.trim()) {
+    return deriveCountryCodeFromName(countryName);
+  }
+  return cc;
+}
+
 function prefixForCountry(cc?: string): string {
-  return (cc && COUNTRY_PREFIX[cc.toUpperCase()]) || "WTT-INT";
+  const code = (cc || "BGD").toUpperCase();
+  if (COUNTRY_PREFIX[code]) return COUNTRY_PREFIX[code];
+  if (/^[A-Z]{3}$/.test(code)) return `WTT-${code}`;
+  return "WTT-INT";
 }
 
 /** Format counter with country prefix, zero-padded to 4 digits (total 12 chars) */
@@ -428,15 +478,22 @@ function formatWttNumber(n: number, countryCode?: string): string {
 }
 
 // ── DB migration: add country_code column to counter table ────────────────────
-pool.query(`
+pool
+  .query(
+    `
   ALTER TABLE proposal_wizard_counter ADD COLUMN IF NOT EXISTS country_code TEXT DEFAULT 'BGD';
   UPDATE proposal_wizard_counter SET country_code = 'BGD' WHERE id = 1 AND country_code IS NULL;
-`).then(() =>
-  pool.query(
-    `CREATE UNIQUE INDEX IF NOT EXISTS proposal_wizard_counter_cc_idx
-     ON proposal_wizard_counter(country_code) WHERE country_code IS NOT NULL`
+`,
   )
-).catch(() => {/* table may not exist yet — init handled elsewhere */});
+  .then(() =>
+    pool.query(
+      `CREATE UNIQUE INDEX IF NOT EXISTS proposal_wizard_counter_cc_idx
+     ON proposal_wizard_counter(country_code) WHERE country_code IS NOT NULL`,
+    ),
+  )
+  .catch(() => {
+    /* table may not exist yet — init handled elsewhere */
+  });
 
 /**
  * Atomically increment the counter for a given country and return the NEW value.
@@ -628,32 +685,8 @@ function buildEmailHtml(
           </table>
         </div>
 
-        <p style="margin:0 0 22px;font-size:14px;color:#4a5568;line-height:1.8;font-family:'Roboto',Arial,sans-serif">
+        <p style="margin:0 0 30px;font-size:14px;color:#4a5568;line-height:1.8;font-family:'Roboto',Arial,sans-serif">
           We trust that the above documents meet your requirements. Please feel free to reach out for any clarifications or further information. We look forward to the opportunity of working with you.
-        </p>
-
-        <p style="margin:0;font-size:14px;color:#4a5568;font-family:'Roboto',Arial,sans-serif">Warm Regards,</p>
-      </td>
-    </tr>
-
-    <!-- Signature -->
-    <tr>
-      <td style="padding:0 36px 30px;font-family:'Roboto',Arial,sans-serif">
-        <table cellpadding="0" cellspacing="0" style="border-left:4px solid #2b6cb0;padding-left:16px">
-          <tr><td style="font-size:16px;font-weight:700;color:#1a365d;padding-bottom:2px;font-family:'Roboto',Arial,sans-serif">Raja A</td></tr>
-          <tr><td style="font-size:12px;color:#2b6cb0;font-weight:500;padding-bottom:6px;font-family:'Roboto',Arial,sans-serif">AGM – Proposals &amp; Business Development</td></tr>
-          <tr><td style="font-size:12px;color:#718096;padding-bottom:2px;font-family:'Roboto',Arial,sans-serif">&#128222; +91 78450 09909</td></tr>
-          <tr><td style="font-size:12px;color:#718096;padding-bottom:2px;font-family:'Roboto',Arial,sans-serif">&#9993; raja.a@wttint.com</td></tr>
-          <tr><td style="font-size:12px;color:#718096;font-family:'Roboto',Arial,sans-serif">&#127760; www.wttindia.com</td></tr>
-        </table>
-      </td>
-    </tr>
-
-    <!-- Footer -->
-    <tr>
-      <td style="background:#1a365d;padding:14px 36px">
-        <p style="margin:0;font-size:11px;color:#90cdf4;text-align:center;font-family:'Roboto',Arial,sans-serif;letter-spacing:.3px">
-          WTT International Pvt. Ltd. &nbsp;|&nbsp; Water Loving Technology &nbsp;|&nbsp; This email and its attachments are confidential.
         </p>
       </td>
     </tr>
@@ -663,6 +696,76 @@ function buildEmailHtml(
 </table>
 </body>
 </html>`;
+}
+
+// ── proposal SMTP (Office 365) ─────────────────────────────────────────────
+
+const DEFAULT_PROPOSAL_FROM_NAME = "WTT INTERNATIONAL";
+
+function getProposalSmtpAuth(): { user: string; pass: string } | null {
+  const user = process.env.PROPOSAL_SMTP_USER?.trim();
+  const pass = process.env.PROPOSAL_SMTP_PASSWORD?.trim();
+  if (!user || !pass) return null;
+  return { user, pass };
+}
+
+/** Visible From name + address. Set PROPOSAL_FROM_EMAIL to enquiry@ (not a personal mailbox). */
+function getProposalMailFrom(): { name: string; address: string } {
+  const auth = getProposalSmtpAuth();
+  const name =
+    process.env.PROPOSAL_FROM_NAME?.trim() || DEFAULT_PROPOSAL_FROM_NAME;
+  const address =
+    process.env.PROPOSAL_FROM_EMAIL?.trim() ||
+    auth?.user ||
+    "enquiry@wttint.com";
+  return { name, address };
+}
+
+function createProposalTransporter() {
+  const auth = getProposalSmtpAuth();
+  if (!auth) throw new Error("Proposal email not configured on server");
+  return nodemailer.createTransport({
+    host: "smtp.office365.com",
+    port: 587,
+    secure: false,
+    requireTLS: true,
+    auth: { user: auth.user, pass: auth.pass },
+  });
+}
+
+function getProposalOtpSmtpAuth(): { user: string; pass: string } | null {
+  const user =
+    process.env.PROPOSAL_OTP_SMTP_USER?.trim() ||
+    process.env.PROPOSAL_SMTP_USER?.trim();
+  const pass =
+    process.env.PROPOSAL_OTP_SMTP_PASSWORD?.trim() ||
+    process.env.PROPOSAL_SMTP_PASSWORD?.trim();
+  if (!user || !pass) return null;
+  return { user, pass };
+}
+
+function getProposalOtpMailFrom(): { name: string; address: string } {
+  const address = process.env.PROPOSAL_OTP_FROM?.trim() || "noreply@wttint.com";
+  const name =
+    process.env.PROPOSAL_OTP_FROM_NAME?.trim() || DEFAULT_PROPOSAL_FROM_NAME;
+  return { name, address };
+}
+
+const DEFAULT_PROPOSAL_CUSTOMER_CC = [
+  "venkat@wttint.com",
+  "raghul@wttint.com",
+  "andrea.pelissero@wttint.com",
+  "raja.a@wttint.com",
+];
+
+/** CC on every proposal document email sent to a customer. */
+function getProposalCustomerCc(): string[] {
+  const raw = process.env.PROPOSAL_EMAIL_CC?.trim();
+  if (!raw) return [...DEFAULT_PROPOSAL_CUSTOMER_CC];
+  return raw
+    .split(/[,;]/)
+    .map((e) => e.trim())
+    .filter((e) => e.includes("@"));
 }
 
 // ── document processing ────────────────────────────────────────────────────
@@ -829,8 +932,14 @@ function processDoc(
     while ((pos = result.indexOf(wttPrefix, pos)) !== -1) {
       if (pos + 12 <= result.length) {
         const candidate = result.subarray(pos, pos + 12).toString("ascii");
-        if (/^WTT-[A-Z]{3}-\d{4}$/.test(candidate) && candidate.endsWith("0001")) {
-          const replBuf = Buffer.from(wttNumber.padEnd(12, " ").slice(0, 12), "ascii");
+        if (
+          /^WTT-[A-Z]{3}-\d{4}$/.test(candidate) &&
+          candidate.endsWith("0001")
+        ) {
+          const replBuf = Buffer.from(
+            wttNumber.padEnd(12, " ").slice(0, 12),
+            "ascii",
+          );
           replBuf.copy(result, pos);
         }
       }
@@ -876,7 +985,10 @@ function resolvePdfPatchScript(): string | null {
     pathResolve(here, "../scripts/patch-proposal-pdf.py"), // dist/index.cjs → dist/scripts
     pathResolve(here, "../../scripts/patch-proposal-pdf.py"), // src/routes → api-server/scripts
     pathResolve(process.cwd(), "scripts/patch-proposal-pdf.py"),
-    pathResolve(process.cwd(), "artifacts/api-server/scripts/patch-proposal-pdf.py"),
+    pathResolve(
+      process.cwd(),
+      "artifacts/api-server/scripts/patch-proposal-pdf.py",
+    ),
   ];
   for (const p of candidates) {
     if (existsSync(p)) return p;
@@ -936,7 +1048,7 @@ function processPdf(
     const err = e as { stderr?: Buffer; message?: string };
     const detail = err.stderr?.length
       ? err.stderr.toString("utf8").trim()
-      : err.message ?? String(e);
+      : (err.message ?? String(e));
     console.error(
       `[proposal-wizard] PDF patch failed for ${basename(filePath)} (${detail}) — using unpatched PDF`,
     );
@@ -1177,7 +1289,9 @@ function patchDocxZip(
   const dateS = todayShort();
   const cnUpper = customerName.toUpperCase().trim();
   const cityUpper = city ? city.toUpperCase().trim() : "";
-  const countryUpper = country ? country.toUpperCase().trim().replace(/\.$/, "") : "";
+  const countryUpper = country
+    ? country.toUpperCase().trim().replace(/\.$/, "")
+    : "";
 
   Object.keys(zip.files).forEach((name) => {
     if (
@@ -1412,7 +1526,13 @@ function buildProposalAttachment(
   const lower = filePath.toLowerCase();
 
   if (lower.endsWith(".pdf")) {
-    const buf = buildModifiedFile(filePath, customerName, wttNumber, city, country);
+    const buf = buildModifiedFile(
+      filePath,
+      customerName,
+      wttNumber,
+      city,
+      country,
+    );
     if (!isPdfBuffer(buf)) {
       throw new Error(`Attachment is not PDF: ${renamedOrig}`);
     }
@@ -1424,7 +1544,13 @@ function buildProposalAttachment(
   }
 
   if (lower.endsWith(".xlsx")) {
-    const buf = buildModifiedFile(filePath, customerName, wttNumber, city, country);
+    const buf = buildModifiedFile(
+      filePath,
+      customerName,
+      wttNumber,
+      city,
+      country,
+    );
     if (!isXlsxBuffer(buf)) {
       throw new Error(`Attachment is not a valid Excel file: ${renamedOrig}`);
     }
@@ -1436,7 +1562,14 @@ function buildProposalAttachment(
   }
 
   if (lower.endsWith(".doc")) {
-    const pdf = docToPdf(filePath, customerName, wttNumber, city, country, renamedOrig);
+    const pdf = docToPdf(
+      filePath,
+      customerName,
+      wttNumber,
+      city,
+      country,
+      renamedOrig,
+    );
     const filename = pdfFilenameFrom(pdf.filename);
     if (!isPdfBuffer(pdf.buf))
       throw new Error(`Attachment is not PDF: ${filename}`);
@@ -1583,9 +1716,7 @@ interface ProposalSendJob {
 
 /** Build PDFs and send proposal email (slow — run in background). */
 async function sendProposalEmailJob(job: ProposalSendJob): Promise<void> {
-  const smtpUser = process.env.PROPOSAL_SMTP_USER;
-  const smtpPass = process.env.PROPOSAL_SMTP_PASSWORD;
-  if (!smtpUser || !smtpPass)
+  if (!getProposalSmtpAuth())
     throw new Error("Proposal email not configured on server");
 
   const dir = safeJoin(PROPOSAL_ROOT, job.flowRate);
@@ -1611,13 +1742,15 @@ async function sendProposalEmailJob(job: ProposalSendJob): Promise<void> {
   );
   const attachments = toNodemailerAttachments(built);
 
-  const transporter = nodemailer.createTransport({
-    host: "smtp.office365.com",
-    port: 587,
-    secure: false,
-    requireTLS: true,
-    auth: { user: smtpUser, pass: smtpPass },
-  });
+  const transporter = createProposalTransporter();
+  const mailFrom = getProposalMailFrom();
+  const auth = getProposalSmtpAuth()!;
+  if (auth.user.toLowerCase() !== mailFrom.address.toLowerCase()) {
+    console.warn(
+      `[proposal-wizard] SMTP login is ${auth.user} but From is ${mailFrom.address} — ` +
+        `Microsoft 365 may still show the login user's name unless Send As is granted.`,
+    );
+  }
 
   const emailHtml = buildEmailHtml(
     customer,
@@ -1627,8 +1760,9 @@ async function sendProposalEmailJob(job: ProposalSendJob): Promise<void> {
   );
 
   await transporter.sendMail({
-    from: `WTT INTERNATIONAL <${smtpUser}>`,
+    from: mailFrom,
     to: job.toEmail,
+    cc: getProposalCustomerCc(),
     subject: `Proposal – ${job.customerName} – ${kld} KLD STP – ${job.wttNumber}`,
     html: emailHtml,
     attachments,
@@ -1699,7 +1833,8 @@ async function recordProposalRequest(
 ): Promise<void> {
   try {
     const noteText =
-      params.notes?.trim() || `${params.country || "Wizard"} — ${params.wttNumber}`;
+      params.notes?.trim() ||
+      `${params.country || "Wizard"} — ${params.wttNumber}`;
     await pool.query(
       `INSERT INTO proposal_requests
         (proposal_no, company_name, city, country, contact_person, email, phone, system_option, flow_rate, status, notes)
@@ -1731,10 +1866,12 @@ router.post("/proposal-wizard/request-otp", async (req, res) => {
   if (!email || !email.includes("@"))
     return res.status(400).json({ error: "Valid email required" });
 
-  const smtpUser = process.env.SMTP_USER || process.env.PROPOSAL_SMTP_USER;
-  const smtpPass = process.env.SMTP_PASSWORD || process.env.PROPOSAL_SMTP_PASSWORD;
-  if (!smtpUser || !smtpPass)
-    return res.status(503).json({ error: "Email not configured. Please contact WTT directly." });
+  const otpAuth = getProposalOtpSmtpAuth();
+  const mailFrom = getProposalOtpMailFrom();
+  if (!otpAuth)
+    return res
+      .status(503)
+      .json({ error: "Email not configured. Please contact WTT directly." });
 
   const otp = generateWizardOtp();
   wizardOtpStore.set(email.toLowerCase().trim(), {
@@ -1748,15 +1885,15 @@ router.post("/proposal-wizard/request-otp", async (req, res) => {
       port: 587,
       secure: false,
       requireTLS: true,
-      auth: { user: smtpUser, pass: smtpPass },
+      auth: { user: otpAuth.user, pass: otpAuth.pass },
     });
     await transporter.sendMail({
-      from: `"WTT International" <${smtpUser}>`,
+      from: mailFrom,
       to: email.trim(),
       subject: "WTT Proposal – Email Verification Code",
       html: `
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#f8fafc;border-radius:16px;">
-          <h2 style="color:#1a365d;margin:0 0 4px;">WTT International</h2>
+          <h2 style="color:#1a365d;margin:0 0 4px;">WTT INTERNATIONAL</h2>
           <p style="color:#64748b;font-size:13px;margin:0 0 24px;">Proposal Request — Email Verification</p>
           <p style="color:#1e293b;font-size:15px;margin:0 0 8px;">Please use the code below to verify your email address:</p>
           <div style="background:#fff;border:2px solid #bee3f8;border-radius:12px;padding:24px;text-align:center;margin:20px 0;">
@@ -1768,11 +1905,16 @@ router.post("/proposal-wizard/request-otp", async (req, res) => {
         </div>
       `,
     });
-    res.json({ status: "otp_sent", message: "Verification code sent to your email." });
+    res.json({
+      status: "otp_sent",
+      message: "Verification code sent to your email.",
+    });
   } catch (err: any) {
     console.error("[proposal-wizard] OTP send error:", err);
     wizardOtpStore.delete(email.toLowerCase().trim());
-    res.status(500).json({ error: "Could not send verification email. Please try again." });
+    res
+      .status(500)
+      .json({ error: "Could not send verification email. Please try again." });
   }
 });
 
@@ -1785,10 +1927,19 @@ router.post("/proposal-wizard/verify-otp", (req, res) => {
   const key = email.toLowerCase().trim();
   const entry = wizardOtpStore.get(key);
   if (!entry)
-    return res.status(401).json({ error: "No verification pending for this email. Please request a new code." });
+    return res
+      .status(401)
+      .json({
+        error:
+          "No verification pending for this email. Please request a new code.",
+      });
   if (Date.now() > entry.expires) {
     wizardOtpStore.delete(key);
-    return res.status(401).json({ error: "Verification code has expired. Please request a new one." });
+    return res
+      .status(401)
+      .json({
+        error: "Verification code has expired. Please request a new one.",
+      });
   }
   if (entry.otp !== String(otp).trim())
     return res.status(401).json({ error: "Incorrect code. Please try again." });
@@ -1834,10 +1985,16 @@ router.get("/proposal-wizard/counter", async (req, res) => {
 
 // POST /api/proposal-wizard/assign-number — increment once, return the new WTT number
 router.post("/proposal-wizard/assign-number", async (req, res) => {
-  const { customerName = "", flowRate = "", countryCode = "BGD" } = req.body as Record<string, string>;
+  const {
+    customerName = "",
+    flowRate = "",
+    countryCode = "BGD",
+    country = "",
+  } = req.body as Record<string, string>;
   try {
-    const counter = await nextCounter(customerName, flowRate, countryCode);
-    res.json({ wttNumber: formatWttNumber(counter, countryCode), counter });
+    const cc = resolveProposalCountryCode(countryCode, country);
+    const counter = await nextCounter(customerName, flowRate, cc);
+    res.json({ wttNumber: formatWttNumber(counter, cc), counter });
   } catch (err) {
     console.error("assign-number error:", err);
     res.status(500).json({ error: "Could not assign proposal number" });
@@ -1921,9 +2078,7 @@ router.post("/proposal-wizard/send-email", async (req, res) => {
         .json({ error: "flowRate, customerName and toEmail required" });
     }
 
-    const smtpUser = process.env.PROPOSAL_SMTP_USER;
-    const smtpPass = process.env.PROPOSAL_SMTP_PASSWORD;
-    if (!smtpUser || !smtpPass) {
+    if (!getProposalSmtpAuth()) {
       return res
         .status(503)
         .json({ error: "Proposal email not configured on server" });
@@ -1954,13 +2109,8 @@ router.post("/proposal-wizard/send-email", async (req, res) => {
     );
     const attachments = toNodemailerAttachments(built);
 
-    const transporter = nodemailer.createTransport({
-      host: "smtp.office365.com",
-      port: 587,
-      secure: false,
-      requireTLS: true,
-      auth: { user: smtpUser, pass: smtpPass },
-    });
+    const transporter = createProposalTransporter();
+    const mailFrom = getProposalMailFrom();
 
     const emailHtml = buildEmailHtml(
       customer,
@@ -1970,8 +2120,9 @@ router.post("/proposal-wizard/send-email", async (req, res) => {
     );
 
     await transporter.sendMail({
-      from: `WTT INTERNATIONAL <${smtpUser}>`,
+      from: mailFrom,
       to: toEmail,
+      cc: getProposalCustomerCc(),
       subject: `Proposal Documents – ${customerName} – ${kld} KLD – ${wttNumber}`,
       html: emailHtml,
       attachments,
@@ -1998,12 +2149,10 @@ router.post("/proposal-wizard/send-email", async (req, res) => {
       msg.includes("WebLoginRequired") ||
       msg.includes("Invalid login")
     ) {
-      return res
-        .status(503)
-        .json({
-          error:
-            "Email delivery failed: Gmail credentials need to be refreshed. Please contact admin.",
-        });
+      return res.status(503).json({
+        error:
+          "Email delivery failed: Gmail credentials need to be refreshed. Please contact admin.",
+      });
     }
     res.status(500).json({ error: msg || "Failed to send email" });
   }
@@ -2047,11 +2196,9 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
       !process.env.PROPOSAL_SMTP_USER ||
       !process.env.PROPOSAL_SMTP_PASSWORD
     ) {
-      return res
-        .status(503)
-        .json({
-          error: "Proposal email not configured. Please contact WTT directly.",
-        });
+      return res.status(503).json({
+        error: "Proposal email not configured. Please contact WTT directly.",
+      });
     }
 
     const dir = safeJoin(PROPOSAL_ROOT, flowRate);
@@ -2063,12 +2210,24 @@ router.post("/proposal-wizard/send-public", async (req, res) => {
         .status(404)
         .json({ error: "No files found for selected flow rate" });
 
-    const customer   = customerName.toUpperCase().trim();
-    const cc         = (countryCode || "BGD").toUpperCase();
-    const countryName = country || "Bangladesh";
-    const counter    = await nextCounter(customer, flowRate, cc);
-    const wttNumber  = formatWttNumber(counter, cc);
-    const noteText   = notes?.trim() ||
+    const customer = customerName.toUpperCase().trim();
+    const countryName = (country || "").trim() || "Bangladesh";
+    const ccInput = (countryCode || "BGD").toUpperCase();
+    if (
+      ccInput === "OTHER" &&
+      (!countryName || countryName.toLowerCase() === "other")
+    ) {
+      return res
+        .status(400)
+        .json({
+          error: "Please enter your country name when Other is selected",
+        });
+    }
+    const cc = resolveProposalCountryCode(ccInput, countryName);
+    const counter = await nextCounter(customer, flowRate, cc);
+    const wttNumber = formatWttNumber(counter, cc);
+    const noteText =
+      notes?.trim() ||
       `${countryName} Wizard — ${plantType || "STP"} — ${wttNumber}`;
 
     await recordProposalRequest(
@@ -2127,9 +2286,7 @@ router.post("/proposal-wizard/requests/:id/resend", async (req, res) => {
       return res.status(404).json({ error: "proposal not found" });
     const p = r.rows[0];
 
-    const smtpUser = process.env.PROPOSAL_SMTP_USER;
-    const smtpPass = process.env.PROPOSAL_SMTP_PASSWORD;
-    if (!smtpUser || !smtpPass) {
+    if (!getProposalSmtpAuth()) {
       return res
         .status(503)
         .json({ error: "Email not configured. Contact admin." });
@@ -2147,11 +2304,9 @@ router.post("/proposal-wizard/requests/:id/resend", async (req, res) => {
       );
 
     if (!flowRateFolder) {
-      return res
-        .status(404)
-        .json({
-          error: `No template files found for flow rate ${p.flow_rate} KLD`,
-        });
+      return res.status(404).json({
+        error: `No template files found for flow rate ${p.flow_rate} KLD`,
+      });
     }
 
     const dir = safeJoin(PROPOSAL_ROOT, flowRateFolder);
@@ -2180,13 +2335,8 @@ router.post("/proposal-wizard/requests/:id/resend", async (req, res) => {
     );
     const attachments = toNodemailerAttachments(built);
 
-    const transporter = nodemailer.createTransport({
-      host: "smtp.office365.com",
-      port: 587,
-      secure: false,
-      requireTLS: true,
-      auth: { user: smtpUser, pass: smtpPass },
-    });
+    const transporter = createProposalTransporter();
+    const mailFrom = getProposalMailFrom();
 
     const emailHtml = buildEmailHtml(
       customer,
@@ -2196,8 +2346,9 @@ router.post("/proposal-wizard/requests/:id/resend", async (req, res) => {
     );
 
     await transporter.sendMail({
-      from: `WTT INTERNATIONAL <${smtpUser}>`,
+      from: mailFrom,
       to: String(p.email),
+      cc: getProposalCustomerCc(),
       subject: `Proposal – ${p.company_name} – ${kld} KLD STP – ${wttNumber}`,
       html: emailHtml,
       attachments,
@@ -2221,5 +2372,17 @@ router.post("/proposal-wizard/requests/:id/resend", async (req, res) => {
       .json({ error: err?.message || "Failed to resend proposal" });
   }
 });
+
+const proposalAuth = getProposalSmtpAuth();
+if (proposalAuth) {
+  const proposalFrom = getProposalMailFrom();
+  console.log(
+    `[proposal-wizard] Proposal mail: "${proposalFrom.name}" <${proposalFrom.address}> (SMTP: ${proposalAuth.user})`,
+  );
+}
+const otpFromCfg = getProposalOtpMailFrom();
+console.log(
+  `[proposal-wizard] OTP mail: "${otpFromCfg.name}" <${otpFromCfg.address}>`,
+);
 
 export default router;
