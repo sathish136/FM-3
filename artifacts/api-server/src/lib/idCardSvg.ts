@@ -207,32 +207,68 @@ function injectValueAfterColon(svg: string, colonTransform: string, value: strin
   return svg.replace(re, `$1${valueG}`);
 }
 
-function addressSvgText(addr: string): string {
-  const maxChars = 38;
+/** Address box from template polygon (5966,3121)–(10310,4598). */
+const ADDR_BOX = { left: 5966, top: 3121, right: 10310, bottom: 4598 };
+const ADDR_PAD_X = 44;
+const ADDR_PAD_TOP = 160;
+
+function wrapAddressLines(addr: string, maxChars: number, maxLines: number): string[] {
+  const tokens: string[] = [];
+  for (const word of addr.split(/\s+/).filter(Boolean)) {
+    if (word.length <= maxChars) tokens.push(word);
+    else {
+      for (let i = 0; i < word.length; i += maxChars) {
+        tokens.push(word.slice(i, i + maxChars));
+      }
+    }
+  }
   const lines: string[] = [];
-  for (const word of addr.split(/\s+/)) {
+  for (const word of tokens) {
     const last = lines[lines.length - 1];
     const candidate = last ? `${last} ${word}` : word;
     if (last && candidate.length > maxChars) lines.push(word);
     else if (last) lines[lines.length - 1] = candidate;
     else lines.push(word);
   }
-  const maxLines = 5;
   const clipped = lines.slice(0, maxLines);
   if (lines.length > maxLines) {
     const last = clipped[maxLines - 1];
-    clipped[maxLines - 1] = last.length > 3 ? `${last.slice(0, -1)}…` : `${last}…`;
+    clipped[maxLines - 1] =
+      last.length > maxChars - 1 ? `${last.slice(0, maxChars - 1)}…` : `${last}…`;
   }
-  const x = 6010;
-  const startY = 3280;
-  const lineHeight = 297;
-  const tspans = clipped
+  return clipped;
+}
+
+function addressSvgText(addr: string): string {
+  const boxW = ADDR_BOX.right - ADDR_BOX.left;
+  const boxH = ADDR_BOX.bottom - ADDR_BOX.top;
+  const textX = ADDR_BOX.left + ADDR_PAD_X;
+  const textW = boxW - ADDR_PAD_X * 2;
+  const maxLines = 5;
+  const startY = ADDR_BOX.top + ADDR_PAD_TOP;
+
+  // Roboto ~0.52× font-size per character at this scale; stay inside the box.
+  let fontSize = 200;
+  let maxChars = Math.max(18, Math.floor(textW / (fontSize * 0.52)));
+  let lines = wrapAddressLines(addr, maxChars, maxLines);
+  const lineHeight = Math.round(fontSize * 1.35);
+
+  if (lines.length >= 4) {
+    fontSize = 180;
+    maxChars = Math.max(18, Math.floor(textW / (fontSize * 0.52)));
+    lines = wrapAddressLines(addr, maxChars, maxLines);
+  }
+
+  const clipId = "id-addr-clip";
+  const clip = `<clipPath id="${clipId}"><rect x="${ADDR_BOX.left}" y="${ADDR_BOX.top}" width="${boxW}" height="${boxH}"/></clipPath>`;
+  const tspans = lines
     .map(
       (line, i) =>
-        `    <tspan x="${x}" dy="${i === 0 ? 0 : lineHeight}">${escapeXml(line)}</tspan>`,
+        `    <tspan x="${textX}" dy="${i === 0 ? 0 : lineHeight}">${escapeXml(line)}</tspan>`,
     )
     .join("\n");
-  return `  <text x="${x}" y="${startY}" style="font-family:Roboto,sans-serif;font-size:220px;fill:#373435;">
+  return `${clip}
+  <text x="${textX}" y="${startY}" clip-path="url(#${clipId})" style="font-family:Roboto,sans-serif;font-size:${fontSize}px;fill:#373435;">
 ${tspans}
   </text>`;
 }

@@ -9,9 +9,10 @@ import {
   mkdirSync,
   copyFileSync,
 } from "fs";
-import { join, resolve as pathResolve, basename, extname } from "path";
+import { join, resolve as pathResolve, dirname, basename, extname } from "path";
 import { execSync } from "child_process";
 import { tmpdir, homedir } from "os";
+import { fileURLToPath } from "url";
 import nodemailer from "nodemailer";
 import PizZip from "pizzip";
 import { db, pool } from "@workspace/db";
@@ -342,9 +343,42 @@ function getFilesInFolder(folder: string): string[] {
   }
 }
 
-/** Only proposal templates (.doc / .docx / .xlsx) — never other files from the folder. */
+/** Proposal templates: PDF (T&C) + Excel (OPEX / Technical Spec). */
 function getProposalTemplateFiles(folder: string): string[] {
-  return getFilesInFolder(folder).filter((f) => /\.(docx?|xlsx)$/i.test(f));
+  const files = getFilesInFolder(folder).filter((f) => /\.(pdf|xlsx)$/i.test(f));
+  return files.sort((a, b) => {
+    const rank = (f: string) => {
+      if (isProposalPdfFilename(f)) return 0;
+      if (/\.pdf$/i.test(f)) return 1;
+      if (/opex/i.test(f)) return 2;
+      if (/technical/i.test(f)) return 3;
+      return 4;
+    };
+    return rank(a) - rank(b) || a.localeCompare(b);
+  });
+}
+
+function buildAllProposalAttachments(
+  dir: string,
+  files: string[],
+  customer: string,
+  wttNumber: string,
+  city: string,
+  country: string,
+): { filename: string; content: Buffer; contentType: string }[] {
+  const built = files.map((f) =>
+    buildProposalAttachment(join(dir, f), f, customer, wttNumber, city, country),
+  );
+
+  const hasProposalPdf = built.some((a) => isProposalPdfFilename(a.filename));
+  const folderHasProposalPdf = files.some(isProposalPdfFilename);
+  if (folderHasProposalPdf && !hasProposalPdf) {
+    throw new Error(
+      "Proposal PDF template is present but was not attached — check PyMuPDF (pip install pymupdf)",
+    );
+  }
+
+  return built;
 }
 
 function fileTypeLabel(filename: string): string {
@@ -650,6 +684,7 @@ function processXlsx(
   customerName: string,
   wttNumber: string,
   city = "",
+  country = "",
 ): Buffer {
   const raw = readFileSync(filePath);
   const zip = new PizZip(raw);
@@ -708,6 +743,11 @@ function processXlsx(
         content = content.replace(/\bCITY\b/g, city.toUpperCase().trim());
         changed = true;
       }
+      if (country && content.includes("BANGLADESH")) {
+        const countryLine = country.toUpperCase().trim().replace(/\.$/, "");
+        content = content.replace(/\bBANGLADESH\.?\b/g, countryLine);
+        changed = true;
+      }
       // Strip highlight/shading in xlsx xml
       if (name.endsWith(".xml")) {
         const before = content;
@@ -758,6 +798,7 @@ function processDoc(
   customerName: string,
   wttNumber: string,
   city = "",
+  country = "",
 ): Buffer {
   const buf = readFileSync(filePath);
   let result = Buffer.from(buf);
@@ -808,6 +849,12 @@ function processDoc(
     if (cityPos !== -1) replPat.copy(result, cityPos);
   }
 
+  if (country) {
+    const countryLine = country.toUpperCase().trim();
+    const withDot = countryLine.endsWith(".") ? countryLine : `${countryLine}.`;
+    replaceAllInPlace("BANGLADESH.", padAscii(withDot, 11));
+  }
+
   // Remove yellow highlighting: sprmCHighlight opcode 0x2A0C stored as [0x0C, 0x2A],
   // followed by value byte 0x07 (yellow). Replace with 0x00 (no highlight).
   {
@@ -823,19 +870,111 @@ function processDoc(
   return result;
 }
 
+function resolvePdfPatchScript(): string | null {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    pathResolve(here, "../scripts/patch-proposal-pdf.py"), // dist/index.cjs → dist/scripts
+    pathResolve(here, "../../scripts/patch-proposal-pdf.py"), // src/routes → api-server/scripts
+    pathResolve(process.cwd(), "scripts/patch-proposal-pdf.py"),
+    pathResolve(process.cwd(), "artifacts/api-server/scripts/patch-proposal-pdf.py"),
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  return null;
+}
+
+function isProposalPdfFilename(filename: string): boolean {
+  return /\.pdf$/i.test(filename) && /proposal/i.test(filename);
+}
+
+/**
+ * Fill PDF proposal templates in-place (company, dates, WTT no., city).
+ * Uses PyMuPDF — install: pip install -r scripts/requirements-proposal-pdf.txt
+ * Falls back to the raw template PDF if patching is unavailable (still attached).
+ */
+function processPdf(
+  filePath: string,
+  customerName: string,
+  wttNumber: string,
+  city = "",
+  country = "",
+): Buffer {
+  const script = resolvePdfPatchScript();
+  if (!script) {
+    console.warn(
+      "[proposal-wizard] patch-proposal-pdf.py not found — attaching unpatched PDF",
+    );
+    return readFileSync(filePath);
+  }
+
+  const uid = `pw_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const tmpIn = join(tmpdir(), `${uid}_in.pdf`);
+  const tmpOut = join(tmpdir(), `${uid}_out.pdf`);
+  copyFileSync(filePath, tmpIn);
+  try {
+    execSync(`python3 "${script}"`, {
+      stdio: "pipe",
+      env: {
+        ...process.env,
+        PDF_IN: tmpIn,
+        PDF_OUT: tmpOut,
+        CUSTOMER: customerName,
+        WTT: wttNumber,
+        CITY: city || "",
+        COUNTRY: country || "",
+      },
+    });
+    if (!existsSync(tmpOut)) throw new Error("Patched PDF was not created");
+    const buf = readFileSync(tmpOut);
+    if (!isPdfBuffer(buf)) throw new Error("Patched output is not a valid PDF");
+    console.log(
+      `[proposal-wizard] Patched PDF ${basename(filePath)} → ${buf.length} bytes`,
+    );
+    return buf;
+  } catch (e: unknown) {
+    const err = e as { stderr?: Buffer; message?: string };
+    const detail = err.stderr?.length
+      ? err.stderr.toString("utf8").trim()
+      : err.message ?? String(e);
+    console.error(
+      `[proposal-wizard] PDF patch failed for ${basename(filePath)} (${detail}) — using unpatched PDF`,
+    );
+    const fallback = readFileSync(filePath);
+    if (!isPdfBuffer(fallback)) {
+      throw new Error(
+        `PDF template fill failed and fallback is invalid: ${detail}`,
+      );
+    }
+    return fallback;
+  } finally {
+    for (const f of [tmpIn, tmpOut]) {
+      try {
+        unlinkSync(f);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+}
+
 /** Build a modified copy of any supported file with all replacements applied. */
 function buildModifiedFile(
   filePath: string,
   customerName: string,
   wttNumber: string,
   city = "",
+  country = "",
 ): Buffer {
   const lower = filePath.toLowerCase();
+  if (lower.endsWith(".pdf")) {
+    return processPdf(filePath, customerName, wttNumber, city, country);
+  }
   if (lower.endsWith(".xlsx") || lower.endsWith(".docx")) {
-    return processXlsx(filePath, customerName, wttNumber, city);
+    return processXlsx(filePath, customerName, wttNumber, city, country);
   }
   if (lower.endsWith(".doc")) {
-    return processDoc(filePath, customerName, wttNumber, city);
+    return processDoc(filePath, customerName, wttNumber, city, country);
   }
   return readFileSync(filePath);
 }
@@ -1032,11 +1171,13 @@ function patchDocxZip(
   customerName: string,
   wttNumber: string,
   city: string,
+  country: string,
 ): void {
   const dateL = todayLong();
   const dateS = todayShort();
   const cnUpper = customerName.toUpperCase().trim();
   const cityUpper = city ? city.toUpperCase().trim() : "";
+  const countryUpper = country ? country.toUpperCase().trim().replace(/\.$/, "") : "";
 
   Object.keys(zip.files).forEach((name) => {
     if (
@@ -1071,6 +1212,10 @@ function patchDocxZip(
     }
     if (cityUpper && content.includes("CITY")) {
       content = content.replace(/\bCITY\b/g, cityUpper);
+      changed = true;
+    }
+    if (countryUpper && content.includes("BANGLADESH")) {
+      content = content.replace(/\bBANGLADESH\.?\b/g, countryUpper);
       changed = true;
     }
     if (content.includes('w:val="yellow"')) {
@@ -1235,6 +1380,7 @@ function docToPdf(
   customerName: string,
   wttNumber: string,
   city: string,
+  country: string,
   renamedFilename: string,
 ): { buf: Buffer; filename: string } {
   const { buf: docxBuf } = docToDocx(
@@ -1242,6 +1388,7 @@ function docToPdf(
     customerName,
     wttNumber,
     city,
+    country,
     renamedFilename,
   );
   return convertToPdf(docxBuf, renamedFilename.replace(/\.doc$/i, ".docx"));
@@ -1249,7 +1396,8 @@ function docToPdf(
 
 /**
  * Build one email attachment:
- * - Word (.doc / .docx) → PDF only
+ * - PDF proposal (.pdf) → filled PDF (no Word/LibreOffice conversion)
+ * - Word (.doc / .docx) → PDF via LibreOffice (legacy templates)
  * - Excel (.xlsx) → stays .xlsx (substitutions applied, not converted)
  */
 function buildProposalAttachment(
@@ -1258,12 +1406,25 @@ function buildProposalAttachment(
   customerName: string,
   wttNumber: string,
   city: string,
+  country: string,
 ): { filename: string; content: Buffer; contentType: string } {
   const renamedOrig = buildFilename(originalFilename, customerName, wttNumber);
   const lower = filePath.toLowerCase();
 
+  if (lower.endsWith(".pdf")) {
+    const buf = buildModifiedFile(filePath, customerName, wttNumber, city, country);
+    if (!isPdfBuffer(buf)) {
+      throw new Error(`Attachment is not PDF: ${renamedOrig}`);
+    }
+    return {
+      filename: renamedOrig,
+      content: buf,
+      contentType: "application/pdf",
+    };
+  }
+
   if (lower.endsWith(".xlsx")) {
-    const buf = buildModifiedFile(filePath, customerName, wttNumber, city);
+    const buf = buildModifiedFile(filePath, customerName, wttNumber, city, country);
     if (!isXlsxBuffer(buf)) {
       throw new Error(`Attachment is not a valid Excel file: ${renamedOrig}`);
     }
@@ -1275,7 +1436,7 @@ function buildProposalAttachment(
   }
 
   if (lower.endsWith(".doc")) {
-    const pdf = docToPdf(filePath, customerName, wttNumber, city, renamedOrig);
+    const pdf = docToPdf(filePath, customerName, wttNumber, city, country, renamedOrig);
     const filename = pdfFilenameFrom(pdf.filename);
     if (!isPdfBuffer(pdf.buf))
       throw new Error(`Attachment is not PDF: ${filename}`);
@@ -1288,6 +1449,7 @@ function buildProposalAttachment(
       customerName,
       wttNumber,
       city,
+      country,
     );
     const pdf = convertToPdf(modifiedBuf, renamedOrig);
     const filename = pdfFilenameFrom(pdf.filename);
@@ -1355,6 +1517,7 @@ function docToDocx(
   customerName: string,
   wttNumber: string,
   city: string,
+  country: string,
   renamedFilename: string,
 ): { buf: Buffer; filename: string } {
   const uid = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -1376,7 +1539,7 @@ function docToDocx(
     );
 
     const zip = new PizZip(readFileSync(tmpDocx));
-    patchDocxZip(zip, customerName, wttNumber, city);
+    patchDocxZip(zip, customerName, wttNumber, city, country);
     const docxBuf = zip.generate({
       type: "nodebuffer",
       compression: "DEFLATE",
@@ -1436,16 +1599,15 @@ async function sendProposalEmailJob(job: ProposalSendJob): Promise<void> {
   const kld = kldFromFolder(job.flowRate);
 
   console.log(
-    `[proposal-wizard] Background send started: ${job.wttNumber} → ${job.toEmail}`,
+    `[proposal-wizard] Background send started: ${job.wttNumber} → ${job.toEmail} | templates: ${files.join(", ")}`,
   );
-  const built = files.map((f) =>
-    buildProposalAttachment(
-      join(dir, f),
-      f,
-      customer,
-      job.wttNumber,
-      job.city || "",
-    ),
+  const built = buildAllProposalAttachments(
+    dir,
+    files,
+    customer,
+    job.wttNumber,
+    job.city || "",
+    job.country || "",
   );
   const attachments = toNodemailerAttachments(built);
 
@@ -1782,8 +1944,13 @@ router.post("/proposal-wizard/send-email", async (req, res) => {
 
     const kld = kldFromFolder(flowRate);
 
-    const built = files.map((f) =>
-      buildProposalAttachment(join(dir, f), f, customer, wttNumber, city || ""),
+    const built = buildAllProposalAttachments(
+      dir,
+      files,
+      customer,
+      wttNumber,
+      city || "",
+      country || "",
     );
     const attachments = toNodemailerAttachments(built);
 
@@ -2000,10 +2167,16 @@ router.post("/proposal-wizard/requests/:id/resend", async (req, res) => {
     const customer = String(p.company_name).toUpperCase().trim();
     const wttNumber = String(p.proposal_no);
     const kld = kldFromFolder(flowRateFolder);
-    const city = String(p.city || "Bangladesh");
+    const city = String(p.city || "");
+    const country = String(p.country || "Bangladesh");
 
-    const built = files.map((f) =>
-      buildProposalAttachment(join(dir, f), f, customer, wttNumber, city),
+    const built = buildAllProposalAttachments(
+      dir,
+      files,
+      customer,
+      wttNumber,
+      city,
+      country,
     );
     const attachments = toNodemailerAttachments(built);
 

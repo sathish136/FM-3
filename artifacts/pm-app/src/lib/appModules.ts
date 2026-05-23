@@ -44,9 +44,6 @@ const ALL_APP_MODULES: AppModule[] = [
   { key: "proposal-library", label: "Proposal Library", group: "Proposal", paths: ["/proposal-library"] },
   { key: "proposals", label: "Proposal Requests", group: "Proposal", paths: ["/proposals"] },
   { key: "process-proposal", label: "Process & Proposal", group: "Proposal", paths: ["/process-proposal"] },
-  { key: "startup-sheet", label: "Startup Sheet", group: "Proposal", paths: ["/startup-sheet"] },
-  { key: "ro-standard-items", label: "RO Standard Items", group: "Proposal", paths: ["/ro-standard-items"] },
-  { key: "cost-working-tool", label: "Cost Working Tool", group: "Proposal", paths: ["/cost-working-tool"] },
   // Design & Engineering
   { key: "design-3d", label: "Design 3D", group: "Design & Engineering", paths: ["/design-3d"] },
   { key: "design-2d", label: "Design 2D", group: "Design & Engineering", paths: ["/design-2d"] },

@@ -77,8 +77,6 @@ import {
   CreditCard,
   PartyPopper,
   Ruler,
-  Droplets,
-  Calculator,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -660,27 +658,6 @@ const navGroups: { label: string; items: NavItem[] }[] = [
         icon: Layers,
         color: "text-sky-400",
         bgColor: "bg-sky-500/15",
-      },
-      {
-        path: "/startup-sheet",
-        label: "Startup Sheet",
-        icon: Droplets,
-        color: "text-cyan-400",
-        bgColor: "bg-cyan-500/15",
-      },
-      {
-        path: "/ro-standard-items",
-        label: "RO Standard Items",
-        icon: Package,
-        color: "text-indigo-400",
-        bgColor: "bg-indigo-500/15",
-      },
-      {
-        path: "/cost-working-tool",
-        label: "Cost Working Tool",
-        icon: Calculator,
-        color: "text-emerald-400",
-        bgColor: "bg-emerald-500/15",
       },
     ],
   },

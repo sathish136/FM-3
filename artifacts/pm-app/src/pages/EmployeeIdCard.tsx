@@ -47,7 +47,7 @@ function EmpAvatar({ src, name, size = 36 }: { src: string | null; name: string;
 
 const svgCache = new Map<string, string>();
 /** Bump when server SVG output shape changes (embedded assets, address text, etc.). */
-const SVG_CACHE_VERSION = "v3";
+const SVG_CACHE_VERSION = "v4";
 
 async function fetchIdCardSvg(emp: Employee, side: "front" | "back"): Promise<string> {
   const key = `${SVG_CACHE_VERSION}:${emp.name}:${side}:${emp.image ?? ""}`;
@@ -248,7 +248,7 @@ export default function EmployeeIdCard() {
             <CreditCard className="w-4 h-4 text-yellow-500 shrink-0" />
             <h1 className="text-sm font-bold text-gray-900">Employee ID Cards</h1>
             <span className="text-xs text-gray-400 ml-1">
-              {employees.length > 0 ? `${employees.length} active employees` : "53.963 × 84.088 mm · orignal.svg template"}
+              {employees.length > 0 ? `${employees.length} employees` : "53.963 × 84.088 mm · orignal.svg template"}
             </span>
           </div>
           <button

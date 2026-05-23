@@ -427,6 +427,7 @@ router.get("/hrms/employees", async (req, res) => {
 });
 
 // GET /api/hrms/employees/id-card-data — active employees with extended fields for ID card generation
+// Intentionally skips applyEmployeeFilter so HR can print cards for every active employee (incl. Production/O&M/Project/MD).
 router.get("/hrms/employees/id-card-data", async (_req, res) => {
   try {
     if (!ERPNEXT_URL || !ERPNEXT_API_KEY || !ERPNEXT_API_SECRET) {
@@ -434,24 +435,32 @@ router.get("/hrms/employees/id-card-data", async (_req, res) => {
     }
     const auth = `token ${ERPNEXT_API_KEY}:${ERPNEXT_API_SECRET}`;
 
-    // Step 1: bulk list — only fields permitted in ERPNext list queries
+    // Step 1: bulk list — only fields permitted in ERPNext list queries (paginated)
     const fields = JSON.stringify([
       "name", "employee_name", "department", "designation",
       "status", "date_of_joining", "date_of_birth", "image",
       "cell_number", "blood_group", "company",
     ]);
     const filters = JSON.stringify([["Employee", "status", "=", "Active"]]);
-    const params = new URLSearchParams({
-      fields, filters, limit_page_length: "500", order_by: "employee_name asc",
-    });
-    const listResp = await fetch(`${ERPNEXT_URL}/api/resource/Employee?${params}`, {
-      headers: { Authorization: auth },
-    });
-    if (!listResp.ok) throw new Error(`ERPNext list error: ${listResp.status}`);
-    const listJson = await listResp.json();
-
-    const { applyEmployeeFilter } = await import("../lib/erpnext");
-    const base = applyEmployeeFilter((listJson.data ?? []) as any[]);
+    const PAGE = 500;
+    const base: any[] = [];
+    for (let start = 0; ; start += PAGE) {
+      const params = new URLSearchParams({
+        fields,
+        filters,
+        limit_page_length: String(PAGE),
+        limit_start: String(start),
+        order_by: "employee_name asc",
+      });
+      const listResp = await fetch(`${ERPNEXT_URL}/api/resource/Employee?${params}`, {
+        headers: { Authorization: auth },
+      });
+      if (!listResp.ok) throw new Error(`ERPNext list error: ${listResp.status}`);
+      const listJson = await listResp.json();
+      const batch = (listJson.data ?? []) as any[];
+      base.push(...batch);
+      if (batch.length < PAGE) break;
+    }
 
     // Step 2: fetch individual records in parallel (batches of 10) for restricted fields
     // (emergency_phone_number, permanent_address are not allowed in list queries)
@@ -568,37 +577,20 @@ router.post("/hrms/id-card/render", async (req, res) => {
 // GET /api/hrms/celebrations — birthdays & work anniversaries (month / today)
 router.get("/hrms/celebrations", async (req, res) => {
   try {
-    if (!ERPNEXT_URL || !ERPNEXT_API_KEY || !ERPNEXT_API_SECRET) {
-      return res.json({ birthdays: [], anniversaries: [], themes: { birthday: [], anniversary: [] } });
-    }
-    const q = req.query as Record<string, string>;
-    const now = new Date();
-    const month = Math.min(12, Math.max(1, parseInt(q.month || String(now.getMonth() + 1), 10) || now.getMonth() + 1));
-    const day = q.day ? parseInt(q.day, 10) : undefined;
-    const filter = (q.filter || "month") as "month" | "today" | "all";
-
-    const auth = `token ${ERPNEXT_API_KEY}:${ERPNEXT_API_SECRET}`;
-    const fields = JSON.stringify([
-      "name", "employee_name", "department", "designation",
-      "status", "date_of_joining", "date_of_birth", "image",
-    ]);
-    const filters = JSON.stringify([["Employee", "status", "=", "Active"]]);
-    const params = new URLSearchParams({
-      fields, filters, limit_page_length: "500", order_by: "employee_name asc",
-    });
-    const listResp = await fetch(`${ERPNEXT_URL}/api/resource/Employee?${params}`, {
-      headers: { Authorization: auth },
-    });
-    if (!listResp.ok) throw new Error(`ERPNext list error: ${listResp.status}`);
-    const listJson = await listResp.json();
-    const { applyEmployeeFilter } = await import("../lib/erpnext");
+    const { fetchActiveEmployees } = await import("../lib/celebrationsService");
     const {
       matchesMonthDay,
       yearsOfService,
       getThemesForKind,
     } = await import("../lib/celebrationWishSvg");
 
-    const base = applyEmployeeFilter((listJson.data ?? []) as any[]);
+    const q = req.query as Record<string, string>;
+    const now = new Date();
+    const month = Math.min(12, Math.max(1, parseInt(q.month || String(now.getMonth() + 1), 10) || now.getMonth() + 1));
+    const day = q.day ? parseInt(q.day, 10) : undefined;
+    const filter = (q.filter || "month") as "month" | "today" | "all";
+
+    const base = await fetchActiveEmployees();
     const todayMonth = now.getMonth() + 1;
     const todayDay = now.getDate();
     const useMonth = filter === "today" ? todayMonth : month;

@@ -34,6 +34,7 @@ function authHeader(): string {
   return `token ${ERPNEXT_API_KEY}:${ERPNEXT_API_SECRET}`;
 }
 
+/** All active ERP employees — skips applyEmployeeFilter (incl. Production/O&M/Project/MD). */
 export async function fetchActiveEmployees(): Promise<any[]> {
   if (!isCelebrationsConfigured()) return [];
   const fields = JSON.stringify([
@@ -41,16 +42,26 @@ export async function fetchActiveEmployees(): Promise<any[]> {
     "status", "date_of_joining", "date_of_birth", "image",
   ]);
   const filters = JSON.stringify([["Employee", "status", "=", "Active"]]);
-  const params = new URLSearchParams({
-    fields, filters, limit_page_length: "500", order_by: "employee_name asc",
-  });
-  const listResp = await fetch(`${ERPNEXT_URL}/api/resource/Employee?${params}`, {
-    headers: { Authorization: authHeader() },
-  });
-  if (!listResp.ok) throw new Error(`ERPNext list error: ${listResp.status}`);
-  const listJson = await listResp.json();
-  const { applyEmployeeFilter } = await import("./erpnext");
-  return applyEmployeeFilter((listJson.data ?? []) as any[]);
+  const PAGE = 500;
+  const all: any[] = [];
+  for (let start = 0; ; start += PAGE) {
+    const params = new URLSearchParams({
+      fields,
+      filters,
+      limit_page_length: String(PAGE),
+      limit_start: String(start),
+      order_by: "employee_name asc",
+    });
+    const listResp = await fetch(`${ERPNEXT_URL}/api/resource/Employee?${params}`, {
+      headers: { Authorization: authHeader() },
+    });
+    if (!listResp.ok) throw new Error(`ERPNext list error: ${listResp.status}`);
+    const listJson = await listResp.json();
+    const batch = (listJson.data ?? []) as any[];
+    all.push(...batch);
+    if (batch.length < PAGE) break;
+  }
+  return all;
 }
 
 export function getCelebrationsForDate(
