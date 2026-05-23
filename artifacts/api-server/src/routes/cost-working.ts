@@ -293,7 +293,7 @@ router.get("/cost-working/erp/item-lookup", async (req, res) => {
   if (!q) return res.json({ items: [] });
   try {
     const params = new URLSearchParams({
-      fields: JSON.stringify(["item_code", "item_name", "description", "stock_uom"]),
+      fields: JSON.stringify(["item_code", "item_name", "description", "stock_uom", "image"]),
       filters: JSON.stringify([["item_name", "like", `%${q}%`], ["disabled", "=", 0]]),
       limit_page_length: "20",
       order_by: "item_name asc",
@@ -320,8 +320,13 @@ router.get("/cost-working/erp/item-lookup", async (req, res) => {
         if (!poRes.ok) return { ...item, latest_po_rate: null, latest_po_no: null, latest_uom: item.stock_uom };
         const poJson = await poRes.json();
         const poItem = (poJson.data ?? [])[0];
+        const rawImage: string = item.image ?? "";
+        const imageUrl = rawImage
+          ? rawImage.startsWith("http") ? rawImage : `${ERP_URL}${rawImage}`
+          : null;
         return {
           ...item,
+          image: imageUrl,
           latest_po_rate: poItem?.rate ?? null,
           latest_po_no: poItem?.parent ?? null,
           latest_uom: poItem?.uom ?? item.stock_uom,

@@ -64,7 +64,7 @@ interface Item {
 }
 interface ErpPO { name: string; supplier: string; status: string; grand_total: number; transaction_date: string; project?: string; }
 interface ErpPOItem { item_code: string; item_name: string; description?: string; qty: number; rate: number; amount: number; uom?: string; supplier?: string; po_name: string; }
-interface ErpItemMatch { item_code: string; item_name: string; description?: string; stock_uom?: string; latest_po_rate: number | null; latest_po_no: string | null; latest_uom: string; }
+interface ErpItemMatch { item_code: string; item_name: string; description?: string; stock_uom?: string; image?: string; latest_po_rate: number | null; latest_po_no: string | null; latest_uom: string; }
 
 const EMPTY_ITEM: Partial<Item> = { material_category: "General", quantity: 1, unit_price: 0, uom: "Nos", source: "manual" };
 
@@ -996,10 +996,10 @@ export default function CostWorking() {
                         <div className="divide-y divide-white/5">
                           {partMatches.map((it, i) => (
                             <label key={it.item_code} className={cn(
-                              "flex items-start gap-2.5 px-4 py-2.5 cursor-pointer hover:bg-white/5 transition-colors",
+                              "flex items-start gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-white/5 transition-colors",
                               selectedDiscovered.has(i) && "bg-indigo-900/30"
                             )}>
-                              <input type="checkbox" className="mt-0.5 shrink-0 accent-indigo-500"
+                              <input type="checkbox" className="mt-1 shrink-0 accent-indigo-500"
                                 checked={selectedDiscovered.has(i)}
                                 onChange={e => {
                                   setSelectedDiscovered(prev => {
@@ -1008,21 +1008,26 @@ export default function CostWorking() {
                                     return next;
                                   });
                                 }} />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[11px] font-medium text-white truncate">{it.item_name || it.item_code}</p>
-                                <p className="text-[10px] text-slate-400 truncate">{it.item_code}</p>
-                                {it.description && <p className="text-[10px] text-slate-500 truncate">{it.description}</p>}
-                              </div>
-                              <div className="shrink-0 text-right">
-                                {it.latest_po_rate != null ? (
-                                  <>
-                                    <p className="text-[11px] font-semibold text-emerald-400">
-                                      ₹{Number(it.latest_po_rate).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    </p>
-                                    <p className="text-[9px] text-slate-500">{it.latest_uom || "Nos"} · {it.latest_po_no}</p>
-                                  </>
+                              {/* Item photo */}
+                              <div className="shrink-0 w-9 h-9 rounded-md bg-slate-700 border border-white/10 overflow-hidden flex items-center justify-center">
+                                {it.image ? (
+                                  <img src={it.image} alt={it.item_name}
+                                    className="w-full h-full object-cover"
+                                    onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
                                 ) : (
-                                  <p className="text-[10px] text-slate-500">No PO price</p>
+                                  <Boxes className="w-4 h-4 text-slate-500" />
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[11px] font-medium text-white truncate leading-tight">{it.item_name || it.item_code}</p>
+                                <p className="text-[10px] text-slate-400 truncate">{it.item_code}</p>
+                                {it.latest_po_rate != null ? (
+                                  <p className="text-[11px] font-semibold text-emerald-400 mt-0.5">
+                                    ₹{Number(it.latest_po_rate).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    <span className="text-[9px] text-slate-500 font-normal ml-1">{it.latest_uom || "Nos"}</span>
+                                  </p>
+                                ) : (
+                                  <p className="text-[10px] text-slate-500 mt-0.5">No PO price</p>
                                 )}
                               </div>
                             </label>
