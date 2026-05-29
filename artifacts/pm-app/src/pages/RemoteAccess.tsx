@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import Layout from "@/components/Layout";
+import { Layout } from "@/components/Layout";
 import { Monitor, Plus, Trash2, RefreshCw, Wifi, WifiOff, Copy, Check, Eye, Key, Clock, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
