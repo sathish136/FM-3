@@ -513,6 +513,7 @@ interface IPCMachine {
   id: number; name: string; site: string;
   is_online: boolean; last_seen?: string;
   description?: string; created_at: string;
+  token?: string;
 }
 
 function formatRel(ts?: string) {
@@ -524,11 +525,78 @@ function formatRel(ts?: string) {
   return `${Math.floor(d / 86400)}d ago`;
 }
 
+function MachineTokenRow({ machineId, machineName, initialToken, onRegenerated }: {
+  machineId: number; machineName: string; initialToken?: string;
+  onRegenerated: (id: number, token: string) => void;
+}) {
+  const [show, setShow] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [cmdCopied, setCmdCopied] = useState(false);
+
+  const token = initialToken;
+  const cmd = token ? `python agent.py --token ${token}` : "";
+
+  const copyToken = async () => {
+    if (!token) return;
+    await navigator.clipboard.writeText(token);
+    setCopied(true); setTimeout(() => setCopied(false), 2000);
+  };
+
+  const copyCmd = async () => {
+    if (!cmd) return;
+    await navigator.clipboard.writeText(cmd);
+    setCmdCopied(true); setTimeout(() => setCmdCopied(false), 2000);
+  };
+
+  const regen = async () => {
+    if (!confirm(`Regenerate token for "${machineName}"? The current agent will disconnect.`)) return;
+    const r = await fetch(`${BASE}/api/remote-access/machines/${machineId}/regenerate-token`, { method: "POST" });
+    if (r.ok) { const d = await r.json(); onRegenerated(machineId, d.token); }
+  };
+
+  if (!token) {
+    return (
+      <div className="mt-2 flex items-center gap-2">
+        <span className="text-xs text-gray-400 italic">No token saved</span>
+        <button onClick={regen} className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
+          <Key size={11} /> Generate token
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-1.5">
+      {/* Token row */}
+      <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+        <Key size={12} className="text-gray-400 shrink-0" />
+        <code className="flex-1 text-xs font-mono text-gray-700 truncate">
+          {show ? token : "•".repeat(24) + token.slice(-8)}
+        </code>
+        <button onClick={() => setShow(s => !s)} className="p-1 rounded text-gray-400 hover:text-gray-600 transition-colors" title={show ? "Hide" : "Show"}>
+          {show ? <EyeOff size={12} /> : <Eye size={12} />}
+        </button>
+        <button onClick={copyToken} className={cn("p-1 rounded transition-colors", copied ? "text-emerald-600" : "text-gray-400 hover:text-indigo-600")} title="Copy token">
+          {copied ? <Check size={12} /> : <Copy size={12} />}
+        </button>
+        <button onClick={regen} className="p-1 rounded text-gray-400 hover:text-amber-600 transition-colors" title="Regenerate token">
+          <RefreshCw size={12} />
+        </button>
+      </div>
+      {/* Run command row */}
+      <div className="flex items-center gap-2 bg-gray-900 rounded-lg px-3 py-2">
+        <code className="flex-1 text-[11px] font-mono text-emerald-400 truncate">{cmd}</code>
+        <button onClick={copyCmd} className={cn("p-1 rounded transition-colors shrink-0", cmdCopied ? "text-emerald-400" : "text-gray-500 hover:text-emerald-400")} title="Copy command">
+          {cmdCopied ? <Check size={11} /> : <Copy size={11} />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function IPCMachinesTab({ configId }: { configId: number }) {
   const [machines, setMachines] = useState<IPCMachine[]>([]);
   const [loading, setLoading] = useState(true);
-  const [pendingToken, setPendingToken] = useState<{ token: string; name: string } | null>(null);
-  const [copied, setCopied] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -540,15 +608,8 @@ function IPCMachinesTab({ configId }: { configId: number }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const regen = async (id: number, name: string) => {
-    if (!confirm(`Regenerate token for "${name}"? The current agent will disconnect.`)) return;
-    const r = await fetch(`${BASE}/api/remote-access/machines/${id}/regenerate-token`, { method: "POST" });
-    if (r.ok) { const d = await r.json(); setPendingToken({ token: d.token, name }); }
-  };
-
-  const copy = async (t: string) => {
-    await navigator.clipboard.writeText(t);
-    setCopied(true); setTimeout(() => setCopied(false), 2000);
+  const handleRegenerated = (id: number, token: string) => {
+    setMachines(prev => prev.map(m => m.id === id ? { ...m, token } : m));
   };
 
   return (
@@ -556,7 +617,7 @@ function IPCMachinesTab({ configId }: { configId: number }) {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-semibold text-gray-700">IPC Machines</p>
-          <p className="text-xs text-gray-500 mt-0.5">Remote-access agents registered to this site</p>
+          <p className="text-xs text-gray-500 mt-0.5">Remote-access agents registered to this site — tokens saved here</p>
         </div>
         <a
           href={`${BASE}/remote-access`}
@@ -583,95 +644,53 @@ function IPCMachinesTab({ configId }: { configId: number }) {
           </a>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {machines.map(m => (
-            <div key={m.id} className="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-xl">
-              <div className={cn(
-                "w-9 h-9 rounded-lg flex items-center justify-center shrink-0",
-                m.is_online ? "bg-emerald-100" : "bg-gray-100"
-              )}>
-                <Monitor size={16} className={m.is_online ? "text-emerald-600" : "text-gray-400"} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-gray-800">{m.name}</span>
-                  <span className={cn(
-                    "inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full",
-                    m.is_online
-                      ? "bg-emerald-100 text-emerald-700"
-                      : "bg-gray-100 text-gray-400"
-                  )}>
-                    {m.is_online ? <Wifi size={9} /> : <WifiOff size={9} />}
-                    {m.is_online ? "Online" : "Offline"}
-                  </span>
+            <div key={m.id} className="p-4 bg-white border border-gray-200 rounded-xl">
+              {/* Header row */}
+              <div className="flex items-center gap-3">
+                <div className={cn(
+                  "w-9 h-9 rounded-lg flex items-center justify-center shrink-0",
+                  m.is_online ? "bg-emerald-100" : "bg-gray-100"
+                )}>
+                  <Monitor size={16} className={m.is_online ? "text-emerald-600" : "text-gray-400"} />
                 </div>
-                <p className="text-xs text-gray-400 flex items-center gap-2 mt-0.5">
-                  {m.description && <span>{m.description} ·</span>}
-                  <span className="flex items-center gap-1">
-                    <Clock size={10} />{m.is_online ? "Connected" : formatRel(m.last_seen)}
-                  </span>
-                </p>
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <button
-                  onClick={() => regen(m.id, m.name)}
-                  title="Regenerate token"
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
-                >
-                  <Key size={14} />
-                </button>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-gray-800">{m.name}</span>
+                    <span className={cn(
+                      "inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full",
+                      m.is_online ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-400"
+                    )}>
+                      {m.is_online ? <Wifi size={9} /> : <WifiOff size={9} />}
+                      {m.is_online ? "Online" : "Offline"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400 flex items-center gap-2 mt-0.5">
+                    {m.description && <span>{m.description} ·</span>}
+                    <span className="flex items-center gap-1">
+                      <Clock size={10} />{m.is_online ? "Connected" : formatRel(m.last_seen)}
+                    </span>
+                  </p>
+                </div>
                 {m.is_online && (
                   <a
                     href={`${BASE}/remote-access/${m.id}`}
-                    className="flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-colors"
+                    className="flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-colors shrink-0"
                   >
                     <Eye size={11} /> Connect
                   </a>
                 )}
               </div>
+              {/* Token row */}
+              <MachineTokenRow
+                machineId={m.id}
+                machineName={m.name}
+                initialToken={m.token}
+                onRegenerated={handleRegenerated}
+              />
             </div>
           ))}
-        </div>
-      )}
-
-      {/* Token modal */}
-      {pendingToken && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-lg p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
-                <Key size={18} className="text-emerald-600" />
-              </div>
-              <div>
-                <h2 className="font-semibold text-gray-800">New Token Generated</h2>
-                <p className="text-xs text-gray-500">For: <span className="font-medium">{pendingToken.name}</span></p>
-              </div>
-            </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3">
-              <p className="text-xs text-amber-700 font-medium">Copy this token now — it won't be shown again.</p>
-            </div>
-            <div className="bg-gray-900 rounded-xl p-4 font-mono text-sm text-emerald-400 break-all mb-4 select-all">
-              {pendingToken.token}
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => copy(pendingToken.token)}
-                className={cn(
-                  "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all",
-                  copied ? "bg-emerald-100 text-emerald-700" : "bg-indigo-600 hover:bg-indigo-700 text-white"
-                )}
-              >
-                {copied ? <Check size={15} /> : <Copy size={15} />}
-                {copied ? "Copied!" : "Copy Token"}
-              </button>
-              <button
-                onClick={() => setPendingToken(null)}
-                className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-all"
-              >
-                Done
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>

@@ -58,9 +58,9 @@ function TokenModal({ token, name, onClose }: { token: string; name: string; onC
           </div>
         </div>
 
-        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-3 mb-4">
-          <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
-            Copy this token now — it won't be shown again. Use it when starting the agent on the IPC machine.
+        <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-xl p-3 mb-4">
+          <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
+            Token saved — you can view and copy it anytime from the <a href={`${BASE}/plc-automation/device-config`} className="underline font-semibold">Device Config → IPC Machines tab</a>.
           </p>
         </div>
 

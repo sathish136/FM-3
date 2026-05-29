@@ -34,6 +34,11 @@ async function initTables() {
         ADD COLUMN IF NOT EXISTS device_config_id INTEGER REFERENCES plc_device_configs(id) ON DELETE SET NULL;
     `);
 
+    await pool.query(`
+      ALTER TABLE remote_access_machines
+        ADD COLUMN IF NOT EXISTS token TEXT;
+    `);
+
     console.log("Remote access tables ready");
   } catch (e) {
     console.error("remote_access table init error:", e);
@@ -100,10 +105,10 @@ router.post("/remote-access/machines", async (req, res) => {
     const createdBy = (req as any).user?.email || null;
 
     const r = await pool.query(
-      `INSERT INTO remote_access_machines (name, site, description, token_hash, created_by, device_config_id)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, name, site, description, is_online, last_seen, created_at, created_by, device_config_id`,
-      [name.trim(), resolvedSite, description?.trim() || null, tokenHash, createdBy, resolvedDeviceConfigId]
+      `INSERT INTO remote_access_machines (name, site, description, token_hash, token, created_by, device_config_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, name, site, description, is_online, last_seen, created_at, created_by, device_config_id, token`,
+      [name.trim(), resolvedSite, description?.trim() || null, tokenHash, token, createdBy, resolvedDeviceConfigId]
     );
 
     res.json({ ...r.rows[0], token });
@@ -189,8 +194,8 @@ router.post("/remote-access/machines/:id/regenerate-token", async (req, res) => 
     const token = generateToken();
     const tokenHash = hashToken(token);
     const r = await pool.query(
-      `UPDATE remote_access_machines SET token_hash = $1 WHERE id = $2 RETURNING id, name`,
-      [tokenHash, id]
+      `UPDATE remote_access_machines SET token_hash = $1, token = $2 WHERE id = $3 RETURNING id, name`,
+      [tokenHash, token, id]
     );
     if (!r.rows[0]) return res.status(404).json({ error: "Machine not found" });
     res.json({ token });
@@ -218,7 +223,7 @@ router.get("/remote-access/by-device-config/:configId", async (req, res) => {
   try {
     const { configId } = req.params;
     const rows = await pool.query(
-      `SELECT id, name, site, description, is_online, last_seen, created_at, created_by, device_config_id
+      `SELECT id, name, site, description, is_online, last_seen, created_at, created_by, device_config_id, token
        FROM remote_access_machines
        WHERE device_config_id = $1
        ORDER BY name`,
