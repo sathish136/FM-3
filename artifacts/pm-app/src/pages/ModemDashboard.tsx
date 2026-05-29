@@ -86,28 +86,30 @@ function formatLastSeen(ts: string | null): string {
   return d.toLocaleDateString();
 }
 
-function SignalBars({ rssi }: { rssi: number | null }) {
+function RssiBadge({ rssi }: { rssi: number | null }) {
   if (rssi === null)
     return <span className="text-slate-400 text-xs font-medium">—</span>;
-  let bars = 0;
-  if (rssi >= -65) bars = 4;
-  else if (rssi >= -75) bars = 3;
-  else if (rssi >= -85) bars = 2;
-  else bars = 1;
-  const color =
-    bars === 4 ? "bg-emerald-500" :
-    bars === 3 ? "bg-yellow-400" :
-    bars === 2 ? "bg-orange-400" : "bg-red-400";
+  let quality: string;
+  let pillClass: string;
+  if (rssi >= -65) {
+    quality = "Excellent";
+    pillClass = "bg-emerald-500 text-white";
+  } else if (rssi >= -75) {
+    quality = "Good";
+    pillClass = "bg-emerald-400 text-white";
+  } else if (rssi >= -85) {
+    quality = "Fair";
+    pillClass = "bg-yellow-400 text-white";
+  } else {
+    quality = "Poor";
+    pillClass = "bg-red-500 text-white";
+  }
   return (
-    <div className="flex items-end gap-[2px] h-4">
-      {[1, 2, 3, 4].map((b) => (
-        <div
-          key={b}
-          className={`w-1.5 rounded-sm ${b <= bars ? color : "bg-slate-200"}`}
-          style={{ height: `${b * 4}px` }}
-        />
-      ))}
-      <span className="ml-1.5 text-xs text-slate-600 font-medium">{rssi} dBm</span>
+    <div className="flex items-center gap-2">
+      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${pillClass}`}>
+        {rssi}
+      </span>
+      <span className="text-xs text-slate-500">{quality}</span>
     </div>
   );
 }
@@ -357,15 +359,6 @@ function ModemCard({
         {/* Connection */}
         <div>
           <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Connection</p>
-          <div className="flex items-start justify-between gap-3 py-1.5 border-b border-slate-100">
-            <span className="text-xs text-slate-500 shrink-0 w-32">Signal (RSSI)</span>
-            <div className="flex justify-end">
-              <SignalBars rssi={modem.signal_rssi} />
-            </div>
-          </div>
-          <DetailRow label="Signal (RSRP)" value={modem.signal_rsrp !== null ? `${modem.signal_rsrp} dBm` : "—"} mono />
-          <DetailRow label="Signal (RSRQ)" value={modem.signal_rsrq !== null ? `${modem.signal_rsrq} dB` : "—"} mono />
-          <DetailRow label="Signal (SINR)" value={modem.signal_sinr !== null ? `${modem.signal_sinr} dB` : "—"} mono />
           <DetailRow label="Operator" value={modem.operator || "—"} />
           <DetailRow label="Operator State" value={modem.operator_state || "—"} />
           <DetailRow
@@ -384,10 +377,8 @@ function ModemCard({
           />
           <DetailRow label="Connection Stage" value={modem.conn_stage || "—"} />
           <DetailRow label="Network Type" value={modem.network_type || "—"} />
-          <DetailRow label="SIM State" value={modem.sim_state || "—"} />
           <DetailRow label="IP Address" value={modem.wan_ip || "—"} mono />
           <DetailRow label="Uptime" value={formatUptime(modem.uptime)} />
-          <DetailRow label="Last Seen" value={formatLastSeen(modem.last_seen)} />
         </div>
 
         {/* Data Transmission */}
@@ -396,6 +387,10 @@ function ModemCard({
           <DetailRow label="Carrier Aggregation" value={modem.carrier_agg || "—"} />
           <DetailRow label="Bandwidth" value={modem.bandwidth || "—"} />
           <DetailRow label="Connected Band" value={modem.band || "—"} />
+          <DetailRow
+            label="RSSI (dBm)"
+            value={<RssiBadge rssi={modem.signal_rssi} />}
+          />
           <DetailRow label="APN" value={modem.apn || "—"} mono />
           <DetailRow label="MTU" value={modem.mtu !== null ? String(modem.mtu) : "—"} />
           <DetailRow label="Data Received" value={formatBytes(modem.data_rx)} mono />
@@ -411,18 +406,6 @@ function ModemCard({
           <DetailRow label="EARFCN" value={modem.earfcn || "—"} mono />
           <DetailRow label="Mobile Country Code" value={modem.mcc || "—"} mono />
           <DetailRow label="Mobile Network Code" value={modem.mnc || "—"} mono />
-        </div>
-
-        {/* Device Info */}
-        <div>
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Device Info</p>
-          <DetailRow label="IMEI" value={modem.imei || "—"} mono />
-          <DetailRow label="SIM No." value={modem.sim_no || "—"} mono />
-          <DetailRow label="Carrier / ISP" value={modem.carrier || "—"} />
-          <DetailRow label="Firmware" value={modem.fw_version || "—"} mono />
-          {modem.description && (
-            <DetailRow label="Notes" value={modem.description} />
-          )}
         </div>
 
         {/* Auth Token */}
