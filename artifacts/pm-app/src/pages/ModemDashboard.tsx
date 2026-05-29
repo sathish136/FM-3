@@ -354,58 +354,39 @@ function ModemCard({
       </div>
 
       {/* All Details */}
-      <div className="px-4 py-3 space-y-4">
-
-        {/* Connection */}
-        <div>
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Connection</p>
-          <DetailRow label="Operator" value={modem.operator || "—"} />
-          <DetailRow label="Operator State" value={modem.operator_state || "—"} />
+      <div className="px-4 py-3">
+        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Live Status</p>
+        <div className="mb-1.5">
           <DetailRow
-            label="Data Conn. State"
-            value={
-              modem.conn_state ? (
-                <span className={
-                  modem.conn_state.toLowerCase().includes("connect")
-                    ? "text-xs font-medium bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full"
-                    : "text-xs font-medium bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full"
-                }>
-                  {modem.conn_state}
-                </span>
-              ) : "—"
-            }
-          />
-          <DetailRow label="Connection Stage" value={modem.conn_stage || "—"} />
-          <DetailRow label="Network Type" value={modem.network_type || "—"} />
-          <DetailRow label="IP Address" value={modem.wan_ip || "—"} mono />
-          <DetailRow label="Uptime" value={formatUptime(modem.uptime)} />
-        </div>
-
-        {/* Data Transmission */}
-        <div>
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Data Transmission</p>
-          <DetailRow label="Carrier Aggregation" value={modem.carrier_agg || "—"} />
-          <DetailRow label="Bandwidth" value={modem.bandwidth || "—"} />
-          <DetailRow label="Connected Band" value={modem.band || "—"} />
-          <DetailRow
-            label="RSSI (dBm)"
+            label="Signal (RSSI)"
             value={<RssiBadge rssi={modem.signal_rssi} />}
           />
-          <DetailRow label="APN" value={modem.apn || "—"} mono />
-          <DetailRow label="MTU" value={modem.mtu !== null ? String(modem.mtu) : "—"} />
-          <DetailRow label="Data Received" value={formatBytes(modem.data_rx)} mono />
-          <DetailRow label="Data Sent" value={formatBytes(modem.data_tx)} mono />
+          <DetailRow label="WAN IP" value={modem.wan_ip || "—"} mono />
+          <DetailRow label="Operator" value={modem.operator || "—"} />
+          <DetailRow label="Network" value={modem.network_type || "—"} />
+          <DetailRow label="SIM State" value={modem.sim_state || "—"} />
+          <DetailRow label="Uptime" value={formatUptime(modem.uptime)} />
+          <DetailRow label="Last Seen" value={formatLastSeen(modem.last_seen)} />
+          <DetailRow
+            label="Data Usage"
+            value={
+              modem.data_rx || modem.data_tx
+                ? `↓ ${formatBytes(modem.data_rx)}  ↑ ${formatBytes(modem.data_tx)}`
+                : "—"
+            }
+            mono
+          />
+          <DetailRow label="Firmware" value={modem.fw_version || "—"} mono />
         </div>
 
-        {/* Cell Info */}
+        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2 mt-3">Device Info</p>
         <div>
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Cell Info</p>
-          <DetailRow label="Cell ID" value={modem.cell_id || "—"} mono />
-          <DetailRow label="TAC" value={modem.tac || "—"} mono />
-          <DetailRow label="Physical Cell ID" value={modem.pcid || "—"} mono />
-          <DetailRow label="EARFCN" value={modem.earfcn || "—"} mono />
-          <DetailRow label="Mobile Country Code" value={modem.mcc || "—"} mono />
-          <DetailRow label="Mobile Network Code" value={modem.mnc || "—"} mono />
+          <DetailRow label="IMEI" value={modem.imei || "—"} mono />
+          <DetailRow label="SIM No." value={modem.sim_no || "—"} mono />
+          <DetailRow label="Carrier / ISP" value={modem.carrier || "—"} />
+          {modem.description && (
+            <DetailRow label="Notes" value={modem.description} />
+          )}
         </div>
 
         {/* Auth Token */}
