@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { Layout } from "@/components/Layout";
+import { apiFetch } from "@/lib/apiClient";
+import { useToast } from "@/hooks/use-toast";
 import {
   Wifi, WifiOff, Signal, Plus, Trash2, RefreshCw, Copy, Check,
   ChevronDown, ChevronUp, Eye, EyeOff, Router, Info,
 } from "lucide-react";
-
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface ModemDevice {
   id: number;
@@ -580,24 +580,30 @@ export default function ModemDashboard() {
   const [loading, setLoading] = useState(true);
   const [showRegister, setShowRegister] = useState(false);
   const [filter, setFilter] = useState<"all" | "online" | "offline">("all");
+  const { toast } = useToast();
 
-  const heartbeatUrl = `${window.location.origin}${BASE}/api/modems/heartbeat`;
+  const appBase = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const heartbeatUrl = `${window.location.origin}${appBase}/api/modems/heartbeat`;
 
   const fetchModems = useCallback(async () => {
     try {
-      const r = await fetch(`${BASE}/api/modems/devices`);
+      const r = await apiFetch("/modems/devices");
       if (r.ok) setModems(await r.json());
+    } catch (e: any) {
+      console.error("fetchModems:", e);
     } finally {
       setLoading(false);
     }
   }, []);
 
   const fetchConfigs = useCallback(async () => {
-    const r = await fetch(`${BASE}/api/plc/device-configs`);
-    if (r.ok) {
-      const body = await r.json();
-      setConfigs(Array.isArray(body) ? body : (body.data ?? []));
-    }
+    try {
+      const r = await apiFetch("/plc/device-configs");
+      if (r.ok) {
+        const body = await r.json();
+        setConfigs(Array.isArray(body) ? body : (body.data ?? []));
+      }
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -608,27 +614,45 @@ export default function ModemDashboard() {
   }, [fetchModems, fetchConfigs]);
 
   const handleRegister = async (data: Record<string, unknown>) => {
-    const r = await fetch(`${BASE}/api/modems/devices`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-    if (r.ok) {
-      setShowRegister(false);
-      fetchModems();
+    try {
+      const r = await apiFetch("/modems/devices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (r.ok) {
+        setShowRegister(false);
+        fetchModems();
+        toast({ title: "Modem registered successfully" });
+      } else {
+        const body = await r.json().catch(() => ({}));
+        toast({ title: "Registration failed", description: body.error || r.statusText, variant: "destructive" });
+      }
+    } catch (e: any) {
+      toast({ title: "Registration failed", description: e.message, variant: "destructive" });
     }
   };
 
   const handleDelete = async (id: number) => {
     if (!confirm("Delete this modem?")) return;
-    await fetch(`${BASE}/api/modems/devices/${id}`, { method: "DELETE" });
-    fetchModems();
+    try {
+      await apiFetch(`/modems/devices/${id}`, { method: "DELETE" });
+      fetchModems();
+      toast({ title: "Modem deleted" });
+    } catch (e: any) {
+      toast({ title: "Delete failed", description: e.message, variant: "destructive" });
+    }
   };
 
   const handleRegenToken = async (id: number) => {
     if (!confirm("Regenerate token? Update the modem config with the new token afterwards.")) return;
-    await fetch(`${BASE}/api/modems/devices/${id}/regenerate-token`, { method: "POST" });
-    fetchModems();
+    try {
+      await apiFetch(`/modems/devices/${id}/regenerate-token`, { method: "POST" });
+      fetchModems();
+      toast({ title: "Token regenerated" });
+    } catch (e: any) {
+      toast({ title: "Failed to regenerate token", description: e.message, variant: "destructive" });
+    }
   };
 
   const filtered = modems.filter((m) => {
