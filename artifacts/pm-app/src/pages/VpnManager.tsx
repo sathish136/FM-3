@@ -8,7 +8,7 @@ import {
   Server, Wifi, WifiOff, Terminal, AlertCircle, CheckCircle2,
   Settings, Phone, Cpu, ClipboardList, Network, GitBranch,
   Activity, Ticket, MonitorPlay, Target, ArrowDown, ArrowUp,
-  BarChart3, ChevronDown, Clock, Globe,
+  BarChart3, ChevronDown, Clock, Globe, Key, RotateCcw, Radio,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -79,6 +79,7 @@ interface VpnServer {
   endpoint: string | null;
   dns: string;
   interface: string;
+  agent_api_key: string | null;
   updated_at: string;
 }
 
@@ -106,6 +107,9 @@ interface LivePeer {
 interface VpnStatus {
   available: boolean;
   peers: Record<string, LivePeer>;
+  stale?: boolean;
+  neverReported?: boolean;
+  lastReportedAt?: string;
 }
 
 interface UsageSnapshot {
@@ -190,10 +194,20 @@ function StatCard({ label, value, sub, icon: Icon, iconClass, borderClass }: {
 }
 
 // ─── Server Setup Card ────────────────────────────────────────────────────────
-function ServerSetupCard({ server, onSaved }: { server: VpnServer | null; onSaved: () => void }) {
+function ServerSetupCard({
+  server,
+  onSaved,
+  onRegenKey,
+}: {
+  server: VpnServer | null;
+  onSaved: () => void;
+  onRegenKey: () => void;
+}) {
   const { toast } = useToast();
   const [open, setOpen] = useState(!server);
   const [saving, setSaving] = useState(false);
+  const [regenLoading, setRegenLoading] = useState(false);
+  const [keyVisible, setKeyVisible] = useState(false);
   const [form, setForm] = useState({
     endpoint: server?.endpoint ?? "",
     listen_port: server?.listen_port ?? 51820,
@@ -219,6 +233,26 @@ function ServerSetupCard({ server, onSaved }: { server: VpnServer | null; onSave
     }
   };
 
+  const regenKey = async () => {
+    if (!confirm("Regenerate the agent API key? The server agent will need to be reconfigured with the new key.")) return;
+    setRegenLoading(true);
+    try {
+      const res = await apiFetch("/vpn/server/regenerate-api-key", { method: "POST" });
+      if (!res.ok) throw new Error("Failed");
+      toast({ title: "API key regenerated", description: "Update the key in your server agent." });
+      onRegenKey();
+    } catch {
+      toast({ title: "Error", description: "Could not regenerate key", variant: "destructive" });
+    } finally {
+      setRegenLoading(false);
+    }
+  };
+
+  const agentScriptUrl = "/pm-app/api/vpn/server/agent-script";
+  const maskedKey = server?.agent_api_key
+    ? (keyVisible ? server.agent_api_key : server.agent_api_key.slice(0, 10) + "••••••••••••••••••••••••••••••••••••••")
+    : null;
+
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
       <button
@@ -230,10 +264,10 @@ function ServerSetupCard({ server, onSaved }: { server: VpnServer | null; onSave
             <Server size={16} className="text-white" />
           </div>
           <div className="text-left">
-            <p className="text-sm font-semibold text-slate-800">WireGuard Server</p>
+            <p className="text-sm font-semibold text-slate-800">Remote WireGuard Server</p>
             <p className="text-xs text-slate-500">
               {server
-                ? `${server.interface} · Port ${server.listen_port} · ${server.server_ip} · DNS ${server.dns}`
+                ? `${server.endpoint ?? "<endpoint not set>"} · Port ${server.listen_port} · Net ${server.server_ip}/24`
                 : "Not configured — click to set up"}
             </p>
           </div>
@@ -250,6 +284,8 @@ function ServerSetupCard({ server, onSaved }: { server: VpnServer | null; onSave
 
       {open && (
         <div className="border-t border-slate-100 px-5 py-4 space-y-4 bg-slate-50/30">
+
+          {/* Public key display */}
           {server && (
             <div className="flex items-center gap-2 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5">
               <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-20 shrink-0">Public Key</span>
@@ -257,19 +293,23 @@ function ServerSetupCard({ server, onSaved }: { server: VpnServer | null; onSave
               <CopyBtn text={server.public_key} />
             </div>
           )}
+
+          {/* Endpoint & port */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Server Public Endpoint</label>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                Server Public Endpoint <span className="font-normal text-slate-400">(IP or hostname of your VPS)</span>
+              </label>
               <input
                 type="text"
-                placeholder="e.g. vpn.yourcompany.com or 203.0.113.1"
+                placeholder="e.g. 203.0.113.50 or vpn.yourcompany.com"
                 value={form.endpoint}
                 onChange={(e) => setForm((f) => ({ ...f, endpoint: e.target.value }))}
                 className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/30 bg-white"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Listen Port</label>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">WireGuard Port</label>
               <input
                 type="number"
                 value={form.listen_port}
@@ -278,6 +318,7 @@ function ServerSetupCard({ server, onSaved }: { server: VpnServer | null; onSave
               />
             </div>
           </div>
+
           <div className="sm:w-1/3">
             <label className="block text-xs font-semibold text-slate-600 mb-1.5">DNS Server</label>
             <input
@@ -287,6 +328,7 @@ function ServerSetupCard({ server, onSaved }: { server: VpnServer | null; onSave
               className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/30 bg-white"
             />
           </div>
+
           <div className="flex items-center gap-2 pt-1">
             <button
               onClick={save}
@@ -301,17 +343,79 @@ function ServerSetupCard({ server, onSaved }: { server: VpnServer | null; onSave
                 className="px-3 py-2 text-sm border border-slate-200 rounded-lg hover:bg-white text-slate-600 flex items-center gap-1.5 transition-colors"
                 download
               >
-                <Download size={13} /> Download wg0.conf
+                <Download size={13} /> wg0.conf
               </a>
             )}
           </div>
+
+          {/* ── Agent API Key section ── */}
+          {server && (
+            <div className="mt-2 space-y-3">
+              <div className="border-t border-slate-200 pt-4">
+                <p className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5">
+                  <Key size={12} className="text-violet-500" /> Server Agent API Key
+                  <span className="text-[10px] font-normal text-slate-400">— used by the Python agent running on your WireGuard server</span>
+                </p>
+                <div className="flex items-center gap-2 bg-slate-900 rounded-lg px-3 py-2.5 border border-slate-700">
+                  <Radio size={12} className="text-violet-400 shrink-0" />
+                  <code className="text-xs text-violet-300 font-mono flex-1 truncate">
+                    {maskedKey ?? <span className="text-slate-500 italic">Generating…</span>}
+                  </code>
+                  <button
+                    onClick={() => setKeyVisible(v => !v)}
+                    className="text-[10px] text-slate-400 hover:text-slate-200 px-1.5 py-0.5 rounded border border-slate-700 hover:border-slate-500 transition-colors shrink-0"
+                  >
+                    {keyVisible ? "hide" : "show"}
+                  </button>
+                  {server.agent_api_key && <CopyBtn text={server.agent_api_key} size={12} />}
+                  <button
+                    onClick={regenKey}
+                    disabled={regenLoading}
+                    className="p-1 text-slate-500 hover:text-amber-400 transition-colors shrink-0"
+                    title="Regenerate key"
+                  >
+                    <RotateCcw size={12} className={regenLoading ? "animate-spin" : ""} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Agent script download */}
+              <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 space-y-2.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold text-violet-800 flex items-center gap-1.5">
+                      <Terminal size={12} /> FlowMatrix WireGuard Server Agent
+                    </p>
+                    <p className="text-[11px] text-violet-600 mt-0.5">
+                      A Python script you run on your remote WireGuard server (VPS/cloud). It pushes live peer status to FlowMatrix every 30 seconds and auto-applies new peer configs.
+                    </p>
+                  </div>
+                  <a
+                    href={agentScriptUrl}
+                    download
+                    className="shrink-0 flex items-center gap-1.5 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold rounded-lg transition-colors shadow-sm"
+                  >
+                    <Download size={12} /> Download Agent
+                  </a>
+                </div>
+                <div className="bg-violet-900/10 rounded-lg p-2.5 space-y-1">
+                  <p className="text-[10px] font-semibold text-violet-700 uppercase tracking-wider">Quick Start on your WireGuard server:</p>
+                  <code className="text-[11px] text-violet-800 block">sudo python3 flowmatrix_wg_agent.py</code>
+                  <p className="text-[10px] text-violet-600">Or install as a systemd service — instructions are inside the downloaded script.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {!server && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 space-y-1.5">
-              <p className="font-semibold flex items-center gap-1"><AlertCircle size={12} /> Setup Instructions</p>
-              <p>1. Enter your server's public IP/hostname above and click <strong>Initialize</strong>.</p>
-              <p>2. Download <code>wg0.conf</code> → place at <code>/etc/wireguard/wg0.conf</code> on your Linux server.</p>
-              <p>3. Run: <code className="bg-amber-100 px-1 rounded">sudo wg-quick up wg0</code></p>
-              <p>4. Optional: <code className="bg-amber-100 px-1 rounded">sudo systemctl enable wg-quick@wg0</code> to auto-start on boot.</p>
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-800 space-y-2">
+              <p className="font-bold flex items-center gap-1.5"><AlertCircle size={12} /> How it works</p>
+              <ol className="space-y-1.5 list-none">
+                <li className="flex gap-2"><span className="font-bold text-blue-600 shrink-0">1.</span> Enter your VPS/cloud server's public IP and click <strong>Initialize</strong>. Keys are generated here.</li>
+                <li className="flex gap-2"><span className="font-bold text-blue-600 shrink-0">2.</span> Download <code className="bg-blue-100 px-1 rounded">wg0.conf</code> → copy to your server at <code className="bg-blue-100 px-1 rounded">/etc/wireguard/wg0.conf</code></li>
+                <li className="flex gap-2"><span className="font-bold text-blue-600 shrink-0">3.</span> On your server: <code className="bg-blue-100 px-1 rounded">sudo wg-quick up wg0</code></li>
+                <li className="flex gap-2"><span className="font-bold text-blue-600 shrink-0">4.</span> Download & run the <strong>Server Agent</strong> — it keeps FlowMatrix in sync with live peer status automatically.</li>
+              </ol>
             </div>
           )}
         </div>
@@ -717,37 +821,82 @@ function SetupGuide() {
           <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
             <Terminal size={15} className="text-slate-500" />
           </div>
-          <span className="text-sm font-semibold text-slate-700">Quick Setup Guide</span>
+          <span className="text-sm font-semibold text-slate-700">Full Setup Guide</span>
         </div>
         <ChevronDown size={15} className={cn("text-slate-400 transition-transform", open && "rotate-180")} />
       </button>
       {open && (
-        <div className="border-t border-slate-100 px-5 py-4">
-          <ol className="space-y-3 text-xs text-slate-600">
+        <div className="border-t border-slate-100 px-5 py-5 space-y-5">
+          {/* Architecture overview */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-600">
+            <p className="font-bold text-slate-800 mb-1.5">Architecture Overview</p>
+            <p className="text-slate-500 mb-2">
+              FlowMatrix acts as the <strong>control plane</strong>. Your WireGuard server is a separate VPS/cloud host.
+              A small Python agent runs on the WireGuard server and keeps both sides in sync.
+            </p>
+            <div className="flex items-center gap-2 text-[11px] flex-wrap">
+              <span className="bg-blue-100 text-blue-700 font-semibold px-2 py-0.5 rounded">FlowMatrix</span>
+              <span className="text-slate-400">stores keys, generates configs, shows dashboard</span>
+              <span className="mx-1 text-slate-300">|</span>
+              <span className="bg-violet-100 text-violet-700 font-semibold px-2 py-0.5 rounded">Server Agent</span>
+              <span className="text-slate-400">pushes live status ↔ pulls new peer configs every 30s</span>
+              <span className="mx-1 text-slate-300">|</span>
+              <span className="bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded">WireGuard VPS</span>
+              <span className="text-slate-400">routes all peer traffic</span>
+            </div>
+          </div>
+
+          <ol className="space-y-4 text-xs text-slate-600">
             {[
               {
                 n: 1,
-                title: "On your Linux server",
-                body: <>Install WireGuard: <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono">apt install wireguard-tools</code>, download <strong>wg0.conf</strong> from the server card above and place it at <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono">/etc/wireguard/wg0.conf</code>, then run <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono">sudo wg-quick up wg0</code>.</>
+                color: "bg-blue-600",
+                title: "Set up your WireGuard VPS",
+                body: <>
+                  Get a Linux VPS (e.g. Ubuntu 22.04) with a public IP. Install WireGuard:
+                  {" "}<code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono">apt install wireguard-tools</code>.
+                  Enter the server's public IP in the <strong>Remote WireGuard Server</strong> card above, click <strong>Initialize</strong>,
+                  then download <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono">wg0.conf</code> and copy it to
+                  <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono"> /etc/wireguard/wg0.conf</code> on your VPS.
+                  Run: <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono">sudo wg-quick up wg0</code>
+                </>
               },
               {
                 n: 2,
-                title: "Add a peer",
-                body: <>Click <strong>+ Add Peer</strong> for each remote device (modem, Raspberry Pi, etc.). Enter the device's local LAN subnet so traffic to those IPs routes through the VPN tunnel.</>
+                color: "bg-violet-600",
+                title: "Deploy the Server Agent on your VPS",
+                body: <>
+                  Click <strong>Download Agent</strong> in the server card (the purple section).
+                  Copy <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono">flowmatrix_wg_agent.py</code> to your VPS and run:
+                  {" "}<code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono">sudo python3 flowmatrix_wg_agent.py</code>.
+                  It will push live peer status to FlowMatrix every 30s and automatically apply any new peer configs you add here.
+                  Install as a systemd service for persistent operation (instructions inside the script).
+                </>
               },
               {
                 n: 3,
-                title: "On Linux / Raspberry Pi",
-                body: <>Download the <strong>Python Script</strong> for the peer and run <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono">sudo python3 flowmatrix_vpn.py up</code>. It installs WireGuard, writes the config, and brings the tunnel up automatically.</>
+                color: "bg-emerald-600",
+                title: "Add peers (remote sites / devices)",
+                body: <>
+                  Click <strong>+ Add Peer</strong> for each device — site modem, Raspberry Pi, laptop, etc.
+                  Enter the device's LAN subnet (e.g. <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono">192.168.1.0/24</code>) so traffic to those IPs routes through the tunnel.
+                  The agent on your VPS will pick up new peers automatically within 30 seconds.
+                </>
               },
               {
                 n: 4,
-                title: "On Teltonika modems",
-                body: <>Download the <strong>WG Config</strong> and import it in the modem's web UI under <em>Services → VPN → WireGuard</em>. Activate the interface and the tunnel connects automatically.</>
+                color: "bg-amber-500",
+                title: "Connect peer devices",
+                body: <>
+                  <strong>Linux / Raspberry Pi:</strong> Download the <strong>Python Script</strong> for the peer and run
+                  {" "}<code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono">sudo python3 flowmatrix_vpn.py up</code>.
+                  {" "}<strong>Teltonika modems:</strong> Download the <strong>WG Config</strong> and import it in the modem's web UI under
+                  {" "}<em>Services → VPN → WireGuard</em>. Activate the interface and it connects automatically.
+                </>
               },
             ].map(step => (
               <li key={step.n} className="flex gap-3">
-                <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">{step.n}</span>
+                <span className={`w-5 h-5 rounded-full ${step.color} text-white text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5`}>{step.n}</span>
                 <div><span className="font-semibold text-slate-800">{step.title}: </span>{step.body}</div>
               </li>
             ))}
@@ -839,16 +988,29 @@ export default function VpnManager() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              {status.available ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              {status.neverReported ? (
+                <span className="flex items-center gap-1.5 text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-full">
+                  <Radio size={11} /> Agent not yet connected
+                </span>
+              ) : status.stale ? (
+                <span className="flex items-center gap-1.5 text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200 px-3 py-1.5 rounded-full">
+                  <AlertCircle size={11} /> Status stale · {onlinePeers.length}/{peers.length} last seen online
+                </span>
+              ) : status.available ? (
                 <span className="flex items-center gap-1.5 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-full">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  WireGuard active · {onlinePeers.length}/{peers.length} online
+                  Live · {onlinePeers.length}/{peers.length} online
                 </span>
               ) : (
                 <span className="flex items-center gap-1.5 text-xs font-semibold bg-slate-100 text-slate-500 border border-slate-200 px-3 py-1.5 rounded-full">
                   <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                  WireGuard not running
+                  WireGuard offline
+                </span>
+              )}
+              {status.lastReportedAt && (
+                <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                  <Clock size={10} /> {new Date(status.lastReportedAt).toLocaleTimeString()}
                 </span>
               )}
               <button
@@ -904,7 +1066,7 @@ export default function VpnManager() {
               </div>
 
               {/* Server card */}
-              <ServerSetupCard server={server} onSaved={fetchAll} />
+              <ServerSetupCard server={server} onSaved={fetchAll} onRegenKey={fetchAll} />
 
               {/* Peers section */}
               {server && (
@@ -945,9 +1107,14 @@ export default function VpnManager() {
                             {f === "all" ? `All (${peers.length})` : f === "online" ? `Online (${onlinePeers.length})` : `Offline (${offlinePeers.length})`}
                           </button>
                         ))}
-                        {!status.available && (
+                        {(status.neverReported || status.stale || !status.available) && (
                           <p className="ml-auto text-xs text-amber-600 flex items-center gap-1">
-                            <AlertCircle size={12} /> Live status unavailable
+                            <AlertCircle size={12} />
+                            {status.neverReported
+                              ? "Server agent not connected — peer status unavailable"
+                              : status.stale
+                              ? "Agent offline — showing last known status"
+                              : "Status not available"}
                           </p>
                         )}
                       </div>
