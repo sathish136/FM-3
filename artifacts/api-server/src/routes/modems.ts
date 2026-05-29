@@ -125,30 +125,41 @@ router.post("/modems/devices/:id/regenerate-token", async (req, res) => {
 });
 
 router.post("/modems/heartbeat", async (req, res) => {
-  const { token, rssi, rsrp, operator, wan_ip, uptime, sim_state, fw_version, data_rx, data_tx } =
-    req.body as {
-      token?: string;
-      rssi?: number;
-      rsrp?: number;
-      operator?: string;
-      wan_ip?: string;
-      uptime?: number;
-      sim_state?: string;
-      fw_version?: string;
-      data_rx?: number;
-      data_tx?: number;
-    };
+  // Token accepted from URL query (?token=) or JSON body — supports both
+  // Teltonika "Data to Server" (token in URL) and custom scripts (token in body)
+  const body = req.body as Record<string, unknown>;
+  const tokenRaw =
+    (req.query["token"] as string | undefined) ??
+    (body["token"] as string | undefined);
 
-  if (!token) return res.status(401).json({ error: "token required" });
+  if (!tokenRaw) return res.status(401).json({ error: "token required" });
 
-  const hash = hashToken(token);
+  const hash = hashToken(tokenRaw);
   const find = await pool.query(
     "SELECT id FROM modem_devices WHERE token_hash = $1",
     [hash]
   );
   if (find.rowCount === 0) return res.status(401).json({ error: "invalid token" });
-
   const id = find.rows[0].id;
+
+  // Teltonika GSM JSON type wraps payload under a "data" key.
+  // Fall back to flat body for custom/script formats.
+  const d = (typeof body["data"] === "object" && body["data"] !== null)
+    ? (body["data"] as Record<string, unknown>)
+    : body;
+
+  // Normalise field names — Teltonika GSM JSON uses "signal" for RSSI and "ip" for WAN IP
+  const rssi    = num(d["signal"]   ?? d["rssi"]     ?? d["gsm_signal"]);
+  const rsrp    = num(d["rsrp"]     ?? d["gsm_rsrp"]);
+  const operator = str(d["operator"] ?? d["gsm_operator"]);
+  const wan_ip  = str(d["ip"]       ?? d["wan_ip"]   ?? d["gsm_ip"]);
+  const uptime  = num(d["uptime"]);
+  const sim_state = str(d["sim_state"] ?? d["gsm_sim_state"]);
+  const fw_version = str(d["fw_version"] ?? d["firmware"]);
+  // Mobile usage type: rx_bytes / tx_bytes or data_rx / data_tx
+  const data_rx = num(d["rx_bytes"] ?? d["data_rx"]);
+  const data_tx = num(d["tx_bytes"] ?? d["data_tx"]);
+
   await pool.query(
     `UPDATE modem_devices SET
        is_online    = TRUE,
@@ -163,13 +174,21 @@ router.post("/modems/heartbeat", async (req, res) => {
        data_rx      = COALESCE($8, data_rx),
        data_tx      = COALESCE($9, data_tx)
      WHERE id = $10`,
-    [rssi ?? null, rsrp ?? null, operator ?? null, wan_ip ?? null,
-     uptime ?? null, sim_state ?? null, fw_version ?? null,
-     data_rx ?? null, data_tx ?? null, id]
+    [rssi, rsrp, operator, wan_ip, uptime, sim_state, fw_version, data_rx, data_tx, id]
   );
 
   res.json({ ok: true });
 });
+
+function num(v: unknown): number | null {
+  if (v === undefined || v === null || v === "") return null;
+  const n = Number(v);
+  return isNaN(n) ? null : n;
+}
+function str(v: unknown): string | null {
+  if (v === undefined || v === null || v === "") return null;
+  return String(v);
+}
 
 setInterval(async () => {
   try {

@@ -106,7 +106,11 @@ function CopyButton({ text }: { text: string }) {
 
 function SetupGuide({ modem, heartbeatUrl }: { modem: ModemDevice; heartbeatUrl: string }) {
   const [open, setOpen] = useState(false);
-  const bodyJson = `{
+  const [tab, setTab] = useState<"gsm" | "custom">("gsm");
+
+  const tokenUrl = `${heartbeatUrl}?token=${modem.token}`;
+
+  const customJson = `{
   "token": "${modem.token}",
   "rssi": "%s",
   "operator": "%o",
@@ -115,50 +119,118 @@ function SetupGuide({ modem, heartbeatUrl }: { modem: ModemDevice; heartbeatUrl:
   "sim_state": "%S",
   "fw_version": "%f"
 }`;
+
   return (
     <div className="mt-3 border border-slate-700 rounded-lg overflow-hidden">
       <button
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center justify-between px-3 py-2 bg-slate-800 text-xs text-slate-300 hover:bg-slate-700"
       >
-        <span className="flex items-center gap-1.5"><Info size={12} /> Teltonika Setup Guide</span>
+        <span className="flex items-center gap-1.5"><Info size={12} /> Teltonika RUT200 Setup Guide</span>
         {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
       </button>
       {open && (
         <div className="px-3 py-3 bg-slate-900 text-xs text-slate-400 space-y-3">
-          <p className="text-slate-300 font-medium">Configure RUT200 to send data to FlowMatrix:</p>
-          <div className="space-y-2">
-            <p className="text-slate-300">
-              1. Open modem web UI → <span className="text-sky-400">Services → Data to Server</span>
-            </p>
-            <p className="text-slate-300">
-              2. Click <span className="text-sky-400">Add</span> → Type: <span className="text-emerald-400">HTTP</span>
-            </p>
-            <p className="text-slate-300">3. Settings:</p>
-            <div className="bg-slate-800 rounded p-2 space-y-1">
-              <div className="flex justify-between items-center">
-                <span>Server URL</span>
-                <div className="flex items-center gap-1 text-emerald-400 font-mono">
-                  <span className="truncate max-w-[200px] text-[10px]">{heartbeatUrl}</span>
-                  <CopyButton text={heartbeatUrl} />
-                </div>
-              </div>
-              <div className="flex justify-between"><span>Method</span><span className="text-emerald-400">POST</span></div>
-              <div className="flex justify-between"><span>Content-Type</span><span className="text-emerald-400">application/json</span></div>
-              <div className="flex justify-between"><span>Interval</span><span className="text-emerald-400">30 seconds</span></div>
-            </div>
-            <p className="text-slate-300">4. Custom body (JSON):</p>
-            <div className="bg-slate-800 rounded p-2 font-mono text-emerald-300 text-[11px] relative">
-              <div className="absolute top-1 right-1"><CopyButton text={bodyJson} /></div>
-              <pre>{bodyJson}</pre>
-            </div>
-            <p className="text-slate-400 text-[11px]">
-              %s = RSSI · %o = Operator · %i = WAN IP · %u = Uptime (s) · %S = SIM state · %f = Firmware
-            </p>
-            <p className="text-slate-300">5. Save & Enable — modem appears online within 30 seconds.</p>
+          <p className="text-slate-300 font-medium">Services → Data to Server → Add</p>
+
+          {/* Method tabs */}
+          <div className="flex gap-1">
+            <button
+              onClick={() => setTab("gsm")}
+              className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${tab === "gsm" ? "bg-sky-600 text-white" : "bg-slate-700 text-slate-400 hover:text-slate-200"}`}
+            >
+              GSM / JSON (Recommended)
+            </button>
+            <button
+              onClick={() => setTab("custom")}
+              className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${tab === "custom" ? "bg-sky-600 text-white" : "bg-slate-700 text-slate-400 hover:text-slate-200"}`}
+            >
+              Custom Format
+            </button>
           </div>
+
+          {tab === "gsm" && (
+            <div className="space-y-2">
+              {/* Step 1 — Data configuration */}
+              <p className="text-slate-300 font-medium text-[11px] uppercase tracking-wide">Step 1 — Data Configuration</p>
+              <div className="bg-slate-800 rounded p-2 space-y-1">
+                <Row label="Name" value="gsm_data" />
+                <Row label="Type" value="GSM" highlight />
+                <Row label="Format type" value="JSON" highlight />
+                <Row label="Values" value="All values included" />
+              </div>
+              <p className="text-slate-400 text-[11px]">
+                Add a second entry for data usage: Type = <span className="text-emerald-400">Mobile usage</span>, Format = JSON, same server.
+              </p>
+
+              {/* Step 2 — Collection / Server */}
+              <p className="text-slate-300 font-medium text-[11px] uppercase tracking-wide mt-2">Step 2 — Collection (HTTP Server)</p>
+              <div className="bg-slate-800 rounded p-2 space-y-1">
+                <Row label="Server type" value="HTTP" />
+                <div className="flex justify-between items-start gap-2">
+                  <span className="text-slate-400 shrink-0">URL</span>
+                  <div className="flex items-center gap-1 min-w-0">
+                    <code className="text-emerald-400 text-[10px] font-mono break-all leading-tight">{tokenUrl}</code>
+                    <CopyButton text={tokenUrl} />
+                  </div>
+                </div>
+                <Row label="HTTP method" value="POST" />
+                <Row label="Interval" value="30 s" />
+              </div>
+              <p className="text-slate-400 text-[11px]">
+                Token is in the URL — no custom body needed. FlowMatrix reads GSM fields automatically.
+              </p>
+            </div>
+          )}
+
+          {tab === "custom" && (
+            <div className="space-y-2">
+              <p className="text-slate-300 font-medium text-[11px] uppercase tracking-wide">Step 1 — Data Configuration</p>
+              <div className="bg-slate-800 rounded p-2 space-y-1">
+                <Row label="Name" value="flowmatrix_data" />
+                <Row label="Type" value="Base" highlight />
+                <Row label="Format type" value="Custom" highlight />
+              </div>
+
+              <p className="text-slate-300 font-medium text-[11px] uppercase tracking-wide mt-2">Step 2 — Custom body</p>
+              <div className="bg-slate-800 rounded p-2 font-mono text-emerald-300 text-[10px] relative">
+                <div className="absolute top-1 right-1"><CopyButton text={customJson} /></div>
+                <pre className="whitespace-pre-wrap">{customJson}</pre>
+              </div>
+              <p className="text-slate-400 text-[11px]">
+                %s = RSSI · %o = Operator · %i = WAN IP · %u = Uptime · %S = SIM state · %f = Firmware
+              </p>
+
+              <p className="text-slate-300 font-medium text-[11px] uppercase tracking-wide mt-2">Step 3 — Collection</p>
+              <div className="bg-slate-800 rounded p-2 space-y-1">
+                <Row label="Server type" value="HTTP" />
+                <div className="flex justify-between items-start gap-2">
+                  <span className="text-slate-400 shrink-0">URL</span>
+                  <div className="flex items-center gap-1 min-w-0">
+                    <code className="text-emerald-400 text-[10px] font-mono break-all">{heartbeatUrl}</code>
+                    <CopyButton text={heartbeatUrl} />
+                  </div>
+                </div>
+                <Row label="HTTP method" value="POST" />
+                <Row label="Content-Type" value="application/json" />
+              </div>
+            </div>
+          )}
+
+          <p className="text-emerald-400 text-[11px] pt-1">
+            Enable the entry — modem shows Online within 30 seconds.
+          </p>
         </div>
       )}
+    </div>
+  );
+}
+
+function Row({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <div className="flex justify-between items-center">
+      <span className="text-slate-400">{label}</span>
+      <span className={highlight ? "text-sky-300 font-medium" : "text-emerald-400"}>{value}</span>
     </div>
   );
 }
