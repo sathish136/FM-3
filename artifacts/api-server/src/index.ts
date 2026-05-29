@@ -5,6 +5,7 @@ import { setupTranscribeWS } from "./transcribe-ws";
 import { setupChatWS } from "./chat-ws";
 import { setupDeepgramWS } from "./deepgram-ws";
 import { setupWhisperWS } from "./whisper-ws";
+import { setupRemoteAccessWS } from "./remote-access-ws";
 import { warmupDeptCallLogs } from "./routes/dept-call-logs";
 import { startCelebrationRavenScheduler } from "./lib/celebrationRavenScheduler";
 
@@ -35,6 +36,7 @@ setupTranscribeWS(httpServer);
 setupChatWS(httpServer);
 setupDeepgramWS(httpServer);
 setupWhisperWS(httpServer);
+setupRemoteAccessWS(httpServer);
 
 httpServer.listen(port, () => {
   console.log(`Server listening on port ${port}`);

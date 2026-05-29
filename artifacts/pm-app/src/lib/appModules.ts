@@ -128,6 +128,8 @@ const ALL_APP_MODULES: AppModule[] = [
   { key: "agent-management", label: "Agent Management", group: "Admin", paths: ["/agent-management"] },
   { key: "settings", label: "Settings", group: "Admin", paths: ["/settings"] },
   { key: "email-settings", label: "Email Settings", group: "Admin", paths: ["/email-settings"] },
+  // Monitoring
+  { key: "remote-access", label: "Remote Access", group: "Monitoring", paths: ["/remote-access"] },
 ];
 
 /** Active modules — excludes keys in DISABLED_MODULE_KEYS (appModuleConfig.ts). */

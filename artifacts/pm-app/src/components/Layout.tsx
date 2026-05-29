@@ -941,6 +941,13 @@ const navGroups: { label: string; items: NavItem[] }[] = [
         color: "text-violet-400",
         bgColor: "bg-violet-500/15",
       },
+      {
+        path: "/remote-access",
+        label: "Remote Access",
+        icon: Monitor,
+        color: "text-indigo-400",
+        bgColor: "bg-indigo-500/15",
+      },
     ],
   },
   {
