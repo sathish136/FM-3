@@ -74,7 +74,6 @@ const ALL_APP_MODULES: AppModule[] = [
   { key: "plc-support-tickets", label: "Support Tickets", group: "PLC & Automation", paths: ["/plc-automation/support-tickets"] },
   { key: "plc-network-architecture", label: "Network Architecture", group: "PLC & Automation", paths: ["/plc-automation/network-architecture"] },
   // Procurement
-  { key: "cost-working", label: "Cost Working", group: "Procurement", paths: ["/cost-working"] },
   { key: "material-request", label: "Material Request", group: "Procurement", paths: ["/material-request"] },
   { key: "purchase-order", label: "Purchase Order", group: "Procurement", paths: ["/purchase-order"] },
   { key: "purchase-orders", label: "Purchase Orders", group: "Procurement", paths: ["/purchase-orders"] },

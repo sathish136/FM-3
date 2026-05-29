@@ -44,7 +44,6 @@ import workshopRouter from "./workshop";
 import plcRouter from "./plc";
 import omRouter from "./om";
 import proposalWizardRouter from "./proposal-wizard";
-import costWorkingRouter from "./cost-working";
 
 const router: IRouter = Router();
 
@@ -93,6 +92,5 @@ router.use(workshopRouter);
 router.use(plcRouter);
 router.use(omRouter);
 router.use(proposalWizardRouter);
-router.use(costWorkingRouter);
 
 export default router;

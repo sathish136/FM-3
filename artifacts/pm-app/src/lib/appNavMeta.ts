@@ -6,7 +6,7 @@ import {
   Megaphone, Warehouse, Target, BarChart3, AlertTriangle, Clock, Calendar, Receipt,
   UserPlus, ScanLine, Factory, Database, TrendingUp, ListChecks, ClipboardList,
   Package, Phone, Cpu, Network, FlaskConical, TestTubes, CheckCircle2, CreditCard,
-  PartyPopper, Ruler, Cog, Building2, PenLine, Zap, Grid3x3, Calculator,
+  PartyPopper, Ruler, Cog, Building2, PenLine, Zap, Grid3x3,
 } from "lucide-react";
 
 export interface NavMeta {
@@ -53,7 +53,6 @@ export const NAV_META: Record<string, NavMeta> = {
   "/drawings/electrical": { icon: Zap, color: "text-amber-400", bgColor: "bg-amber-500/15" },
   "/drawings/civil": { icon: Building2, color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
   "/civil-drawing-ai": { icon: Sparkles, color: "text-purple-400", bgColor: "bg-purple-500/15" },
-  "/cost-working": { icon: Calculator, color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
   "/material-request": { icon: ShoppingCart, color: "text-amber-400", bgColor: "bg-amber-500/15" },
   "/purchase-order": { icon: ShoppingBag, color: "text-orange-400", bgColor: "bg-orange-500/15" },
   "/purchase-orders": { icon: ShoppingBag, color: "text-orange-400", bgColor: "bg-orange-500/15" },

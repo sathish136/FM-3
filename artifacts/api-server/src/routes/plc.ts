@@ -73,6 +73,91 @@ function textSection(doc: any, title: string, value: string, y: number): number 
   return y;
 }
 
+const panelInspPhotosDir = path.join(process.cwd(), "uploads", "panel-inspection-photos");
+fs.mkdirSync(panelInspPhotosDir, { recursive: true });
+
+const panelInspPhotoStorage = multer.diskStorage({
+  destination: (req, _file, cb) => {
+    const dir = path.join(panelInspPhotosDir, String(req.params.id));
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname) || ".jpg";
+    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
+  },
+});
+const panelInspPhotoUpload = multer({
+  storage: panelInspPhotoStorage,
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) cb(null, true);
+    else cb(new Error("Only image files allowed"));
+  },
+});
+
+function parsePanelPhotos(raw: unknown): any[] {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") {
+    try {
+      const p = JSON.parse(raw);
+      return Array.isArray(p) ? p : [];
+    } catch { return []; }
+  }
+  return [];
+}
+
+function panelPhotoBuffer(inspId: number, photo: any): Buffer | null {
+  try {
+    if (photo?.data) {
+      const base64 = String(photo.data).replace(/^data:[^;]+;base64,/, "");
+      return Buffer.from(base64, "base64");
+    }
+    if (photo?.stored) {
+      const fp = path.join(panelInspPhotosDir, String(inspId), photo.stored);
+      if (fs.existsSync(fp)) return fs.readFileSync(fp);
+    }
+  } catch { /* skip */ }
+  return null;
+}
+
+function normalizePanelInspRow(row: any) {
+  if (!row) return row;
+  row.checklist = normalizePanelInspectionChecklist(row.checklist);
+  row.issues = Array.isArray(row.issues) ? row.issues : [];
+  row.photos = parsePanelPhotos(row.photos);
+  return row;
+}
+
+function appendPhotosToPdf(doc: any, photos: any[], inspId: number, y: number, title = "Inspection Photos"): number {
+  const list = Array.isArray(photos) ? photos : [];
+  const withImage = list.filter((p: any) => panelPhotoBuffer(inspId, p));
+  if (!withImage.length) return y;
+  y = checkPageBreak(doc, y, 80);
+  y = secHeader(doc, `${title}  (${withImage.length})`, y);
+  y += 20;
+  const imgW = (W - 16) / 2;
+  const imgH = 110;
+  let col = 0;
+  for (const photo of withImage) {
+    try {
+      y = checkPageBreak(doc, y, imgH + 28);
+      const imgBuf = panelPhotoBuffer(inspId, photo);
+      if (!imgBuf) continue;
+      const x = L + 4 + col * (imgW + 8);
+      doc.image(imgBuf, x, y, { width: imgW, height: imgH, cover: [imgW, imgH] });
+      if (photo.comment) {
+        doc.fillColor(DARK).fontSize(7).font("Helvetica")
+           .text(String(photo.comment).trim(), x, y + imgH + 3, { width: imgW, lineBreak: false });
+      }
+      col++;
+      if (col >= 2) { col = 0; y += imgH + 20; }
+    } catch { /* skip bad image */ }
+  }
+  if (col > 0) y += imgH + 20;
+  return y + 4;
+}
+
 function checkPageBreak(doc: any, y: number, needed = 40): number {
   if (y + needed > doc.page.height - 60) {
     doc.addPage({ size: "A4", margin: 0 });
@@ -1921,6 +2006,61 @@ router.delete("/plc/files/:fileId", async (req, res) => {
 
 // ─── Panel Inspection Before Dispatch ─────────────────────────────────────────
 
+const LEGACY_PANEL_INSP_SECTIONS = new Set([
+  "Mechanical & Physical",
+  "Component Verification",
+  "Wiring & Termination",
+  "Functional Testing",
+]);
+
+const PLC_PANEL_INSP_CHECKLIST = [
+  { section: "PLC Hardware & Power", item: "PLC CPU installed, powered, and in RUN mode", result: "", remarks: "" },
+  { section: "PLC Hardware & Power", item: "PLC firmware version verified as per project", result: "", remarks: "" },
+  { section: "PLC Hardware & Power", item: "24 VDC control supply voltage verified at PLC rail", result: "", remarks: "" },
+  { section: "PLC Hardware & Power", item: "PLC rack / module seating and locking verified", result: "", remarks: "" },
+  { section: "PLC Hardware & Power", item: "Remote I/O stations mounted and earthed", result: "", remarks: "" },
+  { section: "Communication", item: "All panel communication check — PLC CPU with remote I/O (Profinet)", result: "", remarks: "" },
+  { section: "Communication", item: "Profinet network topology matches approved drawing", result: "", remarks: "" },
+  { section: "Communication", item: "Device names / IP addresses configured correctly", result: "", remarks: "" },
+  { section: "Communication", item: "PLC ↔ remote I/O link status OK (online / no fault)", result: "", remarks: "" },
+  { section: "Communication", item: "HMI ↔ PLC communication check", result: "", remarks: "" },
+  { section: "Communication", item: "SCADA / remote monitoring communication check (if applicable)", result: "", remarks: "" },
+  { section: "Digital & Analog I/O", item: "All DI check — field signal / PLC status match", result: "", remarks: "" },
+  { section: "Digital & Analog I/O", item: "All DO check — PLC command / field device response", result: "", remarks: "" },
+  { section: "Digital & Analog I/O", item: "All AI check — scaling and PLC value verified", result: "", remarks: "" },
+  { section: "Digital & Analog I/O", item: "All AO check — PLC output / actuator response", result: "", remarks: "" },
+  { section: "Digital & Analog I/O", item: "I/O module LED status (SF / BF / RUN) verified", result: "", remarks: "" },
+  { section: "Digital & Analog I/O", item: "I/O addressing matches IO list / cause & effect", result: "", remarks: "" },
+  { section: "I/O Wiring & Ferrules", item: "All I/O ferrule check — numbers match drawing & IO list", result: "", remarks: "" },
+  { section: "I/O Wiring & Ferrules", item: "I/O terminal tightness and polarity checked", result: "", remarks: "" },
+  { section: "I/O Wiring & Ferrules", item: "Shield / screen earthing for analog & communication cables", result: "", remarks: "" },
+  { section: "VFD / Drives", item: "Main panel VFD 1 — communication and parameter setting verified", result: "", remarks: "" },
+  { section: "VFD / Drives", item: "Main panel VFD 2 — communication and parameter setting verified", result: "", remarks: "" },
+  { section: "VFD / Drives", item: "VFD ↔ PLC link OK (Profinet / Profibus / Modbus)", result: "", remarks: "" },
+  { section: "VFD / Drives", item: "VFD start / stop / speed reference from PLC verified", result: "", remarks: "" },
+  { section: "VFD / Drives", item: "VFD fault / trip / status feedback to PLC verified", result: "", remarks: "" },
+  { section: "Programming & HMI", item: "PLC program revision downloaded and matches approved version", result: "", remarks: "" },
+  { section: "Programming & HMI", item: "Interlocks, sequences, and alarms tested per logic", result: "", remarks: "" },
+  { section: "Programming & HMI", item: "Manual / auto / maintenance mode logic verified", result: "", remarks: "" },
+  { section: "Programming & HMI", item: "HMI application version and critical screens functional", result: "", remarks: "" },
+  { section: "Documentation", item: "As-built IO list, network diagram, and PLC backup archived", result: "", remarks: "" },
+  { section: "Documentation", item: "Panel labels / tags match PLC symbol table", result: "", remarks: "" },
+];
+
+function isLegacyPanelChecklist(checklist: unknown) {
+  const items = Array.isArray(checklist) ? checklist : [];
+  return items.some((c: any) => LEGACY_PANEL_INSP_SECTIONS.has(c?.section));
+}
+
+function normalizePanelInspectionChecklist(checklist: unknown) {
+  const items = Array.isArray(checklist) ? checklist : [];
+  if (!items.length) return PLC_PANEL_INSP_CHECKLIST.map((c) => ({ ...c }));
+  if (isLegacyPanelChecklist(items)) {
+    return PLC_PANEL_INSP_CHECKLIST.map((c) => ({ ...c }));
+  }
+  return items;
+}
+
 async function ensurePanelInspTable() {
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS panel_inspections (
@@ -1934,8 +2074,19 @@ async function ensurePanelInspTable() {
       inspection_date TEXT,
       inspector_name  TEXT,
       customer_name   TEXT,
+      plc_make        TEXT,
+      plc_model       TEXT,
+      remote_io_make  TEXT,
+      remote_io_model TEXT,
+      vfd1_make       TEXT,
+      vfd1_model      TEXT,
+      vfd2_make       TEXT,
+      vfd2_model      TEXT,
+      hmi_make        TEXT,
+      hmi_model       TEXT,
       checklist       JSONB NOT NULL DEFAULT '[]'::jsonb,
       issues          JSONB NOT NULL DEFAULT '[]'::jsonb,
+      photos          JSONB NOT NULL DEFAULT '[]'::jsonb,
       overall_result  TEXT NOT NULL DEFAULT 'Pending',
       remarks         TEXT,
       email_to        TEXT,
@@ -1945,6 +2096,13 @@ async function ensurePanelInspTable() {
       updated_at      TIMESTAMP NOT NULL DEFAULT NOW()
     )
   `);
+  for (const col of [
+    "plc_make", "plc_model", "remote_io_make", "remote_io_model",
+    "vfd1_make", "vfd1_model", "vfd2_make", "vfd2_model", "hmi_make", "hmi_model",
+  ]) {
+    await db.execute(sql.raw(`ALTER TABLE panel_inspections ADD COLUMN IF NOT EXISTS ${col} TEXT`));
+  }
+  await db.execute(sql`ALTER TABLE panel_inspections ADD COLUMN IF NOT EXISTS photos JSONB NOT NULL DEFAULT '[]'::jsonb`);
 }
 // ─────────────────────────────────────────────────────────────────────────────
 // PLC Device Config CRUD
@@ -2216,29 +2374,138 @@ router.get("/plc/panel-inspections/:id", async (req, res) => {
     const r = await db.execute(sql`SELECT * FROM panel_inspections WHERE id=${Number(req.params.id)}`);
     const rows = (r as any).rows ?? r;
     if (!rows[0]) return res.status(404).json({ error: "Not found" });
-    res.json(rows[0]);
+    const row = normalizePanelInspRow(rows[0]);
+    const rawChecklist = rows[0].checklist;
+    if (isLegacyPanelChecklist(rawChecklist)) {
+      await db.execute(sql`UPDATE panel_inspections SET checklist=${JSON.stringify(row.checklist)}::jsonb, updated_at=NOW() WHERE id=${Number(req.params.id)}`);
+    }
+    res.json(row);
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
 router.post("/plc/panel-inspections", async (req, res) => {
   try {
-    const { inspection_no, project_number, project_name, panel_name, panel_type, panel_serial_no, inspection_date, inspector_name, customer_name, checklist, issues, overall_result, remarks, email_to, status, created_by } = req.body;
-    const r = await db.execute(sql`INSERT INTO panel_inspections (inspection_no,project_number,project_name,panel_name,panel_type,panel_serial_no,inspection_date,inspector_name,customer_name,checklist,issues,overall_result,remarks,email_to,status,created_by) VALUES (${inspection_no??null},${project_number??null},${project_name??null},${panel_name??null},${panel_type??null},${panel_serial_no??null},${inspection_date??null},${inspector_name??null},${customer_name??null},${JSON.stringify(checklist??[])}::jsonb,${JSON.stringify(issues??[])}::jsonb,${overall_result??"Pending"},${remarks??null},${email_to??null},${status??"Draft"},${created_by??null}) RETURNING *`);
-    res.json(((r as any).rows ?? r)[0]);
+    const {
+      inspection_no, project_number, project_name, panel_name, panel_type, panel_serial_no,
+      inspection_date, inspector_name, customer_name,
+      plc_make, plc_model, remote_io_make, remote_io_model,
+      vfd1_make, vfd1_model, vfd2_make, vfd2_model, hmi_make, hmi_model,
+      checklist, issues, photos, overall_result, remarks, email_to, status, created_by,
+    } = req.body;
+    const normalizedChecklist = normalizePanelInspectionChecklist(checklist);
+    const r = await db.execute(sql`INSERT INTO panel_inspections (
+      inspection_no,project_number,project_name,panel_name,panel_type,panel_serial_no,
+      inspection_date,inspector_name,customer_name,
+      plc_make,plc_model,remote_io_make,remote_io_model,vfd1_make,vfd1_model,vfd2_make,vfd2_model,hmi_make,hmi_model,
+      checklist,issues,photos,overall_result,remarks,email_to,status,created_by
+    ) VALUES (
+      ${inspection_no??null},${project_number??null},${project_name??null},${panel_name??null},${panel_type??null},${panel_serial_no??null},
+      ${inspection_date??null},${inspector_name??null},${customer_name??null},
+      ${plc_make??null},${plc_model??null},${remote_io_make??null},${remote_io_model??null},
+      ${vfd1_make??null},${vfd1_model??null},${vfd2_make??null},${vfd2_model??null},${hmi_make??null},${hmi_model??null},
+      ${JSON.stringify(normalizedChecklist)}::jsonb,${JSON.stringify(issues??[])}::jsonb,${JSON.stringify(photos??[])}::jsonb,
+      ${overall_result??"Pending"},${remarks??null},${email_to??null},${status??"Draft"},${created_by??null}
+    ) RETURNING *`);
+    const created = normalizePanelInspRow(((r as any).rows ?? r)[0]);
+    res.json(created);
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
 router.patch("/plc/panel-inspections/:id", async (req, res) => {
   try {
-    const { inspection_no, project_number, project_name, panel_name, panel_type, panel_serial_no, inspection_date, inspector_name, customer_name, checklist, issues, overall_result, remarks, email_to, status } = req.body;
-    await db.execute(sql`UPDATE panel_inspections SET inspection_no=COALESCE(${inspection_no??null},inspection_no), project_number=COALESCE(${project_number??null},project_number), project_name=COALESCE(${project_name??null},project_name), panel_name=${panel_name??null}, panel_type=${panel_type??null}, panel_serial_no=${panel_serial_no??null}, inspection_date=${inspection_date??null}, inspector_name=${inspector_name??null}, customer_name=${customer_name??null}, checklist=COALESCE(${checklist!=null?JSON.stringify(checklist):null}::jsonb,checklist), issues=COALESCE(${issues!=null?JSON.stringify(issues):null}::jsonb,issues), overall_result=COALESCE(${overall_result??null},overall_result), remarks=${remarks??null}, email_to=${email_to??null}, status=COALESCE(${status??null},status), updated_at=NOW() WHERE id=${Number(req.params.id)}`);
-    res.json({ ok: true });
+    const {
+      inspection_no, project_number, project_name, panel_name, panel_type, panel_serial_no,
+      inspection_date, inspector_name, customer_name,
+      plc_make, plc_model, remote_io_make, remote_io_model,
+      vfd1_make, vfd1_model, vfd2_make, vfd2_model, hmi_make, hmi_model,
+      checklist, issues, photos, overall_result, remarks, email_to, status,
+    } = req.body;
+    const normalizedChecklist = checklist != null ? normalizePanelInspectionChecklist(checklist) : null;
+    await db.execute(sql`UPDATE panel_inspections SET
+      inspection_no=COALESCE(${inspection_no??null},inspection_no),
+      project_number=COALESCE(${project_number??null},project_number),
+      project_name=COALESCE(${project_name??null},project_name),
+      panel_name=${panel_name??null}, panel_type=${panel_type??null}, panel_serial_no=${panel_serial_no??null},
+      inspection_date=${inspection_date??null}, inspector_name=${inspector_name??null}, customer_name=${customer_name??null},
+      plc_make=${plc_make??null}, plc_model=${plc_model??null},
+      remote_io_make=${remote_io_make??null}, remote_io_model=${remote_io_model??null},
+      vfd1_make=${vfd1_make??null}, vfd1_model=${vfd1_model??null},
+      vfd2_make=${vfd2_make??null}, vfd2_model=${vfd2_model??null},
+      hmi_make=${hmi_make??null}, hmi_model=${hmi_model??null},
+      checklist=COALESCE(${normalizedChecklist!=null?JSON.stringify(normalizedChecklist):null}::jsonb,checklist),
+      issues=COALESCE(${issues!=null?JSON.stringify(issues):null}::jsonb,issues),
+      photos=COALESCE(${photos!=null?JSON.stringify(photos):null}::jsonb,photos),
+      overall_result=COALESCE(${overall_result??null},overall_result),
+      remarks=${remarks??null}, email_to=${email_to??null},
+      status=COALESCE(${status??null},status),
+      updated_at=NOW()
+    WHERE id=${Number(req.params.id)}`);
+    const id = Number(req.params.id);
+    const r2 = await db.execute(sql`SELECT * FROM panel_inspections WHERE id=${id}`);
+    const row = normalizePanelInspRow(((r2 as any).rows ?? r2)[0]);
+    if (!row) return res.status(404).json({ error: "Not found" });
+    res.json(row);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.get("/plc/panel-inspections/:id/photos/file/:filename", async (req, res) => {
+  try {
+    const filePath = path.join(panelInspPhotosDir, String(req.params.id), path.basename(req.params.filename));
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: "Not found" });
+    res.sendFile(filePath);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.post("/plc/panel-inspections/:id/photos", panelInspPhotoUpload.array("photos", 20), async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const files = req.files as Express.Multer.File[];
+    if (!files?.length) return res.status(400).json({ error: "No photos uploaded" });
+
+    const r = await db.execute(sql`SELECT id, photos FROM panel_inspections WHERE id=${id}`);
+    const row = ((r as any).rows ?? r)[0];
+    if (!row) return res.status(404).json({ error: "Inspection not found" });
+
+    const photos = parsePanelPhotos(row.photos);
+    for (const f of files) {
+      photos.push({
+        stored: f.filename,
+        filename: f.originalname,
+        comment: "",
+        mime: f.mimetype,
+      });
+    }
+    await db.execute(sql`UPDATE panel_inspections SET photos=${JSON.stringify(photos)}::jsonb, updated_at=NOW() WHERE id=${id}`);
+    const full = await db.execute(sql`SELECT * FROM panel_inspections WHERE id=${id}`);
+    res.json(normalizePanelInspRow(((full as any).rows ?? full)[0]));
+  } catch (e: any) { res.status(500).json({ error: e.message || String(e) }); }
+});
+
+router.delete("/plc/panel-inspections/:id/photos/:filename", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const stored = path.basename(req.params.filename);
+    const r = await db.execute(sql`SELECT photos FROM panel_inspections WHERE id=${id}`);
+    const row = ((r as any).rows ?? r)[0];
+    if (!row) return res.status(404).json({ error: "Not found" });
+
+    const photos = parsePanelPhotos(row.photos).filter((p: any) => p.stored !== stored);
+    await db.execute(sql`UPDATE panel_inspections SET photos=${JSON.stringify(photos)}::jsonb, updated_at=NOW() WHERE id=${id}`);
+
+    const filePath = path.join(panelInspPhotosDir, String(id), stored);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+
+    const full = await db.execute(sql`SELECT * FROM panel_inspections WHERE id=${id}`);
+    res.json(normalizePanelInspRow(((full as any).rows ?? full)[0]));
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
 router.delete("/plc/panel-inspections/:id", async (req, res) => {
   try {
-    await db.execute(sql`DELETE FROM panel_inspections WHERE id=${Number(req.params.id)}`);
+    const id = Number(req.params.id);
+    await db.execute(sql`DELETE FROM panel_inspections WHERE id=${id}`);
+    const dir = path.join(panelInspPhotosDir, String(id));
+    if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
@@ -2247,7 +2514,7 @@ router.post("/plc/panel-inspections/:id/send-email", async (req, res) => {
   try {
     const r = await db.execute(sql`SELECT * FROM panel_inspections WHERE id=${Number(req.params.id)}`);
     const rows = (r as any).rows ?? r;
-    const insp = rows[0];
+    const insp = normalizePanelInspRow(rows[0]);
     if (!insp) return res.status(404).json({ error: "Not found" });
     const toEmail = req.body.email_to || insp.email_to;
     if (!toEmail) return res.status(400).json({ error: "No recipient email" });
@@ -2257,8 +2524,9 @@ router.post("/plc/panel-inspections/:id/send-email", async (req, res) => {
     if (!smtpUser || !smtpPass) return res.status(500).json({ error: "Email not configured" });
 
     const inspNo = insp.inspection_no || `PID-${String(insp.id).padStart(4, "0")}`;
-    const checklist: any[] = Array.isArray(insp.checklist) ? insp.checklist : [];
-    const issues: any[] = Array.isArray(insp.issues) ? insp.issues : [];
+    const checklist: any[] = insp.checklist;
+    const issues: any[] = insp.issues;
+    const photos: any[] = insp.photos;
 
     const resultColor = insp.overall_result === "Pass" ? "#16a34a" : insp.overall_result === "Fail" ? "#dc2626" : "#d97706";
 
@@ -2289,6 +2557,23 @@ router.post("/plc/panel-inspections/:id/send-email", async (req, res) => {
       labelVal(doc, "Serial No.", insp.panel_serial_no || "—", 380, y, c2W);
       y += 36; addY(36);
 
+      const equipLines = [
+        insp.plc_make || insp.plc_model ? `PLC: ${[insp.plc_make, insp.plc_model].filter(Boolean).join(" ")}` : "",
+        insp.remote_io_make || insp.remote_io_model ? `Remote I/O: ${[insp.remote_io_make, insp.remote_io_model].filter(Boolean).join(" ")}` : "",
+        insp.vfd1_make || insp.vfd1_model ? `VFD 1: ${[insp.vfd1_make, insp.vfd1_model].filter(Boolean).join(" ")}` : "",
+        insp.vfd2_make || insp.vfd2_model ? `VFD 2: ${[insp.vfd2_make, insp.vfd2_model].filter(Boolean).join(" ")}` : "",
+        insp.hmi_make || insp.hmi_model ? `HMI: ${[insp.hmi_make, insp.hmi_model].filter(Boolean).join(" ")}` : "",
+      ].filter(Boolean);
+      if (equipLines.length > 0) {
+        y = checkPageBreak(doc, y, 40);
+        y = secHeader(doc, "Equipment Make / Model", y); addY(20);
+        equipLines.forEach((line: string) => {
+          doc.fillColor(DARK).fontSize(8).font("Helvetica").text(line, 40, y, { width: 515 });
+          y += 14; addY(14);
+        });
+        y += 6; addY(6);
+      }
+
       const sections = [...new Set(checklist.map((c: any) => c.section))];
       for (const section of sections) {
         y = checkPageBreak(doc, y, 60);
@@ -2314,6 +2599,10 @@ router.post("/plc/panel-inspections/:id/send-email", async (req, res) => {
         });
         y += 6; addY(6);
       }
+
+      let yBeforePhotos = y;
+      y = appendPhotosToPdf(doc, photos, Number(insp.id), y, "Panel / Inspection Photos");
+      addY(y - yBeforePhotos);
 
       if (issues.length > 0) {
         y = checkPageBreak(doc, y, 50);
@@ -2379,8 +2668,10 @@ router.post("/plc/panel-inspections/:id/send-email", async (req, res) => {
       <tr><td style="padding:8px 14px;color:#64748b;font-size:12px;border-bottom:1px solid #e2e8f0;">Inspection No.</td><td style="padding:8px 14px;font-size:13px;font-weight:700;border-bottom:1px solid #e2e8f0;">${inspNo}</td></tr>
       <tr><td style="padding:8px 14px;color:#64748b;font-size:12px;border-bottom:1px solid #e2e8f0;">Project</td><td style="padding:8px 14px;font-size:13px;border-bottom:1px solid #e2e8f0;">${insp.project_name || "—"} (${insp.project_number || "—"})</td></tr>
       <tr><td style="padding:8px 14px;color:#64748b;font-size:12px;border-bottom:1px solid #e2e8f0;">Panel</td><td style="padding:8px 14px;font-size:13px;border-bottom:1px solid #e2e8f0;">${insp.panel_name || "—"} | ${insp.panel_type || "—"}</td></tr>
-      <tr><td style="padding:8px 14px;color:#64748b;font-size:12px;">Overall Result</td><td style="padding:8px 14px;font-size:13px;font-weight:700;color:${resultColor};">${insp.overall_result || "Pending"}</td></tr>
+      <tr><td style="padding:8px 14px;color:#64748b;font-size:12px;border-bottom:1px solid #e2e8f0;">Overall Result</td><td style="padding:8px 14px;font-size:13px;font-weight:700;color:${resultColor};border-bottom:1px solid #e2e8f0;">${insp.overall_result || "Pending"}</td></tr>
+      <tr><td style="padding:8px 14px;color:#64748b;font-size:12px;">Inspection Photos</td><td style="padding:8px 14px;font-size:13px;">${photos.filter((p: any) => panelPhotoBuffer(Number(insp.id), p)).length} attached in PDF</td></tr>
     </table>
+    <p style="margin:0;font-size:12px;color:#64748b;">Panel and inspection photos are included in the attached PDF report.</p>
   </div>
   <div style="background:#f8fafc;padding:16px 32px;border-top:1px solid #e2e8f0;text-align:center;">
     <div style="color:#94a3b8;font-size:11px;">WTT International · PLC &amp; Automation</div>

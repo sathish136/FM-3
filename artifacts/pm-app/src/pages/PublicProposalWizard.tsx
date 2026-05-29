@@ -27,27 +27,29 @@ type CountryCode = typeof COUNTRIES[number]["code"];
 type PlantType = "STP" | "ETP";
 
 interface FormData {
-  plantType:     PlantType;
-  countryCode:   CountryCode;
-  customerName:  string;
-  flowRate:      string;
-  contactPerson: string;
-  email:         string;
-  phone:         string;
-  city:          string;
-  remarks:       string;
+  plantType:      PlantType;
+  countryCode:    CountryCode;
+  customCountry:  string;
+  customerName:   string;
+  flowRate:       string;
+  contactPerson:  string;
+  email:          string;
+  phone:          string;
+  city:           string;
+  remarks:        string;
 }
 
 const INIT: FormData = {
-  plantType:     "STP",
-  countryCode:   "IND",
-  customerName:  "",
-  flowRate:      "",
-  contactPerson: "",
-  email:         "",
-  phone:         "",
-  city:          "",
-  remarks:       "",
+  plantType:      "STP",
+  countryCode:    "IND",
+  customCountry:  "",
+  customerName:   "",
+  flowRate:       "",
+  contactPerson:  "",
+  email:          "",
+  phone:          "",
+  city:           "",
+  remarks:        "",
 };
 
 function countryFor(code: CountryCode) {
@@ -77,6 +79,10 @@ export default function PublicProposalWizard() {
 
   const update  = (f: Partial<FormData>) => setForm((p) => ({ ...p, ...f }));
   const country = countryFor(form.countryCode);
+  const isOtherCountry = form.countryCode === "OTHER";
+  const resolvedCountryName = isOtherCountry
+    ? form.customCountry.trim()
+    : country.name;
 
   // Load flow rates
   useEffect(() => {
@@ -129,7 +135,8 @@ export default function PublicProposalWizard() {
     emailValid &&
     emailVerified &&
     phoneValid &&
-    form.city.trim();
+    form.city.trim() &&
+    (!isOtherCountry || form.customCountry.trim().length >= 2);
 
   // ── Send OTP ───────────────────────────────────────────────────────────────
   const sendOtp = async (email: string) => {
@@ -192,7 +199,7 @@ export default function PublicProposalWizard() {
           contactPerson: form.contactPerson.trim(),
           phone:         form.phone.trim(),
           city:          form.city.trim(),
-          country:       country.name,
+          country:       resolvedCountryName,
           countryCode:   form.countryCode,
           plantType:     form.plantType,
           notes:         form.remarks.trim(),
@@ -292,7 +299,12 @@ export default function PublicProposalWizard() {
                 value={form.countryCode}
                 onChange={(e) => {
                   const cc = e.target.value as CountryCode;
-                  update({ countryCode: cc, city: "", phone: "" });
+                  update({
+                    countryCode: cc,
+                    customCountry: cc === "OTHER" ? form.customCountry : "",
+                    city: "",
+                    phone: "",
+                  });
                 }}
                 required
                 className="w-full pl-10 pr-10 py-3 text-sm border-2 border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 appearance-none cursor-pointer font-medium text-gray-700"
@@ -303,6 +315,16 @@ export default function PublicProposalWizard() {
               </select>
               <ChevronRight className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none rotate-90" />
             </div>
+            {isOtherCountry && (
+              <input
+                type="text"
+                value={form.customCountry}
+                onChange={(e) => update({ customCountry: e.target.value })}
+                placeholder="Type country name (e.g. Kenya, Vietnam)"
+                required
+                className="mt-2 w-full px-3 py-2.5 text-sm border-2 border-blue-200 rounded-xl bg-blue-50/40 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400"
+              />
+            )}
           </div>
         </div>
 

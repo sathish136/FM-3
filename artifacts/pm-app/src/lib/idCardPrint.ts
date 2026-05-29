@@ -2,17 +2,32 @@ import { jsPDF } from "jspdf";
 
 export const CARD_WIDTH_MM = 53.963;
 export const CARD_HEIGHT_MM = 84.088;
+/** Local print size reduction (width & height). */
+export const LOCAL_PRINT_REDUCE_MM = 3;
 /** Fixed gap between cards, pairs, and rows on PDF sheets. */
 export const GAP_MM = 1;
 export const PAIR_GAP_MM = GAP_MM;
-/** Front + gap + back. */
-export const PAIR_WIDTH_MM = 2 * CARD_WIDTH_MM + GAP_MM;
 /** Minimal edge margin for PDF (maximize cards per page). */
 export const PDF_MARGIN_MM = 1;
 /** Single cards per A4 for browser print (fronts sheet / backs sheet). */
 export const CARDS_PER_SHEET = 9;
 export const GRID_COLS = 3;
 export const GRID_ROWS = 3;
+
+export type IdCardPrintMode = "standard" | "local";
+
+export function getCardSizeMm(mode: IdCardPrintMode = "standard"): {
+  w: number;
+  h: number;
+} {
+  if (mode === "local") {
+    return {
+      w: Math.max(1, CARD_WIDTH_MM - LOCAL_PRINT_REDUCE_MM),
+      h: Math.max(1, CARD_HEIGHT_MM - LOCAL_PRINT_REDUCE_MM),
+    };
+  }
+  return { w: CARD_WIDTH_MM, h: CARD_HEIGHT_MM };
+}
 
 export interface PairSlot {
   front: GridSlot;
@@ -50,32 +65,36 @@ export function computeA4GridSlots(): GridSlot[] {
 /** Max front|back pairs that fit on A4 with fixed {@link GAP_MM} spacing. */
 export function computeA4PairGridSlots(
   orientation: "portrait" | "landscape" = "portrait",
+  cardW: number = CARD_WIDTH_MM,
+  cardH: number = CARD_HEIGHT_MM,
 ): PairSlot[] {
   const pageW = orientation === "portrait" ? PAGE_W : PAGE_H;
   const pageH = orientation === "portrait" ? PAGE_H : PAGE_W;
   const usableW = pageW - 2 * PDF_MARGIN_MM;
   const usableH = pageH - 2 * PDF_MARGIN_MM;
 
+  /** Front + gap + back. */
+  const pairW = 2 * cardW + GAP_MM;
   const pairsPerRow = Math.max(
     1,
-    Math.floor((usableW + GAP_MM) / (PAIR_WIDTH_MM + GAP_MM)),
+    Math.floor((usableW + GAP_MM) / (pairW + GAP_MM)),
   );
   const pairRows = Math.max(
     1,
-    Math.floor((usableH + GAP_MM) / (CARD_HEIGHT_MM + GAP_MM)),
+    Math.floor((usableH + GAP_MM) / (cardH + GAP_MM)),
   );
 
-  const blockW = pairsPerRow * PAIR_WIDTH_MM + (pairsPerRow - 1) * GAP_MM;
+  const blockW = pairsPerRow * pairW + (pairsPerRow - 1) * GAP_MM;
   const offsetX = (pageW - blockW) / 2;
 
   const slots: PairSlot[] = [];
   for (let r = 0; r < pairRows; r++) {
     for (let c = 0; c < pairsPerRow; c++) {
-      const x = offsetX + c * (PAIR_WIDTH_MM + GAP_MM);
-      const y = PDF_MARGIN_MM + r * (CARD_HEIGHT_MM + GAP_MM);
+      const x = offsetX + c * (pairW + GAP_MM);
+      const y = PDF_MARGIN_MM + r * (cardH + GAP_MM);
       slots.push({
         front: { x, y },
-        back: { x: x + CARD_WIDTH_MM + GAP_MM, y },
+        back: { x: x + cardW + GAP_MM, y },
       });
     }
   }
@@ -131,7 +150,7 @@ async function inlineSvgExternalImages(svg: string): Promise<string> {
   return root ? new XMLSerializer().serializeToString(root) : svg;
 }
 
-async function svgToDataUrl(svg: string): Promise<string> {
+async function svgToDataUrl(svg: string, size: { w: number; h: number }): Promise<string> {
   const inlined = await inlineSvgExternalImages(svg);
   return new Promise((resolve, reject) => {
     const blob = new Blob([inlined], { type: "image/svg+xml;charset=utf-8" });
@@ -139,8 +158,8 @@ async function svgToDataUrl(svg: string): Promise<string> {
     const img = new Image();
     img.onload = () => {
       const scale = 4;
-      const w = Math.round((CARD_WIDTH_MM / 25.4) * 96 * scale);
-      const h = Math.round((CARD_HEIGHT_MM / 25.4) * 96 * scale);
+      const w = Math.round((size.w / 25.4) * 96 * scale);
+      const h = Math.round((size.h / 25.4) * 96 * scale);
       const canvas = document.createElement("canvas");
       canvas.width = w;
       canvas.height = h;
@@ -204,9 +223,11 @@ function drawPairCutMarks(
 export async function generateIdCardPdf(
   items: { name: string }[],
   fetchSvg: (name: string, side: "front" | "back") => Promise<string>,
-  options: { cutMarks?: boolean },
+  options: { cutMarks?: boolean; mode?: IdCardPrintMode },
 ): Promise<void> {
-  const pairSlots = computeA4PairGridSlots(PDF_ORIENTATION);
+  const mode = options.mode || "standard";
+  const size = getCardSizeMm(mode);
+  const pairSlots = computeA4PairGridSlots(PDF_ORIENTATION, size.w, size.h);
   const pairsPerSheet = pairSlots.length;
   const pdf = new jsPDF({ orientation: PDF_ORIENTATION, unit: "mm", format: "a4" });
   const cutMarks = options.cutMarks !== false;
@@ -223,17 +244,18 @@ export async function generateIdCardPdf(
       fetchSvg(items[i].name, "back"),
     ]);
     const [frontUrl, backUrl] = await Promise.all([
-      svgToDataUrl(frontSvg),
-      svgToDataUrl(backSvg),
+      svgToDataUrl(frontSvg, size),
+      svgToDataUrl(backSvg, size),
     ]);
 
-    pdf.addImage(frontUrl, "JPEG", front.x, front.y, CARD_WIDTH_MM, CARD_HEIGHT_MM);
-    pdf.addImage(backUrl, "JPEG", back.x, back.y, CARD_WIDTH_MM, CARD_HEIGHT_MM);
+    pdf.addImage(frontUrl, "JPEG", front.x, front.y, size.w, size.h);
+    pdf.addImage(backUrl, "JPEG", back.x, back.y, size.w, size.h);
 
     if (cutMarks) {
-      drawPairCutMarks(pdf, front, back, CARD_WIDTH_MM, CARD_HEIGHT_MM);
+      drawPairCutMarks(pdf, front, back, size.w, size.h);
     }
   }
 
-  pdf.save(`id-cards-${new Date().toISOString().slice(0, 10)}.pdf`);
+  const suffix = mode === "local" ? "-local" : "";
+  pdf.save(`id-cards${suffix}-${new Date().toISOString().slice(0, 10)}.pdf`);
 }

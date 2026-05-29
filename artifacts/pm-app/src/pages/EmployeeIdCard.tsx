@@ -170,7 +170,7 @@ export default function EmployeeIdCard() {
   const [showCutMarks, setShowCutMarks] = useState(true);
   const [pdfLoading, setPdfLoading] = useState(false);
 
-  async function handleDownloadPdf() {
+  async function handleDownloadPdf(mode: "standard" | "local" = "standard") {
     if (!selectedEmployees.length) return;
     setPdfLoading(true);
     try {
@@ -182,7 +182,7 @@ export default function EmployeeIdCard() {
           if (!emp) throw new Error(`Employee ${name} not found`);
           return fetchIdCardSvg(emp, side);
         },
-        { cutMarks: showCutMarks },
+        { cutMarks: showCutMarks, mode },
       );
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "PDF export failed");
@@ -269,7 +269,7 @@ export default function EmployeeIdCard() {
             Cutting marks
           </label>
           <button
-            onClick={handleDownloadPdf}
+            onClick={() => handleDownloadPdf("standard")}
             disabled={selectedEmployees.length === 0 || pdfLoading}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
@@ -277,6 +277,17 @@ export default function EmployeeIdCard() {
               ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
               : <FileDown className="w-3.5 h-3.5" />}
             A4 PDF
+          </button>
+          <button
+            onClick={() => handleDownloadPdf("local")}
+            disabled={selectedEmployees.length === 0 || pdfLoading}
+            title="Local print: 3mm reduced width & height"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {pdfLoading
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <FileDown className="w-3.5 h-3.5" />}
+            Local print
           </button>
         </div>
 

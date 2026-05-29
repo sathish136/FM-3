@@ -77,7 +77,6 @@ import {
   CreditCard,
   PartyPopper,
   Ruler,
-  Calculator,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -566,13 +565,6 @@ const navGroups: { label: string; items: NavItem[] }[] = [
   {
     label: "Procurement",
     items: [
-      {
-        path: "/cost-working",
-        label: "Cost Working",
-        icon: Calculator,
-        color: "text-emerald-400",
-        bgColor: "bg-emerald-500/15",
-      },
       {
         path: "/material-request",
         label: "Material Request",

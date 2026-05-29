@@ -109,7 +109,6 @@ import OmSitePerformance from "@/pages/OmSitePerformance";
 import Design2DPage from "@/pages/Design2D";
 import Drawings from "@/pages/Drawings";
 import CivilDrawingAI from "@/pages/CivilDrawingAI";
-import CostWorking from "@/pages/CostWorking";
 import { SlideshowProvider } from "@/contexts/SlideshowContext";
 import { RecordingProvider } from "@/contexts/RecordingContext";
 import { LiveMeetingProvider } from "@/contexts/LiveMeetingContext";
@@ -227,7 +226,6 @@ function ProtectedRoutes() {
       <Route path="/gallery" component={Gallery} />
       <Route path="/settings" component={Settings} />
       <Route path="/profile" component={Profile} />
-      <Route path="/cost-working" component={CostWorking} />
       <Route path="/material-request" component={MaterialRequest} />
       <Route path="/purchase-order" component={PurchaseOrder} />
       <Route path="/purchase-orders" component={PurchaseOrders} />
