@@ -32,8 +32,8 @@ async function initVpnTables() {
       private_key   TEXT NOT NULL,
       public_key    TEXT NOT NULL,
       listen_port   INTEGER NOT NULL DEFAULT 51820,
-      server_ip     TEXT NOT NULL DEFAULT '10.8.0.1',
-      network_cidr  TEXT NOT NULL DEFAULT '10.8.0.0/24',
+      server_ip     TEXT NOT NULL DEFAULT '15.15.60.1',
+      network_cidr  TEXT NOT NULL DEFAULT '15.15.60.0/24',
       endpoint      TEXT,
       dns           TEXT NOT NULL DEFAULT '1.1.1.1',
       interface     TEXT NOT NULL DEFAULT 'wg0',
@@ -48,6 +48,8 @@ async function initVpnTables() {
   await pool.query(`ALTER TABLE vpn_server_config ADD COLUMN IF NOT EXISTS agent_api_key TEXT`);
   await pool.query(`ALTER TABLE vpn_server_config ADD COLUMN IF NOT EXISTS last_status JSONB`);
   await pool.query(`ALTER TABLE vpn_server_config ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ`);
+  // Migrate: update old default 10.8.0.x IPs to 15.15.60.x
+  await pool.query(`UPDATE vpn_server_config SET server_ip='15.15.60.1', network_cidr='15.15.60.0/24' WHERE server_ip='10.8.0.1'`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS vpn_peers (
