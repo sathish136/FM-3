@@ -102,6 +102,7 @@ function TokenModal({ token, name, onClose }: { token: string; name: string; onC
 
 function AddMachineModal({ onClose, onAdded }: { onClose: () => void; onAdded: (machine: Machine, token: string) => void }) {
   const [name, setName] = useState("");
+  const [nameEdited, setNameEdited] = useState(false);
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
   const [configs, setConfigs] = useState<DeviceConfigOption[]>([]);
@@ -126,6 +127,15 @@ function AddMachineModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
         (c.site_location || "").toLowerCase().includes(search.toLowerCase())
       )
     : configs;
+
+  const selectConfig = (c: DeviceConfigOption) => {
+    setSelectedConfig(c);
+    setDropOpen(false);
+    setSearch("");
+    if (!nameEdited) {
+      setName(c.project_name || c.project_number || "");
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,19 +167,12 @@ function AddMachineModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-md p-6">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100 mb-5">Register IPC Machine</h2>
         <form onSubmit={submit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">Machine Name *</label>
-            <input
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="e.g. IPC-Site-01"
-              required
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
 
+          {/* Step 1: select site first */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">Site (from Device Config) *</label>
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">
+              Site (Device Config) *
+            </label>
             {configsLoading ? (
               <div className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm text-slate-400">
                 Loading sites…
@@ -220,7 +223,7 @@ function AddMachineModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
                         <button
                           key={c.id}
                           type="button"
-                          onClick={() => { setSelectedConfig(c); setDropOpen(false); setSearch(""); }}
+                          onClick={() => selectConfig(c)}
                           className={cn(
                             "w-full text-left px-3 py-2.5 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors",
                             selectedConfig?.id === c.id && "bg-indigo-50 dark:bg-indigo-900/20"
@@ -239,6 +242,29 @@ function AddMachineModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
                 )}
               </div>
             )}
+          </div>
+
+          {/* Step 2: machine name — auto-filled from config, still editable */}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">
+              Machine Name *
+              {!nameEdited && selectedConfig && (
+                <span className="ml-2 text-indigo-400 font-normal normal-case">auto-filled · edit if needed</span>
+              )}
+            </label>
+            <input
+              value={name}
+              onChange={e => { setName(e.target.value); setNameEdited(true); }}
+              placeholder={selectedConfig ? "" : "Select a site first…"}
+              required
+              disabled={!selectedConfig && configs.length > 0}
+              className={cn(
+                "w-full px-3 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all",
+                !selectedConfig && configs.length > 0
+                  ? "border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-300 cursor-not-allowed"
+                  : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
+              )}
+            />
           </div>
 
           <div>
@@ -261,7 +287,7 @@ function AddMachineModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
             </button>
             <button
               type="submit"
-              disabled={loading || !selectedConfig}
+              disabled={loading || !selectedConfig || !name.trim()}
               className="flex-1 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-all disabled:opacity-50"
             >
               {loading ? "Registering..." : "Register Machine"}
