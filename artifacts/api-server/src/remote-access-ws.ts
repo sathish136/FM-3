@@ -139,11 +139,16 @@ export function setupRemoteAccessWS(server: Server) {
 
       ws.on("message", (data, isBinary) => {
         if (isBinary) {
+          // Raw binary JPEG frame — forward directly to all viewers
           broadcastToViewers(machineId, data as Buffer, true);
         } else {
           try {
             const msg = JSON.parse(data.toString());
             if (msg.type === "frame") {
+              // Legacy base64 frame (not used anymore but keep for compat)
+              broadcastToViewers(machineId, data as Buffer, false);
+            } else if (msg.type === "clipboard_data") {
+              // Agent is responding to a clipboard_read — forward to all viewers
               broadcastToViewers(machineId, data as Buffer, false);
             }
           } catch {}
@@ -197,7 +202,8 @@ export function setupRemoteAccessWS(server: Server) {
           const agent = agents.get(machineId);
           if (!agent || agent.ws.readyState !== WebSocket.OPEN) return;
 
-          if (["mousemove", "mousedown", "mouseup", "keydown", "keyup", "scroll"].includes(msg.type)) {
+          if (["mousemove", "mousedown", "mouseup", "keydown", "keyup", "scroll",
+               "clipboard_read", "clipboard_write"].includes(msg.type)) {
             agent.ws.send(JSON.stringify(msg));
           }
           if (msg.type === "disconnect_request") {
