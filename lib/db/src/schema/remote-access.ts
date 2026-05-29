@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, boolean } from "drizzle-orm/pg-core";
 
 export const remoteAccessMachinesTable = pgTable("remote_access_machines", {
   id: serial("id").primaryKey(),
@@ -17,7 +17,7 @@ export type InsertRemoteAccessMachine = typeof remoteAccessMachinesTable.$inferI
 
 export const remoteAccessSessionsTable = pgTable("remote_access_sessions", {
   id: serial("id").primaryKey(),
-  machineId: serial("machine_id").references(() => remoteAccessMachinesTable.id, { onDelete: "cascade" }),
+  machineId: integer("machine_id").notNull().references(() => remoteAccessMachinesTable.id, { onDelete: "cascade" }),
   startedAt: timestamp("started_at").notNull().defaultNow(),
   endedAt: timestamp("ended_at"),
   initiatedBy: text("initiated_by"),

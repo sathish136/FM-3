@@ -1,12 +1,7 @@
 import { Router } from "express";
 import crypto from "crypto";
-import pg from "pg";
+import { pool } from "@workspace/db";
 import { getAgentStatus } from "../remote-access-ws";
-
-const { Pool } = pg;
-const pool = new Pool({
-  connectionString: "postgresql://postgres:wtt%40adm123@122.165.225.42:5432/flowmatrix",
-});
 
 const router = Router();
 
@@ -99,6 +94,27 @@ router.get("/remote-access/machines/:id", async (req, res) => {
     res.json(machine);
   } catch {
     res.status(500).json({ error: "Failed to get machine" });
+  }
+});
+
+router.get("/remote-access/machines/:id/status", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const machineId = parseInt(id);
+    const agentOnline = getAgentStatus(machineId);
+    const r = await pool.query(
+      `SELECT is_online, last_seen FROM remote_access_machines WHERE id = $1`,
+      [machineId]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: "Machine not found" });
+    res.json({
+      machineId,
+      online: agentOnline || r.rows[0].is_online,
+      agentConnected: agentOnline,
+      lastSeen: r.rows[0].last_seen,
+    });
+  } catch {
+    res.status(500).json({ error: "Failed to get machine status" });
   }
 });
 

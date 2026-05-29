@@ -1,13 +1,7 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { Server } from "http";
 import crypto from "crypto";
-import pg from "pg";
-
-const { Pool } = pg;
-
-const pool = new Pool({
-  connectionString: "postgresql://postgres:wtt%40adm123@122.165.225.42:5432/flowmatrix",
-});
+import { pool } from "@workspace/db";
 
 interface AgentConnection {
   ws: WebSocket;
