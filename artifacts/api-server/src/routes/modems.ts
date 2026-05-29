@@ -1,6 +1,6 @@
 import { Router } from "express";
 import crypto from "crypto";
-import { pool } from "../db";
+import { pool } from "@workspace/db";
 
 const router = Router();
 

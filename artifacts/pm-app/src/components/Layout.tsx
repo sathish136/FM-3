@@ -77,6 +77,7 @@ import {
   CreditCard,
   PartyPopper,
   Ruler,
+  Wifi,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -912,6 +913,13 @@ const navGroups: { label: string; items: NavItem[] }[] = [
         path: "/plc-automation/field-devices",
         label: "Field Instruments",
         icon: Activity,
+        color: "text-emerald-400",
+        bgColor: "bg-emerald-500/15",
+      },
+      {
+        path: "/plc-automation/modems",
+        label: "Modem Management",
+        icon: Wifi,
         color: "text-emerald-400",
         bgColor: "bg-emerald-500/15",
       },
