@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Layout } from "@/components/Layout";
-import { Monitor, Plus, Trash2, RefreshCw, Wifi, WifiOff, Copy, Check, Eye, Key, Clock, ChevronRight } from "lucide-react";
+import { Monitor, Plus, Trash2, RefreshCw, Wifi, WifiOff, Copy, Check, Eye, Key, Clock, ChevronRight, Search, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -10,11 +10,21 @@ interface Machine {
   id: number;
   name: string;
   site: string;
+  device_config_id?: number;
+  device_config_name?: string;
+  device_config_number?: string;
   description?: string;
   is_online: boolean;
   last_seen?: string;
   created_at: string;
   created_by?: string;
+}
+
+interface DeviceConfigOption {
+  id: number;
+  project_name?: string;
+  project_number?: string;
+  site_location?: string;
 }
 
 function formatRelative(ts?: string): string {
@@ -92,20 +102,45 @@ function TokenModal({ token, name, onClose }: { token: string; name: string; onC
 
 function AddMachineModal({ onClose, onAdded }: { onClose: () => void; onAdded: (machine: Machine, token: string) => void }) {
   const [name, setName] = useState("");
-  const [site, setSite] = useState("");
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
+  const [configs, setConfigs] = useState<DeviceConfigOption[]>([]);
+  const [configsLoading, setConfigsLoading] = useState(true);
+  const [selectedConfig, setSelectedConfig] = useState<DeviceConfigOption | null>(null);
+  const [search, setSearch] = useState("");
+  const [dropOpen, setDropOpen] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    fetch(`${BASE}/api/plc/device-configs`)
+      .then(r => r.json())
+      .then(d => setConfigs(d.data ?? []))
+      .catch(() => {})
+      .finally(() => setConfigsLoading(false));
+  }, []);
+
+  const filtered = search.trim()
+    ? configs.filter(c =>
+        (c.project_name || "").toLowerCase().includes(search.toLowerCase()) ||
+        (c.project_number || "").toLowerCase().includes(search.toLowerCase()) ||
+        (c.site_location || "").toLowerCase().includes(search.toLowerCase())
+      )
+    : configs;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !site.trim()) return;
+    if (!name.trim() || !selectedConfig) return;
     setLoading(true);
     try {
       const res = await fetch(`${BASE}/api/remote-access/machines`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), site: site.trim(), description: description.trim() || undefined }),
+        body: JSON.stringify({
+          name: name.trim(),
+          device_config_id: selectedConfig.id,
+          site: selectedConfig.project_name || selectedConfig.project_number || "Unknown",
+          description: description.trim() || undefined,
+        }),
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
@@ -132,16 +167,80 @@ function AddMachineModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
               className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
+
           <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">Site / Location *</label>
-            <input
-              value={site}
-              onChange={e => setSite(e.target.value)}
-              placeholder="e.g. Chennai WWTP"
-              required
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">Site (from Device Config) *</label>
+            {configsLoading ? (
+              <div className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm text-slate-400">
+                Loading sites…
+              </div>
+            ) : configs.length === 0 ? (
+              <div className="w-full px-3 py-2.5 rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-900/20 text-sm text-amber-700 dark:text-amber-400">
+                No device configs found. <a href={`${BASE}/plc-automation/device-config`} className="underline font-medium">Create one first →</a>
+              </div>
+            ) : (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setDropOpen(o => !o)}
+                  className={cn(
+                    "w-full px-3 py-2.5 rounded-xl border text-sm text-left flex items-center justify-between transition-all",
+                    dropOpen
+                      ? "border-indigo-500 ring-2 ring-indigo-200 dark:ring-indigo-800"
+                      : "border-slate-200 dark:border-slate-700",
+                    "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
+                  )}
+                >
+                  <span className={selectedConfig ? "text-slate-800 dark:text-slate-100" : "text-slate-400"}>
+                    {selectedConfig
+                      ? selectedConfig.project_name || selectedConfig.project_number || `Config #${selectedConfig.id}`
+                      : "Select a site…"}
+                  </span>
+                  <ChevronRight className={cn("w-4 h-4 text-slate-400 transition-transform", dropOpen && "rotate-90")} />
+                </button>
+
+                {dropOpen && (
+                  <div className="absolute z-10 mt-1 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl overflow-hidden">
+                    <div className="p-2 border-b border-slate-100 dark:border-slate-700">
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                        <input
+                          autoFocus
+                          value={search}
+                          onChange={e => setSearch(e.target.value)}
+                          placeholder="Search project…"
+                          className="w-full pl-8 pr-3 py-1.5 text-sm rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                    </div>
+                    <div className="max-h-52 overflow-y-auto">
+                      {filtered.length === 0 ? (
+                        <p className="text-xs text-slate-400 text-center py-4">No matches</p>
+                      ) : filtered.map(c => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => { setSelectedConfig(c); setDropOpen(false); setSearch(""); }}
+                          className={cn(
+                            "w-full text-left px-3 py-2.5 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors",
+                            selectedConfig?.id === c.id && "bg-indigo-50 dark:bg-indigo-900/20"
+                          )}
+                        >
+                          <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                            {c.project_name || "Unnamed"}
+                          </p>
+                          <p className="text-xs text-slate-400 dark:text-slate-500">
+                            {[c.project_number, c.site_location].filter(Boolean).join(" · ") || "No details"}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
+
           <div>
             <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">Description</label>
             <input
@@ -151,6 +250,7 @@ function AddMachineModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
               className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
+
           <div className="flex gap-3 pt-1">
             <button
               type="button"
@@ -161,7 +261,7 @@ function AddMachineModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !selectedConfig}
               className="flex-1 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-all disabled:opacity-50"
             >
               {loading ? "Registering..." : "Register Machine"}
@@ -234,6 +334,14 @@ export default function RemoteAccess() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <a
+              href={`${BASE}/plc-automation/device-config`}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
+              title="Manage Device Configs"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              Device Configs
+            </a>
             <button
               onClick={load}
               className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
@@ -311,7 +419,17 @@ export default function RemoteAccess() {
                     </span>
                   </div>
                   <div className="flex items-center gap-3 text-xs text-slate-400 dark:text-slate-500">
-                    <span>{machine.site}</span>
+                    <span className="font-medium text-slate-600 dark:text-slate-300">{machine.site}</span>
+                    {machine.device_config_id && (
+                      <a
+                        href={`${BASE}/plc-automation/device-config`}
+                        className="flex items-center gap-0.5 text-indigo-500 hover:text-indigo-700 transition-colors"
+                        title="View Device Config"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        Config
+                      </a>
+                    )}
                     {machine.description && <span>· {machine.description}</span>}
                     <span className="flex items-center gap-1">
                       <Clock className="w-3 h-3" />
@@ -358,11 +476,12 @@ export default function RemoteAccess() {
         <div className="mt-8 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-2xl p-5">
           <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 text-sm">Setup Guide</h3>
           <ol className="space-y-2 text-sm text-slate-500 dark:text-slate-400">
-            <li className="flex gap-2"><span className="font-bold text-indigo-500 shrink-0">1.</span> Click "Register Machine" above and give the IPC machine a name and site label.</li>
-            <li className="flex gap-2"><span className="font-bold text-indigo-500 shrink-0">2.</span> Copy the generated token — it's only shown once.</li>
-            <li className="flex gap-2"><span className="font-bold text-indigo-500 shrink-0">3.</span> On the IPC Windows machine, install Python 3 and run: <code className="bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded text-xs">pip install websockets mss pillow pyautogui</code></li>
-            <li className="flex gap-2"><span className="font-bold text-indigo-500 shrink-0">4.</span> Download <code className="bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded text-xs">agent.py</code> from <code className="bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded text-xs">clients/remote-agent/</code> and run it with the token.</li>
-            <li className="flex gap-2"><span className="font-bold text-indigo-500 shrink-0">5.</span> The machine will appear as "Online" and you can click "Connect" to view and control it.</li>
+            <li className="flex gap-2"><span className="font-bold text-indigo-500 shrink-0">1.</span> Create a <a href={`${BASE}/plc-automation/device-config`} className="text-indigo-500 underline">Device Config</a> for the site first, then come back here to register a machine.</li>
+            <li className="flex gap-2"><span className="font-bold text-indigo-500 shrink-0">2.</span> Click "Register Machine", select the site from the device config list, and give the IPC a name.</li>
+            <li className="flex gap-2"><span className="font-bold text-indigo-500 shrink-0">3.</span> Copy the generated token — it's only shown once.</li>
+            <li className="flex gap-2"><span className="font-bold text-indigo-500 shrink-0">4.</span> On the IPC Windows machine, install Python 3 and run: <code className="bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded text-xs">pip install websockets mss pillow pyautogui</code></li>
+            <li className="flex gap-2"><span className="font-bold text-indigo-500 shrink-0">5.</span> Download <code className="bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded text-xs">agent.py</code> from <code className="bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded text-xs">clients/remote-agent/</code> and run it with the token.</li>
+            <li className="flex gap-2"><span className="font-bold text-indigo-500 shrink-0">6.</span> The machine will appear as "Online" and you can click "Connect" to view and control it.</li>
           </ol>
         </div>
       </div>

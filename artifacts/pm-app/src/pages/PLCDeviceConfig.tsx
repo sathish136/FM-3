@@ -6,6 +6,7 @@ import {
   ChevronDown, Loader2, Download, Upload, FileText, X,
   Phone, MapPin, User, Key, Link, Terminal, LayoutGrid,
   Archive, Calendar, Paperclip, Clock, ArrowRight, History,
+  WifiOff, Copy, Check, ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Layout } from "@/components/Layout";
@@ -103,7 +104,7 @@ const FILE_CATEGORIES = [
   { id: "general",        label: "General Attachment",   color: "text-gray-600"  },
 ];
 
-type Tab = "project" | "plc" | "network" | "remote" | "modem" | "wifi" | "config" | "files";
+type Tab = "project" | "plc" | "network" | "remote" | "modem" | "wifi" | "config" | "files" | "ipc";
 const TABS: { id: Tab; label: string; icon: typeof Cpu; badge?: (f: FormState) => boolean }[] = [
   { id: "project", label: "Project",       icon: FolderOpen },
   { id: "plc",     label: "PLC Details",   icon: Cpu        },
@@ -113,6 +114,7 @@ const TABS: { id: Tab; label: string; icon: typeof Cpu; badge?: (f: FormState) =
   { id: "wifi",    label: "WiFi",          icon: Wifi       },
   { id: "config",  label: "Config",        icon: Settings2  },
   { id: "files",   label: "Files",         icon: Paperclip  },
+  { id: "ipc",     label: "IPC Machines",  icon: Monitor    },
 ];
 
 // ── ERP Project Picker ────────────────────────────────────────────────────────
@@ -502,6 +504,176 @@ function HistoryPanel({ configId, onRefreshNeeded }: { configId: number; onRefre
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── IPC Machines Tab ──────────────────────────────────────────────────────────
+interface IPCMachine {
+  id: number; name: string; site: string;
+  is_online: boolean; last_seen?: string;
+  description?: string; created_at: string;
+}
+
+function formatRel(ts?: string) {
+  if (!ts) return "Never";
+  const d = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+  if (d < 60) return `${d}s ago`;
+  if (d < 3600) return `${Math.floor(d / 60)}m ago`;
+  if (d < 86400) return `${Math.floor(d / 3600)}h ago`;
+  return `${Math.floor(d / 86400)}d ago`;
+}
+
+function IPCMachinesTab({ configId }: { configId: number }) {
+  const [machines, setMachines] = useState<IPCMachine[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [pendingToken, setPendingToken] = useState<{ token: string; name: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await fetch(`${BASE}/api/remote-access/by-device-config/${configId}`);
+      if (r.ok) setMachines(await r.json());
+    } catch {}
+    setLoading(false);
+  }, [configId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const regen = async (id: number, name: string) => {
+    if (!confirm(`Regenerate token for "${name}"? The current agent will disconnect.`)) return;
+    const r = await fetch(`${BASE}/api/remote-access/machines/${id}/regenerate-token`, { method: "POST" });
+    if (r.ok) { const d = await r.json(); setPendingToken({ token: d.token, name }); }
+  };
+
+  const copy = async (t: string) => {
+    await navigator.clipboard.writeText(t);
+    setCopied(true); setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-gray-700">IPC Machines</p>
+          <p className="text-xs text-gray-500 mt-0.5">Remote-access agents registered to this site</p>
+        </div>
+        <a
+          href={`${BASE}/remote-access`}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors"
+        >
+          <ExternalLink size={12} /> Manage in Remote Access
+        </a>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-10 text-gray-400">
+          <Loader2 size={18} className="animate-spin mr-2" /> Loading…
+        </div>
+      ) : machines.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-300 text-center">
+          <Monitor size={32} className="text-gray-300 mb-3" />
+          <p className="text-sm font-medium text-gray-500">No IPC machines linked to this site</p>
+          <p className="text-xs text-gray-400 mt-1 mb-4">Register a machine from Remote Access and select this site</p>
+          <a
+            href={`${BASE}/remote-access`}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-colors"
+          >
+            <Plus size={12} /> Register Machine
+          </a>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {machines.map(m => (
+            <div key={m.id} className="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-xl">
+              <div className={cn(
+                "w-9 h-9 rounded-lg flex items-center justify-center shrink-0",
+                m.is_online ? "bg-emerald-100" : "bg-gray-100"
+              )}>
+                <Monitor size={16} className={m.is_online ? "text-emerald-600" : "text-gray-400"} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-gray-800">{m.name}</span>
+                  <span className={cn(
+                    "inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full",
+                    m.is_online
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-gray-100 text-gray-400"
+                  )}>
+                    {m.is_online ? <Wifi size={9} /> : <WifiOff size={9} />}
+                    {m.is_online ? "Online" : "Offline"}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-400 flex items-center gap-2 mt-0.5">
+                  {m.description && <span>{m.description} ·</span>}
+                  <span className="flex items-center gap-1">
+                    <Clock size={10} />{m.is_online ? "Connected" : formatRel(m.last_seen)}
+                  </span>
+                </p>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => regen(m.id, m.name)}
+                  title="Regenerate token"
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                >
+                  <Key size={14} />
+                </button>
+                {m.is_online && (
+                  <a
+                    href={`${BASE}/remote-access/${m.id}`}
+                    className="flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-colors"
+                  >
+                    <Eye size={11} /> Connect
+                  </a>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Token modal */}
+      {pendingToken && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-lg p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
+                <Key size={18} className="text-emerald-600" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-gray-800">New Token Generated</h2>
+                <p className="text-xs text-gray-500">For: <span className="font-medium">{pendingToken.name}</span></p>
+              </div>
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3">
+              <p className="text-xs text-amber-700 font-medium">Copy this token now — it won't be shown again.</p>
+            </div>
+            <div className="bg-gray-900 rounded-xl p-4 font-mono text-sm text-emerald-400 break-all mb-4 select-all">
+              {pendingToken.token}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => copy(pendingToken.token)}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all",
+                  copied ? "bg-emerald-100 text-emerald-700" : "bg-indigo-600 hover:bg-indigo-700 text-white"
+                )}
+              >
+                {copied ? <Check size={15} /> : <Copy size={15} />}
+                {copied ? "Copied!" : "Copy Token"}
+              </button>
+              <button
+                onClick={() => setPendingToken(null)}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-all"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -997,8 +1169,19 @@ export default function PLCDeviceConfig() {
                 <FilesTab configId={configId} userName={userName} />
               )}
 
+              {/* IPC MACHINES ────────────────────────────────────────────── */}
+              {activeTab === "ipc" && !isNew && configId && (
+                <IPCMachinesTab configId={configId} />
+              )}
+              {activeTab === "ipc" && isNew && (
+                <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+                  <Monitor size={36} className="mb-3 opacity-30" />
+                  <p className="text-sm">Save this config first, then you can link IPC machines to it.</p>
+                </div>
+              )}
+
               {/* Prev / Next / Save footer */}
-              {activeTab !== "files" && (
+              {activeTab !== "files" && activeTab !== "ipc" && (
                 <div className="flex justify-between mt-10 pt-5 border-t border-gray-200">
                   <button
                     onClick={() => { if (tabIdx > 0) setActiveTab(TABS[tabIdx - 1].id); }}

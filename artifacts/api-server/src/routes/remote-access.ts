@@ -28,6 +28,12 @@ async function initTables() {
         initiated_by TEXT
       );
     `);
+
+    await pool.query(`
+      ALTER TABLE remote_access_machines
+        ADD COLUMN IF NOT EXISTS device_config_id INTEGER REFERENCES plc_device_configs(id) ON DELETE SET NULL;
+    `);
+
     console.log("Remote access tables ready");
   } catch (e) {
     console.error("remote_access table init error:", e);
@@ -47,8 +53,16 @@ function hashToken(token: string): string {
 router.get("/remote-access/machines", async (req, res) => {
   try {
     const rows = await pool.query(
-      `SELECT id, name, site, description, is_online, last_seen, created_at, created_by
-       FROM remote_access_machines ORDER BY site, name`
+      `SELECT m.id, m.name,
+              COALESCE(dc.project_name, m.site) AS site,
+              m.site AS site_raw,
+              m.device_config_id,
+              dc.project_name AS device_config_name,
+              dc.project_number AS device_config_number,
+              m.description, m.is_online, m.last_seen, m.created_at, m.created_by
+       FROM remote_access_machines m
+       LEFT JOIN plc_device_configs dc ON dc.id = m.device_config_id
+       ORDER BY COALESCE(dc.project_name, m.site), m.name`
     );
     const machines = rows.rows.map((m: any) => ({
       ...m,
@@ -62,17 +76,34 @@ router.get("/remote-access/machines", async (req, res) => {
 
 router.post("/remote-access/machines", async (req, res) => {
   try {
-    const { name, site, description } = req.body;
-    if (!name || !site) return res.status(400).json({ error: "name and site are required" });
+    const { name, site, description, device_config_id } = req.body;
+
+    let resolvedSite = site?.trim();
+    let resolvedDeviceConfigId = device_config_id ? Number(device_config_id) : null;
+
+    if (resolvedDeviceConfigId) {
+      const dc = await pool.query(
+        `SELECT project_name, project_number FROM plc_device_configs WHERE id = $1`,
+        [resolvedDeviceConfigId]
+      );
+      if (dc.rows[0]) {
+        resolvedSite = dc.rows[0].project_name || dc.rows[0].project_number || resolvedSite || "Unknown";
+      }
+    }
+
+    if (!name?.trim() || !resolvedSite) {
+      return res.status(400).json({ error: "name and site (or device_config_id) are required" });
+    }
 
     const token = generateToken();
     const tokenHash = hashToken(token);
     const createdBy = (req as any).user?.email || null;
 
     const r = await pool.query(
-      `INSERT INTO remote_access_machines (name, site, description, token_hash, created_by)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id, name, site, description, is_online, last_seen, created_at, created_by`,
-      [name, site, description || null, tokenHash, createdBy]
+      `INSERT INTO remote_access_machines (name, site, description, token_hash, created_by, device_config_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, name, site, description, is_online, last_seen, created_at, created_by, device_config_id`,
+      [name.trim(), resolvedSite, description?.trim() || null, tokenHash, createdBy, resolvedDeviceConfigId]
     );
 
     res.json({ ...r.rows[0], token });
@@ -85,8 +116,16 @@ router.get("/remote-access/machines/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const r = await pool.query(
-      `SELECT id, name, site, description, is_online, last_seen, created_at, created_by
-       FROM remote_access_machines WHERE id = $1`,
+      `SELECT m.id, m.name,
+              COALESCE(dc.project_name, m.site) AS site,
+              m.site AS site_raw,
+              m.device_config_id,
+              dc.project_name AS device_config_name,
+              dc.project_number AS device_config_number,
+              m.description, m.is_online, m.last_seen, m.created_at, m.created_by
+       FROM remote_access_machines m
+       LEFT JOIN plc_device_configs dc ON dc.id = m.device_config_id
+       WHERE m.id = $1`,
       [id]
     );
     if (!r.rows[0]) return res.status(404).json({ error: "Machine not found" });
@@ -172,6 +211,26 @@ router.get("/remote-access/machines/:id/sessions", async (req, res) => {
     res.json(r.rows);
   } catch {
     res.status(500).json({ error: "Failed to get sessions" });
+  }
+});
+
+router.get("/remote-access/by-device-config/:configId", async (req, res) => {
+  try {
+    const { configId } = req.params;
+    const rows = await pool.query(
+      `SELECT id, name, site, description, is_online, last_seen, created_at, created_by, device_config_id
+       FROM remote_access_machines
+       WHERE device_config_id = $1
+       ORDER BY name`,
+      [configId]
+    );
+    const machines = rows.rows.map((m: any) => ({
+      ...m,
+      is_online: getAgentStatus(m.id) || m.is_online,
+    }));
+    res.json(machines);
+  } catch {
+    res.status(500).json({ error: "Failed to list machines for config" });
   }
 });
 
