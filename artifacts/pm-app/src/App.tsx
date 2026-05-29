@@ -104,6 +104,7 @@ import PLCNetworkArchitecture from "@/pages/PLCNetworkArchitecture";
 import PLCModificationLog from "@/pages/PLCModificationLog";
 import PLCFieldDevices from "@/pages/PLCFieldDevices";
 import ModemDashboard from "@/pages/ModemDashboard";
+import VpnManager from "@/pages/VpnManager";
 import RemoteAccess from "@/pages/RemoteAccess";
 import RemoteViewer from "@/pages/RemoteViewer";
 import OmChemicalConsumption from "@/pages/OmChemicalConsumption";
@@ -306,6 +307,7 @@ function ProtectedRoutes() {
       <Route path="/plc-automation/modification-log"    component={PLCModificationLog}    />
       <Route path="/plc-automation/field-devices"       component={PLCFieldDevices}        />
       <Route path="/plc-automation/modems"             component={ModemDashboard}          />
+      <Route path="/plc-automation/vpn-manager"        component={VpnManager}               />
       <Route path="/remote-access" component={RemoteAccess} />
       <Route path="/remote-access/:id" component={RemoteViewer} />
       <Route path="/om/chemical-consumption" component={OmChemicalConsumption} />

@@ -78,6 +78,7 @@ import {
   PartyPopper,
   Ruler,
   Wifi,
+  Shield,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -922,6 +923,13 @@ const navGroups: { label: string; items: NavItem[] }[] = [
         icon: Wifi,
         color: "text-emerald-400",
         bgColor: "bg-emerald-500/15",
+      },
+      {
+        path: "/plc-automation/vpn-manager",
+        label: "VPN Manager",
+        icon: Shield,
+        color: "text-blue-400",
+        bgColor: "bg-blue-500/15",
       },
     ],
   },

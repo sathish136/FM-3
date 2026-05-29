@@ -46,6 +46,7 @@ import omRouter from "./om";
 import proposalWizardRouter from "./proposal-wizard";
 import remoteAccessRouter from "./remote-access";
 import modemsRouter from "./modems";
+import vpnRouter from "./vpn";
 
 const router: IRouter = Router();
 
@@ -96,5 +97,6 @@ router.use(omRouter);
 router.use(proposalWizardRouter);
 router.use(remoteAccessRouter);
 router.use(modemsRouter);
+router.use(vpnRouter);
 
 export default router;
