@@ -45,6 +45,7 @@ import plcRouter from "./plc";
 import omRouter from "./om";
 import proposalWizardRouter from "./proposal-wizard";
 import remoteAccessRouter from "./remote-access";
+import modemsRouter from "./modems";
 
 const router: IRouter = Router();
 
@@ -94,5 +95,6 @@ router.use(plcRouter);
 router.use(omRouter);
 router.use(proposalWizardRouter);
 router.use(remoteAccessRouter);
+router.use(modemsRouter);
 
 export default router;

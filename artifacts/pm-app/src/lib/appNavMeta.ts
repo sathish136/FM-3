@@ -111,6 +111,7 @@ export const NAV_META: Record<string, NavMeta> = {
   "/plc-automation/panel-inspection": { icon: ClipboardList, color: "text-orange-400", bgColor: "bg-orange-500/15" },
   "/plc-automation/support-tickets": { icon: FileText, color: "text-violet-400", bgColor: "bg-violet-500/15" },
   "/plc-automation/network-architecture": { icon: Network, color: "text-blue-400", bgColor: "bg-blue-500/15" },
+  "/plc-automation/modems": { icon: Wifi, color: "text-emerald-400", bgColor: "bg-emerald-500/15" },
   "/mis-report": { icon: BarChart3, color: "text-violet-400", bgColor: "bg-violet-500/15" },
   "/payment-tracker": { icon: Receipt, color: "text-indigo-400", bgColor: "bg-indigo-500/15" },
   "/user-management": { icon: Users, color: "text-red-400", bgColor: "bg-red-500/15" },
