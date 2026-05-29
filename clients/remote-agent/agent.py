@@ -88,10 +88,14 @@ MOUSE_BUTTON_MAP = {0: "left", 1: "middle", 2: "right"}
 
 
 def get_ws_url(server: str, token: str) -> str:
-    server = server.rstrip("/")
+    server = server.strip().rstrip("/")
     if not server.startswith(("ws://", "wss://")):
         server = "wss://" + server
-    return f"{server}/api/remote-ws?role=agent&token={token}"
+    # Keep only scheme + host (strip any path the user may have included)
+    from urllib.parse import urlparse
+    parsed = urlparse(server)
+    base = f"{parsed.scheme}://{parsed.netloc}"
+    return f"{base}/api/remote-ws?role=agent&token={token}"
 
 
 async def capture_and_send(ws, sct, monitor, fps: int, quality: int):
@@ -193,7 +197,6 @@ async def run_agent(server_url: str, fps: int, quality: int, monitor_idx: int):
                 ping_interval=20,
                 ping_timeout=30,
                 max_size=None,
-                extra_headers={"User-Agent": "FlowMatrix-RemoteAgent/1.0"},
             ) as ws:
                 backoff = 2
                 log.info("WebSocket connected, waiting for auth...")
