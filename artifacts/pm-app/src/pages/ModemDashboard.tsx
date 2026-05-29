@@ -468,7 +468,10 @@ export default function ModemDashboard() {
 
   const fetchConfigs = useCallback(async () => {
     const r = await fetch(`${BASE}/api/plc/device-configs`);
-    if (r.ok) setConfigs(await r.json());
+    if (r.ok) {
+      const body = await r.json();
+      setConfigs(Array.isArray(body) ? body : (body.data ?? []));
+    }
   }, []);
 
   useEffect(() => {
