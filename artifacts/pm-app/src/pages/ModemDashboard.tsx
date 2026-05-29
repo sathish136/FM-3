@@ -108,7 +108,9 @@ function SetupGuide({ modem, heartbeatUrl }: { modem: ModemDevice; heartbeatUrl:
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"gsm" | "custom">("gsm");
 
-  const tokenUrl = `${heartbeatUrl}?token=${modem.token}`;
+  // Token goes in the URL path — reliable on all routers/proxies
+  // e.g. POST /api/modems/heartbeat/mod-xxxxxxxx
+  const tokenUrl = `${heartbeatUrl}/${modem.token}`;
 
   const customJson = `{
   "token": "${modem.token}",

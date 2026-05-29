@@ -124,12 +124,19 @@ router.post("/modems/devices/:id/regenerate-token", async (req, res) => {
   res.json(result.rows[0]);
 });
 
-router.post("/modems/heartbeat", async (req, res) => {
-  // Token accepted from URL query (?token=) or JSON body — supports both
-  // Teltonika "Data to Server" (token in URL) and custom scripts (token in body)
+// Token in URL path — used by Teltonika GSM/Mobile usage JSON types
+// e.g. POST /api/modems/heartbeat/mod-xxxxxxxx
+router.post("/modems/heartbeat/:token", heartbeatHandler);
+
+// Token in body or query string — used by custom/script formats
+router.post("/modems/heartbeat", heartbeatHandler);
+
+async function heartbeatHandler(req: import("express").Request, res: import("express").Response) {
   const body = req.body as Record<string, unknown>;
-  const tokenRaw =
-    (req.query["token"] as string | undefined) ??
+  // Priority: URL path param → query string → JSON body
+  const tokenRaw: string | undefined =
+    (req.params["token"] as string | undefined) ||
+    (req.query["token"] as string | undefined) ||
     (body["token"] as string | undefined);
 
   if (!tokenRaw) return res.status(401).json({ error: "token required" });
@@ -178,7 +185,7 @@ router.post("/modems/heartbeat", async (req, res) => {
   );
 
   res.json({ ok: true });
-});
+}
 
 function num(v: unknown): number | null {
   if (v === undefined || v === null || v === "") return null;
