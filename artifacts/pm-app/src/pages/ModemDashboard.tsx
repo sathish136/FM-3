@@ -66,14 +66,15 @@ function formatLastSeen(ts: string | null): string {
 }
 
 function SignalBars({ rssi }: { rssi: number | null }) {
-  if (rssi === null) return <div className="text-slate-500 text-xs">—</div>;
+  if (rssi === null)
+    return <span className="text-slate-400 text-xs font-medium">—</span>;
   let bars = 0;
   if (rssi >= -65) bars = 4;
   else if (rssi >= -75) bars = 3;
   else if (rssi >= -85) bars = 2;
   else bars = 1;
   const color =
-    bars === 4 ? "bg-emerald-400" :
+    bars === 4 ? "bg-emerald-500" :
     bars === 3 ? "bg-yellow-400" :
     bars === 2 ? "bg-orange-400" : "bg-red-400";
   return (
@@ -81,11 +82,11 @@ function SignalBars({ rssi }: { rssi: number | null }) {
       {[1, 2, 3, 4].map((b) => (
         <div
           key={b}
-          className={`w-1.5 rounded-sm ${b <= bars ? color : "bg-slate-600"}`}
+          className={`w-1.5 rounded-sm ${b <= bars ? color : "bg-slate-200"}`}
           style={{ height: `${b * 4}px` }}
         />
       ))}
-      <span className="ml-1 text-xs text-slate-400">{rssi} dBm</span>
+      <span className="ml-1.5 text-xs text-slate-600 font-medium">{rssi} dBm</span>
     </div>
   );
 }
@@ -98,9 +99,21 @@ function CopyButton({ text }: { text: string }) {
     setTimeout(() => setCopied(false), 1500);
   };
   return (
-    <button onClick={copy} className="p-1 hover:text-sky-400 transition-colors text-slate-400">
-      {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+    <button
+      onClick={copy}
+      className="p-1 hover:text-blue-600 transition-colors text-slate-400"
+    >
+      {copied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
     </button>
+  );
+}
+
+function Row({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <div className="flex justify-between items-center">
+      <span className="text-slate-400">{label}</span>
+      <span className={highlight ? "text-blue-600 font-medium" : "text-emerald-600"}>{value}</span>
+    </div>
   );
 }
 
@@ -108,8 +121,6 @@ function SetupGuide({ modem, heartbeatUrl }: { modem: ModemDevice; heartbeatUrl:
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"gsm" | "custom">("gsm");
 
-  // Token goes in the URL path — reliable on all routers/proxies
-  // e.g. POST /api/modems/heartbeat/mod-xxxxxxxx
   const tokenUrl = `${heartbeatUrl}/${modem.token}`;
 
   const customJson = `{
@@ -123,29 +134,30 @@ function SetupGuide({ modem, heartbeatUrl }: { modem: ModemDevice; heartbeatUrl:
 }`;
 
   return (
-    <div className="mt-3 border border-slate-700 rounded-lg overflow-hidden">
+    <div className="mt-3 border border-slate-200 rounded-lg overflow-hidden">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-3 py-2 bg-slate-800 text-xs text-slate-300 hover:bg-slate-700"
+        className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 text-xs text-slate-600 hover:bg-slate-100 transition-colors"
       >
-        <span className="flex items-center gap-1.5"><Info size={12} /> Teltonika RUT200 Setup Guide</span>
+        <span className="flex items-center gap-1.5">
+          <Info size={12} className="text-blue-500" /> Teltonika RUT200 Setup Guide
+        </span>
         {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
       </button>
       {open && (
-        <div className="px-3 py-3 bg-slate-900 text-xs text-slate-400 space-y-3">
-          <p className="text-slate-300 font-medium">Services → Data to Server → Add</p>
+        <div className="px-3 py-3 bg-white text-xs text-slate-500 space-y-3 border-t border-slate-200">
+          <p className="text-slate-700 font-medium">Services → Data to Server → Add</p>
 
-          {/* Method tabs */}
           <div className="flex gap-1">
             <button
               onClick={() => setTab("gsm")}
-              className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${tab === "gsm" ? "bg-sky-600 text-white" : "bg-slate-700 text-slate-400 hover:text-slate-200"}`}
+              className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${tab === "gsm" ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500 hover:text-slate-700"}`}
             >
               GSM / JSON (Recommended)
             </button>
             <button
               onClick={() => setTab("custom")}
-              className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${tab === "custom" ? "bg-sky-600 text-white" : "bg-slate-700 text-slate-400 hover:text-slate-200"}`}
+              className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${tab === "custom" ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500 hover:text-slate-700"}`}
             >
               Custom Format
             </button>
@@ -153,33 +165,31 @@ function SetupGuide({ modem, heartbeatUrl }: { modem: ModemDevice; heartbeatUrl:
 
           {tab === "gsm" && (
             <div className="space-y-2">
-              {/* Step 1 — Data configuration */}
-              <p className="text-slate-300 font-medium text-[11px] uppercase tracking-wide">Step 1 — Data Configuration</p>
-              <div className="bg-slate-800 rounded p-2 space-y-1">
+              <p className="text-slate-700 font-medium text-[11px] uppercase tracking-wide">Step 1 — Data Configuration</p>
+              <div className="bg-slate-50 rounded p-2 space-y-1">
                 <Row label="Name" value="gsm_data" />
                 <Row label="Type" value="GSM" highlight />
                 <Row label="Format type" value="JSON" highlight />
                 <Row label="Values" value="All values included" />
               </div>
-              <p className="text-slate-400 text-[11px]">
-                Add a second entry for data usage: Type = <span className="text-emerald-400">Mobile usage</span>, Format = JSON, same server.
+              <p className="text-slate-500 text-[11px]">
+                Add a second entry for data usage: Type = <span className="text-emerald-600 font-medium">Mobile usage</span>, Format = JSON, same server.
               </p>
 
-              {/* Step 2 — Collection / Server */}
-              <p className="text-slate-300 font-medium text-[11px] uppercase tracking-wide mt-2">Step 2 — Collection (HTTP Server)</p>
-              <div className="bg-slate-800 rounded p-2 space-y-1">
+              <p className="text-slate-700 font-medium text-[11px] uppercase tracking-wide mt-2">Step 2 — Collection (HTTP Server)</p>
+              <div className="bg-slate-50 rounded p-2 space-y-1">
                 <Row label="Server type" value="HTTP" />
                 <div className="flex justify-between items-start gap-2">
                   <span className="text-slate-400 shrink-0">URL</span>
                   <div className="flex items-center gap-1 min-w-0">
-                    <code className="text-emerald-400 text-[10px] font-mono break-all leading-tight">{tokenUrl}</code>
+                    <code className="text-emerald-600 text-[10px] font-mono break-all leading-tight">{tokenUrl}</code>
                     <CopyButton text={tokenUrl} />
                   </div>
                 </div>
                 <Row label="HTTP method" value="POST" />
                 <Row label="Interval" value="30 s" />
               </div>
-              <p className="text-slate-400 text-[11px]">
+              <p className="text-slate-500 text-[11px]">
                 Token is in the URL — no custom body needed. FlowMatrix reads GSM fields automatically.
               </p>
             </div>
@@ -187,29 +197,29 @@ function SetupGuide({ modem, heartbeatUrl }: { modem: ModemDevice; heartbeatUrl:
 
           {tab === "custom" && (
             <div className="space-y-2">
-              <p className="text-slate-300 font-medium text-[11px] uppercase tracking-wide">Step 1 — Data Configuration</p>
-              <div className="bg-slate-800 rounded p-2 space-y-1">
+              <p className="text-slate-700 font-medium text-[11px] uppercase tracking-wide">Step 1 — Data Configuration</p>
+              <div className="bg-slate-50 rounded p-2 space-y-1">
                 <Row label="Name" value="flowmatrix_data" />
                 <Row label="Type" value="Base" highlight />
                 <Row label="Format type" value="Custom" highlight />
               </div>
 
-              <p className="text-slate-300 font-medium text-[11px] uppercase tracking-wide mt-2">Step 2 — Custom body</p>
-              <div className="bg-slate-800 rounded p-2 font-mono text-emerald-300 text-[10px] relative">
+              <p className="text-slate-700 font-medium text-[11px] uppercase tracking-wide mt-2">Step 2 — Custom body</p>
+              <div className="bg-slate-50 rounded p-2 font-mono text-emerald-600 text-[10px] relative border border-slate-200">
                 <div className="absolute top-1 right-1"><CopyButton text={customJson} /></div>
                 <pre className="whitespace-pre-wrap">{customJson}</pre>
               </div>
-              <p className="text-slate-400 text-[11px]">
+              <p className="text-slate-500 text-[11px]">
                 %s = RSSI · %o = Operator · %i = WAN IP · %u = Uptime · %S = SIM state · %f = Firmware
               </p>
 
-              <p className="text-slate-300 font-medium text-[11px] uppercase tracking-wide mt-2">Step 3 — Collection</p>
-              <div className="bg-slate-800 rounded p-2 space-y-1">
+              <p className="text-slate-700 font-medium text-[11px] uppercase tracking-wide mt-2">Step 3 — Collection</p>
+              <div className="bg-slate-50 rounded p-2 space-y-1">
                 <Row label="Server type" value="HTTP" />
                 <div className="flex justify-between items-start gap-2">
                   <span className="text-slate-400 shrink-0">URL</span>
                   <div className="flex items-center gap-1 min-w-0">
-                    <code className="text-emerald-400 text-[10px] font-mono break-all">{heartbeatUrl}</code>
+                    <code className="text-emerald-600 text-[10px] font-mono break-all">{heartbeatUrl}</code>
                     <CopyButton text={heartbeatUrl} />
                   </div>
                 </div>
@@ -219,7 +229,7 @@ function SetupGuide({ modem, heartbeatUrl }: { modem: ModemDevice; heartbeatUrl:
             </div>
           )}
 
-          <p className="text-emerald-400 text-[11px] pt-1">
+          <p className="text-emerald-600 font-medium text-[11px] pt-1">
             Enable the entry — modem shows Online within 30 seconds.
           </p>
         </div>
@@ -228,11 +238,13 @@ function SetupGuide({ modem, heartbeatUrl }: { modem: ModemDevice; heartbeatUrl:
   );
 }
 
-function Row({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function DetailRow({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
   return (
-    <div className="flex justify-between items-center">
-      <span className="text-slate-400">{label}</span>
-      <span className={highlight ? "text-sky-300 font-medium" : "text-emerald-400"}>{value}</span>
+    <div className="flex items-start justify-between gap-3 py-1.5 border-b border-slate-100 last:border-0">
+      <span className="text-xs text-slate-500 shrink-0 w-24">{label}</span>
+      <span className={`text-xs text-slate-800 font-medium text-right ${mono ? "font-mono" : ""}`}>
+        {value}
+      </span>
     </div>
   );
 }
@@ -255,25 +267,37 @@ function ModemCard({
 
   return (
     <div
-      className={`rounded-xl border p-4 ${
-        modem.is_online
-          ? "border-emerald-500/40 bg-emerald-500/5"
-          : "border-slate-700 bg-slate-800/40"
+      className={`rounded-xl border bg-white overflow-hidden shadow-sm ${
+        modem.is_online ? "border-emerald-200" : "border-slate-200"
       }`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className={`p-2 rounded-lg ${modem.is_online ? "bg-emerald-500/15" : "bg-slate-700/50"}`}>
-            <Router size={16} className={modem.is_online ? "text-emerald-400" : "text-slate-500"} />
+      {/* Header */}
+      <div
+        className={`flex items-start justify-between gap-2 px-4 py-3 border-b ${
+          modem.is_online
+            ? "bg-emerald-50 border-emerald-100"
+            : "bg-slate-50 border-slate-100"
+        }`}
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div
+            className={`p-2 rounded-lg shrink-0 ${
+              modem.is_online ? "bg-emerald-100" : "bg-slate-100"
+            }`}
+          >
+            <Router
+              size={15}
+              className={modem.is_online ? "text-emerald-600" : "text-slate-400"}
+            />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-semibold text-slate-100 text-sm truncate">{modem.name}</h3>
+              <h3 className="font-semibold text-slate-800 text-sm truncate">{modem.name}</h3>
               <span
-                className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
                   modem.is_online
-                    ? "bg-emerald-500/15 text-emerald-400"
-                    : "bg-slate-700 text-slate-400"
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-slate-100 text-slate-500"
                 }`}
               >
                 {modem.is_online ? (
@@ -283,99 +307,120 @@ function ModemCard({
                 )}
               </span>
             </div>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-500 mt-0.5">
               {modem.make} {modem.model}
               {site ? ` · ${site.site_name}` : ""}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-0.5 shrink-0">
           <button
             onClick={() => onRegenToken(modem.id)}
             title="Regenerate token"
-            className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-amber-400/10 rounded-lg transition-colors"
+            className="p-1.5 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-colors"
           >
             <RefreshCw size={13} />
           </button>
           <button
             onClick={() => onDelete(modem.id)}
             title="Delete"
-            className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
+            className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
           >
             <Trash2 size={13} />
           </button>
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-        <div>
-          <span className="text-slate-500">Signal</span>
-          <div className="mt-0.5"><SignalBars rssi={modem.signal_rssi} /></div>
-        </div>
-        <div>
-          <span className="text-slate-500">Operator</span>
-          <p className="text-slate-200 mt-0.5">{modem.operator || "—"}</p>
-        </div>
-        <div>
-          <span className="text-slate-500">WAN IP</span>
-          <p className="text-slate-200 font-mono mt-0.5 text-[11px]">{modem.wan_ip || "—"}</p>
-        </div>
-        <div>
-          <span className="text-slate-500">Uptime</span>
-          <p className="text-slate-200 mt-0.5">{formatUptime(modem.uptime)}</p>
-        </div>
-        <div>
-          <span className="text-slate-500">Last Seen</span>
-          <p className="text-slate-200 mt-0.5">{formatLastSeen(modem.last_seen)}</p>
-        </div>
-        <div>
-          <span className="text-slate-500">SIM State</span>
-          <p
-            className={`mt-0.5 capitalize ${
-              modem.sim_state === "active" ? "text-emerald-400" : "text-slate-200"
-            }`}
-          >
-            {modem.sim_state || "—"}
-          </p>
-        </div>
-        {(modem.data_rx || modem.data_tx) ? (
-          <div className="col-span-2">
-            <span className="text-slate-500">Data Usage</span>
-            <p className="text-slate-200 mt-0.5">
-              ↓ {formatBytes(modem.data_rx)} · ↑ {formatBytes(modem.data_tx)}
-            </p>
-          </div>
-        ) : null}
-        {modem.fw_version && (
-          <div className="col-span-2">
-            <span className="text-slate-500">Firmware</span>
-            <p className="text-slate-200 font-mono text-[11px] mt-0.5">{modem.fw_version}</p>
-          </div>
-        )}
-        {modem.imei && (
-          <div className="col-span-2">
-            <span className="text-slate-500">IMEI</span>
-            <p className="text-slate-200 font-mono text-[11px] mt-0.5">{modem.imei}</p>
-          </div>
-        )}
-      </div>
+      {/* All Details */}
+      <div className="px-4 py-3">
+        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Live Status</p>
 
-      <div className="mt-3">
-        <div className="flex items-center gap-1 text-xs text-slate-500 mb-1">
-          <span>Auth Token</span>
-          <button onClick={() => setShowToken((v) => !v)} className="hover:text-slate-300">
-            {showToken ? <EyeOff size={11} /> : <Eye size={11} />}
-          </button>
+        <div className="mb-1.5">
+          <div className="flex items-start justify-between gap-3 py-1.5 border-b border-slate-100">
+            <span className="text-xs text-slate-500 shrink-0 w-24">Signal (RSSI)</span>
+            <div className="flex justify-end">
+              <SignalBars rssi={modem.signal_rssi} />
+            </div>
+          </div>
+          <DetailRow
+            label="Signal (RSRP)"
+            value={modem.signal_rsrp !== null ? `${modem.signal_rsrp} dBm` : "—"}
+            mono
+          />
+          <DetailRow
+            label="WAN IP"
+            value={modem.wan_ip || "—"}
+            mono
+          />
+          <DetailRow
+            label="Operator"
+            value={modem.operator || "—"}
+          />
+          <DetailRow
+            label="SIM State"
+            value={
+              modem.sim_state ? (
+                <span className={modem.sim_state === "active" ? "text-emerald-600" : "text-slate-600"}>
+                  {modem.sim_state}
+                </span>
+              ) : "—"
+            }
+          />
+          <DetailRow
+            label="Uptime"
+            value={formatUptime(modem.uptime)}
+          />
+          <DetailRow
+            label="Last Seen"
+            value={formatLastSeen(modem.last_seen)}
+          />
+          <DetailRow
+            label="Data Usage"
+            value={
+              modem.data_rx || modem.data_tx
+                ? `↓ ${formatBytes(modem.data_rx)}  ↑ ${formatBytes(modem.data_tx)}`
+                : "—"
+            }
+            mono
+          />
+          <DetailRow
+            label="Firmware"
+            value={modem.fw_version || "—"}
+            mono
+          />
         </div>
-        <div className="flex items-center gap-1 bg-slate-900 rounded px-2 py-1">
-          <code className="text-[11px] text-sky-300 flex-1 truncate">
-            {showToken ? modem.token : modem.token.slice(0, 8) + "••••••••••••••••••••"}
-          </code>
-          <CopyButton text={modem.token} />
-        </div>
-      </div>
 
-      <SetupGuide modem={modem} heartbeatUrl={heartbeatUrl} />
+        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2 mt-3">Device Info</p>
+        <div>
+          <DetailRow label="IMEI" value={modem.imei || "—"} mono />
+          <DetailRow label="SIM No." value={modem.sim_no || "—"} mono />
+          <DetailRow label="Carrier / ISP" value={modem.carrier || "—"} />
+          {modem.description && (
+            <DetailRow label="Notes" value={modem.description} />
+          )}
+        </div>
+
+        {/* Auth Token */}
+        <div className="mt-3">
+          <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+            <span>Auth Token</span>
+            <button
+              onClick={() => setShowToken((v) => !v)}
+              className="hover:text-slate-600 transition-colors"
+            >
+              {showToken ? <EyeOff size={10} /> : <Eye size={10} />}
+            </button>
+          </div>
+          <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
+            <code className="text-[11px] text-blue-600 flex-1 truncate font-mono">
+              {showToken ? modem.token : modem.token.slice(0, 8) + "••••••••••••••••••••"}
+            </code>
+            <CopyButton text={modem.token} />
+          </div>
+        </div>
+
+        <SetupGuide modem={modem} heartbeatUrl={heartbeatUrl} />
+      </div>
     </div>
   );
 }
@@ -401,18 +446,23 @@ function RegisterModal({
   });
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
+  const inputCls =
+    "w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100 placeholder:text-slate-400";
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-slate-900 rounded-2xl border border-slate-700 w-full max-w-md mx-4 overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-700 flex items-center gap-2">
-          <Router size={16} className="text-sky-400" />
-          <h2 className="font-semibold text-slate-100 text-sm">Register Modem</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-md mx-4 overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2.5">
+          <div className="p-2 bg-blue-100 rounded-lg">
+            <Router size={15} className="text-blue-600" />
+          </div>
+          <h2 className="font-semibold text-slate-800 text-sm">Register Modem</h2>
         </div>
         <div className="p-5 space-y-3 max-h-[75vh] overflow-y-auto">
           <div>
-            <label className="text-xs text-slate-400 mb-1 block">Modem Name *</label>
+            <label className="text-xs text-slate-500 font-medium mb-1 block">Modem Name *</label>
             <input
-              className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-sky-500"
+              className={inputCls}
               placeholder="e.g. Site A — RUT200"
               value={form.name}
               onChange={(e) => set("name", e.target.value)}
@@ -420,26 +470,26 @@ function RegisterModal({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">Make</label>
+              <label className="text-xs text-slate-500 font-medium mb-1 block">Make</label>
               <input
-                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-sky-500"
+                className={inputCls}
                 value={form.make}
                 onChange={(e) => set("make", e.target.value)}
               />
             </div>
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">Model</label>
+              <label className="text-xs text-slate-500 font-medium mb-1 block">Model</label>
               <input
-                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-sky-500"
+                className={inputCls}
                 value={form.model}
                 onChange={(e) => set("model", e.target.value)}
               />
             </div>
           </div>
           <div>
-            <label className="text-xs text-slate-400 mb-1 block">Site (Device Config)</label>
+            <label className="text-xs text-slate-500 font-medium mb-1 block">Site (Device Config)</label>
             <select
-              className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-sky-500"
+              className={inputCls}
               value={form.device_config_id}
               onChange={(e) => set("device_config_id", e.target.value)}
             >
@@ -453,18 +503,18 @@ function RegisterModal({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">IMEI</label>
+              <label className="text-xs text-slate-500 font-medium mb-1 block">IMEI</label>
               <input
-                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-sky-500"
+                className={inputCls}
                 placeholder="15-digit IMEI"
                 value={form.imei}
                 onChange={(e) => set("imei", e.target.value)}
               />
             </div>
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">SIM No.</label>
+              <label className="text-xs text-slate-500 font-medium mb-1 block">SIM No.</label>
               <input
-                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-sky-500"
+                className={inputCls}
                 placeholder="SIM number"
                 value={form.sim_no}
                 onChange={(e) => set("sim_no", e.target.value)}
@@ -472,18 +522,18 @@ function RegisterModal({
             </div>
           </div>
           <div>
-            <label className="text-xs text-slate-400 mb-1 block">Carrier / ISP</label>
+            <label className="text-xs text-slate-500 font-medium mb-1 block">Carrier / ISP</label>
             <input
-              className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-sky-500"
+              className={inputCls}
               placeholder="e.g. Airtel, Jio, BSNL"
               value={form.carrier}
               onChange={(e) => set("carrier", e.target.value)}
             />
           </div>
           <div>
-            <label className="text-xs text-slate-400 mb-1 block">Description</label>
+            <label className="text-xs text-slate-500 font-medium mb-1 block">Description</label>
             <textarea
-              className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-sky-500 resize-none"
+              className={`${inputCls} resize-none`}
               rows={2}
               placeholder="Optional notes"
               value={form.description}
@@ -491,10 +541,10 @@ function RegisterModal({
             />
           </div>
         </div>
-        <div className="px-5 py-4 border-t border-slate-700 flex gap-3 justify-end">
+        <div className="px-5 py-4 border-t border-slate-100 flex gap-3 justify-end bg-slate-50">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm text-slate-300 hover:text-white rounded-lg hover:bg-slate-700 transition-colors"
+            className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors"
           >
             Cancel
           </button>
@@ -502,7 +552,9 @@ function RegisterModal({
             onClick={() =>
               onSave({
                 name: form.name,
-                device_config_id: form.device_config_id ? parseInt(form.device_config_id) : undefined,
+                device_config_id: form.device_config_id
+                  ? parseInt(form.device_config_id)
+                  : undefined,
                 make: form.make || "Teltonika",
                 model: form.model || "RUT200",
                 imei: form.imei || undefined,
@@ -512,7 +564,7 @@ function RegisterModal({
               })
             }
             disabled={!form.name.trim()}
-            className="px-4 py-2 text-sm bg-sky-600 hover:bg-sky-500 text-white rounded-lg transition-colors disabled:opacity-50"
+            className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 font-medium shadow-sm"
           >
             Register Modem
           </button>
@@ -590,66 +642,73 @@ export default function ModemDashboard() {
 
   return (
     <Layout>
-      <div className="min-h-screen bg-slate-950 text-slate-100">
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <div className="flex items-start justify-between gap-4 mb-6">
+      <div className="flex flex-col h-full bg-[#f4f6fb]">
+
+        {/* Page Header */}
+        <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-blue-600 shadow shadow-blue-200">
+              <Router className="w-5 h-5 text-white" />
+            </div>
             <div>
-              <div className="flex items-center gap-2 mb-1">
-                <Router size={20} className="text-sky-400" />
-                <h1 className="text-xl font-bold text-slate-100">Modem Management</h1>
-              </div>
-              <p className="text-sm text-slate-400">
+              <h1 className="text-lg font-bold text-slate-900 leading-tight">Modem Management</h1>
+              <p className="text-xs text-slate-400 mt-0.5">
                 Self-hosted RMS for Teltonika modems · {modems.length} device{modems.length !== 1 ? "s" : ""}
               </p>
             </div>
-            <button
-              onClick={() => setShowRegister(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white text-sm rounded-lg transition-colors"
-            >
-              <Plus size={15} />
-              Register Modem
-            </button>
           </div>
+          <button
+            onClick={() => setShowRegister(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+          >
+            <Plus size={15} />
+            Register Modem
+          </button>
+        </div>
 
-          <div className="grid grid-cols-3 gap-3 mb-6">
-            <div className="bg-slate-800/60 rounded-xl border border-slate-700 p-4 flex items-center gap-3">
-              <div className="p-2 bg-slate-700/60 rounded-lg">
-                <Signal size={18} className="text-slate-300" />
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+
+          {/* Stats */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-3 shadow-sm">
+              <div className="p-2 bg-slate-100 rounded-lg">
+                <Signal size={18} className="text-slate-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-slate-100">{modems.length}</p>
+                <p className="text-2xl font-bold text-slate-800">{modems.length}</p>
                 <p className="text-xs text-slate-400">Total Modems</p>
               </div>
             </div>
-            <div className="bg-emerald-500/5 rounded-xl border border-emerald-500/30 p-4 flex items-center gap-3">
-              <div className="p-2 bg-emerald-500/15 rounded-lg">
-                <Wifi size={18} className="text-emerald-400" />
+            <div className="bg-white rounded-xl border border-emerald-200 p-4 flex items-center gap-3 shadow-sm">
+              <div className="p-2 bg-emerald-50 rounded-lg">
+                <Wifi size={18} className="text-emerald-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-emerald-400">{onlineCount}</p>
+                <p className="text-2xl font-bold text-emerald-600">{onlineCount}</p>
                 <p className="text-xs text-slate-400">Online</p>
               </div>
             </div>
-            <div className="bg-slate-800/60 rounded-xl border border-slate-700 p-4 flex items-center gap-3">
-              <div className="p-2 bg-slate-700/60 rounded-lg">
-                <WifiOff size={18} className="text-slate-500" />
+            <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-3 shadow-sm">
+              <div className="p-2 bg-slate-100 rounded-lg">
+                <WifiOff size={18} className="text-slate-400" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-slate-400">{offlineCount}</p>
+                <p className="text-2xl font-bold text-slate-500">{offlineCount}</p>
                 <p className="text-xs text-slate-400">Offline</p>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 mb-4">
+          {/* Filter bar */}
+          <div className="flex items-center gap-2">
             {(["all", "online", "offline"] as const).map((f) => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
                 className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-colors capitalize ${
                   filter === f
-                    ? "bg-sky-600 text-white"
-                    : "bg-slate-800 text-slate-400 hover:text-slate-200"
+                    ? "bg-blue-600 text-white"
+                    : "bg-white text-slate-500 hover:text-slate-700 border border-slate-200"
                 }`}
               >
                 {f === "all"
@@ -661,25 +720,26 @@ export default function ModemDashboard() {
             ))}
             <button
               onClick={fetchModems}
-              className="ml-auto p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-700 rounded-lg transition-colors"
+              className="ml-auto p-1.5 text-slate-400 hover:text-slate-700 hover:bg-white border border-transparent hover:border-slate-200 rounded-lg transition-colors"
               title="Refresh"
             >
               <RefreshCw size={14} />
             </button>
           </div>
 
+          {/* Cards */}
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-slate-500">
+            <div className="flex items-center justify-center py-20 text-slate-400">
               <RefreshCw size={20} className="animate-spin mr-2" /> Loading modems…
             </div>
           ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-slate-500">
+            <div className="flex flex-col items-center justify-center py-20 text-slate-400">
               <Router size={40} className="mb-3 opacity-30" />
-              <p className="font-medium text-slate-400">
+              <p className="font-medium text-slate-500">
                 {modems.length === 0 ? "No modems registered yet" : "No modems match filter"}
               </p>
               {modems.length === 0 && (
-                <p className="text-sm mt-1 text-center max-w-xs">
+                <p className="text-sm mt-1 text-center max-w-xs text-slate-400">
                   Register a Teltonika modem and follow the setup guide to connect it to FlowMatrix.
                 </p>
               )}
