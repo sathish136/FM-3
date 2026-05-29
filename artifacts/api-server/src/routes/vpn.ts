@@ -1,6 +1,10 @@
 import { Router } from "express";
 import crypto from "crypto";
+import { exec } from "child_process";
+import { promisify } from "util";
 import { pool } from "@workspace/db";
+
+const execAsync = promisify(exec);
 
 const router = Router();
 
@@ -159,9 +163,51 @@ router.post("/vpn/server/regenerate-api-key", async (_req, res) => {
   res.json({ ok: true, agent_api_key: apiKey });
 });
 
+// ─── Ping Tool ────────────────────────────────────────────────────────────────
+// Runs ping -c 4 from the FlowMatrix server to any IP (useful if FlowMatrix is
+// also a VPN peer, or to ping public endpoints for latency checks).
+router.post("/vpn/ping", async (req, res) => {
+  const { ip, count = 4 } = req.body as { ip?: string; count?: number };
+  if (!ip || !/^[\d.a-zA-Z\-._]+$/.test(ip)) {
+    return res.status(400).json({ error: "Invalid IP or hostname" });
+  }
+  const c = Math.min(Math.max(1, Number(count) || 4), 10);
+  try {
+    const { stdout } = await execAsync(`ping -c ${c} -W 2 ${ip} 2>&1`);
+    // Parse: rtt min/avg/max/mdev = 0.123/0.456/0.789/0.111 ms
+    const rttMatch = stdout.match(/min\/avg\/max(?:\/mdev)?\s*=\s*([\d.]+)\/([\d.]+)\/([\d.]+)/);
+    // Parse: X packets transmitted, Y received, Z% packet loss
+    const lossMatch = stdout.match(/(\d+)% packet loss/);
+    const recvMatch = stdout.match(/(\d+) received/);
+    res.json({
+      ok: true,
+      ip,
+      minMs:  rttMatch ? parseFloat(rttMatch[1]) : null,
+      avgMs:  rttMatch ? parseFloat(rttMatch[2]) : null,
+      maxMs:  rttMatch ? parseFloat(rttMatch[3]) : null,
+      loss:   lossMatch ? parseInt(lossMatch[1]) : 100,
+      received: recvMatch ? parseInt(recvMatch[1]) : 0,
+      sent:   c,
+      output: stdout,
+    });
+  } catch (e: unknown) {
+    const err = e as { stdout?: string; stderr?: string; message?: string };
+    const out = err.stdout ?? err.stderr ?? err.message ?? "Ping failed";
+    const lossMatch = out.match(/(\d+)% packet loss/);
+    res.json({
+      ok: false,
+      ip,
+      minMs: null, avgMs: null, maxMs: null,
+      loss: lossMatch ? parseInt(lossMatch[1]) : 100,
+      received: 0, sent: c,
+      output: out,
+    });
+  }
+});
+
 // ─── Remote Agent Heartbeat ───────────────────────────────────────────────────
 // Called by the Python agent running on the remote WireGuard server.
-// Body: { peers: Record<pubkey, { endpoint, lastHandshake, rxBytes, txBytes }> }
+// Body: { peers: Record<pubkey, { endpoint, lastHandshake, rxBytes, txBytes, latencyMs? }> }
 router.post("/vpn/server/heartbeat", async (req, res) => {
   const auth = req.headers["authorization"] ?? "";
   const token = auth.replace(/^Bearer\s+/i, "").trim();
@@ -172,7 +218,10 @@ router.post("/vpn/server/heartbeat", async (req, res) => {
   if (srv.agent_api_key !== token) return res.status(403).json({ error: "Invalid API key" });
 
   const { peers } = req.body as {
-    peers: Record<string, { endpoint: string | null; lastHandshake: number; rxBytes: number; txBytes: number }>;
+    peers: Record<string, {
+      endpoint: string | null; lastHandshake: number;
+      rxBytes: number; txBytes: number; latencyMs?: number | null;
+    }>;
   };
 
   await pool.query(
@@ -514,14 +563,32 @@ def wg_show_dump():
         parts = line.split("\\t")
         if len(parts) < 8:
             continue
-        pub_key, _, endpoint, _, last_hs, rx, tx, _ = parts[:8]
+        pub_key, _, endpoint, allowed_ips, last_hs, rx, tx, _ = parts[:8]
         peers[pub_key] = {
             "endpoint":      None if endpoint == "(none)" else endpoint,
             "lastHandshake": int(last_hs) if last_hs.isdigit() else 0,
             "rxBytes":       int(rx) if rx.isdigit() else 0,
             "txBytes":       int(tx) if tx.isdigit() else 0,
+            "allowedIPs":    allowed_ips,
         }
     return peers
+
+
+def ping_peer(ip: str, count: int = 3) -> float | None:
+    """Ping a VPN peer IP and return avg RTT in ms, or None if unreachable."""
+    out, _, rc = run(f"ping -c {count} -W 1 {ip}")
+    if rc != 0:
+        return None
+    import re
+    m = re.search(r"min/avg/max(?:/mdev)? = [\\d.]+/([\\d.]+)", out)
+    return float(m.group(1)) if m else None
+
+
+def peer_vpn_ip(allowed_ips: str) -> str | None:
+    """Extract the /32 host IP from allowed_ips (e.g. '15.15.60.2/32,192.168.1.0/24')."""
+    import re
+    m = re.search(r"(\\d+\\.\\d+\\.\\d+\\.\\d+)/32", allowed_ips)
+    return m.group(1) if m else None
 
 
 def read_conf_hash():
@@ -592,6 +659,20 @@ def main():
             print(f"[warn] Could not read WireGuard status. Is wg-quick@{WG_INTERFACE} running?")
             time.sleep(INTERVAL)
             continue
+
+        # Measure latency to each peer that has had a recent handshake (< 5 min)
+        now = int(time.time())
+        for pub_key, data in peers.items():
+            data["latencyMs"] = None
+            if data["lastHandshake"] and (now - data["lastHandshake"]) < 300:
+                vpn_ip = peer_vpn_ip(data.get("allowedIPs", ""))
+                if vpn_ip:
+                    ms = ping_peer(vpn_ip)
+                    data["latencyMs"] = ms
+                    if ms is not None:
+                        print(f"[info] Latency to {vpn_ip}: {ms:.1f} ms")
+                    else:
+                        print(f"[info] Peer {vpn_ip} not responding to ping")
 
         print(f"[info] Reporting {len(peers)} peer(s)...")
         result = heartbeat(peers)

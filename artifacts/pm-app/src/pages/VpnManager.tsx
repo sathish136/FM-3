@@ -9,7 +9,7 @@ import {
   Settings, Phone, Cpu, ClipboardList, Network, GitBranch,
   Activity, Ticket, MonitorPlay, Target, ArrowDown, ArrowUp,
   BarChart3, ChevronDown, Clock, Globe, Key, RotateCcw, Radio,
-  ChevronRight,
+  ChevronRight, Zap, Crosshair, Gauge,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -72,6 +72,11 @@ interface VpnPeer {
 }
 interface LivePeer {
   publicKey: string; endpoint: string | null; lastHandshake: number; rxBytes: number; txBytes: number;
+  latencyMs?: number | null;
+}
+interface PingResult {
+  ok: boolean; ip: string; minMs: number | null; avgMs: number | null; maxMs: number | null;
+  loss: number; received: number; sent: number; output: string;
 }
 interface VpnStatus {
   available: boolean; peers: Record<string, LivePeer>;
@@ -255,6 +260,10 @@ export default function VpnManager() {
   const [regenLoading, setRegenLoading] = useState(false);
   const [expandedPeer, setExpandedPeer] = useState<number | null>(null);
   const [showGuide, setShowGuide] = useState(false);
+  const [pingIp, setPingIp] = useState("");
+  const [pingCount, setPingCount] = useState(4);
+  const [pinging, setPinging] = useState(false);
+  const [pingResult, setPingResult] = useState<PingResult | null>(null);
   const historyRef = useRef<UsageSnapshot[]>([]);
   const [snapshots, setSnapshots] = useState<UsageSnapshot[]>([]);
 
@@ -309,6 +318,22 @@ export default function VpnManager() {
       fetchAll();
     } catch { toast({ title: "Error", variant: "destructive" }); }
     finally { setRegenLoading(false); }
+  };
+
+  const runPing = async () => {
+    if (!pingIp.trim()) return;
+    setPinging(true);
+    setPingResult(null);
+    try {
+      const res = await apiFetch("/vpn/ping", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ip: pingIp.trim(), count: pingCount }),
+      });
+      const data = await res.json();
+      setPingResult(data);
+    } catch { toast({ title: "Ping failed", variant: "destructive" }); }
+    finally { setPinging(false); }
   };
 
   const onlinePeers = peers.filter(p => isOnline(status.peers[p.public_key]));
@@ -484,16 +509,21 @@ export default function VpnManager() {
                             <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", online ? "bg-green-500" : "bg-gray-300")} />
                             <span className="text-xs font-medium text-gray-800 truncate">{deviceIcon(peer.device_type)} {peer.name}</span>
                             <code className="text-[10px] text-blue-600 font-mono">{peer.peer_ip}</code>
+                            {live?.latencyMs != null && (
+                              <span className={cn("text-[9px] font-semibold px-1 py-0.5 leading-none",
+                                live.latencyMs < 30 ? "bg-green-100 text-green-700" : live.latencyMs < 100 ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700"
+                              )}>{live.latencyMs.toFixed(1)}ms</span>
+                            )}
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
-                            {live && <span className="text-[10px] text-gray-400">{fmtHandshake(live.lastHandshake)}</span>}
+                            {live && <span className="text-[10px] text-gray-400 flex items-center gap-0.5"><Clock size={9} />{fmtHandshake(live.lastHandshake)}</span>}
                             <span className={cn("text-[10px] font-bold", online ? "text-green-600" : "text-gray-400")}>{online ? "UP" : "DOWN"}</span>
                             <ChevronRight size={11} className={cn("text-gray-300 transition-transform", exp && "rotate-90")} />
                           </div>
                         </button>
                         {exp && (
                           <div className="px-2 py-2 bg-gray-50 border-t border-gray-100 space-y-1.5 text-[11px]">
-                            <div className="grid grid-cols-3 gap-2">
+                            <div className="grid grid-cols-4 gap-2">
                               <div className="text-center bg-white border border-gray-200 py-1">
                                 <p className="text-[10px] text-gray-400">↓ Received</p>
                                 <p className="font-semibold text-green-600">{fmtBytes(live?.rxBytes ?? 0)}</p>
@@ -503,13 +533,25 @@ export default function VpnManager() {
                                 <p className="font-semibold text-blue-600">{fmtBytes(live?.txBytes ?? 0)}</p>
                               </div>
                               <div className="text-center bg-white border border-gray-200 py-1">
+                                <p className="text-[10px] text-gray-400">Latency</p>
+                                <p className={cn("font-semibold", live?.latencyMs != null ? (live.latencyMs < 30 ? "text-green-600" : live.latencyMs < 100 ? "text-yellow-600" : "text-red-600") : "text-gray-300")}>
+                                  {live?.latencyMs != null ? `${live.latencyMs.toFixed(1)}ms` : "—"}
+                                </p>
+                              </div>
+                              <div className="text-center bg-white border border-gray-200 py-1">
                                 <p className="text-[10px] text-gray-400">Keepalive</p>
                                 <p className="font-semibold text-gray-700">{peer.persistent_keepalive}s</p>
                               </div>
                             </div>
+                            {live && live.lastHandshake > 0 && (
+                              <p className="text-gray-500 flex items-center gap-1"><Clock size={9} /> Last connected: <span className="text-gray-700 font-medium">{fmtHandshake(live.lastHandshake)}</span>
+                                <span className="text-gray-400 text-[9px]">({new Date(live.lastHandshake * 1000).toLocaleString()})</span>
+                              </p>
+                            )}
                             {peer.lan_ranges && <p className="text-gray-500">LAN: <code className="font-mono text-gray-700">{peer.lan_ranges}</code></p>}
                             {live?.endpoint && <p className="text-gray-500">Endpoint: <code className="font-mono text-gray-700">{live.endpoint}</code></p>}
                             <div className="flex gap-2 pt-1">
+                              <button onClick={() => { setPingIp(peer.peer_ip); setPingResult(null); }} className="text-purple-600 hover:underline flex items-center gap-0.5"><Crosshair size={10} /> Ping</button>
                               <a href={`/pm-app/api/vpn/peers/${peer.id}/wg-config`} download className="text-blue-600 hover:underline flex items-center gap-0.5"><Download size={10} /> WG Config</a>
                               {(peer.device_type === "linux" || peer.device_type === "teltonika") &&
                                 <a href={`/pm-app/api/vpn/peers/${peer.id}/python-client`} download className="text-blue-600 hover:underline flex items-center gap-0.5"><Terminal size={10} /> Python Script</a>}
@@ -614,8 +656,8 @@ export default function VpnManager() {
                 <table className="w-full text-[11px]">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
-                      {["Peer", "Type", "VPN IP", "Status", "Last Handshake", "↓ Received", "↑ Sent", "Total", "Endpoint"].map(h => (
-                        <th key={h} className={cn("px-3 py-1.5 text-[10px] font-bold text-gray-500 uppercase tracking-wide whitespace-nowrap", h.startsWith("↓") || h.startsWith("↑") || h === "Total" ? "text-right" : "text-left")}>{h}</th>
+                      {["Peer", "Type", "VPN IP", "Status", "Last Connected", "Latency", "↓ Received", "↑ Sent", "Total", "Endpoint"].map(h => (
+                        <th key={h} className={cn("px-3 py-1.5 text-[10px] font-bold text-gray-500 uppercase tracking-wide whitespace-nowrap", h.startsWith("↓") || h.startsWith("↑") || h === "Total" || h === "Latency" ? "text-right" : "text-left")}>{h}</th>
                       ))}
                       <th className="px-3 py-1.5" />
                     </tr>
@@ -646,7 +688,17 @@ export default function VpnManager() {
                               {online ? "Online" : "Offline"}
                             </span>
                           </td>
-                          <td className="px-3 py-2 text-gray-600">{fmtHandshake(live?.lastHandshake ?? 0)}</td>
+                          <td className="px-3 py-2">
+                            <div className="text-gray-700">{fmtHandshake(live?.lastHandshake ?? 0)}</div>
+                            {live?.lastHandshake ? <div className="text-[9px] text-gray-400">{new Date(live.lastHandshake * 1000).toLocaleString("en-IN", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" })}</div> : null}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            {live?.latencyMs != null ? (
+                              <span className={cn("font-semibold", live.latencyMs < 30 ? "text-green-600" : live.latencyMs < 100 ? "text-yellow-600" : "text-red-600")}>
+                                {live.latencyMs.toFixed(1)} ms
+                              </span>
+                            ) : <span className="text-gray-300">—</span>}
+                          </td>
                           <td className="px-3 py-2 text-right font-semibold text-green-600">{fmtBytes(live?.rxBytes ?? 0)}</td>
                           <td className="px-3 py-2 text-right font-semibold text-blue-600">{fmtBytes(live?.txBytes ?? 0)}</td>
                           <td className="px-3 py-2 text-right">
@@ -674,7 +726,7 @@ export default function VpnManager() {
                   </tbody>
                   <tfoot>
                     <tr className="bg-gray-50 border-t border-gray-200 font-bold">
-                      <td colSpan={5} className="px-3 py-1.5 text-[10px] text-gray-500 uppercase tracking-wide">Totals</td>
+                      <td colSpan={6} className="px-3 py-1.5 text-[10px] text-gray-500 uppercase tracking-wide">Totals</td>
                       <td className="px-3 py-1.5 text-right text-green-600">{fmtBytes(totalRx)}</td>
                       <td className="px-3 py-1.5 text-right text-blue-600">{fmtBytes(totalTx)}</td>
                       <td className="px-3 py-1.5 text-right text-gray-700">{fmtBytes(totalRx + totalTx)}</td>
@@ -685,6 +737,111 @@ export default function VpnManager() {
               </div>
             </div>
           )}
+
+          {/* ── NETWORK TOOLS ── */}
+          <div className="bg-white border-b border-gray-200">
+            <div className="px-3 py-2 border-b border-gray-200 flex items-center gap-2">
+              <Crosshair size={11} className="text-purple-600" />
+              <p className="text-[11px] font-bold text-gray-700">Network Tools</p>
+              <span className="text-[10px] text-gray-400">— ping latency from FlowMatrix server</span>
+            </div>
+            <div className="p-3">
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
+                {/* IP input */}
+                <input
+                  type="text" placeholder="IP or hostname (e.g. 15.15.60.2 or 8.8.8.8)"
+                  value={pingIp} onChange={e => setPingIp(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && runPing()}
+                  className="flex-1 min-w-[200px] text-xs border border-gray-300 px-2 py-1.5 focus:outline-none focus:border-purple-500 font-mono"
+                />
+                {/* Count selector */}
+                <select value={pingCount} onChange={e => setPingCount(Number(e.target.value))}
+                  className="text-xs border border-gray-300 px-2 py-1.5 focus:outline-none focus:border-purple-500 bg-white w-20">
+                  {[4, 6, 8, 10].map(c => <option key={c} value={c}>{c} packets</option>)}
+                </select>
+                <button onClick={runPing} disabled={pinging || !pingIp.trim()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-xs font-semibold hover:bg-purple-700 disabled:opacity-50 transition-colors">
+                  {pinging ? <><RefreshCw size={11} className="animate-spin" /> Pinging…</> : <><Zap size={11} /> Ping</>}
+                </button>
+                {/* Quick-select peer IPs */}
+                {peers.length > 0 && (
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="text-[10px] text-gray-400">Quick:</span>
+                    {peers.map(p => (
+                      <button key={p.id} onClick={() => { setPingIp(p.peer_ip); setPingResult(null); }}
+                        className={cn("text-[10px] font-mono px-1.5 py-0.5 border transition-colors",
+                          pingIp === p.peer_ip
+                            ? "bg-purple-600 text-white border-purple-600"
+                            : "bg-white text-blue-600 border-gray-300 hover:border-purple-400"
+                        )}>
+                        {p.peer_ip}
+                      </button>
+                    ))}
+                    <button onClick={() => { setPingIp("8.8.8.8"); setPingResult(null); }}
+                      className={cn("text-[10px] font-mono px-1.5 py-0.5 border transition-colors",
+                        pingIp === "8.8.8.8" ? "bg-purple-600 text-white border-purple-600" : "bg-white text-gray-500 border-gray-300 hover:border-purple-400"
+                      )}>8.8.8.8</button>
+                    <button onClick={() => { setPingIp("1.1.1.1"); setPingResult(null); }}
+                      className={cn("text-[10px] font-mono px-1.5 py-0.5 border transition-colors",
+                        pingIp === "1.1.1.1" ? "bg-purple-600 text-white border-purple-600" : "bg-white text-gray-500 border-gray-300 hover:border-purple-400"
+                      )}>1.1.1.1</button>
+                  </div>
+                )}
+              </div>
+
+              {/* Ping results */}
+              {pingResult && (
+                <div className={cn("border p-3 space-y-2", pingResult.ok && pingResult.loss < 100 ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50")}>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="text-xs font-bold text-gray-700 font-mono">{pingResult.ip}</span>
+                    {/* Loss badge */}
+                    <span className={cn("text-[10px] font-bold px-1.5 py-0.5",
+                      pingResult.loss === 0 ? "bg-green-200 text-green-800" : pingResult.loss < 50 ? "bg-yellow-200 text-yellow-800" : "bg-red-200 text-red-800"
+                    )}>{pingResult.loss}% loss</span>
+                    <span className="text-[10px] text-gray-500">{pingResult.received}/{pingResult.sent} received</span>
+                  </div>
+                  {pingResult.avgMs !== null ? (
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { label: "Min RTT", val: pingResult.minMs, color: "text-green-700" },
+                        { label: "Avg RTT", val: pingResult.avgMs, color: pingResult.avgMs! < 30 ? "text-green-700" : pingResult.avgMs! < 100 ? "text-yellow-700" : "text-red-700" },
+                        { label: "Max RTT", val: pingResult.maxMs, color: "text-gray-700" },
+                      ].map(({ label, val, color }) => (
+                        <div key={label} className="bg-white border border-gray-200 p-2 text-center">
+                          <p className="text-[9px] text-gray-400 uppercase">{label}</p>
+                          <p className={cn("text-lg font-bold leading-none", color)}>{val?.toFixed(1)}</p>
+                          <p className="text-[9px] text-gray-400">ms</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-red-600 font-semibold flex items-center gap-1"><WifiOff size={12} /> Host unreachable — 100% packet loss</p>
+                  )}
+                  {/* Latency quality gauge */}
+                  {pingResult.avgMs !== null && (
+                    <div>
+                      <div className="flex justify-between text-[9px] text-gray-400 mb-0.5">
+                        <span>Excellent</span><span>Good</span><span>Acceptable</span><span>Poor</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-gradient-to-r from-green-400 via-yellow-400 to-red-500 relative">
+                        <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-white border-2 border-gray-700 rounded-full shadow"
+                          style={{ left: `${Math.min(100, (pingResult.avgMs / 200) * 100)}%` }} />
+                      </div>
+                      <div className="flex justify-between text-[9px] text-gray-400 mt-0.5">
+                        <span>0ms</span><span>50ms</span><span>100ms</span><span>200ms+</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!pingResult && !pinging && (
+                <p className="text-[10px] text-gray-400 flex items-center gap-1">
+                  <Gauge size={10} /> Runs from the FlowMatrix server. Peer VPN IPs (15.15.60.x) are reachable only if FlowMatrix is also on the tunnel. Public IPs (8.8.8.8) work from any setup.
+                </p>
+              )}
+            </div>
+          </div>
 
           {/* ── SETUP GUIDE ── */}
           <div className="bg-white border-b border-gray-200">
