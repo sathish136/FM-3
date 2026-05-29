@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Layout } from "@/components/Layout";
 import { apiFetch } from "@/lib/apiClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   Wifi, WifiOff, Signal, Plus, Trash2, RefreshCw, Copy, Check,
-  ChevronDown, ChevronUp, Eye, EyeOff, Router, Info,
+  ChevronDown, ChevronUp, Eye, EyeOff, Router, Info, MapPin,
 } from "lucide-react";
 
 interface ModemDevice {
@@ -20,15 +20,36 @@ interface ModemDevice {
   token: string;
   is_online: boolean;
   last_seen: string | null;
+  // Signal
   signal_rssi: number | null;
   signal_rsrp: number | null;
+  signal_rsrq: number | null;
+  signal_sinr: number | null;
+  // Connection
   operator: string | null;
+  operator_state: string | null;
+  conn_state: string | null;
+  conn_stage: string | null;
+  network_type: string | null;
   wan_ip: string | null;
   uptime: number | null;
   sim_state: string | null;
   fw_version: string | null;
+  // Data transmission
   data_rx: number | null;
   data_tx: number | null;
+  band: string | null;
+  carrier_agg: string | null;
+  bandwidth: string | null;
+  apn: string | null;
+  mtu: number | null;
+  // Cell info
+  cell_id: string | null;
+  tac: string | null;
+  pcid: string | null;
+  earfcn: string | null;
+  mcc: string | null;
+  mnc: string | null;
   created_at: string;
 }
 
@@ -254,13 +275,11 @@ function ModemCard({
   configs,
   heartbeatUrl,
   onDelete,
-  onRegenToken,
 }: {
   modem: ModemDevice;
   configs: DeviceConfig[];
   heartbeatUrl: string;
   onDelete: (id: number) => void;
-  onRegenToken: (id: number) => void;
 }) {
   const [showToken, setShowToken] = useState(false);
   const site = configs.find((c) => c.id === modem.device_config_id);
@@ -309,21 +328,22 @@ function ModemCard({
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
               {modem.make} {modem.model}
-              {site ? ` · ${site.site_name}` : ""}
             </p>
+            {site && (
+              <div className="flex items-center gap-1 mt-1">
+                <MapPin size={10} className="text-blue-400 shrink-0" />
+                <span className="text-[11px] text-blue-600 font-medium truncate">{site.site_name}</span>
+                {site.client_name && (
+                  <span className="text-[11px] text-slate-400 truncate">· {site.client_name}</span>
+                )}
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
           <button
-            onClick={() => onRegenToken(modem.id)}
-            title="Regenerate token"
-            className="p-1.5 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-colors"
-          >
-            <RefreshCw size={13} />
-          </button>
-          <button
             onClick={() => onDelete(modem.id)}
-            title="Delete"
+            title="Delete modem"
             className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
           >
             <Trash2 size={13} />
@@ -332,69 +352,74 @@ function ModemCard({
       </div>
 
       {/* All Details */}
-      <div className="px-4 py-3">
-        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Live Status</p>
+      <div className="px-4 py-3 space-y-4">
 
-        <div className="mb-1.5">
+        {/* Connection */}
+        <div>
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Connection</p>
           <div className="flex items-start justify-between gap-3 py-1.5 border-b border-slate-100">
-            <span className="text-xs text-slate-500 shrink-0 w-24">Signal (RSSI)</span>
+            <span className="text-xs text-slate-500 shrink-0 w-32">Signal (RSSI)</span>
             <div className="flex justify-end">
               <SignalBars rssi={modem.signal_rssi} />
             </div>
           </div>
+          <DetailRow label="Signal (RSRP)" value={modem.signal_rsrp !== null ? `${modem.signal_rsrp} dBm` : "—"} mono />
+          <DetailRow label="Signal (RSRQ)" value={modem.signal_rsrq !== null ? `${modem.signal_rsrq} dB` : "—"} mono />
+          <DetailRow label="Signal (SINR)" value={modem.signal_sinr !== null ? `${modem.signal_sinr} dB` : "—"} mono />
+          <DetailRow label="Operator" value={modem.operator || "—"} />
+          <DetailRow label="Operator State" value={modem.operator_state || "—"} />
           <DetailRow
-            label="Signal (RSRP)"
-            value={modem.signal_rsrp !== null ? `${modem.signal_rsrp} dBm` : "—"}
-            mono
-          />
-          <DetailRow
-            label="WAN IP"
-            value={modem.wan_ip || "—"}
-            mono
-          />
-          <DetailRow
-            label="Operator"
-            value={modem.operator || "—"}
-          />
-          <DetailRow
-            label="SIM State"
+            label="Data Conn. State"
             value={
-              modem.sim_state ? (
-                <span className={modem.sim_state === "active" ? "text-emerald-600" : "text-slate-600"}>
-                  {modem.sim_state}
+              modem.conn_state ? (
+                <span className={
+                  modem.conn_state.toLowerCase().includes("connect")
+                    ? "text-xs font-medium bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full"
+                    : "text-xs font-medium bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full"
+                }>
+                  {modem.conn_state}
                 </span>
               ) : "—"
             }
           />
-          <DetailRow
-            label="Uptime"
-            value={formatUptime(modem.uptime)}
-          />
-          <DetailRow
-            label="Last Seen"
-            value={formatLastSeen(modem.last_seen)}
-          />
-          <DetailRow
-            label="Data Usage"
-            value={
-              modem.data_rx || modem.data_tx
-                ? `↓ ${formatBytes(modem.data_rx)}  ↑ ${formatBytes(modem.data_tx)}`
-                : "—"
-            }
-            mono
-          />
-          <DetailRow
-            label="Firmware"
-            value={modem.fw_version || "—"}
-            mono
-          />
+          <DetailRow label="Connection Stage" value={modem.conn_stage || "—"} />
+          <DetailRow label="Network Type" value={modem.network_type || "—"} />
+          <DetailRow label="SIM State" value={modem.sim_state || "—"} />
+          <DetailRow label="IP Address" value={modem.wan_ip || "—"} mono />
+          <DetailRow label="Uptime" value={formatUptime(modem.uptime)} />
+          <DetailRow label="Last Seen" value={formatLastSeen(modem.last_seen)} />
         </div>
 
-        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2 mt-3">Device Info</p>
+        {/* Data Transmission */}
         <div>
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Data Transmission</p>
+          <DetailRow label="Carrier Aggregation" value={modem.carrier_agg || "—"} />
+          <DetailRow label="Bandwidth" value={modem.bandwidth || "—"} />
+          <DetailRow label="Connected Band" value={modem.band || "—"} />
+          <DetailRow label="APN" value={modem.apn || "—"} mono />
+          <DetailRow label="MTU" value={modem.mtu !== null ? String(modem.mtu) : "—"} />
+          <DetailRow label="Data Received" value={formatBytes(modem.data_rx)} mono />
+          <DetailRow label="Data Sent" value={formatBytes(modem.data_tx)} mono />
+        </div>
+
+        {/* Cell Info */}
+        <div>
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Cell Info</p>
+          <DetailRow label="Cell ID" value={modem.cell_id || "—"} mono />
+          <DetailRow label="TAC" value={modem.tac || "—"} mono />
+          <DetailRow label="Physical Cell ID" value={modem.pcid || "—"} mono />
+          <DetailRow label="EARFCN" value={modem.earfcn || "—"} mono />
+          <DetailRow label="Mobile Country Code" value={modem.mcc || "—"} mono />
+          <DetailRow label="Mobile Network Code" value={modem.mnc || "—"} mono />
+        </div>
+
+        {/* Device Info */}
+        <div>
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Device Info</p>
           <DetailRow label="IMEI" value={modem.imei || "—"} mono />
           <DetailRow label="SIM No." value={modem.sim_no || "—"} mono />
           <DetailRow label="Carrier / ISP" value={modem.carrier || "—"} />
+          <DetailRow label="Firmware" value={modem.fw_version || "—"} mono />
           {modem.description && (
             <DetailRow label="Notes" value={modem.description} />
           )}
@@ -574,27 +599,43 @@ function RegisterModal({
   );
 }
 
+const REFRESH_INTERVAL = 10; // seconds
+
 export default function ModemDashboard() {
   const [modems, setModems] = useState<ModemDevice[]>([]);
   const [configs, setConfigs] = useState<DeviceConfig[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
   const [filter, setFilter] = useState<"all" | "online" | "offline">("all");
+  const [countdown, setCountdown] = useState(REFRESH_INTERVAL);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { toast } = useToast();
 
   const appBase = import.meta.env.BASE_URL.replace(/\/$/, "");
   const heartbeatUrl = `${window.location.origin}${appBase}/api/modems/heartbeat`;
 
-  const fetchModems = useCallback(async () => {
+  const resetCountdown = useCallback(() => {
+    setCountdown(REFRESH_INTERVAL);
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    countdownRef.current = setInterval(() => {
+      setCountdown((c) => (c <= 1 ? REFRESH_INTERVAL : c - 1));
+    }, 1000);
+  }, []);
+
+  const fetchModems = useCallback(async (showSpinner = false) => {
+    if (showSpinner) setRefreshing(true);
     try {
       const r = await apiFetch("/modems/devices");
       if (r.ok) setModems(await r.json());
     } catch (e: any) {
-      console.error("fetchModems:", e);
+      console.error("fetchModems:", e?.message || e);
     } finally {
       setLoading(false);
+      if (showSpinner) setRefreshing(false);
+      resetCountdown();
     }
-  }, []);
+  }, [resetCountdown]);
 
   const fetchConfigs = useCallback(async () => {
     try {
@@ -609,8 +650,11 @@ export default function ModemDashboard() {
   useEffect(() => {
     fetchModems();
     fetchConfigs();
-    const id = setInterval(fetchModems, 30_000);
-    return () => clearInterval(id);
+    const id = setInterval(() => fetchModems(), REFRESH_INTERVAL * 1000);
+    return () => {
+      clearInterval(id);
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    };
   }, [fetchModems, fetchConfigs]);
 
   const handleRegister = async (data: Record<string, unknown>) => {
@@ -641,17 +685,6 @@ export default function ModemDashboard() {
       toast({ title: "Modem deleted" });
     } catch (e: any) {
       toast({ title: "Delete failed", description: e.message, variant: "destructive" });
-    }
-  };
-
-  const handleRegenToken = async (id: number) => {
-    if (!confirm("Regenerate token? Update the modem config with the new token afterwards.")) return;
-    try {
-      await apiFetch(`/modems/devices/${id}/regenerate-token`, { method: "POST" });
-      fetchModems();
-      toast({ title: "Token regenerated" });
-    } catch (e: any) {
-      toast({ title: "Failed to regenerate token", description: e.message, variant: "destructive" });
     }
   };
 
@@ -724,7 +757,7 @@ export default function ModemDashboard() {
           </div>
 
           {/* Filter bar */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {(["all", "online", "offline"] as const).map((f) => (
               <button
                 key={f}
@@ -742,13 +775,20 @@ export default function ModemDashboard() {
                   : `Offline (${offlineCount})`}
               </button>
             ))}
-            <button
-              onClick={fetchModems}
-              className="ml-auto p-1.5 text-slate-400 hover:text-slate-700 hover:bg-white border border-transparent hover:border-slate-200 rounded-lg transition-colors"
-              title="Refresh"
-            >
-              <RefreshCw size={14} />
-            </button>
+            <div className="ml-auto flex items-center gap-2">
+              <span className="text-[11px] text-slate-400 tabular-nums">
+                Refreshes in <span className="font-semibold text-slate-600">{countdown}s</span>
+              </span>
+              <button
+                onClick={() => fetchModems(true)}
+                disabled={refreshing}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:border-blue-300 hover:text-blue-600 rounded-lg transition-colors disabled:opacity-60"
+                title="Refresh now"
+              >
+                <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} />
+                Refresh
+              </button>
+            </div>
           </div>
 
           {/* Cards */}
@@ -777,7 +817,6 @@ export default function ModemDashboard() {
                   configs={configs}
                   heartbeatUrl={heartbeatUrl}
                   onDelete={handleDelete}
-                  onRegenToken={handleRegenToken}
                 />
               ))}
             </div>
