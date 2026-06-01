@@ -27,11 +27,13 @@ const router = Router();
         task_name           TEXT NOT NULL,
         description         TEXT,
         estimated_minutes   INTEGER NOT NULL DEFAULT 60,
+        due_time            TEXT,
         is_active           BOOLEAN NOT NULL DEFAULT true,
         sort_order          INTEGER NOT NULL DEFAULT 0,
         created_at          TIMESTAMP NOT NULL DEFAULT NOW()
       )
     `);
+    await db.execute(sql`ALTER TABLE it_auto_routine_tasks ADD COLUMN IF NOT EXISTS due_time TEXT`);
 
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS it_auto_daily_reports (
@@ -149,13 +151,13 @@ router.get("/it-auto/routine-tasks", async (req, res) => {
 
 router.post("/it-auto/routine-tasks", async (req, res) => {
   try {
-    const { role, team, task_name, description, estimated_minutes, sort_order } = req.body as {
+    const { role, team, task_name, description, estimated_minutes, due_time, sort_order } = req.body as {
       role: string; team: string; task_name: string; description?: string;
-      estimated_minutes?: number; sort_order?: number;
+      estimated_minutes?: number; due_time?: string; sort_order?: number;
     };
     const r = await db.execute(sql`
-      INSERT INTO it_auto_routine_tasks (role, team, task_name, description, estimated_minutes, sort_order)
-      VALUES (${role}, ${team}, ${task_name}, ${description ?? null}, ${estimated_minutes ?? 60}, ${sort_order ?? 0})
+      INSERT INTO it_auto_routine_tasks (role, team, task_name, description, estimated_minutes, due_time, sort_order)
+      VALUES (${role}, ${team}, ${task_name}, ${description ?? null}, ${estimated_minutes ?? 60}, ${due_time ?? null}, ${sort_order ?? 0})
       RETURNING *
     `);
     res.json(r.rows[0]);
@@ -166,15 +168,16 @@ router.post("/it-auto/routine-tasks", async (req, res) => {
 
 router.patch("/it-auto/routine-tasks/:id", async (req, res) => {
   try {
-    const { task_name, description, estimated_minutes, is_active, sort_order } = req.body as {
+    const { task_name, description, estimated_minutes, due_time, is_active, sort_order } = req.body as {
       task_name?: string; description?: string; estimated_minutes?: number;
-      is_active?: boolean; sort_order?: number;
+      due_time?: string; is_active?: boolean; sort_order?: number;
     };
     const r = await db.execute(sql`
       UPDATE it_auto_routine_tasks SET
         task_name         = COALESCE(${task_name ?? null}, task_name),
         description       = COALESCE(${description ?? null}, description),
         estimated_minutes = COALESCE(${estimated_minutes ?? null}, estimated_minutes),
+        due_time          = COALESCE(${due_time ?? null}, due_time),
         is_active         = COALESCE(${is_active ?? null}, is_active),
         sort_order        = COALESCE(${sort_order ?? null}, sort_order)
       WHERE id = ${Number(req.params["id"])}
@@ -440,25 +443,80 @@ const ERP_AUTH = () => `token ${process.env.ERPNEXT_API_KEY || ""}:${process.env
 
 router.get("/it-auto/erp-employees", async (req, res) => {
   try {
-    const { department } = req.query as { department?: string };
-    const dept = department || "It - WTT";
+    // Accept comma-separated departments or multiple ?department= params
+    const raw = req.query["department"];
+    const deptList: string[] = [];
+    if (Array.isArray(raw)) {
+      raw.forEach(d => d.split(",").map(s => s.trim()).filter(Boolean).forEach(s => deptList.push(s)));
+    } else if (typeof raw === "string") {
+      raw.split(",").map(s => s.trim()).filter(Boolean).forEach(s => deptList.push(s));
+    }
+    if (deptList.length === 0) deptList.push("It - WTT");
 
     const fields = JSON.stringify([
       "name", "employee_name", "department", "designation", "status", "user_id", "cell_number",
     ]);
-    const filters = JSON.stringify([
-      ["Employee", "department", "descendants of (inclusive)", dept],
-      ["Employee", "status", "=", "Active"],
-    ]);
-    const params = new URLSearchParams({ fields, filters, limit_page_length: "500", order_by: "employee_name asc" });
-    const url = `${ERP_URL}/api/resource/Employee?${params}`;
-    const r = await fetch(url, { headers: { Authorization: ERP_AUTH() } });
-    if (!r.ok) {
-      const txt = await r.text();
-      return res.status(r.status).json({ error: `ERPNext: ${txt}` });
+
+    // Fetch from each department and deduplicate by ERP employee name
+    const seen = new Set<string>();
+    const all: any[] = [];
+
+    for (const dept of deptList) {
+      const filters = JSON.stringify([
+        ["Employee", "department", "descendants of (inclusive)", dept],
+        ["Employee", "status", "=", "Active"],
+      ]);
+      const params = new URLSearchParams({ fields, filters, limit_page_length: "500", order_by: "employee_name asc" });
+      const url = `${ERP_URL}/api/resource/Employee?${params}`;
+      const r = await fetch(url, { headers: { Authorization: ERP_AUTH() } });
+      if (!r.ok) continue; // skip failed depts silently
+      const data = await r.json();
+      for (const emp of (data.data || [])) {
+        if (!seen.has(emp.name)) { seen.add(emp.name); all.push(emp); }
+      }
     }
-    const data = await r.json();
-    res.json(data.data || []);
+
+    all.sort((a, b) => a.employee_name.localeCompare(b.employee_name));
+    res.json(all);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Today's per-person check — who submitted, who hasn't
+router.get("/it-auto/today-check", async (req, res) => {
+  try {
+    const { date, team } = req.query as { date?: string; team?: string };
+    const checkDate = date || new Date().toISOString().slice(0, 10);
+
+    let memberQ = `SELECT * FROM it_auto_members WHERE is_active = true`;
+    const mp: any[] = [];
+    if (team) { mp.push(team); memberQ += ` AND team = $${mp.length}`; }
+    memberQ += ` ORDER BY team, role, name`;
+    const members = await db.execute(sql.raw(memberQ, mp));
+
+    const reports = await db.execute(sql`
+      SELECT r.member_id, r.id as report_id, r.submitted_at, r.notes,
+             COUNT(i.id) as task_count,
+             COUNT(CASE WHEN i.status = 'Completed' THEN 1 END) as completed_count,
+             COUNT(CASE WHEN i.is_compliant = false AND i.status != 'Not Started' THEN 1 END) as nc_count
+      FROM it_auto_daily_reports r
+      LEFT JOIN it_auto_report_items i ON i.report_id = r.id
+      WHERE r.report_date = ${checkDate}
+      GROUP BY r.member_id, r.id, r.submitted_at, r.notes
+    `);
+
+    const reportMap = new Map<number, any>();
+    for (const row of reports.rows) {
+      reportMap.set(Number(row.member_id), row);
+    }
+
+    const result = members.rows.map((m: any) => ({
+      member: m,
+      report: reportMap.get(m.id) || null,
+    }));
+
+    res.json({ date: checkDate, data: result });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }

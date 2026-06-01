@@ -4,10 +4,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
-  Plus, Trash2, ClipboardList, CheckCircle2,
+  Plus, Trash2, ClipboardList, CheckCircle2, XCircle,
   Users, BarChart2, Settings2, Save, RefreshCw,
-  CalendarDays, Shield, ShieldAlert, Loader2,
-  AlertCircle, TrendingUp, Clock, ChevronUp, ChevronDown,
+  CalendarDays, Shield, ShieldAlert, Loader2, X,
+  AlertCircle, TrendingUp, Clock, ChevronUp, ChevronDown, ListChecks,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -49,6 +49,7 @@ interface RoutineTask {
   task_name: string;
   description?: string;
   estimated_minutes: number;
+  due_time?: string;
   sort_order: number;
 }
 
@@ -130,9 +131,22 @@ interface ErpEmployee {
   user_id?: string;
 }
 
+// ─── Today-check type ─────────────────────────────────────────────────────────
+
+interface CheckEntry {
+  member: Member;
+  report: {
+    report_id: number;
+    submitted_at: string;
+    task_count: number;
+    completed_count: number;
+    nc_count: number;
+  } | null;
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-type Tab = "submit" | "daily" | "compliance" | "setup";
+type Tab = "submit" | "daily" | "compliance" | "check" | "setup";
 
 export default function PLCTeamDailyReport() {
   const { user } = useAuth();
@@ -169,16 +183,22 @@ export default function PLCTeamDailyReport() {
 
   // ── Setup state
   const [setupTab, setSetupTab] = useState<"members" | "tasks">("members");
-  const [newTask, setNewTask] = useState({ role: "", team: "IT" as Team, task_name: "", description: "", estimated_minutes: 60 });
+  const [newTask, setNewTask] = useState({ role: "", team: "IT" as Team, task_name: "", description: "", estimated_minutes: 60, due_time: "" });
 
   // ── ERP sync state
   const [erpEmployees, setErpEmployees] = useState<ErpEmployee[]>([]);
   const [erpLoading, setErpLoading] = useState(false);
   const [erpSyncing, setErpSyncing] = useState(false);
   const [erpError, setErpError] = useState("");
-  const [erpDept, setErpDept] = useState("It - WTT");
+  const [erpDepts, setErpDepts] = useState<string[]>(["It - WTT"]);
+  const [erpDeptInput, setErpDeptInput] = useState("");
   // Map ERP employees to local team/role before syncing
   const [erpMappings, setErpMappings] = useState<Record<string, { team: Team; role: string }>>({});
+
+  // ── Today's Check state
+  const [checkDate, setCheckDate] = useState(today());
+  const [checkData, setCheckData] = useState<CheckEntry[]>([]);
+  const [checkLoading, setCheckLoading] = useState(false);
 
   // ─── Load base data ───────────────────────────────────────────────────────
 
@@ -254,6 +274,17 @@ export default function PLCTeamDailyReport() {
   }, [compStart, compEnd, compTeam]);
 
   useEffect(() => { if (tab === "compliance") loadCompliance(); }, [tab, loadCompliance]);
+
+  // ─── Today's Check ────────────────────────────────────────────────────────
+
+  const loadCheck = useCallback(async () => {
+    setCheckLoading(true);
+    const r = await fetch(`${BASE}/api/it-auto/today-check?date=${checkDate}`);
+    if (r.ok) { const d = await r.json(); setCheckData(d.data || []); }
+    setCheckLoading(false);
+  }, [checkDate]);
+
+  useEffect(() => { if (tab === "check") loadCheck(); }, [tab, loadCheck]);
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
 
@@ -343,18 +374,20 @@ export default function PLCTeamDailyReport() {
   // ─── ERP sync handlers ────────────────────────────────────────────────────
 
   async function fetchErpEmployees() {
+    if (erpDepts.length === 0) return;
     setErpLoading(true);
     setErpError("");
     setErpEmployees([]);
     try {
-      const r = await fetch(`${BASE}/api/it-auto/erp-employees?department=${encodeURIComponent(erpDept)}`);
+      // Pass all departments as comma-separated
+      const deptParam = erpDepts.join(",");
+      const r = await fetch(`${BASE}/api/it-auto/erp-employees?department=${encodeURIComponent(deptParam)}`);
       if (!r.ok) {
         const err = await r.json().catch(() => ({}));
         throw new Error(err.error || `HTTP ${r.status}`);
       }
       const data: ErpEmployee[] = await r.json();
       setErpEmployees(data);
-      // Pre-fill mappings: default team=IT, role=designation or first role
       const map: Record<string, { team: Team; role: string }> = {};
       for (const e of data) {
         const existingMapping = erpMappings[e.name];
@@ -1092,24 +1125,49 @@ export default function PLCTeamDailyReport() {
                   <h3 className="font-semibold text-slate-700 text-sm mb-3 flex items-center gap-1.5">
                     <RefreshCw className="w-4 h-4 text-sky-600" /> Sync from ERPNext
                   </h3>
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <div className="flex-1">
-                      <label className="text-xs text-slate-500 mb-1 block">ERPNext Department (descendants included)</label>
-                      <input
-                        value={erpDept}
-                        onChange={e => setErpDept(e.target.value)}
-                        placeholder="It - WTT"
-                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none"
-                      />
+                  <div className="space-y-2 mb-3">
+                    <label className="text-xs text-slate-500 block">ERPNext Departments (add all you need — descendants included)</label>
+                    {/* Department chips */}
+                    <div className="flex flex-wrap gap-2">
+                      {erpDepts.map(d => (
+                        <span key={d} className="flex items-center gap-1 text-xs bg-sky-50 border border-sky-200 text-sky-700 px-2.5 py-1 rounded-full font-medium">
+                          {d}
+                          <button onClick={() => setErpDepts(prev => prev.filter(x => x !== d))} className="hover:text-red-500 transition-colors">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
                     </div>
-                    <div className="flex items-end">
+                    {/* Add dept input */}
+                    <div className="flex gap-2">
+                      <input
+                        value={erpDeptInput}
+                        onChange={e => setErpDeptInput(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && erpDeptInput.trim() && !erpDepts.includes(erpDeptInput.trim())) {
+                            setErpDepts(prev => [...prev, erpDeptInput.trim()]);
+                            setErpDeptInput("");
+                          }
+                        }}
+                        placeholder="Type department name and press Enter…"
+                        className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none"
+                      />
+                      <button
+                        onClick={() => {
+                          const t = erpDeptInput.trim();
+                          if (t && !erpDepts.includes(t)) { setErpDepts(prev => [...prev, t]); setErpDeptInput(""); }
+                        }}
+                        className="px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200 transition-colors"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
                       <button
                         onClick={fetchErpEmployees}
-                        disabled={erpLoading}
+                        disabled={erpLoading || erpDepts.length === 0}
                         className="flex items-center gap-1.5 px-4 py-2 bg-sky-600 text-white rounded-lg text-sm font-semibold hover:bg-sky-700 transition-colors disabled:opacity-60"
                       >
                         {erpLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                        Fetch from ERP
+                        Fetch
                       </button>
                     </div>
                   </div>
