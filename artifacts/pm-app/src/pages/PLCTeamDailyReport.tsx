@@ -7,7 +7,7 @@ import {
   Plus, Trash2, ClipboardList, CheckCircle2, XCircle,
   Users, BarChart2, Settings2, Save, RefreshCw,
   CalendarDays, Shield, ShieldAlert, Loader2, X,
-  AlertCircle, TrendingUp, Clock, ChevronUp, ChevronDown, ListChecks,
+  AlertCircle, AlertTriangle, TrendingUp, Clock, ChevronUp, ChevronDown, ListChecks,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -439,9 +439,26 @@ export default function PLCTeamDailyReport() {
       body: JSON.stringify(newTask),
     });
     if (r.ok) {
-      setNewTask({ role: "", team: "IT", task_name: "", description: "", estimated_minutes: 60 });
+      setNewTask({ role: "", team: "IT", task_name: "", description: "", estimated_minutes: 60, due_time: "" });
       await loadRoutineTasks();
       toast({ title: "Routine task added" });
+    }
+  }
+
+  const [seedLoading, setSeedLoading] = useState(false);
+  async function seedDefaultTasks() {
+    setSeedLoading(true);
+    try {
+      const r = await fetch(`${BASE}/api/it-auto/seed-default-tasks`, { method: "POST" });
+      const d = await r.json();
+      if (r.ok) {
+        await loadRoutineTasks();
+        toast({ title: `Default tasks loaded`, description: `${d.inserted} tasks added (${d.skipped} already existed)` });
+      } else {
+        toast({ title: "Failed", description: d.error, variant: "destructive" });
+      }
+    } finally {
+      setSeedLoading(false);
     }
   }
 
@@ -502,6 +519,7 @@ export default function PLCTeamDailyReport() {
             { key: "submit",     label: "Submit Report",    icon: ClipboardList },
             { key: "daily",      label: "Daily Summary",    icon: CalendarDays },
             { key: "compliance", label: "Compliance",       icon: Shield },
+            { key: "check",      label: "Today's Check",    icon: ListChecks },
             { key: "setup",      label: "Team Setup",       icon: Settings2 },
           ] as { key: Tab; label: string; icon: any }[]).map(({ key, label, icon: Icon }) => (
             <button
@@ -1097,6 +1115,117 @@ export default function PLCTeamDailyReport() {
           </div>
         )}
 
+        {/* ── Tab: Today's Check ───────────────────────────────────────────── */}
+        {tab === "check" && (
+          <div className="space-y-5">
+            {/* Controls */}
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-slate-600">Date</label>
+                <input type="date" value={checkDate} onChange={e => setCheckDate(e.target.value)}
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none bg-white" />
+              </div>
+              <button onClick={loadCheck} disabled={checkLoading}
+                className="flex items-center gap-1.5 px-4 py-2 bg-sky-600 text-white rounded-lg text-sm font-semibold hover:bg-sky-700 transition-colors disabled:opacity-60">
+                {checkLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                Refresh
+              </button>
+              {/* Summary badges */}
+              {!checkLoading && checkData.length > 0 && (() => {
+                const submitted = checkData.filter(e => e.report !== null).length;
+                const total = checkData.length;
+                return (
+                  <div className="flex items-center gap-2 ml-auto">
+                    <span className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-sm font-semibold">
+                      <CheckCircle2 className="w-4 h-4" /> {submitted} Submitted
+                    </span>
+                    <span className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 border border-red-200 text-red-600 rounded-lg text-sm font-semibold">
+                      <XCircle className="w-4 h-4" /> {total - submitted} Pending
+                    </span>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {checkLoading && (
+              <div className="flex items-center justify-center py-16 text-slate-400 gap-2">
+                <Loader2 className="w-5 h-5 animate-spin" /> Loading…
+              </div>
+            )}
+
+            {!checkLoading && checkData.length === 0 && (
+              <div className="text-center py-16 text-slate-400 text-sm">No active team members found. Add members in Team Setup first.</div>
+            )}
+
+            {!checkLoading && checkData.length > 0 && (
+              <>
+                {(["IT", "Automation"] as Team[]).map(team => {
+                  const entries = checkData.filter(e => e.member.team === team);
+                  if (!entries.length) return null;
+                  return (
+                    <div key={team} className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                      <div className={cn(
+                        "px-4 py-2.5 flex items-center gap-2 border-b border-slate-100",
+                        team === "IT" ? "bg-blue-50" : "bg-purple-50",
+                      )}>
+                        <span className={cn(
+                          "text-xs font-bold px-2 py-0.5 rounded-full",
+                          team === "IT" ? "bg-blue-600 text-white" : "bg-purple-600 text-white",
+                        )}>{team}</span>
+                        <span className="font-semibold text-slate-700 text-sm">{entries.length} members</span>
+                        <span className="ml-auto text-xs text-slate-500">
+                          {entries.filter(e => e.report).length}/{entries.length} submitted
+                        </span>
+                      </div>
+                      <div className="divide-y divide-slate-100">
+                        {entries.map(entry => {
+                          const { member: m, report: rpt } = entry;
+                          return (
+                            <div key={m.id} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50">
+                              <div className={cn(
+                                "w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0",
+                                rpt ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500",
+                              )}>
+                                {m.name.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-sm text-slate-800">{m.name}</p>
+                                <p className="text-xs text-slate-500">{m.role}{m.email ? ` · ${m.email}` : ""}</p>
+                              </div>
+                              {rpt ? (
+                                <div className="flex items-center gap-3">
+                                  <div className="text-right hidden sm:block">
+                                    <p className="text-xs text-slate-500">
+                                      {rpt.completed_count}/{rpt.task_count} tasks
+                                      {rpt.nc_count > 0 && <span className="text-red-500 ml-1">· {rpt.nc_count} NC</span>}
+                                    </p>
+                                    {rpt.submitted_at && (
+                                      <p className="text-xs text-slate-400">
+                                        at {new Date(rpt.submitted_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <span className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">
+                                    <CheckCircle2 className="w-3.5 h-3.5" /> Submitted
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-red-50 text-red-600 border border-red-200">
+                                  <XCircle className="w-3.5 h-3.5" /> Not Submitted
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+          </div>
+        )}
+
         {/* ── Tab: Setup ────────────────────────────────────────────────────── */}
         {tab === "setup" && (
           <div className="space-y-5">
@@ -1299,24 +1428,27 @@ export default function PLCTeamDailyReport() {
               <div className="space-y-4">
                 <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
                   <h3 className="font-semibold text-slate-700 text-sm mb-3 flex items-center gap-1.5"><Plus className="w-4 h-4 text-sky-600" /> Add Routine Task</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-8 gap-3">
                     <select value={newTask.team} onChange={e => setNewTask(p => ({ ...p, team: e.target.value as Team, role: "" }))}
                       className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none bg-white">
                       <option value="IT">IT</option>
                       <option value="Automation">Automation</option>
                     </select>
                     <select value={newTask.role} onChange={e => setNewTask(p => ({ ...p, role: e.target.value }))}
-                      className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none bg-white">
+                      className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none bg-white sm:col-span-2">
                       <option value="">— Role —</option>
                       {ROLES[newTask.team].map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
                     <input value={newTask.task_name} onChange={e => setNewTask(p => ({ ...p, task_name: e.target.value }))}
                       placeholder="Task name *" className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none sm:col-span-2" />
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       <input type="number" min={15} value={newTask.estimated_minutes} onChange={e => setNewTask(p => ({ ...p, estimated_minutes: Number(e.target.value) }))}
-                        className="w-24 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none" />
-                      <span className="text-xs text-slate-500">min</span>
+                        className="w-20 border border-slate-200 rounded-lg px-2 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none" />
+                      <span className="text-xs text-slate-500 shrink-0">min</span>
                     </div>
+                    <input type="time" value={newTask.due_time || ""} onChange={e => setNewTask(p => ({ ...p, due_time: e.target.value }))}
+                      title="Due time"
+                      className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none bg-white" />
                     <button onClick={addRoutineTask}
                       className="flex items-center justify-center gap-1.5 px-4 py-2 bg-sky-600 text-white rounded-lg text-sm font-semibold hover:bg-sky-700 transition-colors">
                       <Plus className="w-4 h-4" /> Add
@@ -1325,11 +1457,19 @@ export default function PLCTeamDailyReport() {
                 </div>
 
                 <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                  <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+                  <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between gap-3">
                     <h3 className="font-semibold text-slate-700 text-sm">Predefined Routine Tasks ({routineTasks.length})</h3>
+                    <button
+                      onClick={seedDefaultTasks}
+                      disabled={seedLoading}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-60"
+                    >
+                      {seedLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                      Load Default Tasks
+                    </button>
                   </div>
                   {routineTasks.length === 0 ? (
-                    <div className="py-10 text-center text-slate-400 text-sm">No routine tasks defined yet. Add some above to auto-populate daily reports.</div>
+                    <div className="py-10 text-center text-slate-400 text-sm">No routine tasks defined yet. Add some above or click <strong>Load Default Tasks</strong>.</div>
                   ) : (
                     <div className="divide-y divide-slate-100">
                       {["IT", "Automation"].map(team =>
@@ -1348,6 +1488,11 @@ export default function PLCTeamDailyReport() {
                                     <p className="font-medium text-sm text-slate-800">{t.task_name}</p>
                                     {t.description && <p className="text-xs text-slate-400">{t.description}</p>}
                                   </div>
+                                  {t.due_time && (
+                                    <span className="text-xs text-sky-700 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded font-medium">
+                                      Due {t.due_time}
+                                    </span>
+                                  )}
                                   <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded font-medium">
                                     {fmtMinutes(t.estimated_minutes)}
                                   </span>

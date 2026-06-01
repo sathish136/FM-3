@@ -567,4 +567,70 @@ router.post("/it-auto/sync-erp-members", async (req, res) => {
   }
 });
 
+// ─── Seed default routine tasks ───────────────────────────────────────────────
+
+const DEFAULT_TASKS: Array<{ team: string; role: string; task_name: string; description: string; estimated_minutes: number; due_time: string }> = [
+  // IT — System Admin Trainee
+  { team: "IT", role: "System Admin Trainee", task_name: "Morning server health check", description: "Check uptime & services on all servers", estimated_minutes: 30, due_time: "09:00" },
+  { team: "IT", role: "System Admin Trainee", task_name: "Network connectivity check", description: "Ping critical IPs, verify switches/routers", estimated_minutes: 20, due_time: "09:30" },
+  { team: "IT", role: "System Admin Trainee", task_name: "Backup status verification", description: "Confirm last night's backup completed", estimated_minutes: 15, due_time: "10:00" },
+  { team: "IT", role: "System Admin Trainee", task_name: "Helpdesk ticket triage", description: "Review and categorise open support tickets", estimated_minutes: 45, due_time: "11:00" },
+  { team: "IT", role: "System Admin Trainee", task_name: "User account management", description: "Process new/exit user requests", estimated_minutes: 30, due_time: "14:00" },
+  { team: "IT", role: "System Admin Trainee", task_name: "Patch & update review", description: "Check pending OS/software updates", estimated_minutes: 30, due_time: "15:00" },
+  { team: "IT", role: "System Admin Trainee", task_name: "End-of-day system report", description: "Log any issues encountered today", estimated_minutes: 20, due_time: "17:30" },
+
+  // IT — Junior System Admin
+  { team: "IT", role: "Junior System Admin", task_name: "Server performance monitoring", description: "CPU/RAM/disk usage on production servers", estimated_minutes: 30, due_time: "09:00" },
+  { team: "IT", role: "Junior System Admin", task_name: "Network & firewall check", description: "Review firewall logs, check bandwidth", estimated_minutes: 20, due_time: "09:30" },
+  { team: "IT", role: "Junior System Admin", task_name: "Backup integrity verification", description: "Spot-check backup files for integrity", estimated_minutes: 20, due_time: "10:00" },
+  { team: "IT", role: "Junior System Admin", task_name: "Helpdesk ticket resolution", description: "Resolve or escalate pending tickets", estimated_minutes: 60, due_time: "12:00" },
+  { team: "IT", role: "Junior System Admin", task_name: "Software deployment & updates", description: "Deploy approved patches and updates", estimated_minutes: 30, due_time: "14:00" },
+  { team: "IT", role: "Junior System Admin", task_name: "Security log review", description: "Review event & auth logs for anomalies", estimated_minutes: 20, due_time: "15:30" },
+  { team: "IT", role: "Junior System Admin", task_name: "End-of-day admin report", description: "Document completed tasks and pending items", estimated_minutes: 20, due_time: "17:30" },
+
+  // Automation — GET PLC
+  { team: "Automation", role: "GET PLC", task_name: "SCADA/HMI morning check", description: "Verify all screens are live and alarm-free", estimated_minutes: 30, due_time: "09:00" },
+  { team: "Automation", role: "GET PLC", task_name: "PLC I/O status scan", description: "Check all digital/analog I/O modules", estimated_minutes: 20, due_time: "09:30" },
+  { team: "Automation", role: "GET PLC", task_name: "Alarm log review", description: "Acknowledge and document active alarms", estimated_minutes: 20, due_time: "10:00" },
+  { team: "Automation", role: "GET PLC", task_name: "Field panel inspection", description: "Visual check of control panel and wiring", estimated_minutes: 30, due_time: "14:00" },
+  { team: "Automation", role: "GET PLC", task_name: "End-of-day automation log", description: "Log faults, actions taken, and open issues", estimated_minutes: 15, due_time: "17:30" },
+
+  // Automation — Junior PLC
+  { team: "Automation", role: "Junior PLC", task_name: "SCADA system monitoring", description: "Monitor live SCADA process values", estimated_minutes: 30, due_time: "09:00" },
+  { team: "Automation", role: "Junior PLC", task_name: "PLC heartbeat check", description: "Verify PLC comms and watchdog status", estimated_minutes: 20, due_time: "09:30" },
+  { team: "Automation", role: "Junior PLC", task_name: "Alarm acknowledgement & review", description: "Review and clear non-critical alarms", estimated_minutes: 20, due_time: "10:00" },
+  { team: "Automation", role: "Junior PLC", task_name: "Control loop performance check", description: "Check PID loop setpoints vs actuals", estimated_minutes: 30, due_time: "14:00" },
+  { team: "Automation", role: "Junior PLC", task_name: "Instrument calibration log", description: "Record instrument readings, flag drift", estimated_minutes: 20, due_time: "15:00" },
+  { team: "Automation", role: "Junior PLC", task_name: "End-of-day PLC report", description: "Document PLC faults and corrective actions", estimated_minutes: 15, due_time: "17:30" },
+
+  // Automation — Senior Engineer - Automation
+  { team: "Automation", role: "Senior Engineer - Automation", task_name: "Plant automation health check", description: "Full system scan: PLC, HMI, SCADA, comms", estimated_minutes: 30, due_time: "09:00" },
+  { team: "Automation", role: "Senior Engineer - Automation", task_name: "Critical alarm analysis", description: "Analyse recurring or critical alarms", estimated_minutes: 30, due_time: "10:00" },
+  { team: "Automation", role: "Senior Engineer - Automation", task_name: "Process variable review", description: "Compare PV trends vs design parameters", estimated_minutes: 45, due_time: "11:00" },
+  { team: "Automation", role: "Senior Engineer - Automation", task_name: "PLC/HMI program review", description: "Review change requests or ongoing programs", estimated_minutes: 60, due_time: "14:00" },
+  { team: "Automation", role: "Senior Engineer - Automation", task_name: "Field audit & instrument check", description: "On-site verification of automation equipment", estimated_minutes: 30, due_time: "15:30" },
+  { team: "Automation", role: "Senior Engineer - Automation", task_name: "Automation engineering report", description: "Prepare daily engineering summary", estimated_minutes: 30, due_time: "17:00" },
+];
+
+router.post("/it-auto/seed-default-tasks", async (_req, res) => {
+  try {
+    let inserted = 0, skipped = 0;
+    for (const t of DEFAULT_TASKS) {
+      const exists = await db.execute(sql`
+        SELECT id FROM it_auto_routine_tasks
+        WHERE team = ${t.team} AND role = ${t.role} AND task_name = ${t.task_name}
+      `);
+      if (exists.rows.length > 0) { skipped++; continue; }
+      await db.execute(sql`
+        INSERT INTO it_auto_routine_tasks (team, role, task_name, description, estimated_minutes, due_time)
+        VALUES (${t.team}, ${t.role}, ${t.task_name}, ${t.description}, ${t.estimated_minutes}, ${t.due_time})
+      `);
+      inserted++;
+    }
+    res.json({ ok: true, inserted, skipped });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;
