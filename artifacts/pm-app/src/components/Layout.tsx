@@ -939,6 +939,13 @@ const navGroups: { label: string; items: NavItem[] }[] = [
         color: "text-sky-400",
         bgColor: "bg-sky-500/15",
       },
+      {
+        path: "/plc-automation/project-daily-status",
+        label: "Project Daily Status",
+        icon: Activity,
+        color: "text-amber-400",
+        bgColor: "bg-amber-500/15",
+      },
     ],
   },
   {

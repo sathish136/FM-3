@@ -3166,4 +3166,185 @@ router.post("/plc/modification-logs/:id/pdf", async (req, res) => {
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── PLC / Automation Projects & Daily Status ─────────────────────────────────
+
+(async () => {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS plc_projects (
+        id                  SERIAL PRIMARY KEY,
+        project_no          TEXT,
+        project_name        TEXT NOT NULL,
+        client              TEXT,
+        site                TEXT,
+        engineer            TEXT,
+        status              TEXT NOT NULL DEFAULT 'Active',
+        priority            TEXT NOT NULL DEFAULT 'Medium',
+        start_date          DATE,
+        expected_end_date   DATE,
+        actual_end_date     DATE,
+        overall_progress    INTEGER NOT NULL DEFAULT 0,
+        description         TEXT,
+        created_by          TEXT,
+        created_at          TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at          TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS plc_project_daily_status (
+        id                  SERIAL PRIMARY KEY,
+        project_id          INTEGER NOT NULL REFERENCES plc_projects(id) ON DELETE CASCADE,
+        status_date         DATE NOT NULL,
+        today_progress      TEXT,
+        tasks_done          JSONB NOT NULL DEFAULT '[]',
+        tasks_pending       JSONB NOT NULL DEFAULT '[]',
+        blockers            TEXT,
+        progress_pct        INTEGER,
+        expected_completion DATE,
+        updated_by          TEXT,
+        updated_at          TIMESTAMP NOT NULL DEFAULT NOW(),
+        UNIQUE(project_id, status_date)
+      )
+    `);
+  } catch (e) { console.error("[plc-projects] table init error:", e); }
+})();
+
+// Projects CRUD
+router.get("/plc/projects", async (req, res) => {
+  try {
+    const { status } = req.query as { status?: string };
+    let q = `SELECT * FROM plc_projects`;
+    const p: any[] = [];
+    if (status) { p.push(status); q += ` WHERE status = $${p.length}`; }
+    q += ` ORDER BY status, priority DESC, project_name`;
+    const r = await db.execute(sql.raw(q, p));
+    res.json(r.rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.post("/plc/projects", async (req, res) => {
+  try {
+    const { project_no, project_name, client, site, engineer, status, priority,
+            start_date, expected_end_date, overall_progress, description, created_by } = req.body as any;
+    const r = await db.execute(sql`
+      INSERT INTO plc_projects (project_no, project_name, client, site, engineer, status, priority,
+        start_date, expected_end_date, overall_progress, description, created_by)
+      VALUES (${project_no??null}, ${project_name}, ${client??null}, ${site??null}, ${engineer??null},
+        ${status??"Active"}, ${priority??"Medium"},
+        ${start_date??null}, ${expected_end_date??null}, ${overall_progress??0},
+        ${description??null}, ${created_by??null})
+      RETURNING *
+    `);
+    res.json(r.rows[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.patch("/plc/projects/:id", async (req, res) => {
+  try {
+    const { project_no, project_name, client, site, engineer, status, priority,
+            start_date, expected_end_date, actual_end_date, overall_progress, description } = req.body as any;
+    const r = await db.execute(sql`
+      UPDATE plc_projects SET
+        project_no        = COALESCE(${project_no??null},        project_no),
+        project_name      = COALESCE(${project_name??null},      project_name),
+        client            = COALESCE(${client??null},            client),
+        site              = COALESCE(${site??null},              site),
+        engineer          = COALESCE(${engineer??null},          engineer),
+        status            = COALESCE(${status??null},            status),
+        priority          = COALESCE(${priority??null},          priority),
+        start_date        = COALESCE(${start_date??null},        start_date),
+        expected_end_date = COALESCE(${expected_end_date??null}, expected_end_date),
+        actual_end_date   = COALESCE(${actual_end_date??null},   actual_end_date),
+        overall_progress  = COALESCE(${overall_progress??null},  overall_progress),
+        description       = COALESCE(${description??null},       description),
+        updated_at        = NOW()
+      WHERE id = ${Number(req.params["id"])}
+      RETURNING *
+    `);
+    res.json(r.rows[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete("/plc/projects/:id", async (req, res) => {
+  try {
+    await db.execute(sql`DELETE FROM plc_projects WHERE id = ${Number(req.params["id"])}`);
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// Daily Status — get for a date (all active projects merged with their entries)
+router.get("/plc/project-daily-status", async (req, res) => {
+  try {
+    const { date, project_id } = req.query as { date?: string; project_id?: string };
+    const d = date || new Date().toISOString().slice(0, 10);
+
+    if (project_id) {
+      // Single project history
+      const r = await db.execute(sql`
+        SELECT s.*, p.project_name, p.project_no
+        FROM plc_project_daily_status s
+        JOIN plc_projects p ON p.id = s.project_id
+        WHERE s.project_id = ${Number(project_id)}
+        ORDER BY s.status_date DESC LIMIT 30
+      `);
+      return res.json(r.rows);
+    }
+
+    // All active projects for a date
+    const projects = await db.execute(sql`
+      SELECT * FROM plc_projects WHERE status != 'Completed' ORDER BY priority DESC, project_name
+    `);
+    const entries = await db.execute(sql`
+      SELECT * FROM plc_project_daily_status WHERE status_date = ${d}::date
+    `);
+    const entryMap = new Map<number, any>();
+    for (const e of entries.rows) entryMap.set(Number(e.project_id), e);
+
+    const result = (projects.rows as any[]).map(p => ({
+      project: p,
+      entry: entryMap.get(p.id) || null,
+    }));
+    res.json({ date: d, data: result });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// Upsert daily status for a project
+router.post("/plc/project-daily-status", async (req, res) => {
+  try {
+    const { project_id, status_date, today_progress, tasks_done, tasks_pending,
+            blockers, progress_pct, expected_completion, updated_by } = req.body as any;
+
+    const r = await db.execute(sql`
+      INSERT INTO plc_project_daily_status
+        (project_id, status_date, today_progress, tasks_done, tasks_pending,
+         blockers, progress_pct, expected_completion, updated_by, updated_at)
+      VALUES
+        (${project_id}, ${status_date}::date, ${today_progress??null},
+         ${JSON.stringify(tasks_done??[])}::jsonb, ${JSON.stringify(tasks_pending??[])}::jsonb,
+         ${blockers??null}, ${progress_pct??null},
+         ${expected_completion??null}, ${updated_by??null}, NOW())
+      ON CONFLICT (project_id, status_date) DO UPDATE SET
+        today_progress      = EXCLUDED.today_progress,
+        tasks_done          = EXCLUDED.tasks_done,
+        tasks_pending       = EXCLUDED.tasks_pending,
+        blockers            = EXCLUDED.blockers,
+        progress_pct        = EXCLUDED.progress_pct,
+        expected_completion = EXCLUDED.expected_completion,
+        updated_by          = EXCLUDED.updated_by,
+        updated_at          = NOW()
+      RETURNING *
+    `);
+
+    // Also update project overall_progress if provided
+    if (progress_pct != null) {
+      await db.execute(sql`
+        UPDATE plc_projects SET overall_progress = ${progress_pct}, updated_at = NOW()
+        WHERE id = ${project_id}
+      `);
+    }
+
+    res.json(r.rows[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 export default router;
