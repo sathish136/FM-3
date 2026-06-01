@@ -8,7 +8,10 @@ import {
   Users, BarChart2, Settings2, Save, RefreshCw,
   CalendarDays, Shield, ShieldAlert, Loader2, X,
   AlertCircle, AlertTriangle, TrendingUp, Clock, ChevronUp, ChevronDown, ListChecks,
+  FileDown,
 } from "lucide-react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -467,6 +470,172 @@ export default function PLCTeamDailyReport() {
     await loadRoutineTasks();
   }
 
+  // ─── PDF Export ───────────────────────────────────────────────────────────
+
+  function exportDailyPDF() {
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 14;
+
+    // ── Header band
+    doc.setFillColor(2, 132, 199); // sky-600
+    doc.rect(0, 0, pageW, 22, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(13);
+    doc.setFont("helvetica", "bold");
+    doc.text("IT & Automation — Team Daily Report", margin, 10);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Date: ${fmtDate(viewDate)}`, margin, 17);
+    doc.text(`Exported: ${new Date().toLocaleString("en-IN")}`, pageW - margin, 17, { align: "right" });
+
+    let y = 30;
+
+    const allTeams: Array<"IT" | "Automation"> = ["IT", "Automation"];
+
+    for (const team of allTeams) {
+      const teamData = digestData.filter(d => d.member.team === team);
+      if (!teamData.length) continue;
+
+      const submitted = teamData.filter(d => d.report).length;
+
+      // Team header bar
+      if (y > 260) { doc.addPage(); y = 14; }
+      doc.setFillColor(team === "IT" ? 37 : 126, team === "IT" ? 99 : 34, team === "IT" ? 235 : 206);
+      doc.rect(margin, y, pageW - margin * 2, 8, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text(`${team} Team — ${submitted}/${teamData.length} submitted`, margin + 2, y + 5.5);
+      y += 11;
+
+      for (const { member, report } of teamData) {
+        const items = report?.items || [];
+        const compliant = items.filter(i => i.is_compliant).length;
+        const total = items.length;
+        const pct = total > 0 ? Math.round(100 * compliant / total) : null;
+
+        if (y > 255) { doc.addPage(); y = 14; }
+
+        // Member sub-header
+        doc.setFillColor(248, 250, 252); // slate-50
+        doc.setDrawColor(226, 232, 240); // slate-200
+        doc.rect(margin, y, pageW - margin * 2, 7, "FD");
+        doc.setTextColor(30, 41, 59); // slate-800
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.text(member.name, margin + 2, y + 4.8);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(100, 116, 139); // slate-500
+        doc.text(member.role, margin + 2, y + 4.8 + 0); // overwrite with offset
+        // Name left, role right of name, compliance far right
+        const nameW = doc.getTextWidth(member.name) + 4;
+        doc.setFontSize(8);
+        doc.text(`· ${member.role}`, margin + nameW, y + 4.8);
+        if (pct !== null) {
+          const pctColor: [number, number, number] = pct >= 90 ? [5, 150, 105] : pct >= 70 ? [217, 119, 6] : [220, 38, 38];
+          doc.setTextColor(...pctColor);
+          doc.setFont("helvetica", "bold");
+          doc.text(`${pct}% compliant`, pageW - margin - 2, y + 4.8, { align: "right" });
+        } else {
+          doc.setTextColor(148, 163, 184);
+          doc.text("No report", pageW - margin - 2, y + 4.8, { align: "right" });
+        }
+        y += 9;
+
+        if (report && items.length > 0) {
+          // Notes
+          if (report.notes) {
+            if (y > 255) { doc.addPage(); y = 14; }
+            doc.setFontSize(7.5);
+            doc.setFont("helvetica", "italic");
+            doc.setTextColor(71, 85, 105);
+            const noteLines = doc.splitTextToSize(`Notes: ${report.notes}`, pageW - margin * 2 - 4);
+            doc.text(noteLines, margin + 2, y);
+            y += noteLines.length * 4 + 2;
+          }
+
+          autoTable(doc, {
+            startY: y,
+            margin: { left: margin, right: margin },
+            head: [["Task", "Est", "Actual", "Status", "Compliance", "NC Days", "Delay Reason"]],
+            body: items.map(item => [
+              item.task_name,
+              fmtMinutes(item.estimated_minutes),
+              fmtMinutes(item.actual_minutes),
+              item.status,
+              item.is_compliant === true ? "✓ Compliant" : item.status === "Not Started" ? "—" : "✗ Non-Compliant",
+              item.non_compliance_days ? `${item.non_compliance_days}d` : "0",
+              item.delay_reason || "—",
+            ]),
+            styles: { fontSize: 7.5, cellPadding: 2, lineColor: [226, 232, 240], lineWidth: 0.3 },
+            headStyles: { fillColor: [241, 245, 249], textColor: [71, 85, 105], fontStyle: "bold", fontSize: 7.5 },
+            columnStyles: {
+              0: { cellWidth: 40 },
+              1: { cellWidth: 14, halign: "center" },
+              2: { cellWidth: 14, halign: "center" },
+              3: { cellWidth: 22, halign: "center" },
+              4: { cellWidth: 26, halign: "center" },
+              5: { cellWidth: 14, halign: "center" },
+              6: { cellWidth: "auto" },
+            },
+            didParseCell(data) {
+              if (data.section === "body") {
+                const status = items[data.row.index]?.status;
+                const compliant = items[data.row.index]?.is_compliant;
+                if (compliant === true) {
+                  data.cell.styles.fillColor = [240, 253, 244]; // emerald-50
+                } else if (status === "Delayed") {
+                  data.cell.styles.fillColor = [255, 251, 235]; // amber-50
+                } else if (compliant === false && status !== "Not Started") {
+                  data.cell.styles.fillColor = [254, 242, 242]; // red-50
+                }
+                // Color the compliance cell text
+                if (data.column.index === 4) {
+                  if (compliant === true) data.cell.styles.textColor = [5, 150, 105];
+                  else if (status !== "Not Started") data.cell.styles.textColor = [220, 38, 38];
+                }
+                if (data.column.index === 3) {
+                  if (status === "Completed") data.cell.styles.textColor = [5, 150, 105];
+                  else if (status === "Delayed") data.cell.styles.textColor = [217, 119, 6];
+                  else if (status === "In Progress") data.cell.styles.textColor = [37, 99, 235];
+                }
+              }
+            },
+            theme: "grid",
+          });
+          y = (doc as any).lastAutoTable.finalY + 5;
+        } else if (!report) {
+          if (y > 258) { doc.addPage(); y = 14; }
+          doc.setFontSize(7.5);
+          doc.setFont("helvetica", "italic");
+          doc.setTextColor(148, 163, 184);
+          doc.text("No report submitted.", margin + 2, y);
+          y += 6;
+        }
+
+        y += 2;
+      }
+
+      y += 4;
+    }
+
+    // Summary footer on last page
+    const totalSubmitted = digestData.filter(d => d.report).length;
+    const totalMembers = digestData.length;
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(148, 163, 184);
+    doc.text(
+      `Total: ${totalSubmitted}/${totalMembers} reports submitted for ${fmtDate(viewDate)}`,
+      pageW / 2,
+      doc.internal.pageSize.getHeight() - 8,
+      { align: "center" },
+    );
+
+    doc.save(`Team-Daily-Report-${viewDate}.pdf`);
+  }
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   const selMember = members.find(m => m.id === selMemberId);
@@ -812,6 +981,16 @@ export default function PLCTeamDailyReport() {
                 <p className="text-sm text-slate-500">
                   Showing all team members for <strong>{fmtDate(viewDate)}</strong>
                 </p>
+              </div>
+              <div className="sm:ml-auto mt-0">
+                <button
+                  onClick={exportDailyPDF}
+                  disabled={digestLoading || digestData.length === 0}
+                  className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 hover:border-sky-400 hover:text-sky-700 transition-colors disabled:opacity-50 shadow-sm"
+                >
+                  <FileDown className="w-4 h-4" />
+                  Export PDF
+                </button>
               </div>
             </div>
 
