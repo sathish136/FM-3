@@ -47,6 +47,7 @@ import proposalWizardRouter from "./proposal-wizard";
 import remoteAccessRouter from "./remote-access";
 import modemsRouter from "./modems";
 import vpnRouter from "./vpn";
+import itAutoReportRouter from "./it-auto-report";
 
 const router: IRouter = Router();
 
@@ -98,5 +99,6 @@ router.use(proposalWizardRouter);
 router.use(remoteAccessRouter);
 router.use(modemsRouter);
 router.use(vpnRouter);
+router.use(itAutoReportRouter);
 
 export default router;

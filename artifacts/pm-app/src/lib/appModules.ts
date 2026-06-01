@@ -74,6 +74,7 @@ const ALL_APP_MODULES: AppModule[] = [
   { key: "plc-support-tickets", label: "Support Tickets", group: "PLC & Automation", paths: ["/plc-automation/support-tickets"] },
   { key: "plc-network-architecture", label: "Network Architecture", group: "PLC & Automation", paths: ["/plc-automation/network-architecture"] },
   { key: "modem-dashboard", label: "Modem Management", group: "PLC & Automation", paths: ["/plc-automation/modems"] },
+  { key: "plc-team-daily-report", label: "Team Daily Report", group: "PLC & Automation", paths: ["/plc-automation/team-daily-report"] },
   // Procurement
   { key: "material-request", label: "Material Request", group: "Procurement", paths: ["/material-request"] },
   { key: "purchase-order", label: "Purchase Order", group: "Procurement", paths: ["/purchase-order"] },

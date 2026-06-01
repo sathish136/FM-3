@@ -79,6 +79,7 @@ import {
   Ruler,
   Wifi,
   Shield,
+  BarChart2,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -930,6 +931,13 @@ const navGroups: { label: string; items: NavItem[] }[] = [
         icon: Shield,
         color: "text-blue-400",
         bgColor: "bg-blue-500/15",
+      },
+      {
+        path: "/plc-automation/team-daily-report",
+        label: "Team Daily Report",
+        icon: BarChart2,
+        color: "text-sky-400",
+        bgColor: "bg-sky-500/15",
       },
     ],
   },
