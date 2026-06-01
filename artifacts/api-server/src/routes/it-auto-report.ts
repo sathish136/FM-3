@@ -433,4 +433,80 @@ router.get("/it-auto/digest", async (req, res) => {
   }
 });
 
+// ─── ERP employees ────────────────────────────────────────────────────────────
+
+const ERP_URL = (process.env.ERPNEXT_URL || "https://erp.wttint.com").replace(/\/$/, "");
+const ERP_AUTH = () => `token ${process.env.ERPNEXT_API_KEY || ""}:${process.env.ERPNEXT_API_SECRET || ""}`;
+
+router.get("/it-auto/erp-employees", async (req, res) => {
+  try {
+    const { department } = req.query as { department?: string };
+    const dept = department || "It - WTT";
+
+    const fields = JSON.stringify([
+      "name", "employee_name", "department", "designation", "status", "user_id", "cell_number",
+    ]);
+    const filters = JSON.stringify([
+      ["Employee", "department", "descendants of (inclusive)", dept],
+      ["Employee", "status", "=", "Active"],
+    ]);
+    const params = new URLSearchParams({ fields, filters, limit_page_length: "500", order_by: "employee_name asc" });
+    const url = `${ERP_URL}/api/resource/Employee?${params}`;
+    const r = await fetch(url, { headers: { Authorization: ERP_AUTH() } });
+    if (!r.ok) {
+      const txt = await r.text();
+      return res.status(r.status).json({ error: `ERPNext: ${txt}` });
+    }
+    const data = await r.json();
+    res.json(data.data || []);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Sync members from ERPNext — upsert by employee_id (ERP name)
+router.post("/it-auto/sync-erp-members", async (req, res) => {
+  try {
+    const { employees } = req.body as {
+      employees: Array<{
+        erp_name: string;
+        name: string;
+        role: string;
+        team: string;
+        email?: string;
+      }>;
+    };
+
+    // Add erp_id column if missing
+    await db.execute(sql`
+      ALTER TABLE it_auto_members ADD COLUMN IF NOT EXISTS erp_id TEXT UNIQUE
+    `);
+
+    let added = 0, updated = 0;
+    for (const emp of employees) {
+      const existing = await db.execute(sql`
+        SELECT id FROM it_auto_members WHERE erp_id = ${emp.erp_name}
+      `);
+      if (existing.rows.length > 0) {
+        await db.execute(sql`
+          UPDATE it_auto_members SET name=${emp.name}, role=${emp.role}, team=${emp.team},
+            email=${emp.email ?? null}, is_active=true WHERE erp_id=${emp.erp_name}
+        `);
+        updated++;
+      } else {
+        await db.execute(sql`
+          INSERT INTO it_auto_members (name, role, team, email, erp_id)
+          VALUES (${emp.name}, ${emp.role}, ${emp.team}, ${emp.email ?? null}, ${emp.erp_name})
+        `);
+        added++;
+      }
+    }
+
+    const all = await db.execute(sql`SELECT * FROM it_auto_members ORDER BY team, role, name`);
+    res.json({ ok: true, added, updated, members: all.rows });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;

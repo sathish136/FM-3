@@ -1,15 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
-import { Link, useLocation } from "wouter";
 import { Layout } from "@/components/Layout";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
-  Plus, Trash2, X, ClipboardList, CheckCircle2, Clock, AlertTriangle,
-  Users, BarChart2, Settings2, ChevronDown, ChevronUp, Save, RefreshCw,
-  CalendarDays, UserCheck, TrendingUp, Shield, ShieldAlert, Loader2,
-  Edit2, Check, Info, AlertCircle, Download,
-  Phone, Cpu, Network, GitBranch, Activity, Wifi, MonitorPlay, Ticket, FileText, Target
+  Plus, Trash2, ClipboardList, CheckCircle2,
+  Users, BarChart2, Settings2, Save, RefreshCw,
+  CalendarDays, Shield, ShieldAlert, Loader2,
+  AlertCircle, TrendingUp, Clock, ChevronUp, ChevronDown,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -121,44 +119,15 @@ function computeCompliance(status: TaskStatus): boolean {
   return status === "Completed";
 }
 
-// ─── PLC Sub-nav ─────────────────────────────────────────────────────────────
+// ─── ERP Employee type ────────────────────────────────────────────────────────
 
-const PLC_NAV = [
-  { path: "/plc-automation/device-config",          label: "Device Config",     icon: Cpu },
-  { path: "/plc-automation/site-calls",             label: "Support Calls",     icon: Phone },
-  { path: "/plc-automation/service-reports",        label: "Service Reports",   icon: ClipboardList },
-  { path: "/plc-automation/panel-inspection",       label: "Panel Inspection",  icon: ClipboardList },
-  { path: "/plc-automation/support-tickets",        label: "Tickets",           icon: Ticket },
-  { path: "/plc-automation/network-architecture",   label: "Network Arch",      icon: Network },
-  { path: "/plc-automation/modification-log",       label: "Mod Log",           icon: GitBranch },
-  { path: "/plc-automation/field-devices",          label: "Field Devices",     icon: Activity },
-  { path: "/plc-automation/modems",                 label: "Modems",            icon: Wifi },
-  { path: "/plc-automation/vpn-manager",            label: "VPN Manager",       icon: Shield },
-  { path: "/plc-automation/team-daily-report",      label: "Team Report",       icon: BarChart2 },
-];
-
-function PlcSubNav() {
-  const [loc] = useLocation();
-  return (
-    <div className="flex gap-1 flex-wrap mb-5">
-      {PLC_NAV.map(({ path, label, icon: Icon }) => {
-        const active = loc === path || loc.startsWith(path + "/");
-        return (
-          <Link key={path} href={path}>
-            <button className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
-              active
-                ? "bg-sky-600 text-white shadow"
-                : "bg-white border border-slate-200 text-slate-600 hover:bg-sky-50 hover:text-sky-700",
-            )}>
-              <Icon className="w-3.5 h-3.5" />
-              {label}
-            </button>
-          </Link>
-        );
-      })}
-    </div>
-  );
+interface ErpEmployee {
+  name: string;
+  employee_name: string;
+  department: string;
+  designation: string;
+  status: string;
+  user_id?: string;
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -200,9 +169,16 @@ export default function PLCTeamDailyReport() {
 
   // ── Setup state
   const [setupTab, setSetupTab] = useState<"members" | "tasks">("members");
-  const [newMember, setNewMember] = useState({ name: "", role: "", team: "IT" as Team, email: "" });
   const [newTask, setNewTask] = useState({ role: "", team: "IT" as Team, task_name: "", description: "", estimated_minutes: 60 });
-  const [editingMember, setEditingMember] = useState<Member | null>(null);
+
+  // ── ERP sync state
+  const [erpEmployees, setErpEmployees] = useState<ErpEmployee[]>([]);
+  const [erpLoading, setErpLoading] = useState(false);
+  const [erpSyncing, setErpSyncing] = useState(false);
+  const [erpError, setErpError] = useState("");
+  const [erpDept, setErpDept] = useState("It - WTT");
+  // Map ERP employees to local team/role before syncing
+  const [erpMappings, setErpMappings] = useState<Record<string, { team: Team; role: string }>>({});
 
   // ─── Load base data ───────────────────────────────────────────────────────
 
@@ -349,19 +325,6 @@ export default function PLCTeamDailyReport() {
 
   // ─── Setup handlers ───────────────────────────────────────────────────────
 
-  async function addMember() {
-    if (!newMember.name || !newMember.role) { toast({ title: "Name and role required", variant: "destructive" }); return; }
-    const r = await fetch(`${BASE}/api/it-auto/members`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newMember),
-    });
-    if (r.ok) {
-      setNewMember({ name: "", role: "", team: "IT", email: "" });
-      await loadMembers();
-      toast({ title: "Member added" });
-    }
-  }
-
   async function deleteMember(id: number) {
     if (!confirm("Delete member and all their reports?")) return;
     await fetch(`${BASE}/api/it-auto/members/${id}`, { method: "DELETE" });
@@ -375,6 +338,65 @@ export default function PLCTeamDailyReport() {
       body: JSON.stringify({ is_active: !m.is_active }),
     });
     await loadMembers();
+  }
+
+  // ─── ERP sync handlers ────────────────────────────────────────────────────
+
+  async function fetchErpEmployees() {
+    setErpLoading(true);
+    setErpError("");
+    setErpEmployees([]);
+    try {
+      const r = await fetch(`${BASE}/api/it-auto/erp-employees?department=${encodeURIComponent(erpDept)}`);
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${r.status}`);
+      }
+      const data: ErpEmployee[] = await r.json();
+      setErpEmployees(data);
+      // Pre-fill mappings: default team=IT, role=designation or first role
+      const map: Record<string, { team: Team; role: string }> = {};
+      for (const e of data) {
+        const existingMapping = erpMappings[e.name];
+        map[e.name] = existingMapping || {
+          team: (e.department?.toLowerCase().includes("auto") ? "Automation" : "IT") as Team,
+          role: e.designation || ROLES.IT[0],
+        };
+      }
+      setErpMappings(map);
+    } catch (err: any) {
+      setErpError(err.message);
+    } finally {
+      setErpLoading(false);
+    }
+  }
+
+  async function syncErpMembers() {
+    if (erpEmployees.length === 0) return;
+    setErpSyncing(true);
+    try {
+      const employees = erpEmployees.map(e => ({
+        erp_name: e.name,
+        name: e.employee_name,
+        role: erpMappings[e.name]?.role || e.designation || ROLES.IT[0],
+        team: erpMappings[e.name]?.team || "IT",
+        email: e.user_id || "",
+      }));
+      const r = await fetch(`${BASE}/api/it-auto/sync-erp-members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employees }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      const result = await r.json();
+      await loadMembers();
+      toast({ title: `Synced from ERPNext`, description: `${result.added} added, ${result.updated} updated` });
+      setErpEmployees([]);
+    } catch (err: any) {
+      toast({ title: "Sync failed", description: err.message, variant: "destructive" });
+    } finally {
+      setErpSyncing(false);
+    }
   }
 
   async function addRoutineTask() {
@@ -424,8 +446,7 @@ export default function PLCTeamDailyReport() {
 
   return (
     <Layout title="IT & Automation — Team Daily Report">
-      <div className="p-4 md:p-6 max-w-7xl mx-auto">
-        <PlcSubNav />
+      <div className="p-4 md:p-6">
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
@@ -1066,38 +1087,112 @@ export default function PLCTeamDailyReport() {
             {/* Members */}
             {setupTab === "members" && (
               <div className="space-y-4">
-                {/* Add form */}
+                {/* ERP Sync panel */}
                 <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-                  <h3 className="font-semibold text-slate-700 text-sm mb-3 flex items-center gap-1.5"><Plus className="w-4 h-4 text-sky-600" /> Add Member</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
-                    <input value={newMember.name} onChange={e => setNewMember(p => ({ ...p, name: e.target.value }))}
-                      placeholder="Full name *" className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none sm:col-span-1" />
-                    <select value={newMember.team} onChange={e => setNewMember(p => ({ ...p, team: e.target.value as Team, role: "" }))}
-                      className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none bg-white">
-                      <option value="IT">IT</option>
-                      <option value="Automation">Automation</option>
-                    </select>
-                    <select value={newMember.role} onChange={e => setNewMember(p => ({ ...p, role: e.target.value }))}
-                      className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none bg-white">
-                      <option value="">— Role —</option>
-                      {ROLES[newMember.team].map(r => <option key={r} value={r}>{r}</option>)}
-                    </select>
-                    <input value={newMember.email} onChange={e => setNewMember(p => ({ ...p, email: e.target.value }))}
-                      placeholder="Email (optional)" className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none" />
-                    <button onClick={addMember}
-                      className="flex items-center justify-center gap-1.5 px-4 py-2 bg-sky-600 text-white rounded-lg text-sm font-semibold hover:bg-sky-700 transition-colors">
-                      <Plus className="w-4 h-4" /> Add
-                    </button>
+                  <h3 className="font-semibold text-slate-700 text-sm mb-3 flex items-center gap-1.5">
+                    <RefreshCw className="w-4 h-4 text-sky-600" /> Sync from ERPNext
+                  </h3>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="flex-1">
+                      <label className="text-xs text-slate-500 mb-1 block">ERPNext Department (descendants included)</label>
+                      <input
+                        value={erpDept}
+                        onChange={e => setErpDept(e.target.value)}
+                        placeholder="It - WTT"
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none"
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <button
+                        onClick={fetchErpEmployees}
+                        disabled={erpLoading}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-sky-600 text-white rounded-lg text-sm font-semibold hover:bg-sky-700 transition-colors disabled:opacity-60"
+                      >
+                        {erpLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                        Fetch from ERP
+                      </button>
+                    </div>
                   </div>
+
+                  {erpError && (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                      <AlertCircle className="w-4 h-4 shrink-0" /> {erpError}
+                    </div>
+                  )}
+
+                  {erpEmployees.length > 0 && (
+                    <div className="mt-4 space-y-3">
+                      <p className="text-xs text-slate-500 font-medium">{erpEmployees.length} employees found — assign team & role, then sync:</p>
+                      <div className="border border-slate-200 rounded-lg overflow-hidden">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200">
+                              <th className="text-left px-3 py-2 text-xs font-semibold text-slate-600">Name</th>
+                              <th className="text-left px-3 py-2 text-xs font-semibold text-slate-600">Designation</th>
+                              <th className="text-left px-3 py-2 text-xs font-semibold text-slate-600">Team</th>
+                              <th className="text-left px-3 py-2 text-xs font-semibold text-slate-600">Role</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {erpEmployees.map(e => (
+                              <tr key={e.name} className="hover:bg-slate-50">
+                                <td className="px-3 py-2">
+                                  <p className="font-medium text-slate-800">{e.employee_name}</p>
+                                  <p className="text-xs text-slate-400">{e.department}</p>
+                                </td>
+                                <td className="px-3 py-2 text-slate-600 text-xs">{e.designation || "—"}</td>
+                                <td className="px-3 py-2">
+                                  <select
+                                    value={erpMappings[e.name]?.team || "IT"}
+                                    onChange={ev => setErpMappings(p => ({ ...p, [e.name]: { ...p[e.name], team: ev.target.value as Team } }))}
+                                    className="border border-slate-200 rounded px-2 py-1 text-xs bg-white"
+                                  >
+                                    <option value="IT">IT</option>
+                                    <option value="Automation">Automation</option>
+                                  </select>
+                                </td>
+                                <td className="px-3 py-2">
+                                  <select
+                                    value={erpMappings[e.name]?.role || ""}
+                                    onChange={ev => setErpMappings(p => ({ ...p, [e.name]: { ...p[e.name], role: ev.target.value } }))}
+                                    className="border border-slate-200 rounded px-2 py-1 text-xs bg-white"
+                                  >
+                                    <option value="">— Role —</option>
+                                    {ROLES[erpMappings[e.name]?.team || "IT"].map(r => (
+                                      <option key={r} value={r}>{r}</option>
+                                    ))}
+                                  </select>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <button
+                        onClick={syncErpMembers}
+                        disabled={erpSyncing}
+                        className="flex items-center gap-2 px-5 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-60"
+                      >
+                        {erpSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
+                        Sync {erpEmployees.length} Members
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Members list */}
                 <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                  <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+                  <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
                     <h3 className="font-semibold text-slate-700 text-sm">All Members ({members.length})</h3>
+                    <button onClick={loadMembers} className="text-slate-400 hover:text-sky-600 transition-colors p-1">
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                   {members.length === 0 ? (
-                    <div className="py-10 text-center text-slate-400 text-sm">No members added yet.</div>
+                    <div className="py-10 text-center text-slate-400 text-sm">
+                      <Users className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                      No members yet. Use "Fetch from ERP" above to import your team.
+                    </div>
                   ) : (
                     <div className="divide-y divide-slate-100">
                       {["IT", "Automation"].map(team => {
