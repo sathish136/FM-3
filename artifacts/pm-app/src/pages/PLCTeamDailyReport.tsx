@@ -391,13 +391,17 @@ export default function PLCTeamDailyReport() {
     setClSeedLoading(true);
     try {
       const r = await fetch(`${BASE}/api/it-auto/seed-default-checklist`, { method: "POST" });
-      const d = await r.json();
+      const text = await r.text();
+      let d: any = {};
+      try { d = JSON.parse(text); } catch { /* non-JSON response */ }
       if (r.ok) {
         await loadClAllItems();
-        toast({ title: "Default checklist loaded", description: `${d.inserted} items added (${d.skipped} already existed)` });
+        toast({ title: "Default checklist loaded", description: `${d.inserted ?? "?"} items added (${d.skipped ?? "?"} already existed)` });
       } else {
-        toast({ title: "Failed", description: d.error, variant: "destructive" });
+        toast({ title: "Failed", description: d.error || text.slice(0, 120), variant: "destructive" });
       }
+    } catch (e: any) {
+      toast({ title: "Request failed", description: e.message, variant: "destructive" });
     } finally {
       setClSeedLoading(false);
     }
