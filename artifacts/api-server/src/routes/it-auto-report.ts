@@ -68,6 +68,33 @@ const router = Router();
         updated_at            TIMESTAMP NOT NULL DEFAULT NOW()
       )
     `);
+    // ── Daily Checklist tables
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS it_daily_checklist_items (
+        id          SERIAL PRIMARY KEY,
+        category    TEXT NOT NULL,
+        item_name   TEXT NOT NULL,
+        description TEXT,
+        team        TEXT NOT NULL DEFAULT 'IT',
+        is_active   BOOLEAN NOT NULL DEFAULT true,
+        sort_order  INTEGER NOT NULL DEFAULT 0,
+        created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS it_daily_checklist_entries (
+        id           SERIAL PRIMARY KEY,
+        check_date   DATE NOT NULL,
+        item_id      INTEGER NOT NULL REFERENCES it_daily_checklist_items(id) ON DELETE CASCADE,
+        is_done      BOOLEAN NOT NULL DEFAULT false,
+        has_issue    BOOLEAN NOT NULL DEFAULT false,
+        issue_notes  TEXT,
+        checked_by   TEXT,
+        checked_at   TIMESTAMP,
+        UNIQUE(check_date, item_id)
+      )
+    `);
   } catch (e) {
     console.error("[it-auto-report] table init error:", e);
   }
@@ -631,6 +658,179 @@ router.post("/it-auto/seed-default-tasks", async (_req, res) => {
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// ─── Daily Checklist — Items (master list) ────────────────────────────────────
+
+router.get("/it-auto/checklist-items", async (req, res) => {
+  try {
+    const { team } = req.query as { team?: string };
+    let q = `SELECT * FROM it_daily_checklist_items WHERE is_active = true`;
+    const params: any[] = [];
+    if (team) { params.push(team); q += ` AND team = $${params.length}`; }
+    q += ` ORDER BY category, sort_order, item_name`;
+    const r = await db.execute(sql.raw(q, params));
+    res.json(r.rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.post("/it-auto/checklist-items", async (req, res) => {
+  try {
+    const { category, item_name, description, team, sort_order } = req.body as {
+      category: string; item_name: string; description?: string; team?: string; sort_order?: number;
+    };
+    const r = await db.execute(sql`
+      INSERT INTO it_daily_checklist_items (category, item_name, description, team, sort_order)
+      VALUES (${category}, ${item_name}, ${description ?? null}, ${team ?? "IT"}, ${sort_order ?? 0})
+      RETURNING *
+    `);
+    res.json(r.rows[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.patch("/it-auto/checklist-items/:id", async (req, res) => {
+  try {
+    const { category, item_name, description, team, is_active, sort_order } = req.body as {
+      category?: string; item_name?: string; description?: string;
+      team?: string; is_active?: boolean; sort_order?: number;
+    };
+    const r = await db.execute(sql`
+      UPDATE it_daily_checklist_items SET
+        category    = COALESCE(${category ?? null}, category),
+        item_name   = COALESCE(${item_name ?? null}, item_name),
+        description = COALESCE(${description ?? null}, description),
+        team        = COALESCE(${team ?? null}, team),
+        is_active   = COALESCE(${is_active ?? null}, is_active),
+        sort_order  = COALESCE(${sort_order ?? null}, sort_order)
+      WHERE id = ${Number(req.params["id"])}
+      RETURNING *
+    `);
+    res.json(r.rows[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete("/it-auto/checklist-items/:id", async (req, res) => {
+  try {
+    await db.execute(sql`DELETE FROM it_daily_checklist_items WHERE id = ${Number(req.params["id"])}`);
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Daily Checklist — Entries (per-day responses) ───────────────────────────
+
+// GET /it-auto/checklist?date=YYYY-MM-DD&team=IT
+// Returns all active items merged with that day's entries (null entry = not yet filled)
+router.get("/it-auto/checklist", async (req, res) => {
+  try {
+    const { date, team } = req.query as { date?: string; team?: string };
+    const d = date || new Date().toISOString().slice(0, 10);
+
+    let itemQ = `SELECT * FROM it_daily_checklist_items WHERE is_active = true`;
+    const ip: any[] = [];
+    if (team) { ip.push(team); itemQ += ` AND team = $${ip.length}`; }
+    itemQ += ` ORDER BY category, sort_order, item_name`;
+    const items = await db.execute(sql.raw(itemQ, ip));
+
+    const entries = await db.execute(sql`
+      SELECT * FROM it_daily_checklist_entries WHERE check_date = ${d}::date
+    `);
+    const entryMap = new Map<number, any>();
+    for (const e of entries.rows) entryMap.set(Number(e.item_id), e);
+
+    const result = (items.rows as any[]).map(item => ({
+      item,
+      entry: entryMap.get(item.id) || null,
+    }));
+    res.json({ date: d, data: result });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /it-auto/checklist  — upsert multiple entries for a date
+router.post("/it-auto/checklist", async (req, res) => {
+  try {
+    const { check_date, checked_by, entries } = req.body as {
+      check_date: string;
+      checked_by?: string;
+      entries: Array<{
+        item_id: number;
+        is_done: boolean;
+        has_issue: boolean;
+        issue_notes?: string;
+      }>;
+    };
+    for (const e of entries) {
+      await db.execute(sql`
+        INSERT INTO it_daily_checklist_entries (check_date, item_id, is_done, has_issue, issue_notes, checked_by, checked_at)
+        VALUES (${check_date}::date, ${e.item_id}, ${e.is_done}, ${e.has_issue}, ${e.issue_notes ?? null}, ${checked_by ?? null}, NOW())
+        ON CONFLICT (check_date, item_id) DO UPDATE SET
+          is_done     = EXCLUDED.is_done,
+          has_issue   = EXCLUDED.has_issue,
+          issue_notes = EXCLUDED.issue_notes,
+          checked_by  = EXCLUDED.checked_by,
+          checked_at  = EXCLUDED.checked_at
+      `);
+    }
+    res.json({ ok: true, saved: entries.length });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Seed default checklist items ─────────────────────────────────────────────
+
+const DEFAULT_CHECKLIST: Array<{
+  category: string; item_name: string; description: string; team: string; sort_order: number;
+}> = [
+  // Server Health
+  { category: "Server Health", item_name: "ERP Server online",           description: "Verify ERPNext is accessible and responding",         team: "IT", sort_order: 1 },
+  { category: "Server Health", item_name: "Web / App Server online",     description: "Check FlowMatrix / web services are live",            team: "IT", sort_order: 2 },
+  { category: "Server Health", item_name: "Database Server online",      description: "PostgreSQL / MSSQL services running, no errors",      team: "IT", sort_order: 3 },
+  { category: "Server Health", item_name: "File Server / NAS online",    description: "NAS shares accessible, drive health OK",              team: "IT", sort_order: 4 },
+  { category: "Server Health", item_name: "Mail Server online",          description: "SMTP / mail relay functional, no queued bounce",      team: "IT", sort_order: 5 },
+  // Network
+  { category: "Network",       item_name: "Internet connectivity OK",    description: "Ping external DNS; check ISP link status",            team: "IT", sort_order: 1 },
+  { category: "Network",       item_name: "LAN switches all green",      description: "No port errors or flapping on managed switches",      team: "IT", sort_order: 2 },
+  { category: "Network",       item_name: "Firewall active",             description: "Firewall rules loaded, no blocked critical traffic",  team: "IT", sort_order: 3 },
+  { category: "Network",       item_name: "VPN accessible",              description: "Remote VPN tunnel up and users can connect",          team: "IT", sort_order: 4 },
+  { category: "Network",       item_name: "Wi-Fi access points online",  description: "All office APs broadcasting and associated",         team: "IT", sort_order: 5 },
+  // Backup
+  { category: "Backup",        item_name: "Daily backup completed",      description: "Last night's scheduled backup job finished OK",       team: "IT", sort_order: 1 },
+  { category: "Backup",        item_name: "Backup integrity verified",   description: "Spot-check backup file is not corrupt/empty",         team: "IT", sort_order: 2 },
+  { category: "Backup",        item_name: "Offsite / cloud backup sync", description: "Backup copy pushed to offsite or cloud storage",      team: "IT", sort_order: 3 },
+  // Applications
+  { category: "Applications",  item_name: "ERPNext accessible",          description: "Login page loads; no module errors",                  team: "IT", sort_order: 1 },
+  { category: "Applications",  item_name: "FlowMatrix accessible",       description: "PM-app loads and API responds",                       team: "IT", sort_order: 2 },
+  { category: "Applications",  item_name: "SCADA / HMI screens live",    description: "All SCADA screens live; no comms loss alarms",        team: "IT", sort_order: 3 },
+  { category: "Applications",  item_name: "Email service running",       description: "Send a test email; inbox delivering",                 team: "IT", sort_order: 4 },
+  { category: "Applications",  item_name: "Antivirus definitions current", description: "Endpoint AV signatures updated within 24 h",       team: "IT", sort_order: 5 },
+  // Security
+  { category: "Security",      item_name: "No failed-login alerts",      description: "Review auth logs — no brute-force or lockout spike",  team: "IT", sort_order: 1 },
+  { category: "Security",      item_name: "SSL certificates valid",      description: "All public certs have ≥ 30 days remaining",           team: "IT", sort_order: 2 },
+  { category: "Security",      item_name: "Patch status reviewed",       description: "No critical OS/app patches overdue > 7 days",         team: "IT", sort_order: 3 },
+  // Automation
+  { category: "SCADA / PLC",   item_name: "SCADA screens alarm-free",    description: "No active critical/high alarms on any SCADA panel",   team: "Automation", sort_order: 1 },
+  { category: "SCADA / PLC",   item_name: "PLC communications OK",       description: "All PLC heartbeats / comms links healthy",            team: "Automation", sort_order: 2 },
+  { category: "SCADA / PLC",   item_name: "HMI displays functional",     description: "All HMI screens power on and display correctly",      team: "Automation", sort_order: 3 },
+  { category: "SCADA / PLC",   item_name: "Control loops stable",        description: "PID loops running in Auto; no loop in manual/fault",  team: "Automation", sort_order: 4 },
+  { category: "SCADA / PLC",   item_name: "Historian / data logging OK", description: "Trend data writing; no historian offline alerts",     team: "Automation", sort_order: 5 },
+  { category: "Field / Instruments", item_name: "Instrument readings plausible", description: "Spot-check key flow/pressure/level readings vs expected", team: "Automation", sort_order: 1 },
+  { category: "Field / Instruments", item_name: "Control panel no faults", description: "No fault LEDs on MCC/control panels",              team: "Automation", sort_order: 2 },
+];
+
+router.post("/it-auto/seed-default-checklist", async (_req, res) => {
+  try {
+    let inserted = 0, skipped = 0;
+    for (const item of DEFAULT_CHECKLIST) {
+      const exists = await db.execute(sql`
+        SELECT id FROM it_daily_checklist_items WHERE team=${item.team} AND category=${item.category} AND item_name=${item.item_name}
+      `);
+      if (exists.rows.length > 0) { skipped++; continue; }
+      await db.execute(sql`
+        INSERT INTO it_daily_checklist_items (category, item_name, description, team, sort_order)
+        VALUES (${item.category}, ${item.item_name}, ${item.description}, ${item.team}, ${item.sort_order})
+      `);
+      inserted++;
+    }
+    res.json({ ok: true, inserted, skipped });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
 export default router;

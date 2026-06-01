@@ -123,6 +123,30 @@ function computeCompliance(status: TaskStatus): boolean {
   return status === "Completed";
 }
 
+// ─── Checklist types ──────────────────────────────────────────────────────────
+
+interface ChecklistItem {
+  id: number;
+  category: string;
+  item_name: string;
+  description?: string;
+  team: string;
+  sort_order: number;
+}
+
+interface ChecklistEntry {
+  id?: number;
+  item_id: number;
+  is_done: boolean;
+  has_issue: boolean;
+  issue_notes?: string;
+}
+
+interface ChecklistRow {
+  item: ChecklistItem;
+  entry: ChecklistEntry | null;
+}
+
 // ─── ERP Employee type ────────────────────────────────────────────────────────
 
 interface ErpEmployee {
@@ -149,7 +173,7 @@ interface CheckEntry {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-type Tab = "submit" | "daily" | "compliance" | "check" | "setup";
+type Tab = "submit" | "daily" | "compliance" | "check" | "checklist" | "setup";
 
 export default function PLCTeamDailyReport() {
   const { user } = useAuth();
@@ -185,7 +209,7 @@ export default function PLCTeamDailyReport() {
   const [compLoading, setCompLoading] = useState(false);
 
   // ── Setup state
-  const [setupTab, setSetupTab] = useState<"members" | "tasks">("members");
+  const [setupTab, setSetupTab] = useState<"members" | "tasks" | "checklist">("members");
   const [newTask, setNewTask] = useState({ role: "", team: "IT" as Team, task_name: "", description: "", estimated_minutes: 60, due_time: "" });
 
   // ── ERP sync state
@@ -202,6 +226,17 @@ export default function PLCTeamDailyReport() {
   const [checkDate, setCheckDate] = useState(today());
   const [checkData, setCheckData] = useState<CheckEntry[]>([]);
   const [checkLoading, setCheckLoading] = useState(false);
+
+  // ── IT Checklist state
+  const [clDate, setClDate] = useState(today());
+  const [clTeamFilter, setClTeamFilter] = useState<"IT" | "Automation" | "">("");
+  const [clRows, setClRows] = useState<ChecklistRow[]>([]);
+  const [clLoading, setClLoading] = useState(false);
+  const [clSaving, setClSaving] = useState(false);
+  const [clEdits, setClEdits] = useState<Record<number, ChecklistEntry>>({});
+  const [clAllItems, setClAllItems] = useState<ChecklistItem[]>([]);
+  const [clSeedLoading, setClSeedLoading] = useState(false);
+  const [newClItem, setNewClItem] = useState({ category: "", item_name: "", description: "", team: "IT" as "IT" | "Automation" });
 
   // ─── Load base data ───────────────────────────────────────────────────────
 
@@ -288,6 +323,106 @@ export default function PLCTeamDailyReport() {
   }, [checkDate]);
 
   useEffect(() => { if (tab === "check") loadCheck(); }, [tab, loadCheck]);
+
+  // ─── IT Checklist ─────────────────────────────────────────────────────────
+
+  const loadChecklist = useCallback(async () => {
+    setClLoading(true);
+    const params = new URLSearchParams({ date: clDate });
+    if (clTeamFilter) params.set("team", clTeamFilter);
+    const r = await fetch(`${BASE}/api/it-auto/checklist?${params}`);
+    if (r.ok) {
+      const d = await r.json();
+      const rows: ChecklistRow[] = d.data || [];
+      setClRows(rows);
+      // Seed local edits from existing entries
+      const edits: Record<number, ChecklistEntry> = {};
+      for (const row of rows) {
+        edits[row.item.id] = row.entry
+          ? { item_id: row.item.id, is_done: row.entry.is_done, has_issue: row.entry.has_issue, issue_notes: row.entry.issue_notes || "" }
+          : { item_id: row.item.id, is_done: false, has_issue: false, issue_notes: "" };
+      }
+      setClEdits(edits);
+    }
+    setClLoading(false);
+  }, [clDate, clTeamFilter]);
+
+  useEffect(() => { if (tab === "checklist") loadChecklist(); }, [tab, clDate, clTeamFilter, loadChecklist]);
+
+  const loadClAllItems = useCallback(async () => {
+    const r = await fetch(`${BASE}/api/it-auto/checklist-items`);
+    if (r.ok) setClAllItems(await r.json());
+  }, []);
+
+  useEffect(() => { if (tab === "setup") loadClAllItems(); }, [tab, loadClAllItems]);
+
+  function clSetDone(itemId: number, done: boolean) {
+    setClEdits(p => ({ ...p, [itemId]: { ...p[itemId], item_id: itemId, is_done: done, has_issue: done ? (p[itemId]?.has_issue ?? false) : false } }));
+  }
+
+  function clSetIssue(itemId: number, hasIssue: boolean) {
+    setClEdits(p => ({ ...p, [itemId]: { ...p[itemId], item_id: itemId, has_issue: hasIssue } }));
+  }
+
+  function clSetNotes(itemId: number, notes: string) {
+    setClEdits(p => ({ ...p, [itemId]: { ...p[itemId], item_id: itemId, issue_notes: notes } }));
+  }
+
+  async function saveChecklist() {
+    setClSaving(true);
+    try {
+      const entries = Object.values(clEdits);
+      const r = await fetch(`${BASE}/api/it-auto/checklist`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ check_date: clDate, checked_by: user?.email || "unknown", entries }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      await loadChecklist();
+      toast({ title: "Checklist saved", description: `${entries.length} items saved for ${fmtDate(clDate)}` });
+    } catch (e: any) {
+      toast({ title: "Save failed", description: e.message, variant: "destructive" });
+    } finally {
+      setClSaving(false);
+    }
+  }
+
+  async function seedChecklist() {
+    setClSeedLoading(true);
+    try {
+      const r = await fetch(`${BASE}/api/it-auto/seed-default-checklist`, { method: "POST" });
+      const d = await r.json();
+      if (r.ok) {
+        await loadClAllItems();
+        toast({ title: "Default checklist loaded", description: `${d.inserted} items added (${d.skipped} already existed)` });
+      } else {
+        toast({ title: "Failed", description: d.error, variant: "destructive" });
+      }
+    } finally {
+      setClSeedLoading(false);
+    }
+  }
+
+  async function addClItem() {
+    if (!newClItem.category || !newClItem.item_name) {
+      toast({ title: "Category and item name required", variant: "destructive" }); return;
+    }
+    const r = await fetch(`${BASE}/api/it-auto/checklist-items`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newClItem),
+    });
+    if (r.ok) {
+      setNewClItem({ category: "", item_name: "", description: "", team: "IT" });
+      await loadClAllItems();
+      toast({ title: "Checklist item added" });
+    }
+  }
+
+  async function deleteClItem(id: number) {
+    if (!confirm("Delete this checklist item?")) return;
+    await fetch(`${BASE}/api/it-auto/checklist-items/${id}`, { method: "DELETE" });
+    await loadClAllItems();
+  }
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
 
@@ -689,6 +824,7 @@ export default function PLCTeamDailyReport() {
             { key: "daily",      label: "Daily Summary",    icon: CalendarDays },
             { key: "compliance", label: "Compliance",       icon: Shield },
             { key: "check",      label: "Today's Check",    icon: ListChecks },
+            { key: "checklist",  label: "IT Checklist",     icon: CheckCircle2 },
             { key: "setup",      label: "Team Setup",       icon: Settings2 },
           ] as { key: Tab; label: string; icon: any }[]).map(({ key, label, icon: Icon }) => (
             <button
@@ -1405,11 +1541,210 @@ export default function PLCTeamDailyReport() {
           </div>
         )}
 
+        {/* ── Tab: IT Checklist ─────────────────────────────────────────────── */}
+        {tab === "checklist" && (
+          <div className="space-y-4">
+
+            {/* Controls */}
+            <div className="flex flex-wrap items-end gap-3 bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+              <div>
+                <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Date</label>
+                <input type="date" value={clDate} onChange={e => setClDate(e.target.value)}
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-sky-500 outline-none" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Team</label>
+                <select value={clTeamFilter} onChange={e => setClTeamFilter(e.target.value as any)}
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-sky-500 outline-none">
+                  <option value="">All Teams</option>
+                  <option value="IT">IT</option>
+                  <option value="Automation">Automation</option>
+                </select>
+              </div>
+              <button onClick={loadChecklist} disabled={clLoading}
+                className="flex items-center gap-1.5 px-4 py-2 bg-sky-600 text-white rounded-lg text-sm font-semibold hover:bg-sky-700 transition-colors disabled:opacity-60">
+                {clLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                Refresh
+              </button>
+
+              {/* Summary badges */}
+              {!clLoading && clRows.length > 0 && (() => {
+                const done  = clRows.filter(r => clEdits[r.item.id]?.is_done).length;
+                const issues = clRows.filter(r => clEdits[r.item.id]?.has_issue).length;
+                const total = clRows.length;
+                return (
+                  <div className="flex items-center gap-2 ml-auto flex-wrap">
+                    <span className={cn(
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold border",
+                      done === total ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-slate-50 border-slate-200 text-slate-600",
+                    )}>
+                      <CheckCircle2 className="w-4 h-4" /> {done}/{total} Done
+                    </span>
+                    {issues > 0 && (
+                      <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold bg-red-50 border border-red-200 text-red-600">
+                        <AlertTriangle className="w-4 h-4" /> {issues} Issue{issues > 1 ? "s" : ""}
+                      </span>
+                    )}
+                    <button onClick={saveChecklist} disabled={clSaving}
+                      className="flex items-center gap-2 px-5 py-2 bg-sky-600 text-white rounded-lg text-sm font-semibold hover:bg-sky-700 transition-colors disabled:opacity-60">
+                      {clSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      Save Checklist
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {clLoading && (
+              <div className="flex items-center justify-center py-16 text-slate-400 gap-2">
+                <Loader2 className="w-5 h-5 animate-spin" /> Loading checklist…
+              </div>
+            )}
+
+            {!clLoading && clRows.length === 0 && (
+              <div className="text-center py-16 text-slate-400">
+                <CheckCircle2 className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                <p className="text-sm font-medium">No checklist items found.</p>
+                <p className="text-xs mt-1">Go to <strong>Team Setup → Checklist Items</strong> and load the defaults.</p>
+              </div>
+            )}
+
+            {!clLoading && clRows.length > 0 && (() => {
+              // Group by category
+              const byCategory: Record<string, ChecklistRow[]> = {};
+              for (const row of clRows) {
+                (byCategory[row.item.category] ||= []).push(row);
+              }
+              return (
+                <div className="space-y-4">
+                  {Object.entries(byCategory).map(([cat, rows]) => {
+                    const catDone   = rows.filter(r => clEdits[r.item.id]?.is_done).length;
+                    const catIssues = rows.filter(r => clEdits[r.item.id]?.has_issue).length;
+                    return (
+                      <div key={cat} className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                        {/* Category header */}
+                        <div className={cn(
+                          "px-4 py-2.5 flex items-center gap-3 border-b border-slate-100",
+                          catIssues > 0 ? "bg-red-50" : catDone === rows.length ? "bg-emerald-50" : "bg-slate-50",
+                        )}>
+                          <span className="font-semibold text-slate-700 text-sm">{cat}</span>
+                          <span className={cn(
+                            "ml-auto text-xs font-semibold px-2 py-0.5 rounded-full",
+                            catDone === rows.length ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600",
+                          )}>
+                            {catDone}/{rows.length}
+                          </span>
+                          {catIssues > 0 && (
+                            <span className="flex items-center gap-1 text-xs font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
+                              <AlertTriangle className="w-3 h-3" /> {catIssues} issue{catIssues > 1 ? "s" : ""}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Items */}
+                        <div className="divide-y divide-slate-100">
+                          {rows.map(({ item }) => {
+                            const edit = clEdits[item.id] || { item_id: item.id, is_done: false, has_issue: false, issue_notes: "" };
+                            return (
+                              <div key={item.id} className={cn(
+                                "px-4 py-3 transition-colors",
+                                edit.has_issue ? "bg-red-50/60" : edit.is_done ? "bg-emerald-50/40" : "hover:bg-slate-50/50",
+                              )}>
+                                <div className="flex items-start gap-3">
+                                  {/* Done toggle */}
+                                  <button
+                                    onClick={() => clSetDone(item.id, !edit.is_done)}
+                                    className={cn(
+                                      "mt-0.5 w-6 h-6 rounded-full flex items-center justify-center shrink-0 border-2 transition-all",
+                                      edit.is_done
+                                        ? "bg-emerald-500 border-emerald-500 text-white"
+                                        : "border-slate-300 bg-white hover:border-emerald-400",
+                                    )}
+                                  >
+                                    {edit.is_done && <CheckCircle2 className="w-4 h-4" />}
+                                  </button>
+
+                                  {/* Item info */}
+                                  <div className="flex-1 min-w-0">
+                                    <p className={cn(
+                                      "text-sm font-medium",
+                                      edit.is_done && !edit.has_issue ? "text-slate-500 line-through" : "text-slate-800",
+                                      edit.has_issue && "text-red-800",
+                                    )}>
+                                      {item.item_name}
+                                    </p>
+                                    {item.description && (
+                                      <p className="text-xs text-slate-400 mt-0.5">{item.description}</p>
+                                    )}
+
+                                    {/* Issue notes — shown when issue flagged */}
+                                    {edit.has_issue && (
+                                      <textarea
+                                        value={edit.issue_notes || ""}
+                                        onChange={e => clSetNotes(item.id, e.target.value)}
+                                        rows={2}
+                                        placeholder="Describe the issue…"
+                                        className="mt-2 w-full border border-red-300 bg-red-50 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-400 outline-none resize-none text-red-900 placeholder:text-red-300"
+                                      />
+                                    )}
+                                  </div>
+
+                                  {/* Status badge */}
+                                  <div className="shrink-0 flex items-center gap-2">
+                                    {edit.is_done && !edit.has_issue && (
+                                      <span className="text-xs bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded-full">Done</span>
+                                    )}
+                                    {edit.has_issue && (
+                                      <span className="text-xs bg-red-100 text-red-700 font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                                        <ShieldAlert className="w-3 h-3" /> Issue
+                                      </span>
+                                    )}
+                                    {!edit.is_done && !edit.has_issue && (
+                                      <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">Pending</span>
+                                    )}
+
+                                    {/* Issue toggle button */}
+                                    <button
+                                      onClick={() => clSetIssue(item.id, !edit.has_issue)}
+                                      title={edit.has_issue ? "Clear issue" : "Flag an issue"}
+                                      className={cn(
+                                        "p-1.5 rounded-lg border transition-colors text-xs",
+                                        edit.has_issue
+                                          ? "bg-red-100 border-red-300 text-red-600 hover:bg-red-200"
+                                          : "bg-white border-slate-200 text-slate-400 hover:bg-amber-50 hover:border-amber-300 hover:text-amber-600",
+                                      )}
+                                    >
+                                      <AlertTriangle className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Save bar */}
+                  <div className="flex justify-end pt-2">
+                    <button onClick={saveChecklist} disabled={clSaving}
+                      className="flex items-center gap-2 px-6 py-2.5 bg-sky-600 text-white rounded-lg text-sm font-semibold hover:bg-sky-700 transition-colors disabled:opacity-60 shadow-sm">
+                      {clSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      Save Checklist
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
         {/* ── Tab: Setup ────────────────────────────────────────────────────── */}
         {tab === "setup" && (
           <div className="space-y-5">
             <div className="flex gap-2 border-b border-slate-200 pb-0">
-              {(["members", "tasks"] as const).map(st => (
+              {(["members", "tasks", "checklist"] as const).map(st => (
                 <button
                   key={st}
                   onClick={() => setSetupTab(st)}
@@ -1420,7 +1755,7 @@ export default function PLCTeamDailyReport() {
                       : "border-transparent text-slate-500 hover:text-slate-700",
                   )}
                 >
-                  {st === "members" ? "Team Members" : "Routine Tasks"}
+                  {st === "members" ? "Team Members" : st === "tasks" ? "Routine Tasks" : "Checklist Items"}
                 </button>
               ))}
             </div>
@@ -1686,6 +2021,127 @@ export default function PLCTeamDailyReport() {
                       )}
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+            {/* Checklist Items */}
+            {setupTab === "checklist" && (
+              <div className="space-y-4">
+                {/* Seed defaults */}
+                <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center gap-3">
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-slate-700">Load Default Checklist Items</p>
+                    <p className="text-xs text-slate-500 mt-0.5">Adds ~27 IT and Automation checklist items across Server Health, Network, Backup, Applications, Security, SCADA / PLC and Field / Instruments categories.</p>
+                  </div>
+                  <button
+                    onClick={seedChecklist}
+                    disabled={clSeedLoading}
+                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-60 shrink-0"
+                  >
+                    {clSeedLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                    Load Defaults
+                  </button>
+                </div>
+
+                {/* Add new item */}
+                <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                  <h3 className="font-semibold text-slate-700 text-sm mb-3">Add Checklist Item</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                    <div>
+                      <label className="text-xs text-slate-500 mb-1 block">Category *</label>
+                      <input
+                        value={newClItem.category}
+                        onChange={e => setNewClItem(p => ({ ...p, category: e.target.value }))}
+                        placeholder="e.g. Server Health"
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-500 mb-1 block">Item Name *</label>
+                      <input
+                        value={newClItem.item_name}
+                        onChange={e => setNewClItem(p => ({ ...p, item_name: e.target.value }))}
+                        placeholder="e.g. ERP Server online"
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-500 mb-1 block">Description</label>
+                      <input
+                        value={newClItem.description}
+                        onChange={e => setNewClItem(p => ({ ...p, description: e.target.value }))}
+                        placeholder="Optional hint…"
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-500 mb-1 block">Team</label>
+                      <div className="flex gap-2">
+                        <select
+                          value={newClItem.team}
+                          onChange={e => setNewClItem(p => ({ ...p, team: e.target.value as "IT" | "Automation" }))}
+                          className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-sky-500 outline-none"
+                        >
+                          <option value="IT">IT</option>
+                          <option value="Automation">Automation</option>
+                        </select>
+                        <button
+                          onClick={addClItem}
+                          className="px-3 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 transition-colors"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Items list */}
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                  <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                    <h3 className="font-semibold text-slate-700 text-sm">All Checklist Items ({clAllItems.length})</h3>
+                    <button onClick={loadClAllItems} className="text-slate-400 hover:text-sky-600 transition-colors p-1">
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  {clAllItems.length === 0 ? (
+                    <div className="py-10 text-center text-slate-400 text-sm">
+                      <CheckCircle2 className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                      No items yet. Click "Load Defaults" above to get started.
+                    </div>
+                  ) : (() => {
+                    const byCategory: Record<string, ChecklistItem[]> = {};
+                    for (const item of clAllItems) (byCategory[item.category] ||= []).push(item);
+                    return (
+                      <div>
+                        {Object.entries(byCategory).map(([cat, items]) => (
+                          <div key={cat}>
+                            <div className="px-4 py-1.5 text-xs font-bold uppercase tracking-wider bg-slate-50 text-slate-600 border-b border-slate-100">
+                              {cat}
+                              <span className={cn(
+                                "ml-2 px-1.5 py-0.5 rounded text-xs font-semibold",
+                                items[0]?.team === "IT" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700",
+                              )}>
+                                {items[0]?.team}
+                              </span>
+                            </div>
+                            {items.map(item => (
+                              <div key={item.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-100 hover:bg-slate-50">
+                                <CheckCircle2 className="w-4 h-4 text-slate-300 shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-slate-800">{item.item_name}</p>
+                                  {item.description && <p className="text-xs text-slate-400">{item.description}</p>}
+                                </div>
+                                <button onClick={() => deleteClItem(item.id)} className="text-slate-400 hover:text-red-500 transition-colors p-1 shrink-0">
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             )}
